@@ -50,7 +50,7 @@ impl Client {
             id: "".to_string(),
             public_key: secret_key.public_key(),
         };
-        let url = self.base.join("prototype/register-publisher")?;
+        let url = self.base.join("prototype/register-maintainer-key")?;
         let resp = self.http.post(url).json(&maintainer_key).send().await?;
         let resp = response_error(resp).await?;
         Ok((resp.json().await?, secret_key))

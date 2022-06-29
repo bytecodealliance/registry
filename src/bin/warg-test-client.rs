@@ -74,7 +74,7 @@ impl PublishCommand {
             .await
             .context("Failed to register maintainer key")?;
 
-        println!("Registered publisher id={:?}\n", &maintainer_key.id);
+        println!("Registered maintainer key id={:?}\n", &maintainer_key.id);
 
         let unpublished = client
             .create_unpublished_release(&release)

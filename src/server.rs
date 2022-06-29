@@ -31,7 +31,7 @@ struct Data {
     releases: HashMap<String, Release>,
     unpublished_releases: HashMap<String, UnpublishedRelease>,
     release_content: HashMap<TypedDigest, Bytes>,
-    publishers: HashMap<String, MaintainerKey>,
+    maintainer_keys: HashMap<String, MaintainerKey>,
 }
 
 type ServerExtension = Extension<Arc<Server>>;
@@ -93,7 +93,7 @@ async fn publish_release(
         ref mut releases,
         ref mut unpublished_releases,
         ref mut release_content,
-        ref mut publishers,
+        ref mut maintainer_keys,
     } = *server.data.write().await;
 
     // Look up unpublished release
@@ -125,7 +125,7 @@ async fn publish_release(
         StatusCode::BAD_REQUEST,
         "Missing signature key ID".to_string(),
     ))?;
-    let maintainer_key = publishers.get(key_id).ok_or_else(|| {
+    let maintainer_key = maintainer_keys.get(key_id).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             format!("Unknown key ID {:?}", key_id),
@@ -161,7 +161,7 @@ async fn publish_release(
 
 // Prototype handlers
 
-async fn register_publisher(
+async fn register_maintainer_key(
     Json(mut maintainer_key): Json<MaintainerKey>,
     Extension(server): ServerExtension,
 ) -> impl IntoResponse {
@@ -177,14 +177,14 @@ async fn register_publisher(
     maintainer_key.id = id.clone();
 
     // Update "database"
-    let publishers = &mut server.data.write().await.publishers;
-    if publishers.contains_key(&id) {
+    let maintainer_keys = &mut server.data.write().await.maintainer_keys;
+    if maintainer_keys.contains_key(&id) {
         return Err((
             StatusCode::BAD_REQUEST,
             "Public key already registered".to_string(),
         ));
     }
-    publishers.insert(id, maintainer_key.clone());
+    maintainer_keys.insert(id, maintainer_key.clone());
 
     Ok(Json(maintainer_key))
 }
@@ -269,7 +269,10 @@ impl Server {
                 post(publish_release),
             )
             // Prototype routes to enable testing
-            .route("/prototype/register-publisher", post(register_publisher))
+            .route(
+                "/prototype/register-maintainer-key",
+                post(register_maintainer_key),
+            )
             .route(
                 "/prototype/release-content/:content_digest",
                 post(upload_release_content),
