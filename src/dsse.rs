@@ -1,6 +1,5 @@
 //! "Dead Simple Signing Envelope"
 //! https://github.com/secure-systems-lab/dsse
-//! NOTE: `keyid` is optional in the spec, but required in this implementation.
 
 #![allow(dead_code)]
 
@@ -36,35 +35,33 @@ impl Envelope {
 
     pub fn sign<S: signature::Signature>(
         &mut self,
-        key_id: String,
         signer: impl Signer<S>,
+        key_id: Option<String>,
     ) -> Result<(), Error> {
-        if self.signatures().any(|s| s.key_id == key_id) {
-            return Err(Error::InvalidSigningKey(
-                format!("already has a signature with key_id {:?}", key_id).into(),
-            ));
-        }
-        self.signatures.push(Signature::sign(
+        self.signatures.push(Signature::sign_payload(
             &self.payload_type,
             &self.payload,
+            &signer,
             key_id,
-            signer,
         )?);
         Ok(())
     }
 
+    /// Attempt to verify the first Signature matching the given `key_id`.
     pub fn verify<S: signature::Signature>(
         &self,
-        key_id: &str,
         verifier: impl Verifier<S>,
+        key_id: Option<&str>,
     ) -> Result<&[u8], Error> {
         let signature = self
             .signatures()
-            .find(|s| s.key_id == key_id)
+            .find(|sig| sig.key_id.as_deref() == key_id)
             .ok_or_else(|| {
-                Error::InvalidSigningKey(format!("no signature with key_id {:?}", key_id).into())
+                Error::InvalidSigningKey(
+                    format!("no signature found with key_id {:?}", key_id).into(),
+                )
             })?;
-        signature.verify(&self.payload_type, &self.payload, verifier)?;
+        signature.verify_payload(&self.payload_type, &self.payload, verifier)?;
         Ok(&self.payload)
     }
 }
@@ -72,27 +69,27 @@ impl Envelope {
 /// DSSE Signature
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Signature {
-    /// "unauthenticated hint indicating what key and algorithm was used to sign the message"
-    #[serde(rename = "keyid")]
-    pub key_id: String,
-
     #[serde(rename = "sig", with = "crate::serde::base64")]
     signature: Vec<u8>,
+
+    /// "unauthenticated hint indicating what key and algorithm was used to sign the message"
+    #[serde(rename = "keyid", skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
 }
 
 impl Signature {
-    pub fn sign<S: signature::Signature>(
+    pub fn sign_payload<S: signature::Signature>(
         payload_type: &str,
         payload: &[u8],
-        key_id: String,
-        signer: impl Signer<S>,
+        signer: &impl Signer<S>,
+        key_id: Option<String>,
     ) -> Result<Self, Error> {
         let msg = pre_authentication_encoding(payload_type.as_bytes(), payload);
         let signature = signer.try_sign(&msg)?.as_bytes().into();
-        Ok(Self { key_id, signature })
+        Ok(Self { signature, key_id })
     }
 
-    pub fn verify<S: signature::Signature>(
+    pub fn verify_payload<S: signature::Signature>(
         &self,
         payload_type: &str,
         payload: &[u8],
@@ -147,7 +144,7 @@ mod tests {
     fn verify_spec_signature() {
         let envelope = spec_envelope();
         let payload = envelope
-            .verify(SPEC_KEY_ID, spec_key().verifying_key())
+            .verify(spec_key().verifying_key(), Some(SPEC_KEY_ID))
             .expect("verify failed");
 
         assert_eq!(payload, b"hello world");
@@ -169,14 +166,14 @@ mod tests {
 
         let key_id = "KeyId";
         envelope
-            .sign(key_id.to_string(), spec_key())
+            .sign(spec_key(), Some(key_id.to_string()))
             .expect("sign failed");
 
         let json = serde_json::to_vec(&envelope).expect("serialize faile");
         let envelope: Envelope = serde_json::from_slice(&json).expect("deserialize failed");
 
         let verified_payload = envelope
-            .verify(key_id, spec_key().verifying_key())
+            .verify(spec_key().verifying_key(), Some(key_id))
             .expect("verify failed");
 
         assert_eq!(verified_payload, payload);

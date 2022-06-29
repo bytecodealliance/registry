@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 
 use bytes::Bytes;
-use ed25519_compact::SecretKey;
 use reqwest::{Body, Response, Url};
 use url::ParseError;
 
 use crate::{
     dsse::Signature,
-    publisher::PrototypePublisher,
+    maintainer::{MaintainerKey, MaintainerSecretKey},
     release::{PublishRelease, Release, ReleaseManifest, UnpublishedRelease},
 };
 
@@ -43,10 +42,16 @@ impl Client {
         }
     }
 
-    pub async fn register_publisher(&self) -> Result<(PrototypePublisher, SecretKey), ClientError> {
-        let (publisher, secret_key) = PrototypePublisher::generate();
+    pub async fn register_generated_maintainer_key(
+        &self,
+    ) -> Result<(MaintainerKey, MaintainerSecretKey), ClientError> {
+        let secret_key = MaintainerSecretKey::generate();
+        let maintainer_key = MaintainerKey {
+            id: "".to_string(),
+            public_key: secret_key.public_key(),
+        };
         let url = self.base.join("prototype/register-publisher")?;
-        let resp = self.http.post(url).json(&publisher).send().await?;
+        let resp = self.http.post(url).json(&maintainer_key).send().await?;
         let resp = response_error(resp).await?;
         Ok((resp.json().await?, secret_key))
     }

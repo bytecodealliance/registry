@@ -8,7 +8,7 @@ pub mod release;
 #[cfg(feature = "server")]
 pub mod server;
 
-mod publisher;
+mod maintainer;
 mod serde;
 
 #[derive(Debug, thiserror::Error)]
@@ -31,6 +31,6 @@ pub enum Error {
     #[error("invalid signing key: {0}")]
     InvalidSigningKey(Cow<'static, str>),
 
-    #[error("signing error: {0}")]
-    SigningError(#[from] signature::Error),
+    #[error("signature error: {0}")]
+    SignatureError(#[from] signature::Error),
 }

@@ -7,7 +7,6 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use wasm_registry::{
     client::Client,
     digest::{Sha256Digest, TypedDigest},
-    dsse::Signature,
     release::{EntityName, EntityType, ReleaseManifest, RELEASE_PAYLOAD_TYPE},
 };
 
@@ -70,13 +69,12 @@ impl PublishCommand {
 
         let client = Client::new(self.server.base_url);
 
-        let (publisher, secret_key) = client
-            .register_publisher()
+        let (maintainer_key, secret_key) = client
+            .register_generated_maintainer_key()
             .await
-            .context("Failed to register publisher")?;
-        let publisher_id = publisher.id.unwrap();
+            .context("Failed to register maintainer key")?;
 
-        println!("Registered publisher id={:?}\n", &publisher_id);
+        println!("Registered publisher id={:?}\n", &maintainer_key.id);
 
         let unpublished = client
             .create_unpublished_release(&release)
@@ -99,11 +97,10 @@ impl PublishCommand {
             bail!("no upload_url");
         }
 
-        let signature = Signature::sign(
+        let signature = secret_key.sign_payload(
             RELEASE_PAYLOAD_TYPE,
             unpublished.release.as_bytes(),
-            publisher_id,
-            secret_key,
+            maintainer_key.id,
         )?;
 
         println!(

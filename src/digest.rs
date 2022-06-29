@@ -9,7 +9,7 @@ use crate::Error;
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TypedDigest {
-    Dummy(()), // TODO: remove
+    Dummy(()), // FIXME(lann): remove or guard w/ feature flag
     Sha256(Sha256Digest),
 }
 

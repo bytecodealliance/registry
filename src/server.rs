@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     digest::TypedDigest,
-    publisher::PrototypePublisher,
+    maintainer::MaintainerKey,
     release::{
         ContentSource, PublishRelease, Release, ReleaseManifest, UnpublishedRelease,
         UnpublishedReleaseStatus, RELEASE_PAYLOAD_TYPE,
@@ -23,10 +23,15 @@ use crate::{
 
 #[derive(Default)]
 pub struct Server {
-    releases: RwLock<HashMap<String, Release>>,
-    unpublished_releases: RwLock<HashMap<String, UnpublishedRelease>>,
-    release_content: RwLock<HashMap<TypedDigest, Bytes>>,
-    publishers: RwLock<HashMap<String, PrototypePublisher>>,
+    data: RwLock<Data>,
+}
+
+#[derive(Default)]
+struct Data {
+    releases: HashMap<String, Release>,
+    unpublished_releases: HashMap<String, UnpublishedRelease>,
+    release_content: HashMap<TypedDigest, Bytes>,
+    publishers: HashMap<String, MaintainerKey>,
 }
 
 type ServerExtension = Extension<Arc<Server>>;
@@ -57,13 +62,12 @@ async fn create_unpublished_release(
     headers.insert("Location", location.parse().unwrap());
 
     // Update "database"
+    let mut data = server.data.write().await;
     let key = manifest.resource_path();
-    let releases = server.releases.read().await;
-    let mut unpublished_releases = server.unpublished_releases.write().await;
-    if releases.contains_key(&key) || unpublished_releases.contains_key(&key) {
+    if data.releases.contains_key(&key) || data.unpublished_releases.contains_key(&key) {
         return Err(Error::ReleaseAlreadyExists.into());
     }
-    unpublished_releases.insert(key, unpublished.clone());
+    data.unpublished_releases.insert(key, unpublished.clone());
 
     Ok((StatusCode::CREATED, headers, Json(unpublished)))
 }
@@ -74,7 +78,7 @@ async fn get_unpublished_release(
     Extension(server): ServerExtension,
 ) -> impl IntoResponse {
     let key = uri.path().strip_suffix("/unpublished").unwrap();
-    match server.unpublished_releases.read().await.get(key) {
+    match server.data.read().await.unpublished_releases.get(key) {
         Some(release) => Ok(Json(release).into_response()),
         None => Err(StatusCode::NOT_FOUND),
     }
@@ -85,9 +89,15 @@ async fn publish_release(
     Json(publish): Json<PublishRelease>,
     Extension(server): ServerExtension,
 ) -> impl IntoResponse {
+    let Data {
+        ref mut releases,
+        ref mut unpublished_releases,
+        ref mut release_content,
+        ref mut publishers,
+    } = *server.data.write().await;
+
     // Look up unpublished release
     let key = uri.path().strip_suffix("/publish").unwrap();
-    let mut unpublished_releases = server.unpublished_releases.write().await;
     let unpublished = match unpublished_releases.get_mut(key) {
         Some(unpublished) => unpublished,
         None => {
@@ -102,7 +112,7 @@ async fn publish_release(
     if let Some(ref upload_url) = unpublished.upload_url {
         let (_, digest_str) = upload_url.rsplit_once('/').unwrap();
         let digest = digest_str.parse().expect("bad digest in upload_url");
-        if !server.release_content.read().await.contains_key(&digest) {
+        if !release_content.contains_key(&digest) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Cannot publish; no uploaded content".to_string(),
@@ -111,21 +121,22 @@ async fn publish_release(
     }
 
     // Verify signature
-    let key_id = &publish.signature.key_id;
-    let publishers = server.publishers.read().await;
-    let publisher = publishers.get(key_id).ok_or_else(|| {
+    let key_id = publish.signature.key_id.as_deref().ok_or((
+        StatusCode::BAD_REQUEST,
+        "Missing signature key ID".to_string(),
+    ))?;
+    let maintainer_key = publishers.get(key_id).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             format!("Unknown key ID {:?}", key_id),
         )
     })?;
-    let public_key = publisher.public_key().expect("invalid public key!");
-    publish
-        .signature
-        .verify(
+    maintainer_key
+        .public_key
+        .verify_payload(
             RELEASE_PAYLOAD_TYPE,
             unpublished.release.as_bytes(),
-            public_key,
+            &publish.signature,
         )
         .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
 
@@ -140,7 +151,6 @@ async fn publish_release(
             .map(|url| ContentSource { url })
             .collect(),
     };
-    let mut releases = server.releases.write().await;
     if let Some(existing) = releases.insert(key.to_string(), release) {
         tracing::warn!("Publish somehow overwrote existing release: {:?}", existing);
     }
@@ -152,37 +162,31 @@ async fn publish_release(
 // Prototype handlers
 
 async fn register_publisher(
-    Json(mut publisher): Json<PrototypePublisher>,
+    Json(mut maintainer_key): Json<MaintainerKey>,
     Extension(server): ServerExtension,
 ) -> impl IntoResponse {
-    if publisher.id.is_some() {
+    if !maintainer_key.id.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
             "Cannot set 'id' on register".to_string(),
         ));
     }
 
-    // Validate public key; calculate ID
-    let public_key = publisher.public_key().map_err(|err| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid public key: {}", err),
-        )
-    })?;
-    let id = hex::encode(Sha256::digest(*public_key));
-    publisher.id = Some(id.clone());
+    // Derive key ID from public key fingerprint
+    let id = base64::encode(&maintainer_key.public_key.fingerprint()[..16]);
+    maintainer_key.id = id.clone();
 
     // Update "database"
-    let mut publishers = server.publishers.write().await;
+    let publishers = &mut server.data.write().await.publishers;
     if publishers.contains_key(&id) {
         return Err((
             StatusCode::BAD_REQUEST,
             "Public key already registered".to_string(),
         ));
     }
-    publishers.insert(id, publisher.clone());
+    publishers.insert(id, maintainer_key.clone());
 
-    Ok(Json(publisher))
+    Ok(Json(maintainer_key))
 }
 
 async fn get_release_content(
@@ -192,7 +196,7 @@ async fn get_release_content(
     let digest = digest
         .parse()
         .map_err(|err: Error| (StatusCode::BAD_REQUEST, err.to_string()))?;
-    match server.release_content.read().await.get(&digest) {
+    match server.data.read().await.release_content.get(&digest) {
         Some(content) => Ok(content.clone()),
         None => Err((StatusCode::NOT_FOUND, "Content not found".to_string())),
     }
@@ -208,7 +212,13 @@ async fn upload_release_content(
         .map_err(|err| (StatusCode::BAD_REQUEST, format!("Invalid digest: {}", err)))?;
 
     // Check if content already upload
-    if server.release_content.read().await.contains_key(&digest) {
+    if server
+        .data
+        .read()
+        .await
+        .release_content
+        .contains_key(&digest)
+    {
         return Ok((StatusCode::OK, "Content already exists"));
     }
 
@@ -234,7 +244,12 @@ async fn upload_release_content(
     }
 
     // Update "database"
-    server.release_content.write().await.insert(digest, content);
+    server
+        .data
+        .write()
+        .await
+        .release_content
+        .insert(digest, content);
 
     Ok((StatusCode::CREATED, "Upload complete"))
 }
