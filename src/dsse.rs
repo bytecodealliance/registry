@@ -57,7 +57,7 @@ impl Envelope {
             .signatures()
             .find(|sig| sig.key_id.as_deref() == key_id)
             .ok_or_else(|| {
-                Error::InvalidSigningKey(
+                Error::InvalidSignatureKey(
                     format!("no signature found with key_id {:?}", key_id).into(),
                 )
             })?;

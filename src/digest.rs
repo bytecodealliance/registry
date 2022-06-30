@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use futures_util::{io::AllowStdIo, AsyncRead};
+use futures::{io::AllowStdIo, AsyncRead};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -11,6 +11,22 @@ use crate::Error;
 pub enum TypedDigest {
     Dummy(()), // FIXME(lann): remove or guard w/ feature flag
     Sha256(Sha256Digest),
+}
+
+impl TypedDigest {
+    pub async fn verify_content(&self, r: impl AsyncRead + Unpin) -> Result<(), Error> {
+        let other_digest = match self {
+            TypedDigest::Dummy(_) => TypedDigest::Dummy(()),
+            TypedDigest::Sha256(_) => TypedDigest::Sha256(Sha256Digest::digest_read(r).await?),
+        };
+        // FIXME: Make comparison constant-time? Not needed for current usage but safer for potential reuse.
+        if self != &other_digest {
+            return Err(Error::InvalidContentDigest(
+                "content digest mismatch".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl Display for TypedDigest {
@@ -45,9 +61,9 @@ impl std::str::FromStr for TypedDigest {
 pub struct Sha256Digest(Vec<u8>);
 
 impl Sha256Digest {
-    pub async fn digest_read(r: impl AsyncRead + Unpin) -> futures_util::io::Result<Self> {
+    pub async fn digest_read(r: impl AsyncRead + Unpin) -> futures::io::Result<Self> {
         let mut hasher = Sha256::new();
-        futures_util::io::copy(r, &mut AllowStdIo::new(&mut hasher)).await?;
+        futures::io::copy(r, &mut AllowStdIo::new(&mut hasher)).await?;
         Ok(Self((*hasher.finalize()).into()))
     }
 }

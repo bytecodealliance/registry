@@ -76,11 +76,14 @@ impl From<EcdsaP256PublicKey> for String {
 }
 
 impl TryFrom<&str> for EcdsaP256PublicKey {
-    type Error = anyhow::Error;
+    type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let bytes = base64::decode(value)?;
-        let pk = p256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)?;
+        let bytes = base64::decode(value).map_err(|err| {
+            Error::InvalidSignatureKey(format!("base64 decoding failed: {}", err).into())
+        })?;
+        let pk = p256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)
+            .map_err(|_| Error::InvalidSignatureKey("invalid key format".into()))?;
         Ok(Self(pk))
     }
 }
@@ -102,11 +105,14 @@ impl From<Ed25519PublicKey> for String {
 }
 
 impl TryFrom<&str> for Ed25519PublicKey {
-    type Error = anyhow::Error;
+    type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let bytes = base64::decode(value)?;
-        let pk = ed25519_compact::PublicKey::from_slice(&bytes)?;
+        let bytes = base64::decode(value).map_err(|err| {
+            Error::InvalidSignatureKey(format!("base64 decoding failed: {}", err).into())
+        })?;
+        let pk = ed25519_compact::PublicKey::from_slice(&bytes)
+            .map_err(|_| Error::InvalidSignatureKey("invalid key format".into()))?;
         Ok(Self(pk))
     }
 }
