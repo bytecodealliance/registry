@@ -6,9 +6,9 @@ resolver = "2"
 
 [features]
 default = ["cli", "client", "server"]
-cli = ["anyhow", "clap", "tracing-subscriber"]
+cli = ["anyhow", "clap", "tokio", "tracing-subscriber"]
 client = ["reqwest"]
-server = ["axum", "axum-macros"]
+server = ["axum", "axum-macros", "tokio"]
 
 [[bin]]
 name = "warg-test-client"
@@ -26,6 +26,7 @@ base64 = "0.13"
 bytes = "1.1"
 clap = { version = "3.2.5", features = ["derive"], optional = true }
 ed25519-compact = { version = "1.0", features = ["traits"] }
+futures-util = { version = "0.3", features = ["io"] }
 hex = "0.4"
 http = "0.2"
 p256 = "0.11"
@@ -36,7 +37,7 @@ serde_json = "1.0"
 sha2 = "0.10"
 signature = "1.5"
 thiserror = "1.0"
-tokio = { version = "1", features = ["full"] } # TODO: probably don't need "full"
+tokio = { version = "1", features = ["full"], optional = true } # TODO: probably don't need "full"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 url = "2"

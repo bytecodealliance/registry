@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
+use futures_util::{io::AllowStdIo, AsyncRead};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::Error;
 
@@ -45,23 +45,9 @@ impl std::str::FromStr for TypedDigest {
 pub struct Sha256Digest(Vec<u8>);
 
 impl Sha256Digest {
-    pub fn digest(prefix: &'static [u8], data: impl AsRef<[u8]>) -> Self {
-        let mut hasher = Sha256::new_with_prefix(prefix);
-        hasher.update(data);
-        Self((*hasher.finalize()).into())
-    }
-
-    pub async fn digest_read(mut r: impl AsyncRead + Unpin) -> tokio::io::Result<Self> {
+    pub async fn digest_read(r: impl AsyncRead + Unpin) -> futures_util::io::Result<Self> {
         let mut hasher = Sha256::new();
-        let mut buf = Vec::with_capacity(8 * 1024);
-        loop {
-            let n = r.read_buf(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf);
-            buf.clear();
-        }
+        futures_util::io::copy(r, &mut AllowStdIo::new(&mut hasher)).await?;
         Ok(Self((*hasher.finalize()).into()))
     }
 }
