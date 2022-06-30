@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
+use futures::{io::AllowStdIo, AsyncRead};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::Error;
 
@@ -11,6 +11,22 @@ use crate::Error;
 pub enum TypedDigest {
     Dummy(()), // FIXME(lann): remove or guard w/ feature flag
     Sha256(Sha256Digest),
+}
+
+impl TypedDigest {
+    pub async fn verify_content(&self, r: impl AsyncRead + Unpin) -> Result<(), Error> {
+        let other_digest = match self {
+            TypedDigest::Dummy(_) => TypedDigest::Dummy(()),
+            TypedDigest::Sha256(_) => TypedDigest::Sha256(Sha256Digest::digest_read(r).await?),
+        };
+        // FIXME: Make comparison constant-time? Not needed for current usage but safer for potential reuse.
+        if self != &other_digest {
+            return Err(Error::InvalidContentDigest(
+                "content digest mismatch".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl Display for TypedDigest {
@@ -45,23 +61,9 @@ impl std::str::FromStr for TypedDigest {
 pub struct Sha256Digest(Vec<u8>);
 
 impl Sha256Digest {
-    pub fn digest(prefix: &'static [u8], data: impl AsRef<[u8]>) -> Self {
-        let mut hasher = Sha256::new_with_prefix(prefix);
-        hasher.update(data);
-        Self((*hasher.finalize()).into())
-    }
-
-    pub async fn digest_read(mut r: impl AsyncRead + Unpin) -> tokio::io::Result<Self> {
+    pub async fn digest_read(r: impl AsyncRead + Unpin) -> futures::io::Result<Self> {
         let mut hasher = Sha256::new();
-        let mut buf = Vec::with_capacity(8 * 1024);
-        loop {
-            let n = r.read_buf(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf);
-            buf.clear();
-        }
+        futures::io::copy(r, &mut AllowStdIo::new(&mut hasher)).await?;
         Ok(Self((*hasher.finalize()).into()))
     }
 }

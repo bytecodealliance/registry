@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{digest::TypedDigest, dsse::Signature, Error};
+use crate::{digest::TypedDigest, dsse::Signature, maintainer::MaintainerPublicKey, Error};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,12 +69,7 @@ pub struct ReleaseManifest {
 
 impl ReleaseManifest {
     pub fn resource_path(&self) -> String {
-        format!(
-            "/{}/{}/v{}",
-            self.entity_type.collection_name(),
-            self.name.as_ref(),
-            self.version
-        )
+        Release::build_resource_path(&self.entity_type, &self.name, &self.version)
     }
 }
 
@@ -112,6 +107,33 @@ pub struct Release {
     pub release: String,
     pub release_signature: Signature,
     pub content_sources: Vec<ContentSource>,
+}
+
+impl Release {
+    pub fn verify_signature(
+        &self,
+        public_key: &MaintainerPublicKey,
+    ) -> Result<ReleaseManifest, Error> {
+        public_key.verify_payload(
+            RELEASE_PAYLOAD_TYPE,
+            self.release.as_bytes(),
+            &self.release_signature,
+        )?;
+        Ok(serde_json::from_str(&self.release)?)
+    }
+
+    pub fn build_resource_path(
+        entity_type: &EntityType,
+        name: &EntityName,
+        version: &semver::Version,
+    ) -> String {
+        format!(
+            "/{}/{}/v{}",
+            entity_type.collection_name(),
+            name.as_ref(),
+            version
+        )
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
