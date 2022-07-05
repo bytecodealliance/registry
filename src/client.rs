@@ -7,7 +7,7 @@ use url::ParseError;
 
 use crate::{
     dsse::Signature,
-    maintainer::{MaintainerKey, MaintainerPublicKey, MaintainerSecretKey},
+    maintainer::{MaintainerKey, MaintainerPublicKey, MaintainerSecret},
     release::{
         EntityName, EntityType, PublishRelease, Release, ReleaseManifest, UnpublishedRelease,
     },
@@ -135,16 +135,26 @@ impl Client {
 
     pub async fn register_generated_maintainer_key(
         &self,
-    ) -> Result<(MaintainerKey, MaintainerSecretKey), ClientError> {
-        let secret_key = MaintainerSecretKey::generate();
-        let maintainer_key = MaintainerKey {
+    ) -> Result<(MaintainerKey, MaintainerSecret), ClientError> {
+        let mut generated_secret = MaintainerSecret::generate();
+        let registration_key = MaintainerKey {
             id: "".to_string(),
-            public_key: secret_key.public_key(),
+            public_key: generated_secret.public_key(),
         };
+
         let maintainer_key: MaintainerKey = self
-            .post_json("prototype/register-maintainer-key", &maintainer_key)
+            .post_json("prototype/register-maintainer-key", &registration_key)
             .await?;
-        Ok((maintainer_key, secret_key))
+
+        if maintainer_key.public_key != registration_key.public_key {
+            return Err(Error::InvalidSignatureKey(
+                "registered public key doesn't match request".into(),
+            )
+            .into());
+        }
+        generated_secret.key_id = maintainer_key.id.clone();
+
+        Ok((maintainer_key, generated_secret))
     }
 
     async fn get_maintainer_public_keys(

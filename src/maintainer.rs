@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use secrecy::{ExposeSecret, Secret, Zeroize};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
@@ -11,9 +12,10 @@ pub struct MaintainerKey {
     pub public_key: MaintainerPublicKey,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "algo", content = "key")]
 pub enum MaintainerPublicKey {
+    // TODO: in-depth crypto lib eval
     #[serde(rename = "ecdsa-p256")]
     EcdsaP256(EcdsaP256PublicKey),
     #[serde(rename = "ed25519")]
@@ -59,7 +61,7 @@ impl From<ed25519_compact::PublicKey> for MaintainerPublicKey {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "&str")]
 pub struct EcdsaP256PublicKey(p256::ecdsa::VerifyingKey);
 
@@ -88,7 +90,7 @@ impl TryFrom<&str> for EcdsaP256PublicKey {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "&str")]
 pub struct Ed25519PublicKey(ed25519_compact::PublicKey);
 
@@ -117,35 +119,64 @@ impl TryFrom<&str> for Ed25519PublicKey {
     }
 }
 
-pub enum MaintainerSecretKey {
-    EcdsaP256(p256::ecdsa::SigningKey),
-    Ed25519(ed25519_compact::SecretKey),
+pub struct MaintainerSecret {
+    pub key_id: String,
+    // Secret helps prevent accidental key leakage.
+    pub secret_key: Secret<MaintainerSecretKey>,
 }
 
-impl MaintainerSecretKey {
-    pub fn generate() -> Self {
-        Self::Ed25519(ed25519_compact::KeyPair::generate().sk)
-    }
-
-    pub fn public_key(&self) -> MaintainerPublicKey {
-        match self {
-            Self::EcdsaP256(sk) => sk.verifying_key().into(),
-            Self::Ed25519(sk) => sk.public_key().into(),
+impl MaintainerSecret {
+    pub fn new(key_id: String, secret_key: MaintainerSecretKey) -> Self {
+        let key = Secret::new(secret_key);
+        Self {
+            key_id,
+            secret_key: key,
         }
     }
 
-    pub fn sign_payload(
-        &self,
-        payload_type: &str,
-        payload: &[u8],
-        key_id: String,
-    ) -> Result<Signature, Error> {
-        match self {
+    pub fn generate() -> Self {
+        let secret_key = MaintainerSecretKey::Ed25519(ed25519_compact::KeyPair::generate().sk);
+        Self::new(String::new(), secret_key)
+    }
+
+    pub fn public_key(&self) -> MaintainerPublicKey {
+        match self.secret_key.expose_secret() {
+            MaintainerSecretKey::EcdsaP256(sk) => sk.verifying_key().into(),
+            MaintainerSecretKey::Ed25519(sk) => sk.public_key().into(),
+        }
+    }
+
+    pub fn sign_payload(&self, payload_type: &str, payload: &[u8]) -> Result<Signature, Error> {
+        let key_id = self.key_id.clone();
+        match self.secret_key.expose_secret() {
             MaintainerSecretKey::EcdsaP256(sk) => {
                 Signature::sign_payload(payload_type, payload, sk, Some(key_id))
             }
             MaintainerSecretKey::Ed25519(sk) => {
                 Signature::sign_payload(payload_type, payload, sk, Some(key_id))
+            }
+        }
+    }
+}
+
+pub enum MaintainerSecretKey {
+    EcdsaP256(p256::ecdsa::SigningKey),
+    Ed25519(ed25519_compact::SecretKey),
+}
+
+impl Zeroize for MaintainerSecretKey {
+    fn zeroize(&mut self) {
+        match self {
+            MaintainerSecretKey::EcdsaP256(sk) => {
+                // SigningKey zeroizes on Drop:
+                // https://github.com/RustCrypto/signatures/blob/a97a358f9e00773c4a04ca54816fb539506f89e6/ecdsa/src/sign.rs#L118
+                let mostly_zero = p256::ecdsa::SigningKey::from(
+                    p256::NonZeroScalar::new(p256::Scalar::ONE).unwrap(),
+                );
+                drop(std::mem::replace(sk, mostly_zero));
+            }
+            MaintainerSecretKey::Ed25519(_sk) => {
+                // FIXME(lann): Implement after release of https://github.com/jedisct1/rust-ed25519-compact/commit/14669deee0b0dc6e6db189f66fcda4585ce1e82f
             }
         }
     }

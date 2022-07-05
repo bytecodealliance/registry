@@ -142,11 +142,8 @@ impl PublishCommand {
             bail!("no upload_url");
         }
 
-        let signature = secret_key.sign_payload(
-            RELEASE_PAYLOAD_TYPE,
-            unpublished.release.as_bytes(),
-            maintainer_key.id,
-        )?;
+        let signature =
+            secret_key.sign_payload(RELEASE_PAYLOAD_TYPE, unpublished.release.as_bytes())?;
 
         println!(
             "Prepared release signature: {}\n",
