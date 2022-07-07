@@ -1,8 +1,11 @@
+mod server;
+
 use std::net::SocketAddr;
 
 use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use wasm_registry::server::Server;
+
+use server::Server;
 
 #[derive(Parser, Debug)]
 #[clap(version)]

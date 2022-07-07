@@ -1,38 +1,40 @@
-use std::borrow::Cow;
-
-#[cfg(feature = "client")]
 pub mod client;
 pub mod digest;
 pub mod dsse;
+pub mod maintainer;
 pub mod release;
-#[cfg(feature = "server")]
-pub mod server;
 
-mod maintainer;
 mod serde;
+
+use std::borrow::Cow;
+
+// TODO: verify whether we want to bake in these semantics
+pub type Version = semver::Version;
+
+type ErrorMsg = Cow<'static, str>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("io error: {0}")]
     AsyncIoError(#[from] futures::io::Error),
 
-    #[error("invalid contentDigest: {0}")]
-    InvalidContentDigest(Cow<'static, str>),
+    #[error("invalid content digest: {0}")]
+    InvalidContentDigest(ErrorMsg),
 
     #[error("invalid content source: {0}")]
-    InvalidContentSource(Cow<'static, str>),
+    InvalidContentSource(ErrorMsg),
 
     #[error("invalid name: {0}")]
-    InvalidEntityName(Cow<'static, str>),
+    InvalidEntityName(ErrorMsg),
 
     #[error("invalid entityType: {0}")]
-    InvalidEntityType(Cow<'static, str>),
+    InvalidEntityType(ErrorMsg),
 
     #[error("invalid signature: {0}")]
-    InvalidSignature(Cow<'static, str>),
+    InvalidSignature(ErrorMsg),
 
     #[error("invalid signature key: {0}")]
-    InvalidSignatureKey(Cow<'static, str>),
+    InvalidSignatureKey(ErrorMsg),
 
     #[error("invalid version: {0}")]
     InvalidVersion(#[from] semver::Error),

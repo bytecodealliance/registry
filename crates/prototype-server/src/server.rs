@@ -8,10 +8,9 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
-use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 
-use crate::{
+use wasm_registry::{
     digest::TypedDigest,
     maintainer::MaintainerKey,
     release::{
@@ -227,10 +226,8 @@ async fn upload_release_content(
     digest: Path<String>,
     content: Bytes,
     Extension(server): ServerExtension,
-) -> impl IntoResponse {
-    let digest: TypedDigest = digest
-        .parse()
-        .map_err(|err| (StatusCode::BAD_REQUEST, format!("Invalid digest: {}", err)))?;
+) -> Result<impl IntoResponse, ServerError> {
+    let digest: TypedDigest = digest.parse()?;
 
     // Check if content already upload
     if server
@@ -244,25 +241,7 @@ async fn upload_release_content(
     }
 
     // Verify digest
-    match &digest {
-        TypedDigest::Dummy(_) => {
-            return Ok((StatusCode::OK, "Upload for 'dummy' digest does nothing"))
-        }
-        TypedDigest::Sha256(sha256_digest) => {
-            let actual_digest = Sha256::digest(&content);
-            if &actual_digest[..] != sha256_digest.as_ref() {
-                tracing::warn!(
-                    "Content digest mismatch; got {:?} want {:?}",
-                    &actual_digest,
-                    &digest,
-                );
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Content doesn't match digest".to_string(),
-                ));
-            }
-        }
-    }
+    digest.verify_content(&*content).await?;
 
     // Update "database"
     server
@@ -316,12 +295,6 @@ impl Server {
             .serve(app.into_make_service())
             .await
             .unwrap()
-    }
-}
-
-impl IntoResponse for Error {
-    fn into_response(self) -> Response {
-        (StatusCode::BAD_REQUEST, self.to_string()).into_response()
     }
 }
 

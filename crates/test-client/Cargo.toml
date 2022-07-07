@@ -1,0 +1,13 @@
+[package]
+name = "wasm-registry-test-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+async-std = "1"
+clap = { version = "3.2.5", features = ["derive"] }
+http-client = "6.5"
+serde_json = "1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wasm-registry = { path = "../.." }
