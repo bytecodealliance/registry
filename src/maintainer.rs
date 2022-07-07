@@ -23,7 +23,7 @@ pub enum MaintainerPublicKey {
 }
 
 impl MaintainerPublicKey {
-    pub(crate) fn fingerprint(&self) -> Vec<u8> {
+    pub fn fingerprint(&self) -> Vec<u8> {
         let bytes: Cow<[u8]> = match self {
             MaintainerPublicKey::EcdsaP256(pk) => pk.to_bytes().into(),
             MaintainerPublicKey::Ed25519(pk) => pk.as_bytes().into(),
@@ -31,7 +31,7 @@ impl MaintainerPublicKey {
         sha2::Sha256::digest(bytes).to_vec()
     }
 
-    pub(crate) fn verify_payload(
+    pub fn verify_payload(
         &self,
         payload_type: &str,
         payload: &[u8],

@@ -1,14 +1,18 @@
 use std::{path::PathBuf, process::exit};
 
 use anyhow::{bail, Context};
+use async_std::{
+    fs::File,
+    io::{prelude::*, BufReader},
+};
 use clap::{Args, Parser};
-use tokio::{fs::File, io::AsyncSeekExt};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use http_client::{h1::H1Client, http_types::Url, Body};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use wasm_registry::{
     client::Client,
     digest::{Sha256Digest, TypedDigest},
     release::{EntityName, EntityType, ReleaseManifest, RELEASE_PAYLOAD_TYPE},
+    Version,
 };
 
 #[derive(Parser)]
@@ -29,13 +33,19 @@ impl Command {
 #[derive(Args)]
 struct ServerArgs {
     #[clap(long = "--server", default_value = "http://127.0.0.1:9999")]
-    base_url: reqwest::Url,
+    base_url: Url,
+}
+
+impl ServerArgs {
+    fn client(self) -> Client<H1Client> {
+        Client::new(H1Client::new(), self.base_url)
+    }
 }
 
 #[derive(Args)]
 struct FetchCommand {
     name: EntityName,
-    version: semver::Version,
+    version: Version,
 
     #[clap(flatten)]
     server: ServerArgs,
@@ -43,7 +53,7 @@ struct FetchCommand {
 
 impl FetchCommand {
     async fn run(self) -> anyhow::Result<()> {
-        let client = Client::new(self.server.base_url);
+        let client = self.server.client();
 
         let release = client
             .get_release(EntityType::Component, self.name, self.version)
@@ -78,7 +88,7 @@ impl FetchCommand {
 #[derive(Args)]
 struct PublishCommand {
     name: EntityName,
-    version: semver::Version,
+    version: Version,
     content: PathBuf,
 
     #[clap(flatten)]
@@ -91,7 +101,7 @@ impl PublishCommand {
             .await
             .context("Failed to open content file")?;
 
-        let digest = Sha256Digest::digest_read((&mut content).compat())
+        let digest = Sha256Digest::digest_read(&mut content)
             .await
             .context("Failed to calculate content digest")?;
 
@@ -112,7 +122,7 @@ impl PublishCommand {
             serde_json::to_string_pretty(&release).unwrap()
         );
 
-        let client = Client::new(self.server.base_url);
+        let client = self.server.client();
 
         let (maintainer_key, secret_key) = client
             .register_generated_maintainer_key()
@@ -132,8 +142,16 @@ impl PublishCommand {
         );
 
         if let Some(upload_url) = unpublished.upload_url {
+            let content_len = content
+                .metadata()
+                .await
+                .ok()
+                .and_then(|meta| meta.len().try_into().ok());
             client
-                .upload_content(&upload_url, content)
+                .upload_content(
+                    &upload_url,
+                    Body::from_reader(BufReader::new(content), content_len),
+                )
                 .await
                 .context("Failed to upload content")?;
 
@@ -164,14 +182,13 @@ impl PublishCommand {
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
 
-    if let Err(err) = Command::parse().run().await {
+    if let Err(err) = async_std::task::block_on(Command::parse().run()) {
         eprintln!("Error: {:?}", err);
         exit(2);
     }

@@ -1,9 +1,11 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use bytes::Bytes;
-use reqwest::{Body, Response, Url};
+use http_client::{
+    http_types::url::{ParseError as UrlParseError, Url},
+    Body, HttpClient, Request, Response,
+};
 use serde::{de::DeserializeOwned, Serialize};
-use url::ParseError;
 
 use crate::{
     dsse::Signature,
@@ -15,31 +17,37 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Client {
+pub struct Client<C: HttpClient> {
     base: Url,
-    http: reqwest::Client,
+    http: C,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("http: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(http_client::Error),
 
     #[error("{0}")]
     RegistryError(#[from] crate::Error),
 
     #[error("invalid URL: {0}")]
-    InvalidUrl(#[from] url::ParseError),
+    InvalidUrl(#[from] UrlParseError),
 
     #[error("{0}")]
     Other(Cow<'static, str>),
 }
 
-impl Client {
-    pub fn new(base_url: impl Into<Url>) -> Self {
+impl From<http_client::Error> for ClientError {
+    fn from(err: http_client::Error) -> Self {
+        Self::HttpError(err)
+    }
+}
+
+impl<C: HttpClient> Client<C> {
+    pub fn new(http: C, base_url: impl Into<Url>) -> Self {
         Self {
+            http,
             base: base_url.into(),
-            http: Default::default(),
         }
     }
 
@@ -47,16 +55,13 @@ impl Client {
         &self,
         release: &ReleaseManifest,
     ) -> Result<UnpublishedRelease, ClientError> {
-        let release_json: Bytes = serde_json::to_vec(release).map_err(Error::from)?.into();
+        let release_json = serde_json::to_string(release).map_err(Error::from)?;
         let url = self.base.join("releases/")?;
-        let resp = self
-            .http
-            .post(url)
-            .body(release_json.clone())
-            .send()
-            .await?;
-        let resp = response_error(resp).await?;
-        let unpublished: UnpublishedRelease = resp.json().await?;
+        let mut req = Request::post(url);
+        req.set_body(release_json.clone());
+        let resp = self.http.send(req).await?;
+        let mut resp = response_error(resp).await?;
+        let unpublished: UnpublishedRelease = resp.body_json().await?;
         if unpublished.release != release_json {
             return Err(ClientError::Other(
                 "Unpublished release manifest doesn't match request".into(),
@@ -71,7 +76,9 @@ impl Client {
         content: impl Into<Body>,
     ) -> Result<(), ClientError> {
         let url = self.parse_rel_or_abs_url(upload_url.as_ref())?;
-        let resp = self.http.post(url).body(content).send().await?;
+        let mut req = Request::post(url);
+        req.set_body(content);
+        let resp = self.http.send(req).await?;
         response_error(resp).await?;
         Ok(())
     }
@@ -96,7 +103,7 @@ impl Client {
         self.get_json(&path).await
     }
 
-    // TODO: return a stream?
+    // TODO: return a stream? AsyncRead?
     pub async fn fetch_validate_content(&self, release: &Release) -> Result<Bytes, ClientError> {
         // FIXME: simplistic maintainer key lookup
         let key_id = release
@@ -118,9 +125,9 @@ impl Client {
             .get(0)
             .ok_or_else(|| Error::InvalidContentSource("no contentSources".into()))?;
         let url = self.parse_rel_or_abs_url(&source.url)?;
-        let req = self.http.get(url);
-        let resp = response_error(req.send().await?).await?;
-        let content = resp.bytes().await?;
+        let req = Request::get(url);
+        let mut resp = response_error(self.http.send(req).await?).await?;
+        let content: Bytes = resp.body_bytes().await?.into();
 
         // Verify content digest
         release_manifest
@@ -167,9 +174,9 @@ impl Client {
 
     async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
         let url = self.base.join(path)?;
-        let req = self.http.get(url);
-        let resp = response_error(req.send().await?).await?;
-        Ok(resp.json().await?)
+        let req = Request::get(url);
+        let mut resp = response_error(self.http.send(req).await?).await?;
+        Ok(resp.body_json().await?)
     }
 
     async fn post_json<T: DeserializeOwned>(
@@ -178,31 +185,28 @@ impl Client {
         body: &impl Serialize,
     ) -> Result<T, ClientError> {
         let url = self.base.join(path)?;
-        let req = self.http.post(url).json(body);
-        let resp = response_error(req.send().await?).await?;
-        Ok(resp.json().await?)
+        let mut req = Request::post(url);
+        req.set_body(Body::from_json(body)?);
+        let mut resp = response_error(self.http.send(req).await?).await?;
+        Ok(resp.body_json().await?)
     }
 
-    fn parse_rel_or_abs_url(&self, rel_or_abs: &str) -> Result<Url, ParseError> {
+    fn parse_rel_or_abs_url(&self, rel_or_abs: &str) -> Result<Url, UrlParseError> {
         match rel_or_abs.parse() {
             Ok(url) => Ok(url),
-            Err(ParseError::RelativeUrlWithoutBase) => self.base.join(rel_or_abs),
+            Err(UrlParseError::RelativeUrlWithoutBase) => self.base.join(rel_or_abs),
             Err(err) => Err(err),
         }
     }
 }
 
-async fn response_error(resp: Response) -> Result<Response, ClientError> {
+async fn response_error(mut resp: Response) -> Result<Response, ClientError> {
     let status = resp.status();
     if status.is_success() {
         Ok(resp)
     } else {
         // TODO: map responses back to more specific errors (RFC 7807?)
-        let detail = resp
-            .bytes()
-            .await
-            .map(|body| String::from_utf8_lossy(&body).to_string())
-            .unwrap_or_else(|err| format!("failed to read error detail: {:?}", err));
+        let detail = resp.body_string().await?;
         Err(ClientError::Other(
             format!("[{}] {}", status, detail).into(),
         ))
