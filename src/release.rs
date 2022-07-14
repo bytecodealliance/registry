@@ -60,7 +60,7 @@ impl FromStr for EntityName {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseManifest {
-    pub entity_type: EntityType,
+    pub package_type: EntityType,
     pub name: EntityName,
     // TODO: Do we want to enforce semver at this level? Is this implementation acceptable?
     pub version: semver::Version,
@@ -69,7 +69,7 @@ pub struct ReleaseManifest {
 
 impl ReleaseManifest {
     pub fn resource_path(&self) -> String {
-        Release::build_resource_path(&self.entity_type, &self.name, &self.version)
+        Release::build_resource_path(&self.package_type, &self.name, &self.version)
     }
 }
 
@@ -123,13 +123,13 @@ impl Release {
     }
 
     pub fn build_resource_path(
-        entity_type: &EntityType,
+        package_type: &EntityType,
         name: &EntityName,
         version: &semver::Version,
     ) -> String {
         format!(
             "/{}/{}/v{}",
-            entity_type.collection_name(),
+            package_type.collection_name(),
             name.as_ref(),
             version
         )
