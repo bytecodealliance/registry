@@ -1,10 +1,16 @@
 pub mod log;
 pub mod map;
 
-use digest::Digest;
+use digest::{Digest, Output};
 
 pub trait Digestable {
     fn update(&self, digest: &mut impl Digest);
+
+    fn digest<D: Digest>(&self) -> Output<D> {
+        let mut digest = D::new();
+        self.update(&mut digest);
+        digest.finalize()
+    }
 }
 
 impl Digestable for Vec<u8> {
