@@ -1,14 +1,16 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! This crate contains forrest data structures.
+
+#![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(rust_2018_idioms, unused_lifetimes)]
+#![warn(unused_qualifications, missing_docs)]
+#![warn(clippy::all, clippy::panic)]
+#![forbid(unsafe_code, clippy::expect_used)]
+
+extern crate alloc;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+extern crate std;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod log;
+pub mod map;
