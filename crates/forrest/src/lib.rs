@@ -13,6 +13,18 @@ pub trait Digestable<D: Digest> {
     }
 }
 
+impl<D: Digest, T: Digestable<D>> Digestable<D> for &T {
+    fn update(&self, digest: &mut D) {
+        T::update(self, digest)
+    }
+}
+
+impl<D: Digest, T: Digestable<D>> Digestable<D> for &mut T {
+    fn update(&self, digest: &mut D) {
+        T::update(self, digest)
+    }
+}
+
 impl<D: Digest> Digestable<D> for Vec<u8> {
     fn update(&self, digest: &mut D) {
         digest.update((self.len() as u64).to_le_bytes());
