@@ -769,6 +769,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "forrest"
+version = "0.1.0"
+dependencies = [
+ "digest 0.10.3",
+ "sha2 0.10.2",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"

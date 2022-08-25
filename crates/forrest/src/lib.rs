@@ -1,14 +1,8 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+pub mod log;
+pub mod map;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+use digest::Digest;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub trait Digestable {
+    fn digest(&self, digest: &mut impl Digest);
 }
