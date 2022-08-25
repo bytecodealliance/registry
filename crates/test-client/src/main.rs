@@ -111,7 +111,7 @@ impl PublishCommand {
             .context("Failed to reset content file cursor")?;
 
         let release = ReleaseManifest {
-            entity_type: EntityType::Component,
+            package_type: EntityType::Component,
             name: self.name,
             version: self.version,
             content_digest: TypedDigest::Sha256(digest),

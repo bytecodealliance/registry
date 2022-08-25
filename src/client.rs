@@ -95,11 +95,11 @@ impl<C: HttpClient> Client<C> {
 
     pub async fn get_release(
         &self,
-        entity_type: EntityType,
+        package_type: EntityType,
         name: EntityName,
         version: semver::Version,
     ) -> Result<Release, ClientError> {
-        let path = Release::build_resource_path(&entity_type, &name, &version);
+        let path = Release::build_resource_path(&package_type, &name, &version);
         self.get_json(&path).await
     }
 
