@@ -1,11 +1,25 @@
+//! This crate contains forrest data structures.
+
+#![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(rust_2018_idioms, unused_lifetimes)]
+#![warn(unused_qualifications, missing_docs)]
+#![warn(clippy::all, clippy::panic)]
+#![forbid(unsafe_code, clippy::expect_used)]
+
+extern crate alloc;
+
 pub mod log;
 pub mod map;
 
 use digest::{Digest, Output};
 
+/// A trait for types which may be cryptographically hashed
 pub trait Digestable<D: Digest> {
+    /// Update the existing digest
     fn update(&self, digest: &mut D);
 
+    /// Calculate a digest
     fn digest(&self) -> Output<D> {
         let mut digest = D::new();
         self.update(&mut digest);
@@ -25,7 +39,7 @@ impl<D: Digest, T: Digestable<D>> Digestable<D> for &mut T {
     }
 }
 
-impl<D: Digest> Digestable<D> for Vec<u8> {
+impl<D: Digest> Digestable<D> for alloc::vec::Vec<u8> {
     fn update(&self, digest: &mut D) {
         digest.update((self.len() as u64).to_le_bytes());
         digest.update(self);
@@ -39,14 +53,14 @@ impl<D: Digest> Digestable<D> for [u8] {
     }
 }
 
-impl<D: Digest> Digestable<D> for String {
+impl<D: Digest> Digestable<D> for alloc::string::String {
     fn update(&self, digest: &mut D) {
         digest.update((self.len() as u64).to_le_bytes());
         digest.update(self.as_bytes());
     }
 }
 
-impl<D: Digest> Digestable<D> for &str {
+impl<D: Digest> Digestable<D> for str {
     fn update(&self, digest: &mut D) {
         digest.update((self.len() as u64).to_le_bytes());
         digest.update(self.as_bytes());
