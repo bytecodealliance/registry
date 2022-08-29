@@ -7,5 +7,10 @@
 #![warn(clippy::all, clippy::panic)]
 #![forbid(unsafe_code, clippy::expect_used)]
 
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
 pub mod log;
 pub mod map;
