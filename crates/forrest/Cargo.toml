@@ -12,4 +12,10 @@ serde_bytes = "0.11.7"
 
 [dev-dependencies]
 ciborium = "0.2.0"
+criterion = "0.3"
 sha2 = "0.10.2"
+rand = "0.8.5"
+
+[[bench]]
+name = "map"
+harness = false
