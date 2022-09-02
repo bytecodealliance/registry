@@ -3,7 +3,7 @@
 
 use core::marker::PhantomData;
 
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use digest::Digest;
@@ -14,7 +14,7 @@ use super::path::Path;
 use super::proof::Proof;
 
 pub enum Node<D: Digest, K, V> {
-    Leaf(Rc<(K, V)>),
+    Leaf(Arc<(K, V)>),
     Fork(Fork<D, K, V>),
 }
 
@@ -109,7 +109,7 @@ where
 
                     // Replace its value recursively.
                     let (node, new) = node.insert(path, leaf);
-                    fork[index] = Some(Rc::new(path.link(node)));
+                    fork[index] = Some(Arc::new(path.link(node)));
                     (Node::Fork(fork), new)
                 }
 
