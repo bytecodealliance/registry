@@ -3,12 +3,12 @@
 
 use core::ops::{Index, IndexMut};
 
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use digest::Digest;
 
 use super::{hash::Hash, link::Link};
 
-pub struct Fork<D: Digest, K, V>([Option<Rc<Link<D, K, V>>>; 2]);
+pub struct Fork<D: Digest, K, V>([Option<Arc<Link<D, K, V>>>; 2]);
 
 impl<D: Digest, K, V> Fork<D, K, V> {
     pub fn hash(&self) -> Hash<D> {
@@ -39,7 +39,7 @@ impl<D: Digest, K, V> Default for Fork<D, K, V> {
 }
 
 impl<D: Digest, K, V> Index<bool> for Fork<D, K, V> {
-    type Output = Option<Rc<Link<D, K, V>>>;
+    type Output = Option<Arc<Link<D, K, V>>>;
 
     fn index(&self, index: bool) -> &Self::Output {
         &self.0[usize::from(index)]
