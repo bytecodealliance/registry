@@ -261,15 +261,15 @@ impl Server {
         let app = Router::new()
             .route("/releases/", post(create_unpublished_release))
             .route(
-                "/:entity_collection/:entity_name/v:version/unpublished",
+                "/:package_collection/:package_name/v:version/unpublished",
                 get(get_unpublished_release),
             )
             .route(
-                "/:entity_collection/:entity_name/v:version/publish",
+                "/:package_collection/:package_name/v:version/publish",
                 post(publish_release),
             )
             .route(
-                "/:entity_collection/:entity_name/v:version",
+                "/:package_collection/:package_name/v:version",
                 get(get_release),
             )
             // Prototype routes to enable testing

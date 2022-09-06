@@ -27,7 +27,7 @@ pub enum Error {
     #[error("invalid name: {0}")]
     InvalidEntityName(ErrorMsg),
 
-    #[error("invalid entityType: {0}")]
+    #[error("invalid packageType: {0}")]
     InvalidEntityType(ErrorMsg),
 
     #[error("invalid signature: {0}")]

@@ -1,3 +1,6 @@
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+
 use digest::{Digest, Output};
 
 use super::node::Side;

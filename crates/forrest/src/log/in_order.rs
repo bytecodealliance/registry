@@ -1,11 +1,10 @@
-use std::{
-    collections::HashMap,
-    vec,
-};
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use hashbrown::HashMap;
 
 use digest::{Digest, Output};
 
-use super::LogForrest;
+use super::VerifiableLog;
 use super::node::{Node, Side};
 use super::proofs::{InclusionProof, ConsistencyProof};
 
@@ -33,7 +32,7 @@ use super::proofs::{InclusionProof, ConsistencyProof};
 /// * The side (left/right) of a node can be computed from its index.
 /// * The distance between parent/child indices is a simple function of height.
 #[derive(Debug, Clone)]
-pub struct InOrderLogForrest<D, E>
+pub struct InOrderLog<D, E>
 where
     D: Digest,
     E: AsRef<[u8]>,
@@ -55,7 +54,7 @@ where
 /// A leaf has height 0
 ///
 /// Length is the number of total leaf nodes present
-impl<D, E> InOrderLogForrest<D, E>
+impl<D, E> InOrderLog<D, E>
 where
     D: Digest,
     E: AsRef<[u8]>,
@@ -129,13 +128,13 @@ where
     }
 }
 
-impl<D, E> LogForrest<D, E> for InOrderLogForrest<D, E>
+impl<D, E> VerifiableLog<D, E> for InOrderLog<D, E>
 where
     D: Digest,
     E: AsRef<[u8]> + Clone
 {
     fn new() -> Self {
-        InOrderLogForrest {
+        InOrderLog {
             entries: vec![],
             tree: vec![],
             root_cache: HashMap::new(),
@@ -311,14 +310,6 @@ mod tests {
         res
     }
 
-    fn hexify<T: AsRef<[u8]>>(input: T) -> String {
-        input
-            .as_ref()
-            .into_iter()
-            .map(|byte| format!("{:X}", *byte))
-            .collect()
-    }
-
     #[test]
     fn test_log_modifications() {
         let data: [&str; 25] = [
@@ -326,7 +317,7 @@ mod tests {
             "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
         ];
 
-        let mut tree: InOrderLogForrest<Sha256, &str> = InOrderLogForrest::new();
+        let mut tree: InOrderLog<Sha256, &str> = InOrderLog::new();
         let mut roots = Vec::new();
 
         for i in 0..data.len() {
@@ -338,10 +329,10 @@ mod tests {
             assert_eq!(
                 tree_root,
                 naive_root,
-                "at {}: (in-order) {} != (naive) {}",
+                "at {}: (in-order) {:?} != (naive) {:?}",
                 i,
-                hexify(tree_root),
-                hexify(naive_root)
+                tree_root,
+                naive_root
             );
 
             roots.push(tree_root);
@@ -357,9 +348,8 @@ mod tests {
             // Compute root hash
             let left_root = roots[i].clone();
 
-            for (j, root) in roots[i..].iter().enumerate() {
+            for root in roots[i..].iter() {
                 // Check inclusion proofs
-                println!("Proving inclusion of {} in {}", i, j);
                 let inc_proof = tree.prove_inclusion(root.clone(), leaf.clone()).unwrap();
                 let InclusionProofOutput {
                     leaf: proven_leaf,
@@ -369,7 +359,6 @@ mod tests {
                 assert_eq!(root.clone(), proven_root);
 
                 // Check consistency proofs
-                println!("Proving consistency between {} and {}", i, j);
                 let con_proof = tree.prove_consistency(left_root, root.clone()).unwrap();
                 let ConsistencyProofOutput {
                     old_root: proven_old,
@@ -383,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_tree_height_math() {
-        type Forrest = InOrderLogForrest<Sha256, &'static str>;
+        type Forrest = InOrderLog<Sha256, &'static str>;
 
         // Heights for numbers of entries
         assert_eq!(Forrest::height_for_len(1), 0);
@@ -399,7 +388,7 @@ mod tests {
     #[test]
     fn test_tree_roots_math() {
         // This math is used when computing which roots are available
-        type Forrest = InOrderLogForrest<Sha256, &'static str>;
+        type Forrest = InOrderLog<Sha256, &'static str>;
 
         // First node with each height
         assert_eq!(Forrest::first_node_with_height(0), Node(0));
