@@ -7,6 +7,7 @@
 #![warn(clippy::all, clippy::panic)]
 #![forbid(unsafe_code, clippy::expect_used)]
 
+#[macro_use]
 extern crate alloc;
 
 #[cfg(test)]
