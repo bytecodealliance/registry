@@ -20,3 +20,7 @@ rand = "0.8.5"
 [[bench]]
 name = "map"
 harness = false
+
+[[bench]]
+name = "log"
+harness = false

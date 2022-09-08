@@ -1,4 +1,3 @@
-
 /// Represents a node in a tree by its index
 /// It is possible to derive many properties from the index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -12,6 +11,12 @@ pub enum Side {
 }
 
 impl Node {
+    /// Compute the left-most node which has a given height.
+    #[inline]
+    pub fn first_node_with_height(height: u32) -> Node {
+        Node(2usize.pow(height) - 1)
+    }
+
     #[inline]
     pub fn index(&self) -> usize {
         self.0
@@ -102,8 +107,19 @@ impl Node {
     }
 
     #[inline]
-    pub fn nodes_child_exists_at_length(&self, length: usize) -> bool {
+    pub fn has_children_at_length(&self, length: usize) -> bool {
         self.leftmost_descendent().exists_at_length(length)
+    }
+
+    #[inline]
+    pub fn next_node_with_height(&self, height: u32) -> Node {
+        assert!(
+            self.height() >= height,
+            "This algorithm is designed to only work for smaller or equal successors"
+        );
+        let first_with_height = Self::first_node_with_height(height);
+        let next_leaf = self.rightmost_descendent().index() + 2;
+        Node(first_with_height.index() + next_leaf)
     }
 }
 
@@ -244,5 +260,33 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_first_nodes() {
+        // First node with each height
+        let first_0 = Node::first_node_with_height(0);
+        assert_eq!(first_0, Node(0));
+        assert_eq!(first_0.next_node_with_height(0), Node(2));
+
+        let first_1 = Node::first_node_with_height(1);
+        assert_eq!(first_1, Node(1));
+        assert_eq!(first_1.next_node_with_height(0), Node(4));
+        assert_eq!(first_1.next_node_with_height(1), Node(5));
+
+        let first_2 = Node::first_node_with_height(2);
+        assert_eq!(first_2, Node(3));
+        assert_eq!(first_2.next_node_with_height(0), Node(8));
+        assert_eq!(first_2.next_node_with_height(1), Node(9));
+        assert_eq!(first_2.next_node_with_height(2), Node(11));
+
+        let first_3 = Node::first_node_with_height(3);
+        assert_eq!(first_3, Node(7));
+        assert_eq!(first_3.next_node_with_height(0), Node(16));
+        assert_eq!(first_3.next_node_with_height(1), Node(17));
+        assert_eq!(first_3.next_node_with_height(2), Node(19));
+        assert_eq!(first_3.next_node_with_height(3), Node(23));
+
+        assert_eq!(Node::first_node_with_height(4), Node(15));
     }
 }
