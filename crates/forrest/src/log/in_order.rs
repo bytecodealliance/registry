@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use alloc::vec::Vec;
+use alloc::{vec::Vec, vec};
 use hashbrown::HashMap;
 
 use digest::{Digest, Output};
