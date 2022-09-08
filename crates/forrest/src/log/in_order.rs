@@ -6,7 +6,7 @@ use digest::{Digest, Output};
 
 use super::node::{Node, Side};
 use super::proofs::{ConsistencyProof, InclusionProof};
-use super::VerifiableLog;
+use super::{VerifiableLog, ConsistencyProofError, InclusionProofError};
 
 /// A data-structure for building up [merkle tree][0] logs based on [DAT][1].
 /// The merkle tree computation is conformant to [RFC 6962 - Certificate Transparency][2].
@@ -195,12 +195,16 @@ where
         self.root_cache.insert(self.root(), self.length);
     }
 
-    fn prove_inclusion(&self, root: Output<D>, leaf: Output<D>) -> Option<InclusionProof<D>> {
-        let length = *self.root_cache.get(&root)?;
+    fn prove_inclusion(&self, root: Output<D>, leaf: Output<D>) -> Result<InclusionProof<D>, InclusionProofError> {
+        let length = *self.root_cache.get(&root).ok_or(InclusionProofError::RootNotKnown)?;
         let balanced_roots = Self::broots_for_len(length);
 
         let mut path = Vec::new();
-        let mut current_node = *self.leaf_cache.get(&leaf)?;
+        let mut current_node = *self.leaf_cache.get(&leaf).ok_or(InclusionProofError::LeafNotKnown)?;
+
+        if !current_node.exists_at_length(length) {
+            return Err(InclusionProofError::LeafNotInRoot);
+        }
 
         // Walk upwards until you hit a balanced root for the original tree
         while !balanced_roots.contains(&current_node) {
@@ -242,30 +246,35 @@ where
             path.push((Side::Left, broot));
         }
 
-        Some(InclusionProof { leaf, path })
+        Ok(InclusionProof { leaf, path })
     }
 
     fn prove_consistency(
         &self,
         old_root: Output<D>,
         new_root: Output<D>,
-    ) -> Option<ConsistencyProof<D>> {
-        let old_length = *self.root_cache.get(&old_root)?;
-        let new_length = *self.root_cache.get(&new_root)?;
+    ) -> Result<ConsistencyProof<D>, ConsistencyProofError> {
+        let old_length = *self.root_cache.get(&old_root).ok_or(ConsistencyProofError::OldRootNotKnown)?;
+        let new_length = *self.root_cache.get(&new_root).ok_or(ConsistencyProofError::NewRootNotKnown)?;
 
         // A log cannot be a consistent subset of a log that is shorter than it
         if old_length > new_length {
-            return None;
+            return Err(ConsistencyProofError::IncorrectOrdering);
         }
 
-        Self::broots_for_len(new_length)
+        let new_broots = Self::broots_for_len(new_length);
+        assert!(!new_broots.is_empty());
+
+        let proof = new_broots
             .into_iter()
             .rev()
             .map(|index| self.consistency_proof_node(index, old_length))
             .reduce(|rhs, lhs| ConsistencyProof::Hybrid {
                 left: Box::new(lhs),
                 right: Box::new(rhs),
-            })
+            }).unwrap();
+
+        Ok(proof)
     }
 }
 
@@ -312,7 +321,7 @@ mod tests {
         for i in 0..data.len() {
             tree.push(data[i]);
 
-            let naive_root = naive_merkle::<Sha256, &str>(&data[..i + 1]);
+            let naive_root = naive_merkle::<Sha256, _>(&data[..i + 1]);
 
             let tree_root = tree.root();
             assert_eq!(
@@ -334,24 +343,34 @@ mod tests {
             // Compute root hash
             let left_root = roots[i].clone();
 
-            for root in roots[i..].iter() {
+            for (j, root) in roots.iter().enumerate() {
                 // Check inclusion proofs
-                let inc_proof = tree.prove_inclusion(root.clone(), leaf.clone()).unwrap();
-                let InclusionProofOutput {
-                    leaf: proven_leaf,
-                    root: proven_root,
-                } = inc_proof.evaluate();
-                assert_eq!(leaf, proven_leaf);
-                assert_eq!(root.clone(), proven_root);
+                let inc_proof = tree.prove_inclusion(root.clone(), leaf.clone());
+                if j >= i {
+                    let InclusionProofOutput {
+                        leaf: proven_leaf,
+                        root: proven_root,
+                    } = inc_proof.unwrap().evaluate();
+                    assert_eq!(leaf, proven_leaf);
+                    assert_eq!(root.clone(), proven_root);
+                } else {
+                    assert!(inc_proof.is_err());
+                    assert_eq!(inc_proof.unwrap_err(), InclusionProofError::LeafNotInRoot);
+                }
 
                 // Check consistency proofs
-                let con_proof = tree.prove_consistency(left_root, root.clone()).unwrap();
-                let ConsistencyProofOutput {
-                    old_root: proven_old,
-                    new_root: proven_new,
-                } = con_proof.evaluate().unwrap();
-                assert_eq!(proven_old, Some(left_root));
-                assert_eq!(proven_new, root.clone());
+                let con_proof = tree.prove_consistency(left_root, root.clone());
+                if j >= i {
+                    let ConsistencyProofOutput {
+                        old_root: proven_old,
+                        new_root: proven_new,
+                    } = con_proof.unwrap().evaluate().unwrap();
+                    assert_eq!(proven_old, Some(left_root));
+                    assert_eq!(proven_new, root.clone());
+                } else {
+                    assert!(con_proof.is_err());
+                    assert_eq!(con_proof.unwrap_err(), ConsistencyProofError::IncorrectOrdering);
+                }
             }
         }
     }
