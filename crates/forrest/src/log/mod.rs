@@ -35,14 +35,36 @@ where
     fn push(&mut self, entry: impl AsRef<[u8]>);
 
     /// Prove that a leaf was present in a given root
-    fn prove_inclusion(&self, root: Output<D>, leaf: Output<D>) -> Option<InclusionProof<D>>;
+    fn prove_inclusion(&self, root: Output<D>, leaf: Output<D>) -> Result<InclusionProof<D>, InclusionProofError>;
 
     /// Prove that an old root is consistent with a new one
     fn prove_consistency(
         &self,
         old_root: Output<D>,
         new_root: Output<D>,
-    ) -> Option<ConsistencyProof<D>>;
+    ) -> Result<ConsistencyProof<D>, ConsistencyProofError>;
+}
+
+/// Th errors that may occur when computing an inclusion proof
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InclusionProofError {
+    /// The leaf provided is more recent than the specified root
+    LeafNotInRoot,
+    /// The root was not found
+    RootNotKnown,
+    /// The leaf was not found
+    LeafNotKnown,
+}
+
+/// The errors that may occur when computing a consistency proof
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConsistencyProofError {
+    /// The new and old roots are swapped
+    IncorrectOrdering,
+    /// The old root was not found
+    OldRootNotKnown,
+    /// The new root was not found
+    NewRootNotKnown,
 }
 
 pub use in_order::InOrderLog;
