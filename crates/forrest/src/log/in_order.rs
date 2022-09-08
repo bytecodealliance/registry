@@ -1,18 +1,19 @@
-use alloc::vec::Vec;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use hashbrown::HashMap;
 
 use digest::{Digest, Output};
 
-use super::VerifiableLog;
 use super::node::{Node, Side};
-use super::proofs::{InclusionProof, ConsistencyProof};
+use super::proofs::{ConsistencyProof, InclusionProof};
+use super::VerifiableLog;
 
-/// A data-structure for building up merkle tree logs based on the DAT paper.
+/// A data-structure for building up [merkle tree][0] logs based on [DAT][1].
+/// The merkle tree computation is conformant to [RFC 6962 - Certificate Transparency][2].
 ///
 /// It represents its data using binary in-order interval numbering.
 /// This means that all of the leaf and balanced branch nodes of the tree
-/// are stored in one big contiguous array using a particular indexing scheme.
+/// are stored in one contiguous array using a particular indexing scheme.
 ///
 /// ## Example
 /// ```text
@@ -31,14 +32,17 @@ use super::proofs::{InclusionProof, ConsistencyProof};
 /// * For the above reason, leaves always have even indices.
 /// * The side (left/right) of a node can be computed from its index.
 /// * The distance between parent/child indices is a simple function of height.
+///
+/// [0]: https://en.wikipedia.org/wiki/Merkle_tree
+/// [1]: https://www.researchgate.net/publication/326120012_Dat_-_Distributed_Dataset_Synchronization_And_Versioning
+/// [2]: https://www.rfc-editor.org/rfc/rfc6962
 #[derive(Debug, Clone)]
-pub struct InOrderLog<D, E>
+pub struct InOrderLog<D>
 where
     D: Digest,
-    E: AsRef<[u8]>,
 {
-    /// The underlying entries
-    entries: Vec<E>,
+    /// The number of entries
+    length: usize,
     /// The tree data structure
     tree: Vec<Output<D>>,
 
@@ -48,76 +52,55 @@ where
     leaf_cache: HashMap<Output<D>, Node>,
 }
 
-
-
 /// Height is the number of child-edges between the node and leaves
 /// A leaf has height 0
 ///
 /// Length is the number of total leaf nodes present
-impl<D, E> InOrderLog<D, E>
+impl<D> InOrderLog<D>
 where
     D: Digest,
-    E: AsRef<[u8]>,
 {
-    /// Computes the height of the tree for a given
-    /// log length in number of leaves.
-    #[inline]
-    fn height_for_len(length: usize) -> u32 {
-        if length == 0 {
-            0
-        } else {
-            length.next_power_of_two().trailing_zeros()
-        }
-    }
-
-    /// Compute the left-most node which has a given height.
-    #[inline]
-    fn first_node_with_height(height: u32) -> Node {
-        Node(2usize.pow(height) - 1)
-    }
-
     /// Compute the balanced roots for a log with a given
     /// log length in number of leaves.
     #[inline]
     fn broots_for_len(length: usize) -> Vec<Node> {
-        let height = Self::height_for_len(length);
-        let ideal_root = Self::first_node_with_height(height);
+        let mut value = length;
+        let mut broot_heights = Vec::new();
+        for i in 0..usize::BITS {
+            let present = (value & 1) == 1;
+            if present {
+                broot_heights.push(i);
+            }
 
-        let mut roots: Vec<Node> = Default::default();
-
-        Self::collect_roots(ideal_root, length, &mut roots);
-
-        roots
-    }
-
-    #[inline]
-    fn collect_roots(node: Node, length: usize, output: &mut Vec<Node>) {
-        let height = node.height();
-
-        if node.exists_at_length(length) {
-            output.push(node);
-            return;
+            value = value >> 1;
         }
 
-        if height != 0 {
-            let (left_child, right_child) = node.children();
-            Self::collect_roots(left_child, length, output);
-            Self::collect_roots(right_child, length, output);
+        let mut broots = Vec::new();
+        let mut current: Option<Node> = None;
+        for broot_height in broot_heights.into_iter().rev() {
+            let next = match current {
+                None => Node::first_node_with_height(broot_height),
+                Some(last) => last.next_node_with_height(broot_height),
+            };
+            broots.push(next);
+            current = Some(next);
         }
+
+        broots
     }
 
     fn get_digest(&self, node: Node) -> Output<D> {
         self.tree[node.index()].clone()
     }
 
-    fn set_digest(&mut self, node: Node, digest: Output<D>){
+    fn set_digest(&mut self, node: Node, digest: Output<D>) {
         self.tree[node.index()] = digest;
     }
 
     fn consistency_proof_node(&self, node: Node, old_length: usize) -> ConsistencyProof<D> {
         if node.exists_at_length(old_length) {
             ConsistencyProof::OldRoot(self.get_digest(node))
-        } else if node.nodes_child_exists_at_length(old_length) {
+        } else if node.has_children_at_length(old_length) {
             let (left_index, right_index) = node.children();
             let left = Box::new(self.consistency_proof_node(left_index, old_length));
             let right = Box::new(self.consistency_proof_node(right_index, old_length));
@@ -128,22 +111,26 @@ where
     }
 }
 
-impl<D, E> VerifiableLog<D, E> for InOrderLog<D, E>
+impl<D> Default for InOrderLog<D>
 where
     D: Digest,
-    E: AsRef<[u8]> + Clone
 {
-    fn new() -> Self {
+    fn default() -> Self {
         InOrderLog {
-            entries: vec![],
+            length: 0,
             tree: vec![],
             root_cache: HashMap::new(),
             leaf_cache: HashMap::new(),
         }
     }
+}
 
+impl<D> VerifiableLog<D> for InOrderLog<D>
+where
+    D: Digest,
+{
     fn root(&self) -> Output<D> {
-        let roots = Self::broots_for_len(self.entries.len());
+        let roots = Self::broots_for_len(self.length);
 
         roots
             .into_iter()
@@ -159,7 +146,7 @@ where
             .unwrap_or(D::new().finalize())
     }
 
-    fn push(&mut self, entry: E) {
+    fn push(&mut self, entry: impl AsRef<[u8]>) {
         // Compute entry digest
         let mut digest = D::new();
         digest.update(&[0u8]);
@@ -167,10 +154,10 @@ where
         let leaf_digest = digest.finalize();
 
         // Record entry
-        self.entries.push(entry);
+        self.length += 1;
 
         // Push spacer (if necessary) and entry digest
-        if self.entries.len() != 1 {
+        if self.length != 1 {
             self.tree.push(Output::<D>::default());
         }
         let leaf_node = Node(self.tree.len());
@@ -205,7 +192,7 @@ where
             self.leaf_cache.insert(leaf_digest, leaf_node);
         }
         // Cache length of log for new root
-        self.root_cache.insert(self.root(), self.entries.len());
+        self.root_cache.insert(self.root(), self.length);
     }
 
     fn prove_inclusion(&self, root: Output<D>, leaf: Output<D>) -> Option<InclusionProof<D>> {
@@ -287,7 +274,7 @@ mod tests {
     use super::*;
     use sha2::Sha256;
 
-    use crate::log::proofs::{InclusionProofOutput, ConsistencyProofOutput};
+    use crate::log::proofs::{ConsistencyProofOutput, InclusionProofOutput};
 
     fn naive_merkle<D: Digest, E: AsRef<[u8]>>(elements: &[E]) -> Output<D> {
         let res = match elements.len() {
@@ -313,11 +300,13 @@ mod tests {
     #[test]
     fn test_log_modifications() {
         let data: [&str; 25] = [
-            "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14", "40", "59", "26",
-            "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
+            "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14", "40", "59",
+            "26", "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
         ];
 
-        let mut tree: InOrderLog<Sha256, &str> = InOrderLog::new();
+        // let data: Vec<[u8; 4]> = (0..1_000_000u32).map(|i| i.to_le_bytes()).collect();
+
+        let mut tree: InOrderLog<Sha256> = InOrderLog::default();
         let mut roots = Vec::new();
 
         for i in 0..data.len() {
@@ -327,12 +316,9 @@ mod tests {
 
             let tree_root = tree.root();
             assert_eq!(
-                tree_root,
-                naive_root,
+                tree_root, naive_root,
                 "at {}: (in-order) {:?} != (naive) {:?}",
-                i,
-                tree_root,
-                naive_root
+                i, tree_root, naive_root
             );
 
             roots.push(tree_root);
@@ -371,31 +357,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tree_height_math() {
-        type Forrest = InOrderLog<Sha256, &'static str>;
-
-        // Heights for numbers of entries
-        assert_eq!(Forrest::height_for_len(1), 0);
-        assert_eq!(Forrest::height_for_len(2), 1);
-        assert_eq!(Forrest::height_for_len(3), 2);
-        assert_eq!(Forrest::height_for_len(4), 2);
-        assert_eq!(Forrest::height_for_len(5), 3);
-        assert_eq!(Forrest::height_for_len(6), 3);
-        assert_eq!(Forrest::height_for_len(7), 3);
-        assert_eq!(Forrest::height_for_len(8), 3);
-    }
-
-    #[test]
     fn test_tree_roots_math() {
         // This math is used when computing which roots are available
-        type Forrest = InOrderLog<Sha256, &'static str>;
-
-        // First node with each height
-        assert_eq!(Forrest::first_node_with_height(0), Node(0));
-        assert_eq!(Forrest::first_node_with_height(1), Node(1));
-        assert_eq!(Forrest::first_node_with_height(2), Node(3));
-        assert_eq!(Forrest::first_node_with_height(3), Node(7));
-        assert_eq!(Forrest::first_node_with_height(4), Node(15));
+        type Forrest = InOrderLog<Sha256>;
 
         assert_eq!(Forrest::broots_for_len(0), vec![]);
         assert_eq!(Forrest::broots_for_len(1), vec![Node(0)]);
