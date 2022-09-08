@@ -14,6 +14,8 @@
 //! [0]: https://en.wikipedia.org/wiki/Merkle_tree
 //! [1]: https://www.rfc-editor.org/rfc/rfc6962
 //! [2]: https://www.researchgate.net/publication/326120012_Dat_-_Distributed_Dataset_Synchronization_And_Versioning
+use core::fmt;
+
 use digest::{Digest, Output};
 mod in_order;
 mod node;
@@ -45,7 +47,7 @@ where
     ) -> Result<ConsistencyProof<D>, ConsistencyProofError>;
 }
 
-/// Th errors that may occur when computing an inclusion proof
+/// The errors that may occur when computing an inclusion proof
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InclusionProofError {
     /// The leaf provided is more recent than the specified root
@@ -54,6 +56,16 @@ pub enum InclusionProofError {
     RootNotKnown,
     /// The leaf was not found
     LeafNotKnown,
+}
+
+impl fmt::Display for InclusionProofError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InclusionProofError::LeafNotInRoot => write!(f, "The leaf provided is more recent than the specified root"),
+            InclusionProofError::RootNotKnown => write!(f, "The root was not found"),
+            InclusionProofError::LeafNotKnown => write!(f, "The leaf was not found"),
+        }
+    }
 }
 
 /// The errors that may occur when computing a consistency proof
@@ -65,6 +77,16 @@ pub enum ConsistencyProofError {
     OldRootNotKnown,
     /// The new root was not found
     NewRootNotKnown,
+}
+
+impl fmt::Display for ConsistencyProofError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConsistencyProofError::IncorrectOrdering => write!(f, "The new and old roots are swapped"),
+            ConsistencyProofError::OldRootNotKnown => write!(f, "The old root was not found"),
+            ConsistencyProofError::NewRootNotKnown => write!(f, "The new root was not found"),
+        }
+    }
 }
 
 pub use in_order::InOrderLog;
