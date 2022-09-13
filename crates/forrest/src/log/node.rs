@@ -1,5 +1,6 @@
-/// Represents a node in a tree by its index
-/// It is possible to derive many properties from the index.
+use alloc::vec::Vec;
+
+/// Represents a node in a tree by its index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Node(pub(crate) usize);
 
@@ -11,12 +12,6 @@ pub enum Side {
 }
 
 impl Node {
-    /// Compute the left-most node which has a given height.
-    #[inline]
-    pub fn first_node_with_height(height: u32) -> Node {
-        Node(2usize.pow(height) - 1)
-    }
-
     #[inline]
     pub fn index(&self) -> usize {
         self.0
@@ -120,6 +115,41 @@ impl Node {
         let first_with_height = Self::first_node_with_height(height);
         let next_leaf = self.rightmost_descendent().index() + 2;
         Node(first_with_height.index() + next_leaf)
+    }
+
+    /// Compute the left-most node which has a given height.
+    #[inline]
+    pub fn first_node_with_height(height: u32) -> Node {
+        Node(2usize.pow(height) - 1)
+    }
+
+    /// Compute the balanced roots for a log with a given
+    /// log length in number of leaves.
+    #[inline]
+    pub fn broots_for_len(length: usize) -> Vec<Node> {
+        let mut value = length;
+        let mut broot_heights = Vec::new();
+        for i in 0..usize::BITS {
+            let present = (value & 1) == 1;
+            if present {
+                broot_heights.push(i);
+            }
+
+            value = value >> 1;
+        }
+
+        let mut broots = Vec::new();
+        let mut current: Option<Node> = None;
+        for broot_height in broot_heights.into_iter().rev() {
+            let next = match current {
+                None => Self::first_node_with_height(broot_height),
+                Some(last) => last.next_node_with_height(broot_height),
+            };
+            broots.push(next);
+            current = Some(next);
+        }
+
+        broots
     }
 }
 
@@ -288,5 +318,21 @@ mod tests {
         assert_eq!(first_3.next_node_with_height(3), Node(23));
 
         assert_eq!(Node::first_node_with_height(4), Node(15));
+    }
+
+    #[test]
+    fn test_broots() {
+        use alloc::vec;
+
+        // This math is used when computing which roots are available
+        assert_eq!(Node::broots_for_len(0), vec![]);
+        assert_eq!(Node::broots_for_len(1), vec![Node(0)]);
+        assert_eq!(Node::broots_for_len(2), vec![Node(1)]);
+        assert_eq!(Node::broots_for_len(3), vec![Node(1), Node(4)]);
+        assert_eq!(Node::broots_for_len(4), vec![Node(3)]);
+        assert_eq!(Node::broots_for_len(5), vec![Node(3), Node(8)]);
+        assert_eq!(Node::broots_for_len(6), vec![Node(3), Node(9)]);
+        assert_eq!(Node::broots_for_len(7), vec![Node(3), Node(9), Node(12)]);
+        assert_eq!(Node::broots_for_len(8), vec![Node(7)]);
     }
 }
