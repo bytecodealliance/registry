@@ -67,7 +67,7 @@ impl<D: Digest> DerefMut for Hash<D> {
     }
 }
 
-impl<D: Digest, U> AsRef<U> for Hash<D>
+impl<D: Digest, U: ?Sized> AsRef<U> for Hash<D>
 where
     Output<D>: AsRef<U>,
 {
