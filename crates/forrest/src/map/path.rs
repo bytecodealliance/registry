@@ -5,7 +5,8 @@ use core::iter::FusedIterator;
 
 use digest::Digest;
 
-use super::{hash::Hash, link::Link, node::Node};
+use crate::hash::Hash;
+use super::{link::Link, node::Node};
 
 pub struct Path<D: Digest> {
     all: Hash<D>,

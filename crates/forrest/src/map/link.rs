@@ -3,7 +3,8 @@
 
 use digest::Digest;
 
-use super::{fork::Fork, hash::Hash, node::Node};
+use crate::hash::Hash;
+use super::{fork::Fork, node::Node};
 
 pub struct Link<D: Digest, K, V> {
     pub hash: Hash<D>,

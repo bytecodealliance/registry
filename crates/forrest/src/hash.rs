@@ -1,3 +1,4 @@
+//! A wrapper around the Digest Output<D> type for utility purposes
 use core::fmt::{Debug, LowerHex};
 use core::ops::{Deref, DerefMut};
 
@@ -5,6 +6,7 @@ use digest::{Digest, Output};
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// A hash value produced using the Digest algorithm [D]
 pub struct Hash<D: Digest>(Output<D>);
 
 impl<D: Digest> Clone for Hash<D> {
