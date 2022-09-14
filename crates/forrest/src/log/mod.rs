@@ -20,7 +20,7 @@ pub mod proofs;
 mod vec_log;
 
 use self::node::Node;
-use super::map::hash::Hash;
+use crate::hash::Hash;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to
@@ -70,7 +70,7 @@ where
 
     /// Get the hash for a given node
     /// None if node does not yet exist
-    fn node_hash(&self, node: Node) -> Option<Hash<D>>;
+    fn hash_for(&self, node: Node) -> Option<Hash<D>>;
 
     /// Push a new entry into the log
     fn push(&mut self, entry: impl AsRef<[u8]>) -> (Checkpoint, Node);
@@ -86,29 +86,35 @@ impl Checkpoint {
     }
 }
 
+/// A collection of hash data
 pub trait HashProvider<D>
 where
     D: Digest,
 {
+    /// Does this hash exist in the collection?
     fn has_hash(&self, node: Node) -> bool;
 
+    /// What is the hash for this node?
     fn hash_for(&self, node: Node) -> Option<Hash<D>>;
 }
 
 pub use vec_log::VecLog;
 
-pub(crate) fn hash_empty<D: Digest>() -> Hash<D> {
+/// Compute the hash for an empty tree using a given Digest algorithm.
+pub fn hash_empty<D: Digest>() -> Hash<D> {
     D::new().finalize().into()
 }
 
-pub(crate) fn hash_leaf<D: Digest>(data: impl AsRef<[u8]>) -> Hash<D> {
+/// Compute the hash for a leaf in a tree using a given Digest algorithm.
+pub fn hash_leaf<D: Digest>(data: impl AsRef<[u8]>) -> Hash<D> {
     let mut digest = D::new();
     digest.update(&[0u8]);
     digest.update(data);
     digest.finalize().into()
 }
 
-pub(crate) fn hash_branch<D: Digest>(left: impl AsRef<[u8]>, right: impl AsRef<[u8]>) -> Hash<D> {
+/// Compute the hash for a branch in a tree using a given Digest algorithm.
+pub fn hash_branch<D: Digest>(left: impl AsRef<[u8]>, right: impl AsRef<[u8]>) -> Hash<D> {
     let mut digest = D::new();
     digest.update(&[1u8]);
     digest.update(left);

@@ -4,7 +4,7 @@ use alloc::{vec, vec::Vec};
 
 use digest::Digest;
 
-use super::super::map::hash::Hash;
+use crate::hash::Hash;
 use super::node::{Node, Side};
 use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, HashProvider, VerifiableLog};
 
@@ -86,7 +86,7 @@ where
         Some(result)
     }
 
-    fn node_hash(&self, node: Node) -> Option<Hash<D>> {
+    fn hash_for(&self, node: Node) -> Option<Hash<D>> {
         self.tree.get(node.index()).map(|h| h.clone())
     }
 
@@ -124,17 +124,27 @@ where
     }
 }
 
+impl<D> AsRef<[Hash<D>]> for VecLog<D>
+where
+    D: Digest,
+    Hash<D>: Debug {
+
+    fn as_ref(&self) -> &[Hash<D>] {
+        &self.tree[..]
+    }
+}
+
 impl<D> HashProvider<D> for VecLog<D>
 where
     D: Digest,
     Hash<D>: Debug,
 {
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
-        self.node_hash(node)
+        VerifiableLog::hash_for(self, node)
     }
 
     fn has_hash(&self, node: Node) -> bool {
-        self.node_hash(node).is_some()
+        VerifiableLog::hash_for(self, node).is_some()
     }
 }
 
@@ -222,7 +232,7 @@ mod tests {
                 };
                 let mut old_broots = Vec::new();
 
-                for inc_proof in con_proof.inclusions() {
+                for inc_proof in con_proof.inclusions().unwrap() {
                     old_broots.push(inc_proof.leaf.clone());
                     let result = inc_proof.evaluate(&tree);
                     dbg!(i, j, inc_proof);

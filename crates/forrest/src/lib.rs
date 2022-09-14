@@ -14,3 +14,4 @@ extern crate std;
 
 pub mod log;
 pub mod map;
+pub mod hash;

@@ -8,8 +8,8 @@ use alloc::vec::Vec;
 
 use digest::Digest;
 
+use crate::hash::Hash;
 use super::fork::Fork;
-use super::hash::Hash;
 use super::path::Path;
 use super::proof::Proof;
 

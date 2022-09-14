@@ -7,26 +7,32 @@ pub struct Node(pub(crate) usize);
 /// What side of its parent a given node is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
+    /// A node on the left child of its parent
     Left,
+    /// A node on the right side of its parent
     Right,
 }
 
 impl Node {
+    /// The index in the tree space for this node
     #[inline]
     pub fn index(&self) -> usize {
         self.0
     }
 
+    /// The height of this node, where leaves have height 0
     #[inline]
     pub fn height(&self) -> u32 {
         self.index().trailing_ones()
     }
 
+    /// The distance from this node to its parent
     #[inline]
     fn delta(&self) -> usize {
         2usize.pow(self.height())
     }
 
+    /// The side this node is on of its parent
     #[inline]
     pub fn side(&self) -> Side {
         let height = self.height();
@@ -40,6 +46,8 @@ impl Node {
         }
     }
 
+    /// The left sibling of this node.
+    /// Panics if node is not a right-side node.
     #[inline]
     pub fn left_sibling(&self) -> Node {
         assert_eq!(self.side(), Side::Right);
@@ -47,6 +55,8 @@ impl Node {
         Node(self.index() - delta - delta)
     }
 
+    /// The right sibling of this node.
+    /// Panics if node is not a left-side node.
     #[inline]
     pub fn right_sibling(&self) -> Node {
         assert_eq!(self.side(), Side::Left);
@@ -54,6 +64,7 @@ impl Node {
         Node(self.index() + delta + delta)
     }
 
+    /// The sibling of this node.
     #[inline]
     pub fn sibling(&self) -> Node {
         match self.side() {
@@ -63,8 +74,6 @@ impl Node {
     }
 
     /// Finds the parent of a given node index.
-    /// The parent for a left node is after it
-    /// and the parent for a right node is before it.
     #[inline]
     pub fn parent(&self) -> Node {
         let parent_index = match self.side() {
@@ -74,6 +83,7 @@ impl Node {
         Node(parent_index)
     }
 
+    /// Find the left and right child of this node.
     #[inline]
     pub fn children(&self) -> (Node, Node) {
         assert_ne!(self.height(), 0);
@@ -82,18 +92,22 @@ impl Node {
         (Node(index - child_delta), Node(index + child_delta))
     }
 
+    /// Finds the right-most node which is a descendent of this one.
     #[inline]
     pub fn rightmost_descendent(&self) -> Node {
         let offset = 2usize.pow(self.height()) - 1;
         Node(self.index() + offset)
     }
 
+    /// Finds the left-most node which is a descendent of this one.
     #[inline]
     pub fn leftmost_descendent(&self) -> Node {
         let offset = 2usize.pow(self.height()) - 1;
         Node(self.index() - offset)
     }
 
+    /// Determines if a log with the given number of elements
+    /// would contain this node.
     #[inline]
     pub fn exists_at_length(&self, length: usize) -> bool {
         let last_child = self.rightmost_descendent();
@@ -101,11 +115,8 @@ impl Node {
         required_entries < length
     }
 
-    #[inline]
-    pub fn has_children_at_length(&self, length: usize) -> bool {
-        self.leftmost_descendent().exists_at_length(length)
-    }
-
+    /// Finds the next node after this one with the specified height.
+    /// The specified height MUST be less than or equal the height of this node.
     #[inline]
     pub fn next_node_with_height(&self, height: u32) -> Node {
         assert!(

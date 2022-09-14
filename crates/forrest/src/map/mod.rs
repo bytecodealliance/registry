@@ -14,7 +14,6 @@
 #![allow(clippy::module_inception)]
 
 mod fork;
-pub mod hash;
 mod iter;
 mod link;
 mod map;

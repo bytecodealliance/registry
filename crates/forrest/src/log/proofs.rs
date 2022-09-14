@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use super::super::map::hash::Hash;
+use crate::hash::Hash;
 use digest::Digest;
 
 use super::{hash_branch, node::Node, Checkpoint, HashProvider};
@@ -8,16 +8,36 @@ use super::{hash_branch, node::Node, Checkpoint, HashProvider};
 /// A proof that a leaf is present for a root
 #[derive(Debug, Clone, PartialEq)]
 pub struct InclusionProof {
+    /// The point in the logs history where the leaf should be present
     pub point: Checkpoint,
+    /// The node that you are checking is present in the given point.
     pub leaf: Node,
 }
 
+/// An error occuring when attempting to validate an inclusion proof.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InclusionProofError {
+    /// Indicates that the leaf is too new to be present at
+    /// the given point in the log history.
     LeafTooNew,
+    /// Indicates that certain hashes weren't known that are
+    /// needed to perform proof validation.
     HashNotKnown,
 }
 
+/// The nodes visited when verifying the inclusion proof.
+/// 
+/// The first [InclusionProofWalk.initial_walk_len] nodes
+/// describe the walk up to the balanced root which is
+/// the leafs ancestor.
+/// 
+/// The next [InclusionProofWalk.lower_broots] nodes
+/// describe the walk from the rightmost (lowest) broot
+/// up towards the broot that was reached.
+/// 
+/// The next [InclusionProofWalk.upper_broots] nodes
+/// describes the walk from the intersection of the
+/// previous two to the leftmost (tallest) broot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InclusionProofWalk {
     nodes: Vec<Node>,
@@ -53,6 +73,8 @@ impl InclusionProofWalk {
 }
 
 impl InclusionProof {
+    /// Collects all of the node indices that must be visited
+    /// in order to validate the inlcusion proof into.
     pub fn walk(&self) -> Result<InclusionProofWalk, InclusionProofError> {
         let length = self.point.length();
         let broots = Node::broots_for_len(length);
@@ -97,6 +119,7 @@ impl InclusionProof {
         })
     }
 
+    /// asdf
     pub fn evaluate<D: Digest>(
         &self,
         hashes: &impl HashProvider<D>,
@@ -150,21 +173,41 @@ fn combine<D: Digest>(first: (Node, Hash<D>), second: (Node, Hash<D>)) -> (Node,
     (second.0, hash_branch::<D>(lhs, rhs))
 }
 
+/// A proof of the consistency between two points in the
+/// logs history.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ConsistencyProof {
+    /// The older of the two points
     pub old_point: Checkpoint,
+    /// The newer of the two points
     pub new_point: Checkpoint,
 }
 
+/// Errors occuring when validating a consistency proof
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConsistencyProofError {
+    /// Indicates that the new point is actually older
+    PointsOutOfOrder
+}
+
 impl ConsistencyProof {
-    pub fn inclusions(&self) -> Vec<InclusionProof> {
-        Node::broots_for_len(self.old_point.length())
+    /// Convert the consistency proof into a sequence of inclusion proofs.
+    /// Each inclusion proof verifies that one of the balanced roots
+    /// of the old tree is present in the root of the new tree.
+    pub fn inclusions(&self) -> Result<Vec<InclusionProof>, ConsistencyProofError> {
+        if self.old_point > self.new_point {
+            return Err(ConsistencyProofError::PointsOutOfOrder);
+        }
+
+        let incls = Node::broots_for_len(self.old_point.length())
             .into_iter()
             .map(|broot| InclusionProof {
                 point: self.new_point,
                 leaf: broot,
             })
-            .collect()
+            .collect();
+
+        Ok(incls)
     }
 }
 
@@ -172,11 +215,10 @@ impl ConsistencyProof {
 mod tests {
     use alloc::vec;
 
-    use crate::log::{hash_empty, hash_leaf};
+    use crate::log::{VecLog, VerifiableLog};
 
     use super::*;
 
-    use super::super::super::map::hash::Hash;
     use sha2::Sha256;
 
     impl<D: Digest> HashProvider<D> for Vec<Hash<D>> {
@@ -191,11 +233,10 @@ mod tests {
 
     #[test]
     fn test_inc_even_2() {
-        let leaf_0 = hash_leaf(&[100u8]);
-        let leaf_2 = hash_leaf(&[102u8]);
-        let branch_1 = hash_branch(leaf_0.clone(), leaf_2.clone());
+        let mut log: VecLog<Sha256> = VecLog::default();
 
-        let data: Vec<Hash<Sha256>> = vec![leaf_0, branch_1, leaf_2];
+        log.push(&[100u8]);
+        log.push(&[102u8]);
 
         let inc_proof = InclusionProof {
             point: Checkpoint(2),
@@ -210,19 +251,18 @@ mod tests {
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
 
-        assert_eq!(inc_proof.evaluate(&data).unwrap(), data[1].clone());
+        assert_eq!(inc_proof.evaluate(&log).unwrap(), log.as_ref()[1].clone());
     }
 
     #[test]
     fn test_inc_odd_3() {
-        let leaf_0 = hash_leaf(&[100u8]);
-        let leaf_2 = hash_leaf(&[102u8]);
-        let branch_1 = hash_branch(leaf_0.clone(), leaf_2.clone());
-        let leaf_4 = hash_leaf(&[104u8]);
-        let branch_3 = hash_empty();
-        let root: Hash<Sha256> = hash_branch(branch_1.clone(), leaf_4.clone());
+        let mut log: VecLog<Sha256> = VecLog::default();
 
-        let data: Vec<Hash<Sha256>> = vec![leaf_0, branch_1, leaf_2, branch_3, leaf_4];
+        log.push(&[100u8]);
+        log.push(&[102u8]);
+        log.push(&[104u8]);
+
+        let root: Hash<Sha256> = hash_branch(log.as_ref()[1].clone(), log.as_ref()[4].clone());
 
         // node 0
         let inc_proof = InclusionProof {
@@ -236,7 +276,7 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate(&data).unwrap(), root);
+        assert_eq!(inc_proof.evaluate(&log).unwrap(), root);
 
         // node 2
         let inc_proof = InclusionProof {
@@ -250,7 +290,7 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate(&data).unwrap(), root);
+        assert_eq!(inc_proof.evaluate(&log).unwrap(), root);
 
         // node 4
         let inc_proof = InclusionProof {
@@ -264,37 +304,23 @@ mod tests {
             upper_broots: 1,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate(&data).unwrap(), root);
+        assert_eq!(inc_proof.evaluate(&log).unwrap(), root);
     }
 
     #[test]
     fn test_inc_odd_7() {
-        let leaf_0 = hash_leaf(&[100u8]);
-        let leaf_2 = hash_leaf(&[102u8]);
-        let branch_1 = hash_branch(leaf_0.clone(), leaf_2.clone());
+        let mut log: VecLog<Sha256> = VecLog::default();
 
-        let leaf_4 = hash_leaf(&[104u8]);
-        let leaf_6 = hash_leaf(&[106u8]);
-        let branch_5 = hash_branch(leaf_4.clone(), leaf_6.clone());
+        log.push(&[100u8]);
+        log.push(&[102u8]);
+        log.push(&[104u8]);
+        log.push(&[106u8]);
+        log.push(&[108u8]);
+        log.push(&[110u8]);
+        log.push(&[112u8]);
 
-        let branch_3 = hash_branch(branch_1.clone(), branch_5.clone());
-
-        let leaf_8 = hash_leaf(&[108u8]);
-        let leaf_10 = hash_leaf(&[110u8]);
-        let branch_9 = hash_branch(leaf_8.clone(), leaf_10.clone());
-
-        let leaf_12 = hash_leaf(&[112u8]);
-
-        let branch_7 = hash_empty();
-        let branch_11 = hash_empty();
-
-        let artificial_branch: Hash<Sha256> = hash_branch(branch_9.clone(), leaf_12.clone());
-        let root: Hash<Sha256> = hash_branch(branch_3.clone(), artificial_branch);
-
-        let data: Vec<Hash<Sha256>> = vec![
-            leaf_0, branch_1, leaf_2, branch_3, leaf_4, branch_5, leaf_6, branch_7, leaf_8,
-            branch_9, leaf_10, branch_11, leaf_12,
-        ];
+        let artificial_branch: Hash<Sha256> = hash_branch(log.as_ref()[9].clone(), log.as_ref()[12].clone());
+        let root: Hash<Sha256> = hash_branch(log.as_ref()[3].clone(), artificial_branch);
 
         // node 6
         let inc_proof = InclusionProof {
@@ -308,6 +334,6 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate(&data).unwrap(), root);
+        assert_eq!(inc_proof.evaluate(&log).unwrap(), root);
     }
 }
