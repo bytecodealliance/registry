@@ -78,7 +78,7 @@ where
 
 /// A point in the history of a log, represented by its length
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Checkpoint(usize);
+pub struct Checkpoint(pub usize);
 
 impl Checkpoint {
     fn length(&self) -> usize {

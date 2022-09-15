@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 /// Represents a node in a tree by its index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Node(pub(crate) usize);
+pub struct Node(pub usize);
 
 /// What side of its parent a given node is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
