@@ -81,7 +81,8 @@ where
 pub struct Checkpoint(pub usize);
 
 impl Checkpoint {
-    fn length(&self) -> usize {
+    /// The length of the log at this checkpoint
+    pub fn length(&self) -> usize {
         self.0
     }
 }
