@@ -119,7 +119,10 @@ impl InclusionProof {
         })
     }
 
-    /// asdf
+    /// Evaluate an inclusion proof.
+    /// Callers should verify that the returned root matches their expectation.
+    /// 
+    /// Walks the inclusion proof, hashes each layer, returns the root hash.
     pub fn evaluate<D: Digest>(
         &self,
         hashes: &impl HashProvider<D>,
