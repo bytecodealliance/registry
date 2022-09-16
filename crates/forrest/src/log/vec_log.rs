@@ -178,8 +178,6 @@ mod tests {
             "40", "59", "26", "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
         ];
 
-        // let data: Vec<[u8; 4]> = (0..1_000_000u32).map(|i| i.to_le_bytes()).collect();
-
         let mut tree: VecLog<Sha256> = VecLog::default();
         let mut roots = Vec::new();
 
