@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package warg.package;
+
+message EntryEnvelope {
+    Entry entry = 1;
+    string key_id = 2;
+    repeated Signature signatures = 3;
+}
+
+message Signature {
+    string key_id = 1;
+    string signature = 2;
+}
+
+message Entry {
+    oneof contents {
+        Init init = 1;
+        UpdateAuth update_auth = 2;
+        Release release = 3;
+        Yank yank = 4;
+    }
+}
+
+message Init {
+    string key = 1;
+    string hash_algo = 2;
+}
+
+message UpdateAuth {
+    string key = 1;
+    PermissionList allow = 2;
+    PermissionList deny = 3;
+}
+
+message PermissionList {
+    repeated string permissions = 1;
+}
+
+message Release {
+    string version = 1;
+    string content_hash = 2;
+}
+
+message Yank {
+    string version = 1;
+}

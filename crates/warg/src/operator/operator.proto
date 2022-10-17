@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package warg.operator;
+
+message Entry {
+    oneof contents {
+        Init init = 1;
+        UpdateAuth update_auth = 2;
+    }
+}
+
+message Init {
+    string key = 1;
+    string hash_algo = 2;
+}
+
+message UpdateAuth {
+    string key = 1;
+    PermissionList allow = 2;
+    PermissionList deny = 3;
+}
+
+message PermissionList {
+    repeated string permissions = 1;
+}
