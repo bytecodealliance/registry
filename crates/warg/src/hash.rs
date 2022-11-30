@@ -1,7 +1,8 @@
-use std::{fmt, str::FromStr, ops::Deref};
+use std::{fmt, ops::Deref, str::FromStr};
 
 use base64::{decode, encode};
 use digest::Digest;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Algorithm {
@@ -15,7 +16,7 @@ impl Algorithm {
                 let mut d = sha2::Sha256::new();
                 d.update(content_bytes);
                 d.finalize().deref().into()
-            },
+            }
         };
 
         Hash {
@@ -34,20 +35,34 @@ impl fmt::Display for Algorithm {
 }
 
 impl FromStr for Algorithm {
-    type Err = ();
+    type Err = HashAlgorithmParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "SHA256" => Ok(Algorithm::SHA256),
-            _ => Err(()),
+            _ => Err(HashAlgorithmParseError {
+                value: s.to_owned(),
+            }),
         }
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Error, Debug)]
+#[error("\"{value}\" is not a valid algorithm choice")]
+pub struct HashAlgorithmParseError {
+    value: String,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Hash {
     algo: Algorithm,
     bytes: Vec<u8>,
+}
+
+impl Hash {
+    pub fn algorithm(&self) -> Algorithm {
+        self.algo.clone()
+    }
 }
 
 impl fmt::Display for Hash {
@@ -56,17 +71,35 @@ impl fmt::Display for Hash {
     }
 }
 
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 impl FromStr for Hash {
-    type Err = ();
+    type Err = HashParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(|c| c == ':').collect();
         if parts.len() != 2 {
-            return Err(());
+            return Err(HashParseError::IncorrectStructure(parts.len()));
         }
         let algo = parts[0].parse::<Algorithm>()?;
-        let bytes = decode(parts[1]).map_err(|_| ())?;
+        let bytes = decode(parts[1])?;
 
         Ok(Hash { algo, bytes })
     }
+}
+
+#[derive(Error, Debug)]
+pub enum HashParseError {
+    #[error("expected 2 parts, found {0}")]
+    IncorrectStructure(usize),
+
+    #[error("unable to parse hash algorithm")]
+    HashAlgorithmParseError(#[from] HashAlgorithmParseError),
+
+    #[error("base64 decode failed")]
+    Base64DecodeError(#[from] base64::DecodeError),
 }

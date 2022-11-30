@@ -17,5 +17,18 @@ prost = "0.10"
 # Only necessary if using Protobuf well-known types:
 prost-types = "0.10"
 
+thiserror = "1.0"
+rand_core = { version = "0.6", features = ["getrandom"]}
+bytes = "1.1"
+ed25519-compact = { version = "1.0", features = ["traits"] }
+futures = "0.3"
+hex = "0.4"
+p256 = "0.11"
+secrecy = "0.8"
+signature = "1.5"
+
+[dev-dependencies]
+pretty_assertions = "1.1.0"
+
 [build-dependencies]
 prost-build = { version = "0.10" }

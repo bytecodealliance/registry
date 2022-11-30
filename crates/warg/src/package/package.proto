@@ -1,40 +1,57 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package warg.package;
 
-message EntryEnvelope {
-    Entry entry = 1;
+message Envelope {
+    bytes contents = 1;
     string key_id = 2;
-    repeated Signature signatures = 3;
+    string signature = 3;
 }
 
-message Signature {
-    string key_id = 1;
-    string signature = 2;
+message PackageRecord {
+    // The previous entry in the log.
+    // First entry of a log has no previous entry.
+    optional string prev = 1;
+
+    // The warg protocol version.
+    uint32 version = 2;
+
+    // The time when this entry was created
+    google.protobuf.Timestamp time = 3;
+
+    repeated PackageEntry entries = 4;
 }
 
-message Entry {
+enum Permission {
+    RELEASE = 0;
+    YANK = 1;
+}
+
+message PackageEntry {
     oneof contents {
         Init init = 1;
-        UpdateAuth update_auth = 2;
-        Release release = 3;
-        Yank yank = 4;
+        GrantFlat grant_flat = 2;
+        RevokeFlat revoke_flat = 3;
+        Release release = 4;
+        Yank yank = 5;
     }
 }
 
 message Init {
     string key = 1;
-    string hash_algo = 2;
+    string hash_algorithm = 2;
 }
 
-message UpdateAuth {
+message GrantFlat {
     string key = 1;
-    PermissionList allow = 2;
-    PermissionList deny = 3;
+    Permission permission = 2;
 }
 
-message PermissionList {
-    repeated string permissions = 1;
+message RevokeFlat {
+    string key_id = 1;
+    Permission permission = 2;
 }
 
 message Release {
