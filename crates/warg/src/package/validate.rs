@@ -51,8 +51,8 @@ pub enum ValidationError {
 
     #[error("Record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
-        found: hash::Algorithm,
-        expected: hash::Algorithm,
+        found: hash::HashAlgorithm,
+        expected: hash::HashAlgorithm,
     },
 
     #[error("Previous record hash does not match")]
@@ -90,9 +90,11 @@ pub struct ValidationStateInit {
 }
 
 impl ValidationState {
+    /// Determine the state of the validator (or error) after the next
+    /// package record envelope has been processed.
     pub fn validate_envelope(
         self,
-        envelope: &Envelope<model::Record>,
+        envelope: &Envelope<model::PackageRecord>,
     ) -> Result<ValidationState, ValidationError> {
         let state = self.validate_record(envelope.key_id.clone(), envelope)?;
 
@@ -118,7 +120,7 @@ impl ValidationState {
     pub fn validate_record(
         self,
         key_id: hash::Hash,
-        envelope: &Envelope<model::Record>,
+        envelope: &Envelope<model::PackageRecord>,
     ) -> Result<ValidationState, ValidationError> {
         let record = &envelope.contents;
 
@@ -143,7 +145,7 @@ impl ValidationState {
         }))
     }
 
-    fn validate_record_hash(&self, record: &model::Record) -> Result<(), ValidationError> {
+    fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
         match (&self, &record.prev) {
             (ValidationState::Uninitialized, None) => Ok(()),
             (ValidationState::Uninitialized, Some(_)) => {
@@ -167,7 +169,7 @@ impl ValidationState {
         }
     }
 
-    fn validate_record_version(&self, record: &model::Record) -> Result<(), ValidationError> {
+    fn validate_record_version(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
         if record.version == 0 {
             Ok(())
         } else {
@@ -177,7 +179,7 @@ impl ValidationState {
         }
     }
 
-    fn validate_record_timestamp(&self, record: &model::Record) -> Result<(), ValidationError> {
+    fn validate_record_timestamp(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
         if let ValidationState::Initialized(state) = &self {
             if record.timestamp < state.last_timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
@@ -189,7 +191,7 @@ impl ValidationState {
     fn validate_record_entries(
         self,
         key_id: hash::Hash,
-        record: &model::Record,
+        record: &model::PackageRecord,
     ) -> Result<EntryValidationState, ValidationError> {
         let mut entry_validation_state = match self {
             ValidationState::Uninitialized => None,
@@ -213,7 +215,7 @@ impl ValidationState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryValidationState {
     /// The hash algorithm used by this package
-    hash_algorithm: hash::Algorithm,
+    hash_algorithm: hash::HashAlgorithm,
     /// The permissions associated with a given key_id
     permissions: HashMap<hash::Hash, HashSet<model::Permission>>,
     /// The state of all releases
@@ -232,10 +234,10 @@ pub enum ReleaseState {
 impl EntryValidationState {
     pub fn validate_first(
         key_id: hash::Hash,
-        entry: &model::Entry,
+        entry: &model::PackageEntry,
     ) -> Result<Self, ValidationError> {
         match entry {
-            model::Entry::Init {
+            model::PackageEntry::Init {
                 hash_algorithm,
                 key: init_key,
             } => Ok(EntryValidationState {
@@ -254,7 +256,7 @@ impl EntryValidationState {
     pub fn validate_next(
         mut self,
         key_id: hash::Hash,
-        entry: &model::Entry,
+        entry: &model::PackageEntry,
     ) -> Result<EntryValidationState, ValidationError> {
         if let Some(needed_permission) = entry.required_permission() {
             self.check_key_permission(key_id.clone(), needed_permission)?;
@@ -262,9 +264,9 @@ impl EntryValidationState {
 
         match entry {
             // Invalid re-initialization
-            model::Entry::Init { .. } => return Err(ValidationError::InitialEntryAfterBeginning),
+            model::PackageEntry::Init { .. } => return Err(ValidationError::InitialEntryAfterBeginning),
 
-            model::Entry::GrantFlat { key, permission } => {
+            model::PackageEntry::GrantFlat { key, permission } => {
                 let grant_key_id = key.digest();
                 self.known_keys.insert(grant_key_id.clone(), key.clone());
 
@@ -280,7 +282,7 @@ impl EntryValidationState {
                 Ok(self)
             }
 
-            model::Entry::RevokeFlat { key_id, permission } => {
+            model::PackageEntry::RevokeFlat { key_id, permission } => {
                 match self.permissions.entry(key_id.clone()) {
                     hashbrown::hash_map::Entry::Occupied(mut entry) => {
                         let permissions_set = entry.get_mut();
@@ -302,7 +304,7 @@ impl EntryValidationState {
                 Ok(self)
             }
 
-            model::Entry::Release { version, content } => {
+            model::PackageEntry::Release { version, content } => {
                 let version = version.clone();
                 let content = content.clone();
 
@@ -326,7 +328,7 @@ impl EntryValidationState {
                 }
             }
 
-            model::Entry::Yank { version } => {
+            model::PackageEntry::Yank { version } => {
                 let version = version.clone();
 
                 // Check the state of the specified version
@@ -374,7 +376,7 @@ mod tests {
     use super::*;
     use crate::signing::tests::generate_p256_pair;
 
-    use crate::hash::Algorithm as HashAlgorithm;
+    use crate::hash::HashAlgorithm as HashAlgorithm;
     use std::time::SystemTime;
 
     #[test]
@@ -382,11 +384,11 @@ mod tests {
         let (alice_pub, alice_priv) = generate_p256_pair();
 
         let timestamp = SystemTime::now();
-        let record = model::Record {
+        let record = model::PackageRecord {
             prev: None,
             version: 0,
             timestamp,
-            entries: vec![model::Entry::Init {
+            entries: vec![model::PackageEntry::Init {
                 hash_algorithm: HashAlgorithm::SHA256,
                 key: alice_pub.clone(),
             }],

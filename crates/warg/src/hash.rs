@@ -5,14 +5,14 @@ use digest::Digest;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Algorithm {
+pub enum HashAlgorithm {
     SHA256,
 }
 
-impl Algorithm {
+impl HashAlgorithm {
     pub fn digest(&self, content_bytes: &[u8]) -> Hash {
         let hash_bytes: Vec<u8> = match self {
-            Algorithm::SHA256 => {
+            HashAlgorithm::SHA256 => {
                 let mut d = sha2::Sha256::new();
                 d.update(content_bytes);
                 d.finalize().deref().into()
@@ -26,20 +26,20 @@ impl Algorithm {
     }
 }
 
-impl fmt::Display for Algorithm {
+impl fmt::Display for HashAlgorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Algorithm::SHA256 => write!(f, "SHA256"),
+            HashAlgorithm::SHA256 => write!(f, "SHA256"),
         }
     }
 }
 
-impl FromStr for Algorithm {
+impl FromStr for HashAlgorithm {
     type Err = HashAlgorithmParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "SHA256" => Ok(Algorithm::SHA256),
+            "SHA256" => Ok(HashAlgorithm::SHA256),
             _ => Err(HashAlgorithmParseError {
                 value: s.to_owned(),
             }),
@@ -55,12 +55,12 @@ pub struct HashAlgorithmParseError {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Hash {
-    algo: Algorithm,
+    algo: HashAlgorithm,
     bytes: Vec<u8>,
 }
 
 impl Hash {
-    pub fn algorithm(&self) -> Algorithm {
+    pub fn algorithm(&self) -> HashAlgorithm {
         self.algo.clone()
     }
 }
@@ -85,7 +85,7 @@ impl FromStr for Hash {
         if parts.len() != 2 {
             return Err(HashParseError::IncorrectStructure(parts.len()));
         }
-        let algo = parts[0].parse::<Algorithm>()?;
+        let algo = parts[0].parse::<HashAlgorithm>()?;
         let bytes = decode(parts[1])?;
 
         Ok(Hash { algo, bytes })
