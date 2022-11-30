@@ -136,7 +136,7 @@ impl ValidationState {
         // Validate entries
         let entry_state = self.validate_record_entries(key_id, record)?;
 
-        let last_record = entry_state.hash_algorithm.digest(&envelope.as_bytes());
+        let last_record = entry_state.hash_algorithm.digest(&envelope.content_bytes);
         let last_timestamp = record.timestamp.clone();
         Ok(ValidationState::Initialized(ValidationStateInit {
             last_record,
@@ -405,7 +405,7 @@ mod tests {
         };
 
         let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::SHA256.digest(envelope.as_bytes().as_slice()),
+            last_record: HashAlgorithm::SHA256.digest(&envelope.content_bytes),
             last_timestamp: timestamp,
             entry_state: EntryValidationState {
                 hash_algorithm: HashAlgorithm::SHA256,
