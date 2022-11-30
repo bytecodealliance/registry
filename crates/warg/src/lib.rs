@@ -1,4 +1,5 @@
-pub mod operator;
 pub mod package;
-mod registry;
-pub mod things;
+
+pub mod hash;
+pub mod signing;
+pub mod version;

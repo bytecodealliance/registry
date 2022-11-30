@@ -1,11 +1,20 @@
 use core::fmt;
-use std::str::FromStr;
+use std::{str::FromStr, time::SystemTime};
 
-use crate::things::{envelope::Envelope, hash, signing::Key, Version};
+use crate::hash;
+use crate::signing;
+use crate::version::Version;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Record {
+    pub prev: Option<hash::Hash>,
+    pub version: u32,
+    pub timestamp: SystemTime,
+    pub entries: Vec<Entry>,
+}
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Permission {
-    UpdateAuth,
     Release,
     Yank,
 }
@@ -13,7 +22,6 @@ pub enum Permission {
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Permission::UpdateAuth => write!(f, "update-auth"),
             Permission::Release => write!(f, "release"),
             Permission::Yank => write!(f, "yank"),
         }
@@ -25,7 +33,6 @@ impl FromStr for Permission {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "update-auth" => Ok(Permission::UpdateAuth),
             "release" => Ok(Permission::Release),
             "yank" => Ok(Permission::Yank),
             _ => Err(()),
@@ -33,15 +40,19 @@ impl FromStr for Permission {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
     Init {
         hash_algorithm: hash::Algorithm,
-        key: Key,
+        key: signing::PublicKey,
     },
-    UpdateAuth {
-        key: Key,
-        allow: Vec<Permission>,
-        deny: Vec<Permission>,
+    GrantFlat {
+        key: signing::PublicKey,
+        permission: Permission,
+    },
+    RevokeFlat {
+        key_id: hash::Hash,
+        permission: Permission,
     },
     Release {
         version: Version,
@@ -56,7 +67,8 @@ impl Entry {
     pub fn required_permission(&self) -> Option<Permission> {
         match self {
             Entry::Init { .. } => None,
-            Entry::UpdateAuth { .. } => Some(Permission::UpdateAuth),
+            Entry::GrantFlat { .. } => None,
+            Entry::RevokeFlat { .. } => None,
             Entry::Release { .. } => Some(Permission::Release),
             Entry::Yank { .. } => Some(Permission::Yank),
         }
