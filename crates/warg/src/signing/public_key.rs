@@ -12,28 +12,32 @@ use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PublicKey {
-    P256(p256::ecdsa::VerifyingKey),
+    EcdsaP256(p256::ecdsa::VerifyingKey),
 }
 
 impl PublicKey {
+    /// The signature algorithm used by this key
     pub fn signature_algorithm(&self) -> SignatureAlgorithm {
         match self {
-            PublicKey::P256(_) => SignatureAlgorithm::EcdsaP256,
+            PublicKey::EcdsaP256(_) => SignatureAlgorithm::EcdsaP256,
         }
     }
 
+    /// Get the signature algorithm used for by this key
     pub fn bytes(&self) -> Vec<u8> {
         match self {
-            PublicKey::P256(key) => key.to_encoded_point(true).as_bytes().to_vec(),
+            PublicKey::EcdsaP256(key) => key.to_encoded_point(true).as_bytes().to_vec(),
         }
     }
 
+    /// Verify that a given message and signature were signed by the private key associated with this public key
     pub fn verify(&self, msg: &[u8], signature: Signature) -> Result<(), SignatureError> {
         match (self, signature) {
-            (PublicKey::P256(key), Signature::P256(signature)) => key.verify(msg, &signature),
+            (PublicKey::EcdsaP256(key), Signature::P256(signature)) => key.verify(msg, &signature),
         }
     }
 
+    /// Compute the digest of this key
     pub fn digest(&self) -> hash::Hash {
         self.signature_algorithm()
             .digest_algorithm()
@@ -65,7 +69,7 @@ impl FromStr for PublicKey {
 
         let key = match algo {
             SignatureAlgorithm::EcdsaP256 => {
-                PublicKey::P256(p256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)?)
+                PublicKey::EcdsaP256(p256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)?)
             }
         };
 
@@ -90,6 +94,6 @@ pub enum PublicKeyParseError {
 
 impl From<p256::ecdsa::VerifyingKey> for PublicKey {
     fn from(key: p256::ecdsa::VerifyingKey) -> Self {
-        PublicKey::P256(key)
+        PublicKey::EcdsaP256(key)
     }
 }

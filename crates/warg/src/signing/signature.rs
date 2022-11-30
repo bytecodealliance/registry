@@ -14,13 +14,15 @@ pub enum Signature {
 }
 
 impl Signature {
-    fn signature_algorithm(&self) -> SignatureAlgorithm {
+    /// Get the signature algorithm used to create this signature
+    pub fn signature_algorithm(&self) -> SignatureAlgorithm {
         match self {
             Signature::P256(_) => SignatureAlgorithm::EcdsaP256,
         }
     }
 
-    fn bytes(&self) -> Vec<u8> {
+    /// Get the signature's representation as bytes (not including an algorithm specifier)
+    pub fn bytes(&self) -> Vec<u8> {
         match self {
             Signature::P256(key) => key.to_der().to_bytes().to_vec(),
         }

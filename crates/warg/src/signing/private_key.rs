@@ -13,34 +13,34 @@ use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseErr
 pub struct PrivateKey(Secret<PrivateKeyInner>);
 
 pub enum PrivateKeyInner {
-    P256(p256::ecdsa::SigningKey),
+    EcdsaP256(p256::ecdsa::SigningKey),
 }
 
 impl PrivateKey {
     /// Get the signature algorithm used for by this key
     pub fn signature_algorithm(&self) -> SignatureAlgorithm {
         match self.0.expose_secret() {
-            PrivateKeyInner::P256(_) => SignatureAlgorithm::EcdsaP256,
+            PrivateKeyInner::EcdsaP256(_) => SignatureAlgorithm::EcdsaP256,
         }
     }
 
     /// Get the keys representation as bytes (not including an algorithm specifier)
     pub fn bytes(&self) -> Vec<u8> {
         match self.0.expose_secret() {
-            PrivateKeyInner::P256(key) => key.to_bytes().to_vec(),
+            PrivateKeyInner::EcdsaP256(key) => key.to_bytes().to_vec(),
         }
     }
 
     /// Sign a given message with this key
     pub fn sign(&self, msg: &[u8]) -> Result<Signature, SignatureError> {
         match self.0.expose_secret() {
-            PrivateKeyInner::P256(key) => Ok(Signature::P256(key.try_sign(msg)?)),
+            PrivateKeyInner::EcdsaP256(key) => Ok(Signature::P256(key.try_sign(msg)?)),
         }
     }
 
     pub fn public_key(&self) -> PublicKey {
         match self.0.expose_secret() {
-            PrivateKeyInner::P256(key) => PublicKey::P256(p256::ecdsa::VerifyingKey::from(key)),
+            PrivateKeyInner::EcdsaP256(key) => PublicKey::EcdsaP256(p256::ecdsa::VerifyingKey::from(key)),
         }
     }
 }
@@ -69,7 +69,7 @@ impl FromStr for PrivateKey {
 
         let key = match algo {
             SignatureAlgorithm::EcdsaP256 => {
-                PrivateKeyInner::P256(p256::ecdsa::SigningKey::from_bytes(&bytes)?)
+                PrivateKeyInner::EcdsaP256(p256::ecdsa::SigningKey::from_bytes(&bytes)?)
             }
         };
 
@@ -95,7 +95,7 @@ pub enum PrivateKeyParseError {
 impl Zeroize for PrivateKeyInner {
     fn zeroize(&mut self) {
         match self {
-            PrivateKeyInner::P256(sk) => {
+            PrivateKeyInner::EcdsaP256(sk) => {
                 // SigningKey zeroizes on Drop:
                 // https://github.com/RustCrypto/signatures/blob/a97a358f9e00773c4a04ca54816fb539506f89e6/ecdsa/src/sign.rs#L118
                 let mostly_zero = p256::ecdsa::SigningKey::from(
@@ -109,6 +109,6 @@ impl Zeroize for PrivateKeyInner {
 
 impl From<p256::ecdsa::SigningKey> for PrivateKey {
     fn from(key: p256::ecdsa::SigningKey) -> Self {
-        PrivateKey(Secret::from(PrivateKeyInner::P256(key)))
+        PrivateKey(Secret::from(PrivateKeyInner::EcdsaP256(key)))
     }
 }
