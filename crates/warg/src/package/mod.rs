@@ -286,7 +286,7 @@ mod tests {
 
     use crate::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
-    use crate::version::Version;
+    use semver::Version;
 
     #[test]
     fn test_envelope_roundtrip() {
@@ -311,11 +311,7 @@ mod tests {
                     permission: model::Permission::Release,
                 },
                 model::PackageEntry::Release {
-                    version: Version {
-                        major: 1,
-                        minor: 2,
-                        patch: 0,
-                    },
+                    version: Version::new(1, 0, 0),
                     content: HashAlgorithm::Sha256.digest(&[0, 1, 2, 3]),
                 },
             ],

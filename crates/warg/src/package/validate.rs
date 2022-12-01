@@ -3,10 +3,10 @@ use std::time::SystemTime;
 use hashbrown::{HashMap, HashSet};
 use signature::Error as SignatureError;
 use thiserror::Error;
+use semver::Version;
 
 use crate::hash;
 use crate::signing::PublicKey;
-use crate::version::Version;
 
 use super::model;
 use super::Envelope;
@@ -312,7 +312,7 @@ impl EntryValidationState {
             }
 
             model::PackageEntry::Release { version, content } => {
-                let version = *version;
+                let version = version.clone();
                 let content = content.clone();
 
                 // Check the state of the specified version
@@ -336,7 +336,7 @@ impl EntryValidationState {
             }
 
             model::PackageEntry::Yank { version } => {
-                let version = *version;
+                let version = version.clone();
 
                 // Check the state of the specified version
                 let old_state = self
