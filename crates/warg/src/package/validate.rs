@@ -71,6 +71,7 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum ValidationState {
     #[default]

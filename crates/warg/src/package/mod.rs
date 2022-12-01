@@ -11,6 +11,7 @@ pub mod validate;
 
 /// The protobuf encoding of the package types
 pub mod protobuf {
+    #![allow(clippy::all)]
     include!(concat!(env!("OUT_DIR"), "/warg.package.rs"));
 }
 
