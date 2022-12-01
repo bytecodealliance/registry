@@ -37,12 +37,12 @@ impl<Contents> Envelope<Contents> {
         contents: Contents,
     ) -> Result<Self, SignatureError>
     where
-        Contents: Into<Vec<u8>> + Clone,
+        Contents: Signable,
     {
-        let content_bytes: Vec<u8> = contents.clone().into();
+        let content_bytes: Vec<u8> = contents.encode();
 
         let key_id = private_key.public_key().fingerprint();
-        let signature = private_key.sign(&content_bytes)?;
+        let signature = contents.signature(private_key)?;
         Ok(Envelope {
             contents,
             content_bytes,
@@ -105,6 +105,31 @@ pub enum ParseEnvelopeError {
 
     #[error("Failed to parse envelope signature")]
     SignatureParseError(#[from] SignatureParseError),
+}
+
+pub trait Signable: Encode {
+    const PREFIX: &'static [u8];
+
+    fn signature(
+        &self,
+        private_key: signing::PrivateKey,
+    ) -> Result<signing::Signature, SignatureError> {
+        let prefixed_content = [Self::PREFIX, self.encode().as_slice()].concat();
+        private_key.sign(&prefixed_content)
+    }
+
+    fn verify(
+        public_key: signing::PublicKey,
+        msg: &[u8],
+        signature: &signing::Signature,
+    ) -> Result<(), SignatureError> {
+        let prefixed_content = [Self::PREFIX, msg].concat();
+        public_key.verify(&prefixed_content, signature)
+    }
+}
+
+pub trait Encode {
+    fn encode(&self) -> Vec<u8>;
 }
 
 // Deserialization
@@ -208,30 +233,30 @@ struct PermissionParseError {
 
 // Serialization
 
-impl From<model::PackageRecord> for Vec<u8> {
-    fn from(record: model::PackageRecord) -> Self {
-        let proto_record: protobuf::PackageRecord = record.into();
+impl Signable for model::PackageRecord {
+    const PREFIX: &'static [u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0:";
+}
+
+impl Encode for model::PackageRecord {
+    fn encode(&self) -> Vec<u8> {
+        let proto_record: protobuf::PackageRecord = self.into();
         proto_record.encode_to_vec()
     }
 }
 
-impl From<model::PackageRecord> for protobuf::PackageRecord {
-    fn from(record: model::PackageRecord) -> Self {
+impl<'a> From<&'a model::PackageRecord> for protobuf::PackageRecord {
+    fn from(record: &'a model::PackageRecord) -> Self {
         protobuf::PackageRecord {
-            prev: record.prev.map(|hash| hash.to_string()),
+            prev: record.prev.as_ref().map(|hash| hash.to_string()),
             version: record.version,
             time: Some(record.timestamp.into()),
-            entries: record
-                .entries
-                .into_iter()
-                .map(|entry| entry.into())
-                .collect(),
+            entries: record.entries.iter().map(|entry| entry.into()).collect(),
         }
     }
 }
 
-impl From<model::PackageEntry> for protobuf::PackageEntry {
-    fn from(entry: model::PackageEntry) -> Self {
+impl<'a> From<&'a model::PackageEntry> for protobuf::PackageEntry {
+    fn from(entry: &'a model::PackageEntry) -> Self {
         use protobuf::package_entry::Contents;
         let contents = match entry {
             model::PackageEntry::Init {
@@ -268,8 +293,8 @@ impl From<model::PackageEntry> for protobuf::PackageEntry {
     }
 }
 
-impl From<model::Permission> for i32 {
-    fn from(permission: model::Permission) -> Self {
+impl<'a> From<&'a model::Permission> for i32 {
+    fn from(permission: &'a model::Permission) -> Self {
         let proto_perm = match permission {
             model::Permission::Release => protobuf::Permission::Release,
             model::Permission::Yank => protobuf::Permission::Yank,
