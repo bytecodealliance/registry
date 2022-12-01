@@ -1,9 +1,10 @@
 use core::fmt;
 use std::{str::FromStr, time::SystemTime};
 
+use semver::Version;
+
 use crate::hash;
 use crate::signing;
-use crate::version::Version;
 
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
