@@ -23,7 +23,7 @@ impl SignatureAlgorithm {
     /// signing algorithm to generate digests.
     pub fn digest_algorithm(&self) -> HashAlgorithm {
         match self {
-            SignatureAlgorithm::EcdsaP256 => HashAlgorithm::SHA256,
+            SignatureAlgorithm::EcdsaP256 => HashAlgorithm::Sha256,
         }
     }
 }
