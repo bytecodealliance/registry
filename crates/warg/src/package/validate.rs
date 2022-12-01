@@ -392,7 +392,7 @@ mod tests {
     use crate::signing::tests::generate_p256_pair;
 
     use crate::hash::HashAlgorithm;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn test_validate_base_log() {
@@ -409,7 +409,7 @@ mod tests {
             }],
         };
 
-        let envelope = match Envelope::signed_contents(alice_priv, record) {
+        let envelope = match Envelope::signed_contents(&alice_priv, record) {
             Ok(value) => value,
             Err(error) => panic!("Failed to sign envelope: {:?}", error),
         };
@@ -430,6 +430,109 @@ mod tests {
                 )]),
                 releases: HashMap::default(),
                 known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub.clone())]),
+            },
+        });
+
+        assert_eq!(expected_state, validation_state);
+    }
+
+    #[test]
+    fn test_validate_larger_log() {
+        let (alice_pub, alice_priv) = generate_p256_pair();
+        let (bob_pub, bob_priv) = generate_p256_pair();
+        let hash_algo = hash::HashAlgorithm::Sha256;
+
+        // In envelope 0: alice inits and grants bob release
+        let timestamp0 = SystemTime::now();
+        let record0 = model::PackageRecord {
+            prev: None,
+            version: 0,
+            timestamp: timestamp0,
+            entries: vec![
+                model::PackageEntry::Init {
+                    hash_algorithm: hash_algo,
+                    key: alice_pub.clone(),
+                },
+                model::PackageEntry::GrantFlat {
+                    key: bob_pub.clone(),
+                    permission: model::Permission::Release,
+                },
+            ],
+        };
+        let envelope0 = match Envelope::signed_contents(&alice_priv, record0) {
+            Ok(value) => value,
+            Err(error) => panic!("Failed to sign envelope0: {:?}", error),
+        };
+
+        // In envelope 1: bob releases 1.1.0
+        let timestamp1 = timestamp0 + Duration::from_secs(1);
+        let content = hash_algo.digest(&[0, 1, 2, 3]);
+        let record1 = model::PackageRecord {
+            prev: Some(hash_algo.digest(&envelope0.content_bytes)),
+            version: 0,
+            timestamp: timestamp1,
+            entries: vec![model::PackageEntry::Release {
+                version: Version::new(1, 1, 0),
+                content,
+            }],
+        };
+        let envelope1 = match Envelope::signed_contents(&bob_priv, record1) {
+            Ok(value) => value,
+            Err(error) => panic!("Failed to sign envelope1: {:?}", error),
+        };
+
+        // In envelope 2: alice revokes bobs access and yanks 1.1.0
+        let timestamp2 = timestamp1 + Duration::from_secs(1);
+        let record2 = model::PackageRecord {
+            prev: Some(hash_algo.digest(&envelope1.content_bytes)),
+            version: 0,
+            timestamp: timestamp2,
+            entries: vec![
+                model::PackageEntry::RevokeFlat {
+                    key_id: bob_pub.fingerprint(),
+                    permission: model::Permission::Release,
+                },
+                model::PackageEntry::Yank {
+                    version: Version::new(1, 1, 0),
+                },
+            ],
+        };
+        let envelope2 = match Envelope::signed_contents(&alice_priv, record2) {
+            Ok(value) => value,
+            Err(error) => panic!("Failed to sign envelope2: {:?}", error),
+        };
+
+        let mut validation_state =
+            match ValidationState::Uninitialized.validate_envelope(&envelope0) {
+                Ok(value) => value,
+                Err(error) => panic!("Failed to validate0: {:?}", error),
+            };
+        validation_state = match validation_state.validate_envelope(&envelope1) {
+            Ok(value) => value,
+            Err(error) => panic!("Failed to validate1: {:?}", error),
+        };
+        validation_state = match validation_state.validate_envelope(&envelope2) {
+            Ok(value) => value,
+            Err(error) => panic!("Failed to validate2: {:?}", error),
+        };
+
+        let expected_state = ValidationState::Initialized(ValidationStateInit {
+            last_record: HashAlgorithm::Sha256.digest(&envelope2.content_bytes),
+            last_timestamp: timestamp2,
+            entry_state: EntryValidationState {
+                hash_algorithm: HashAlgorithm::Sha256,
+                permissions: HashMap::from([
+                    (
+                        alice_pub.fingerprint(),
+                        HashSet::from([model::Permission::Release, model::Permission::Yank]),
+                    ),
+                    (bob_pub.fingerprint(), HashSet::default()),
+                ]),
+                releases: HashMap::from([(Version::new(1, 1, 0), ReleaseState::Yanked)]),
+                known_keys: HashMap::from([
+                    (alice_pub.fingerprint(), alice_pub),
+                    (bob_pub.fingerprint(), bob_pub),
+                ]),
             },
         });
 

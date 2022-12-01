@@ -33,7 +33,7 @@ pub struct Envelope<Contents> {
 impl<Contents> Envelope<Contents> {
     /// Create an envelope for some contents using a signature.
     pub fn signed_contents(
-        private_key: signing::PrivateKey,
+        private_key: &signing::PrivateKey,
         contents: Contents,
     ) -> Result<Self, SignatureError>
     where
@@ -112,7 +112,7 @@ pub trait Signable: Encode {
 
     fn signature(
         &self,
-        private_key: signing::PrivateKey,
+        private_key: &signing::PrivateKey,
     ) -> Result<signing::Signature, SignatureError> {
         let prefixed_content = [Self::PREFIX, self.encode().as_slice()].concat();
         private_key.sign(&prefixed_content)
@@ -342,7 +342,7 @@ mod tests {
             ],
         };
 
-        let first_envelope = match Envelope::signed_contents(alice_priv, record) {
+        let first_envelope = match Envelope::signed_contents(&alice_priv, record) {
             Ok(value) => value,
             Err(error) => panic!("Failed to sign envelope 1: {:?}", error),
         };
