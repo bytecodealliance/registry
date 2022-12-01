@@ -137,7 +137,7 @@ impl ValidationState {
         let entry_state = self.validate_record_entries(key_id, record)?;
 
         let last_record = entry_state.hash_algorithm.digest(&envelope.content_bytes);
-        let last_timestamp = record.timestamp.clone();
+        let last_timestamp = record.timestamp;
         Ok(ValidationState::Initialized(ValidationStateInit {
             last_record,
             last_timestamp,
@@ -158,7 +158,7 @@ impl ValidationState {
                 if prev.algorithm() != state.entry_state.hash_algorithm {
                     return Err(ValidationError::IncorrectHashAlgorithm {
                         found: prev.algorithm(),
-                        expected: state.entry_state.hash_algorithm.clone(),
+                        expected: state.entry_state.hash_algorithm,
                     });
                 }
                 if prev != &state.last_record {
@@ -169,7 +169,10 @@ impl ValidationState {
         }
     }
 
-    fn validate_record_version(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
+    fn validate_record_version(
+        &self,
+        record: &model::PackageRecord,
+    ) -> Result<(), ValidationError> {
         if record.version == 0 {
             Ok(())
         } else {
@@ -179,7 +182,10 @@ impl ValidationState {
         }
     }
 
-    fn validate_record_timestamp(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
+    fn validate_record_timestamp(
+        &self,
+        record: &model::PackageRecord,
+    ) -> Result<(), ValidationError> {
         if let ValidationState::Initialized(state) = &self {
             if record.timestamp < state.last_timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
@@ -241,7 +247,7 @@ impl EntryValidationState {
                 hash_algorithm,
                 key: init_key,
             } => Ok(EntryValidationState {
-                hash_algorithm: hash_algorithm.clone(),
+                hash_algorithm: *hash_algorithm,
                 permissions: HashMap::from([(
                     key_id,
                     HashSet::from([model::Permission::Release, model::Permission::Yank]),
@@ -259,23 +265,23 @@ impl EntryValidationState {
         entry: &model::PackageEntry,
     ) -> Result<EntryValidationState, ValidationError> {
         if let Some(needed_permission) = entry.required_permission() {
-            self.check_key_permission(key_id.clone(), needed_permission)?;
+            self.check_key_permission(key_id, needed_permission)?;
         }
 
         match entry {
             // Invalid re-initialization
-            model::PackageEntry::Init { .. } => return Err(ValidationError::InitialEntryAfterBeginning),
+            model::PackageEntry::Init { .. } => Err(ValidationError::InitialEntryAfterBeginning),
 
             model::PackageEntry::GrantFlat { key, permission } => {
                 let grant_key_id = key.fingerprint();
                 self.known_keys.insert(grant_key_id.clone(), key.clone());
 
-                match self.permissions.entry(grant_key_id.clone()) {
+                match self.permissions.entry(grant_key_id) {
                     hashbrown::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().insert(permission.clone());
+                        entry.get_mut().insert(*permission);
                     }
                     hashbrown::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(HashSet::from([permission.clone()]));
+                        entry.insert(HashSet::from([*permission]));
                     }
                 };
 
@@ -286,7 +292,7 @@ impl EntryValidationState {
                 match self.permissions.entry(key_id.clone()) {
                     hashbrown::hash_map::Entry::Occupied(mut entry) => {
                         let permissions_set = entry.get_mut();
-                        if !permissions_set.contains(&permission) {
+                        if !permissions_set.contains(permission) {
                             return Err(ValidationError::PermissionNotFoundToRevoke {
                                 permission: *permission,
                                 key_id: key_id.clone(),
@@ -305,7 +311,7 @@ impl EntryValidationState {
             }
 
             model::PackageEntry::Release { version, content } => {
-                let version = version.clone();
+                let version = *version;
                 let content = content.clone();
 
                 // Check the state of the specified version
@@ -329,7 +335,7 @@ impl EntryValidationState {
             }
 
             model::PackageEntry::Yank { version } => {
-                let version = version.clone();
+                let version = *version;
 
                 // Check the state of the specified version
                 let old_state = self
@@ -362,10 +368,10 @@ impl EntryValidationState {
         }
 
         // Needed permission not found
-        return Err(ValidationError::UnauthorizedAction {
+        Err(ValidationError::UnauthorizedAction {
             key_id,
             needed_permission: permission,
-        });
+        })
     }
 }
 
@@ -376,7 +382,7 @@ mod tests {
     use super::*;
     use crate::signing::tests::generate_p256_pair;
 
-    use crate::hash::HashAlgorithm as HashAlgorithm;
+    use crate::hash::HashAlgorithm;
     use std::time::SystemTime;
 
     #[test]

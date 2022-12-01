@@ -82,9 +82,9 @@ impl FromStr for Digest {
     type Err = HashParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (algo_part, bytes_part) = s.split_once(':').ok_or_else(||
-            HashParseError::IncorrectStructure(s.matches(':').count()+1)
-        )?; 
+        let (algo_part, bytes_part) = s
+            .split_once(':')
+            .ok_or_else(|| HashParseError::IncorrectStructure(s.matches(':').count() + 1))?;
 
         let algo = algo_part.parse::<HashAlgorithm>()?;
         let bytes = base64::decode(bytes_part)?;

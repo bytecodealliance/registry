@@ -6,7 +6,7 @@ use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::hash::HashAlgorithm as HashAlgorithm;
+use crate::hash::HashAlgorithm;
 
 pub use self::private_key::{PrivateKey, PrivateKeyParseError};
 pub use self::public_key::{PublicKey, PublicKeyParseError};
