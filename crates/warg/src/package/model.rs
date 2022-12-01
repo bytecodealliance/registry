@@ -68,7 +68,7 @@ pub enum PackageEntry {
     /// Remove a permission from a key.
     /// The author of this entry must have the permission.
     RevokeFlat {
-        key_id: hash::Digest,
+        key_id: signing::KeyID,
         permission: Permission,
     },
     /// Release a version of a package.

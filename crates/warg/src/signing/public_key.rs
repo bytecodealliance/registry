@@ -6,8 +6,6 @@ use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::hash;
-
 use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -38,10 +36,13 @@ impl PublicKey {
     }
 
     /// Compute the digest of this key
-    pub fn fingerprint(&self) -> hash::Digest {
-        self.signature_algorithm()
+    pub fn fingerprint(&self) -> KeyID {
+        let key_hash = self
+            .signature_algorithm()
             .digest_algorithm()
-            .digest(format!("{}", self).as_bytes())
+            .digest(format!("{}", self).as_bytes());
+
+        KeyID(format!("{}", key_hash))
     }
 }
 
@@ -95,5 +96,20 @@ pub enum PublicKeyParseError {
 impl From<p256::ecdsa::VerifyingKey> for PublicKey {
     fn from(key: p256::ecdsa::VerifyingKey) -> Self {
         PublicKey::EcdsaP256(key)
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct KeyID(String);
+
+impl fmt::Display for KeyID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for KeyID {
+    fn from(s: String) -> Self {
+        KeyID(s)
     }
 }
