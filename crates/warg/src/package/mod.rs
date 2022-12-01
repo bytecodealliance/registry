@@ -25,7 +25,7 @@ pub struct Envelope<Contents> {
     /// The serialized representation of the content
     pub content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
-    pub key_id: hash::Digest,
+    pub key_id: signing::KeyID,
     /// The signature for the content_bytes
     pub signature: signing::Signature,
 }
@@ -77,7 +77,7 @@ impl<Contents> Envelope<Contents> {
             .try_into()
             .map_err(ParseEnvelopeError::ContentsParseError)?;
         // Read key ID and signature
-        let key_id = envelope.key_id.parse()?;
+        let key_id = envelope.key_id.into();
         let signature = envelope.signature.parse()?;
 
         Ok(Envelope {
@@ -190,7 +190,7 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
                 permission: grant_flat.permission.try_into()?,
             },
             Contents::RevokeFlat(revoke_flat) => model::PackageEntry::RevokeFlat {
-                key_id: revoke_flat.key_id.parse()?,
+                key_id: revoke_flat.key_id.into(),
                 permission: revoke_flat.permission.try_into()?,
             },
             Contents::Release(release) => model::PackageEntry::Release {

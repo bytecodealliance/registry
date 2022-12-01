@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::hash::HashAlgorithm;
 
 pub use self::private_key::{PrivateKey, PrivateKeyParseError};
-pub use self::public_key::{PublicKey, PublicKeyParseError};
+pub use self::public_key::{KeyID, PublicKey, PublicKeyParseError};
 pub use self::signature::{Signature, SignatureParseError};
 
 /// A signature algorithm supported by WARG
