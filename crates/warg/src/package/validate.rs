@@ -295,6 +295,9 @@ impl EntryValidationState {
             }
 
             model::PackageEntry::RevokeFlat { key_id, permission } => {
+                // Check that the current key has the permission they're trying to revoke
+                self.check_key_permission(key_id.clone(), *permission)?;
+
                 match self.permissions.entry(key_id.clone()) {
                     hashbrown::hash_map::Entry::Occupied(mut entry) => {
                         let permissions_set = entry.get_mut();
