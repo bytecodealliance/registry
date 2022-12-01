@@ -1105,6 +1105,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "warg-client"
+version = "0.1.0"
+
+[[package]]
 name = "warg-protocol"
 version = "0.1.0"
 dependencies = [

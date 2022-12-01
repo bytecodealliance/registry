@@ -7,5 +7,6 @@ resolver = "2"
 [workspace]
 members = [
     "crates/forrest",
-    "crates/warg"
+    "crates/warg",
+    "crates/warg-client"
 ]
