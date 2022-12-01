@@ -24,5 +24,6 @@ thiserror = "1.0"
 members = [
     "crates/prototype-server",
     "crates/test-client",
-    "crates/forrest"
+    "crates/forrest",
+    "crates/warg-client"
 ]
