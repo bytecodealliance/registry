@@ -31,9 +31,9 @@ impl PublicKey {
     }
 
     /// Verify that a given message and signature were signed by the private key associated with this public key
-    pub fn verify(&self, msg: &[u8], signature: Signature) -> Result<(), SignatureError> {
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> Result<(), SignatureError> {
         match (self, signature) {
-            (PublicKey::EcdsaP256(key), Signature::P256(signature)) => key.verify(msg, &signature),
+            (PublicKey::EcdsaP256(key), Signature::P256(signature)) => key.verify(msg, signature),
         }
     }
 

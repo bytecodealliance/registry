@@ -1,15 +1,16 @@
 use std::time::SystemTime;
 
 use hashbrown::{HashMap, HashSet};
+use semver::Version;
 use signature::Error as SignatureError;
 use thiserror::Error;
-use semver::Version;
 
 use crate::hash;
 use crate::signing::PublicKey;
 
 use super::model;
 use super::Envelope;
+use super::Signable;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -105,7 +106,11 @@ impl ValidationState {
                 .known_keys
                 .get(&envelope.key_id)
             {
-                key.verify(&envelope.content_bytes, envelope.signature.clone())?;
+                model::PackageRecord::verify(
+                    key.clone(),
+                    &envelope.content_bytes,
+                    &envelope.signature,
+                )?;
             } else {
                 return Err(ValidationError::KeyIDNotRecognized {
                     key_id: envelope.key_id.clone(),

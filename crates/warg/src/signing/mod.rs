@@ -72,7 +72,7 @@ pub mod tests {
         let (public, private) = generate_p256_pair();
         let msg = (0..255u8).collect::<Vec<u8>>();
         let signature = private.sign(&msg).unwrap();
-        public.verify(&msg, signature).unwrap();
+        public.verify(&msg, &signature).unwrap();
     }
 
     #[test]
@@ -84,7 +84,7 @@ pub mod tests {
         let alice_signature = alice_private.sign(&msg).unwrap();
         let bob_signature = bob_private.sign(&msg).unwrap();
 
-        assert!(bob_public.verify(&msg, alice_signature).is_err());
-        assert!(alice_public.verify(&msg, bob_signature).is_err());
+        assert!(bob_public.verify(&msg, &alice_signature).is_err());
+        assert!(alice_public.verify(&msg, &bob_signature).is_err());
     }
 }
