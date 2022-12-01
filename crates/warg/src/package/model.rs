@@ -9,7 +9,7 @@ use crate::version::Version;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageRecord {
     /// The hash of the previous package record envelope
-    pub prev: Option<hash::Hash>,
+    pub prev: Option<hash::Digest>,
     /// The version of the registry protocol used
     pub version: u32,
     /// When this record was published
@@ -20,6 +20,7 @@ pub struct PackageRecord {
 
 /// Each permission represents the ability to use the specified entry
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Permission {
     Release,
     Yank,
@@ -47,6 +48,7 @@ impl FromStr for Permission {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PackageEntry {
     /// Initializes a package log.
     /// Must be the first entry of every log and not appear elsewhere.
@@ -65,14 +67,14 @@ pub enum PackageEntry {
     /// Remove a permission from a key.
     /// The author of this entry must have the permission.
     RevokeFlat {
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         permission: Permission,
     },
     /// Release a version of a package.
     /// The version must not have been released yet.
     Release {
         version: Version,
-        content: hash::Hash,
+        content: hash::Digest,
     },
     /// Yank a version of a package.
     /// The version must have been released and not yanked.

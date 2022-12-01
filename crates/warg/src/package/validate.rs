@@ -20,21 +20,21 @@ pub enum ValidationError {
     InitialRecordDoesNotInit,
 
     #[error("The Key ID used to sign this envelope is not known to this package log")]
-    KeyIDNotRecognized { key_id: hash::Hash },
+    KeyIDNotRecognized { key_id: hash::Digest },
 
     #[error("A second \"init\" entry was found")]
     InitialEntryAfterBeginning,
 
     #[error("The key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         needed_permission: model::Permission,
     },
 
     #[error("Attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
         permission: model::Permission,
-        key_id: hash::Hash,
+        key_id: hash::Digest,
     },
 
     #[error("An entry attempted to release already released version {version}")]
@@ -82,7 +82,7 @@ pub enum ValidationState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationStateInit {
     /// Last record hash
-    last_record: hash::Hash,
+    last_record: hash::Digest,
     /// Last timestamp
     last_timestamp: SystemTime,
     /// The state known to entry validation
@@ -119,7 +119,7 @@ impl ValidationState {
 
     pub fn validate_record(
         self,
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         envelope: &Envelope<model::PackageRecord>,
     ) -> Result<ValidationState, ValidationError> {
         let record = &envelope.contents;
@@ -190,7 +190,7 @@ impl ValidationState {
 
     fn validate_record_entries(
         self,
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         record: &model::PackageRecord,
     ) -> Result<EntryValidationState, ValidationError> {
         let mut entry_validation_state = match self {
@@ -217,23 +217,23 @@ pub struct EntryValidationState {
     /// The hash algorithm used by this package
     hash_algorithm: hash::HashAlgorithm,
     /// The permissions associated with a given key_id
-    permissions: HashMap<hash::Hash, HashSet<model::Permission>>,
+    permissions: HashMap<hash::Digest, HashSet<model::Permission>>,
     /// The state of all releases
     releases: HashMap<Version, ReleaseState>,
     /// The relevant known keys to this
-    known_keys: HashMap<hash::Hash, PublicKey>,
+    known_keys: HashMap<hash::Digest, PublicKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReleaseState {
     Unreleased,
-    Released { content: hash::Hash },
+    Released { content: hash::Digest },
     Yanked,
 }
 
 impl EntryValidationState {
     pub fn validate_first(
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         entry: &model::PackageEntry,
     ) -> Result<Self, ValidationError> {
         match entry {
@@ -247,7 +247,7 @@ impl EntryValidationState {
                     HashSet::from([model::Permission::Release, model::Permission::Yank]),
                 )]),
                 releases: HashMap::default(),
-                known_keys: HashMap::from([(init_key.digest(), init_key.clone())]),
+                known_keys: HashMap::from([(init_key.fingerprint(), init_key.clone())]),
             }),
             _ => Err(ValidationError::FirstEntryIsNotInit),
         }
@@ -255,7 +255,7 @@ impl EntryValidationState {
 
     pub fn validate_next(
         mut self,
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         entry: &model::PackageEntry,
     ) -> Result<EntryValidationState, ValidationError> {
         if let Some(needed_permission) = entry.required_permission() {
@@ -267,7 +267,7 @@ impl EntryValidationState {
             model::PackageEntry::Init { .. } => return Err(ValidationError::InitialEntryAfterBeginning),
 
             model::PackageEntry::GrantFlat { key, permission } => {
-                let grant_key_id = key.digest();
+                let grant_key_id = key.fingerprint();
                 self.known_keys.insert(grant_key_id.clone(), key.clone());
 
                 match self.permissions.entry(grant_key_id.clone()) {
@@ -352,7 +352,7 @@ impl EntryValidationState {
 
     fn check_key_permission(
         &self,
-        key_id: hash::Hash,
+        key_id: hash::Digest,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
         if let Some(available_permissions) = self.permissions.get(&key_id) {
@@ -389,7 +389,7 @@ mod tests {
             version: 0,
             timestamp,
             entries: vec![model::PackageEntry::Init {
-                hash_algorithm: HashAlgorithm::SHA256,
+                hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
         };
@@ -405,16 +405,16 @@ mod tests {
         };
 
         let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::SHA256.digest(&envelope.content_bytes),
+            last_record: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
             last_timestamp: timestamp,
             entry_state: EntryValidationState {
-                hash_algorithm: HashAlgorithm::SHA256,
+                hash_algorithm: HashAlgorithm::Sha256,
                 permissions: HashMap::from([(
-                    alice_pub.digest(),
+                    alice_pub.fingerprint(),
                     HashSet::from([model::Permission::Release, model::Permission::Yank]),
                 )]),
                 releases: HashMap::default(),
-                known_keys: HashMap::from([(alice_pub.digest(), alice_pub.clone())]),
+                known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub.clone())]),
             },
         });
 

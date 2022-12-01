@@ -23,7 +23,7 @@ impl PublicKey {
         }
     }
 
-    /// Get the signature algorithm used for by this key
+    /// Get the encoded bytes of this key
     pub fn bytes(&self) -> Vec<u8> {
         match self {
             PublicKey::EcdsaP256(key) => key.to_encoded_point(true).as_bytes().to_vec(),
@@ -38,7 +38,7 @@ impl PublicKey {
     }
 
     /// Compute the digest of this key
-    pub fn digest(&self) -> hash::Hash {
+    pub fn fingerprint(&self) -> hash::Digest {
         self.signature_algorithm()
             .digest_algorithm()
             .digest(format!("{}", self).as_bytes())

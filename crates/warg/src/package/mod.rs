@@ -1,5 +1,6 @@
 use prost::Message;
 use thiserror::Error;
+use std::error::Error;
 
 use crate::hash::{self, HashParseError};
 use crate::signing::{self, SignatureParseError};
@@ -23,13 +24,13 @@ pub struct Envelope<Contents> {
     /// The serialized representation of the content
     pub content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
-    pub key_id: hash::Hash,
+    pub key_id: hash::Digest,
     /// The signature for the content_bytes
     pub signature: signing::Signature,
 }
 
 impl<Contents> Envelope<Contents> {
-    /// Create an envelope for some contents using a signature
+    /// Create an envelope for some contents using a signature.
     pub fn signed_contents(
         private_key: signing::PrivateKey,
         contents: Contents,
@@ -39,7 +40,7 @@ impl<Contents> Envelope<Contents> {
     {
         let content_bytes: Vec<u8> = contents.clone().into();
 
-        let key_id = private_key.public_key().digest();
+        let key_id = private_key.public_key().fingerprint();
         let signature = private_key.sign(&content_bytes)?;
         Ok(Envelope {
             contents,
@@ -60,13 +61,13 @@ impl<Contents> Envelope<Contents> {
         proto_envelope.encode_to_vec()
     }
 
-    /// Create an entire envelope from a byte vector
+    /// Create an entire envelope from a byte vector.
     /// This is the logical inverse of `Envelope::as_bytes`.
-    pub fn from_bytes<ContentsParseError>(
+    pub fn from_bytes(
         bytes: Vec<u8>,
-    ) -> Result<Self, ParseEnvelopeError<ContentsParseError>>
+    ) -> Result<Self, ParseEnvelopeError>
     where
-        Contents: for<'a> TryFrom<&'a [u8], Error = ContentsParseError>,
+        Contents: for<'a> TryFrom<&'a [u8], Error = ErrorBox>,
     {
         // Parse outer envelope
         let envelope = protobuf::Envelope::decode(&*bytes)?;
@@ -89,14 +90,16 @@ impl<Contents> Envelope<Contents> {
     }
 }
 
+type ErrorBox = Box<dyn Error + Send + Sync + 'static>;
+
 /// Errors that occur in the process of parsing an envelope from bytes
 #[derive(Error, Debug)]
-pub enum ParseEnvelopeError<ContentsParseError> {
+pub enum ParseEnvelopeError {
     #[error("Failed to parse the outer envelope protobuf message")]
     ProtobufEnvelopeParseError(#[from] prost::DecodeError),
 
     #[error("Failed to parse envelope contents from bytes")]
-    ContentsParseError(ContentsParseError),
+    ContentsParseError(ErrorBox),
 
     #[error("Failed to parse envelope key id")]
     KeyIDParseError(#[from] HashParseError),
@@ -108,26 +111,25 @@ pub enum ParseEnvelopeError<ContentsParseError> {
 // Deserialization
 
 impl TryFrom<&[u8]> for model::PackageRecord {
-    type Error = ();
+    type Error = ErrorBox;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        protobuf::PackageRecord::decode(bytes)
-            .map_err(|_| ())?
+        protobuf::PackageRecord::decode(bytes)?
             .try_into()
     }
 }
 
 impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
-    type Error = ();
+    type Error = ErrorBox;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
-        let prev: Option<hash::Hash> = match record.prev {
-            Some(hash_string) => Some(hash_string.parse().map_err(|_| ())?),
+        let prev: Option<hash::Digest> = match record.prev {
+            Some(hash_string) => Some(hash_string.parse()?),
             None => None,
         };
         let version = record.version;
-        let timestamp = record.time.ok_or(())?.try_into().map_err(|_| ())?;
-        let entries: Result<Vec<model::PackageEntry>, ()> = record
+        let timestamp = record.time.ok_or(Box::new(InvalidTimestampError))?.try_into()?;
+        let entries: Result<Vec<model::PackageEntry>, ErrorBox> = record
             .entries
             .into_iter()
             .map(|proto_entry| proto_entry.try_into())
@@ -143,48 +145,60 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
     }
 }
 
+#[derive(Error, Debug)]
+#[error("Empty or invalid timestamp in record")]
+struct InvalidTimestampError;
+
 impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
-    type Error = ();
+    type Error = ErrorBox;
 
     fn try_from(entry: protobuf::PackageEntry) -> Result<Self, Self::Error> {
-        let output = match entry.contents.ok_or(())? {
+        let output = match entry.contents.ok_or(Box::new(EmptyContentError))? {
             protobuf::package_entry::Contents::Init(init) => model::PackageEntry::Init {
-                hash_algorithm: init.hash_algorithm.parse().map_err(|_| ())?,
-                key: init.key.parse().map_err(|_| ())?,
+                hash_algorithm: init.hash_algorithm.parse()?,
+                key: init.key.parse()?,
             },
             protobuf::package_entry::Contents::GrantFlat(grant_flat) => model::PackageEntry::GrantFlat {
-                key: grant_flat.key.parse().map_err(|_| ())?,
+                key: grant_flat.key.parse()?,
                 permission: grant_flat.permission.try_into()?,
             },
             protobuf::package_entry::Contents::RevokeFlat(revoke_flat) => {
                 model::PackageEntry::RevokeFlat {
-                    key_id: revoke_flat.key_id.parse().map_err(|_| ())?,
+                    key_id: revoke_flat.key_id.parse()?,
                     permission: revoke_flat.permission.try_into()?,
                 }
             }
             protobuf::package_entry::Contents::Release(release) => model::PackageEntry::Release {
-                version: release.version.parse().map_err(|_| ())?,
-                content: release.content_hash.parse().map_err(|_| ())?,
+                version: release.version.parse().map_err(|error| Box::new(error) as ErrorBox)?,
+                content: release.content_hash.parse()?,
             },
             protobuf::package_entry::Contents::Yank(yank) => model::PackageEntry::Yank {
-                version: yank.version.parse().map_err(|_| ()).map_err(|_| ())?,
+                version: yank.version.parse()?,
             },
         };
         Ok(output)
     }
 }
 
+#[derive(Error, Debug)]
+#[error("No content in entry")]
+struct EmptyContentError;
+
 impl TryFrom<i32> for model::Permission {
-    type Error = ();
+    type Error = ErrorBox;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
-        let proto_perm = protobuf::Permission::from_i32(permission).ok_or(())?;
+        let proto_perm = protobuf::Permission::from_i32(permission).ok_or(Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
             protobuf::Permission::Release => Ok(model::Permission::Release),
             protobuf::Permission::Yank => Ok(model::Permission::Yank),
         }
     }
 }
+
+#[derive(Error, Debug)]
+#[error("The value {value} could not be parsed as a permission")]
+struct PermissionParseError { value: i32 }
 
 // Serialization
 
@@ -280,7 +294,7 @@ mod tests {
             timestamp: SystemTime::now(),
             entries: vec![
                 model::PackageEntry::Init {
-                    hash_algorithm: HashAlgorithm::SHA256,
+                    hash_algorithm: HashAlgorithm::Sha256,
                     key: alice_pub,
                 },
                 model::PackageEntry::GrantFlat {
@@ -288,7 +302,7 @@ mod tests {
                     permission: model::Permission::Release,
                 },
                 model::PackageEntry::RevokeFlat {
-                    key_id: bob_pub.digest(),
+                    key_id: bob_pub.fingerprint(),
                     permission: model::Permission::Release,
                 },
                 model::PackageEntry::Release {
@@ -297,7 +311,7 @@ mod tests {
                         minor: 2,
                         patch: 0,
                     },
-                    content: HashAlgorithm::SHA256.digest(&[0, 1, 2, 3]),
+                    content: HashAlgorithm::Sha256.digest(&[0, 1, 2, 3]),
                 },
             ],
         };

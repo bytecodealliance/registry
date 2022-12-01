@@ -1,4 +1,5 @@
 use std::{fmt, str::FromStr};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
@@ -13,8 +14,11 @@ impl fmt::Display for Version {
     }
 }
 
+#[derive(Error, Debug)]
 pub enum VersionParseError {
+    #[error("Version had wrong number of parts")]
     WrongNumberOfParts,
+    #[error("Version parts were not integers")]
     PartsNotIntegers,
 }
 
