@@ -1,6 +1,6 @@
 use prost::Message;
-use thiserror::Error;
 use std::error::Error;
+use thiserror::Error;
 
 use crate::hash::{self, HashParseError};
 use crate::signing::{self, SignatureParseError};
@@ -52,7 +52,7 @@ impl<Contents> Envelope<Contents> {
 
     /// Get the representation of the entire envelope as a byte vector.
     /// This is the logical inverse of `Envelope::from_bytes`.
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let proto_envelope = protobuf::Envelope {
             contents: self.content_bytes.clone(),
             key_id: self.key_id.to_string(),
@@ -63,9 +63,7 @@ impl<Contents> Envelope<Contents> {
 
     /// Create an entire envelope from a byte vector.
     /// This is the logical inverse of `Envelope::as_bytes`.
-    pub fn from_bytes(
-        bytes: Vec<u8>,
-    ) -> Result<Self, ParseEnvelopeError>
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
     where
         Contents: for<'a> TryFrom<&'a [u8], Error = ErrorBox>,
     {
@@ -76,7 +74,7 @@ impl<Contents> Envelope<Contents> {
         let contents = content_bytes
             .as_slice()
             .try_into()
-            .map_err(|error| ParseEnvelopeError::ContentsParseError(error))?;
+            .map_err(ParseEnvelopeError::ContentsParseError)?;
         // Read key ID and signature
         let key_id = envelope.key_id.parse()?;
         let signature = envelope.signature.parse()?;
@@ -114,8 +112,7 @@ impl TryFrom<&[u8]> for model::PackageRecord {
     type Error = ErrorBox;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        protobuf::PackageRecord::decode(bytes)?
-            .try_into()
+        protobuf::PackageRecord::decode(bytes)?.try_into()
     }
 }
 
@@ -128,7 +125,10 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
             None => None,
         };
         let version = record.version;
-        let timestamp = record.time.ok_or(Box::new(InvalidTimestampError))?.try_into()?;
+        let timestamp = record
+            .time
+            .ok_or_else(|| Box::new(InvalidTimestampError))?
+            .try_into()?;
         let entries: Result<Vec<model::PackageEntry>, ErrorBox> = record
             .entries
             .into_iter()
@@ -153,26 +153,28 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
     type Error = ErrorBox;
 
     fn try_from(entry: protobuf::PackageEntry) -> Result<Self, Self::Error> {
-        let output = match entry.contents.ok_or(Box::new(EmptyContentError))? {
-            protobuf::package_entry::Contents::Init(init) => model::PackageEntry::Init {
+        use protobuf::package_entry::Contents;
+        let output = match entry.contents.ok_or_else(|| Box::new(EmptyContentError))? {
+            Contents::Init(init) => model::PackageEntry::Init {
                 hash_algorithm: init.hash_algorithm.parse()?,
                 key: init.key.parse()?,
             },
-            protobuf::package_entry::Contents::GrantFlat(grant_flat) => model::PackageEntry::GrantFlat {
+            Contents::GrantFlat(grant_flat) => model::PackageEntry::GrantFlat {
                 key: grant_flat.key.parse()?,
                 permission: grant_flat.permission.try_into()?,
             },
-            protobuf::package_entry::Contents::RevokeFlat(revoke_flat) => {
-                model::PackageEntry::RevokeFlat {
-                    key_id: revoke_flat.key_id.parse()?,
-                    permission: revoke_flat.permission.try_into()?,
-                }
-            }
-            protobuf::package_entry::Contents::Release(release) => model::PackageEntry::Release {
-                version: release.version.parse().map_err(|error| Box::new(error) as ErrorBox)?,
+            Contents::RevokeFlat(revoke_flat) => model::PackageEntry::RevokeFlat {
+                key_id: revoke_flat.key_id.parse()?,
+                permission: revoke_flat.permission.try_into()?,
+            },
+            Contents::Release(release) => model::PackageEntry::Release {
+                version: release
+                    .version
+                    .parse()
+                    .map_err(|error| Box::new(error) as ErrorBox)?,
                 content: release.content_hash.parse()?,
             },
-            protobuf::package_entry::Contents::Yank(yank) => model::PackageEntry::Yank {
+            Contents::Yank(yank) => model::PackageEntry::Yank {
                 version: yank.version.parse()?,
             },
         };
@@ -188,7 +190,8 @@ impl TryFrom<i32> for model::Permission {
     type Error = ErrorBox;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
-        let proto_perm = protobuf::Permission::from_i32(permission).ok_or(Box::new(PermissionParseError { value: permission }))?;
+        let proto_perm = protobuf::Permission::from_i32(permission)
+            .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
             protobuf::Permission::Release => Ok(model::Permission::Release),
             protobuf::Permission::Yank => Ok(model::Permission::Yank),
@@ -198,7 +201,9 @@ impl TryFrom<i32> for model::Permission {
 
 #[derive(Error, Debug)]
 #[error("The value {value} could not be parsed as a permission")]
-struct PermissionParseError { value: i32 }
+struct PermissionParseError {
+    value: i32,
+}
 
 // Serialization
 
@@ -226,37 +231,36 @@ impl From<model::PackageRecord> for protobuf::PackageRecord {
 
 impl From<model::PackageEntry> for protobuf::PackageEntry {
     fn from(entry: model::PackageEntry) -> Self {
+        use protobuf::package_entry::Contents;
         let contents = match entry {
             model::PackageEntry::Init {
                 hash_algorithm,
                 key,
-            } => protobuf::package_entry::Contents::Init(protobuf::Init {
+            } => Contents::Init(protobuf::Init {
                 key: key.to_string(),
                 hash_algorithm: hash_algorithm.to_string(),
             }),
             model::PackageEntry::GrantFlat { key, permission } => {
-                protobuf::package_entry::Contents::GrantFlat(protobuf::GrantFlat {
+                Contents::GrantFlat(protobuf::GrantFlat {
                     key: key.to_string(),
                     permission: permission.into(),
                 })
             }
             model::PackageEntry::RevokeFlat { key_id, permission } => {
-                protobuf::package_entry::Contents::RevokeFlat(protobuf::RevokeFlat {
+                Contents::RevokeFlat(protobuf::RevokeFlat {
                     key_id: key_id.to_string(),
                     permission: permission.into(),
                 })
             }
             model::PackageEntry::Release { version, content } => {
-                protobuf::package_entry::Contents::Release(protobuf::Release {
+                Contents::Release(protobuf::Release {
                     version: version.to_string(),
                     content_hash: content.to_string(),
                 })
             }
-            model::PackageEntry::Yank { version } => {
-                protobuf::package_entry::Contents::Yank(protobuf::Yank {
-                    version: version.to_string(),
-                })
-            }
+            model::PackageEntry::Yank { version } => Contents::Yank(protobuf::Yank {
+                version: version.to_string(),
+            }),
         };
         let contents = Some(contents);
         protobuf::PackageEntry { contents }
@@ -279,7 +283,7 @@ mod tests {
 
     use super::*;
 
-    use crate::hash::HashAlgorithm as HashAlgorithm;
+    use crate::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
     use crate::version::Version;
 
@@ -321,7 +325,7 @@ mod tests {
             Err(error) => panic!("Failed to sign envelope 1: {:?}", error),
         };
 
-        let bytes = first_envelope.as_bytes();
+        let bytes = first_envelope.to_bytes();
 
         let second_envelope: Envelope<model::PackageRecord> = match Envelope::from_bytes(bytes) {
             Ok(value) => value,

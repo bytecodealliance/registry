@@ -40,7 +40,9 @@ impl PrivateKey {
 
     pub fn public_key(&self) -> PublicKey {
         match self.0.expose_secret() {
-            PrivateKeyInner::EcdsaP256(key) => PublicKey::EcdsaP256(p256::ecdsa::VerifyingKey::from(key)),
+            PrivateKeyInner::EcdsaP256(key) => {
+                PublicKey::EcdsaP256(p256::ecdsa::VerifyingKey::from(key))
+            }
         }
     }
 }

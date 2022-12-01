@@ -78,9 +78,7 @@ pub enum PackageEntry {
     },
     /// Yank a version of a package.
     /// The version must have been released and not yanked.
-    Yank {
-        version: Version,
-    },
+    Yank { version: Version },
 }
 
 impl PackageEntry {
