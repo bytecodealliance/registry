@@ -7,14 +7,12 @@ use crate::hash;
 pub mod model;
 pub mod validate;
 
-use crate::{protobuf, Encode, Signable};
+use crate::{protobuf, Decode, Encode, Signable};
 
 // Deserialization
 
-impl TryFrom<&[u8]> for model::PackageRecord {
-    type Error = Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+impl Decode for model::PackageRecord {
+    fn decode(bytes: &[u8]) -> Result<Self, Error> {
         protobuf::PackageRecord::decode(bytes)?.try_into()
     }
 }
