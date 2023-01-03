@@ -83,9 +83,9 @@ pub enum ValidationState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationStateInit {
     /// Last record hash
-    pub last_record: hash::Digest,
+    last_record: hash::Digest,
     /// Last timestamp
-    pub last_timestamp: SystemTime,
+    last_timestamp: SystemTime,
     /// The state known to entry validation
     pub entry_state: EntryValidationState,
 }
@@ -95,7 +95,7 @@ impl ValidationState {
     /// package record envelope has been processed.
     pub fn validate_envelope(
         self,
-        envelope: &Envelope<model::PackageRecord>,
+        envelope: &Envelope<model::OperatorRecord>,
     ) -> Result<ValidationState, ValidationError> {
         let state = self.validate_record(envelope.key_id.clone(), envelope)?;
 
@@ -105,7 +105,7 @@ impl ValidationState {
                 .known_keys
                 .get(&envelope.key_id)
             {
-                model::PackageRecord::verify(
+                model::OperatorRecord::verify(
                     key.clone(),
                     &envelope.content_bytes,
                     &envelope.signature,
@@ -125,7 +125,7 @@ impl ValidationState {
     pub fn validate_record(
         self,
         key_id: signing::KeyID,
-        envelope: &Envelope<model::PackageRecord>,
+        envelope: &Envelope<model::OperatorRecord>,
     ) -> Result<ValidationState, ValidationError> {
         let record = &envelope.contents;
 
@@ -150,7 +150,7 @@ impl ValidationState {
         }))
     }
 
-    fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
+    fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
         match (&self, &record.prev) {
             (ValidationState::Uninitialized, None) => Ok(()),
             (ValidationState::Uninitialized, Some(_)) => {
@@ -176,7 +176,7 @@ impl ValidationState {
 
     fn validate_record_version(
         &self,
-        record: &model::PackageRecord,
+        record: &model::OperatorRecord,
     ) -> Result<(), ValidationError> {
         if record.version == 0 {
             Ok(())
@@ -189,7 +189,7 @@ impl ValidationState {
 
     fn validate_record_timestamp(
         &self,
-        record: &model::PackageRecord,
+        record: &model::OperatorRecord,
     ) -> Result<(), ValidationError> {
         if let ValidationState::Initialized(state) = &self {
             if record.timestamp < state.last_timestamp {
@@ -202,7 +202,7 @@ impl ValidationState {
     fn validate_record_entries(
         self,
         key_id: signing::KeyID,
-        record: &model::PackageRecord,
+        record: &model::OperatorRecord,
     ) -> Result<EntryValidationState, ValidationError> {
         let mut entry_validation_state = match self {
             ValidationState::Uninitialized => None,
@@ -229,10 +229,8 @@ pub struct EntryValidationState {
     pub hash_algorithm: hash::HashAlgorithm,
     /// The permissions associated with a given key_id
     pub permissions: HashMap<signing::KeyID, HashSet<model::Permission>>,
-    /// The state of all releases
-    pub releases: HashMap<Version, ReleaseState>,
     /// The relevant known keys to this
-    known_keys: HashMap<signing::KeyID, signing::PublicKey>,
+    pub known_keys: HashMap<signing::KeyID, signing::PublicKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,19 +243,15 @@ pub enum ReleaseState {
 impl EntryValidationState {
     pub fn validate_first(
         key_id: signing::KeyID,
-        entry: &model::PackageEntry,
+        entry: &model::OperatorEntry,
     ) -> Result<Self, ValidationError> {
         match entry {
-            model::PackageEntry::Init {
+            model::OperatorEntry::Init {
                 hash_algorithm,
                 key: init_key,
             } => Ok(EntryValidationState {
                 hash_algorithm: *hash_algorithm,
-                permissions: HashMap::from([(
-                    key_id,
-                    HashSet::from([model::Permission::Release, model::Permission::Yank]),
-                )]),
-                releases: HashMap::default(),
+                permissions: HashMap::from([(key_id, HashSet::from([model::Permission::Commit]))]),
                 known_keys: HashMap::from([(init_key.fingerprint(), init_key.clone())]),
             }),
             _ => Err(ValidationError::FirstEntryIsNotInit),
@@ -267,17 +261,13 @@ impl EntryValidationState {
     pub fn validate_next(
         mut self,
         key_id: signing::KeyID,
-        entry: &model::PackageEntry,
+        entry: &model::OperatorEntry,
     ) -> Result<EntryValidationState, ValidationError> {
-        if let Some(needed_permission) = entry.required_permission() {
-            self.check_key_permission(key_id.clone(), needed_permission)?;
-        }
-
         match entry {
             // Invalid re-initialization
-            model::PackageEntry::Init { .. } => Err(ValidationError::InitialEntryAfterBeginning),
+            model::OperatorEntry::Init { .. } => Err(ValidationError::InitialEntryAfterBeginning),
 
-            model::PackageEntry::GrantFlat { key, permission } => {
+            model::OperatorEntry::GrantFlat { key, permission } => {
                 // Check that the current key has the permission they're trying to revoke
                 self.check_key_permission(key_id.clone(), *permission)?;
 
@@ -296,20 +286,17 @@ impl EntryValidationState {
                 Ok(self)
             }
 
-            model::PackageEntry::RevokeFlat {
-                key_id: revoke_key_id,
-                permission,
-            } => {
+            model::OperatorEntry::RevokeFlat { key_id, permission } => {
                 // Check that the current key has the permission they're trying to revoke
                 self.check_key_permission(key_id.clone(), *permission)?;
 
-                match self.permissions.entry(revoke_key_id.clone()) {
+                match self.permissions.entry(key_id.clone()) {
                     hashbrown::hash_map::Entry::Occupied(mut entry) => {
                         let permissions_set = entry.get_mut();
                         if !permissions_set.contains(permission) {
                             return Err(ValidationError::PermissionNotFoundToRevoke {
                                 permission: *permission,
-                                key_id: revoke_key_id.clone(),
+                                key_id: key_id.clone(),
                             });
                         }
                         entry.get_mut().remove(permission);
@@ -317,55 +304,11 @@ impl EntryValidationState {
                     hashbrown::hash_map::Entry::Vacant(_) => {
                         return Err(ValidationError::PermissionNotFoundToRevoke {
                             permission: *permission,
-                            key_id: revoke_key_id.clone(),
+                            key_id: key_id.clone(),
                         })
                     }
                 };
                 Ok(self)
-            }
-
-            model::PackageEntry::Release { version, content } => {
-                let version = version.clone();
-                let content = content.clone();
-
-                // Check the state of the specified version
-                let old_state = self
-                    .releases
-                    .get(&version)
-                    .cloned()
-                    .unwrap_or(ReleaseState::Unreleased);
-
-                match old_state {
-                    ReleaseState::Unreleased => {
-                        self.releases
-                            .insert(version, ReleaseState::Released { content });
-                        Ok(self)
-                    }
-                    ReleaseState::Released { content: _ } => {
-                        Err(ValidationError::ReleaseOfReleased { version })
-                    }
-                    ReleaseState::Yanked => Err(ValidationError::ReleaseOfReleased { version }),
-                }
-            }
-
-            model::PackageEntry::Yank { version } => {
-                let version = version.clone();
-
-                // Check the state of the specified version
-                let old_state = self
-                    .releases
-                    .get(&version)
-                    .cloned()
-                    .unwrap_or(ReleaseState::Unreleased);
-
-                match old_state {
-                    ReleaseState::Unreleased => Err(ValidationError::YankOfUnreleased { version }),
-                    ReleaseState::Released { content: _ } => {
-                        self.releases.insert(version, ReleaseState::Yanked);
-                        Ok(self)
-                    }
-                    ReleaseState::Yanked => Err(ValidationError::YankOfYanked { version }),
-                }
             }
         }
     }
@@ -397,18 +340,18 @@ mod tests {
     use crate::signing::tests::generate_p256_pair;
 
     use crate::hash::HashAlgorithm;
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
 
     #[test]
     fn test_validate_base_log() {
         let (alice_pub, alice_priv) = generate_p256_pair();
 
         let timestamp = SystemTime::now();
-        let record = model::PackageRecord {
+        let record = model::OperatorRecord {
             prev: None,
             version: 0,
             timestamp,
-            entries: vec![model::PackageEntry::Init {
+            entries: vec![model::OperatorEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
@@ -431,113 +374,9 @@ mod tests {
                 hash_algorithm: HashAlgorithm::Sha256,
                 permissions: HashMap::from([(
                     alice_pub.fingerprint(),
-                    HashSet::from([model::Permission::Release, model::Permission::Yank]),
+                    HashSet::from([model::Permission::Commit]),
                 )]),
-                releases: HashMap::default(),
                 known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub.clone())]),
-            },
-        });
-
-        assert_eq!(expected_state, validation_state);
-    }
-
-    #[test]
-    fn test_validate_larger_log() {
-        let (alice_pub, alice_priv) = generate_p256_pair();
-        let (bob_pub, bob_priv) = generate_p256_pair();
-        let hash_algo = hash::HashAlgorithm::Sha256;
-
-        // In envelope 0: alice inits and grants bob release
-        let timestamp0 = SystemTime::now();
-        let record0 = model::PackageRecord {
-            prev: None,
-            version: 0,
-            timestamp: timestamp0,
-            entries: vec![
-                model::PackageEntry::Init {
-                    hash_algorithm: hash_algo,
-                    key: alice_pub.clone(),
-                },
-                model::PackageEntry::GrantFlat {
-                    key: bob_pub.clone(),
-                    permission: model::Permission::Release,
-                },
-            ],
-        };
-        let envelope0 = match Envelope::signed_contents(&alice_priv, record0) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope0: {:?}", error),
-        };
-
-        // In envelope 1: bob releases 1.1.0
-        let timestamp1 = timestamp0 + Duration::from_secs(1);
-        let content = hash_algo.digest(&[0, 1, 2, 3]);
-        let record1 = model::PackageRecord {
-            prev: Some(hash_algo.digest(&envelope0.content_bytes)),
-            version: 0,
-            timestamp: timestamp1,
-            entries: vec![model::PackageEntry::Release {
-                version: Version::new(1, 1, 0),
-                content,
-            }],
-        };
-        let envelope1 = match Envelope::signed_contents(&bob_priv, record1) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope1: {:?}", error),
-        };
-
-        // In envelope 2: alice revokes bobs access and yanks 1.1.0
-        let timestamp2 = timestamp1 + Duration::from_secs(1);
-        let record2 = model::PackageRecord {
-            prev: Some(hash_algo.digest(&envelope1.content_bytes)),
-            version: 0,
-            timestamp: timestamp2,
-            entries: vec![
-                model::PackageEntry::RevokeFlat {
-                    key_id: bob_pub.fingerprint(),
-                    permission: model::Permission::Release,
-                },
-                model::PackageEntry::Yank {
-                    version: Version::new(1, 1, 0),
-                },
-            ],
-        };
-        let envelope2 = match Envelope::signed_contents(&alice_priv, record2) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope2: {:?}", error),
-        };
-
-        let mut validation_state =
-            match ValidationState::Uninitialized.validate_envelope(&envelope0) {
-                Ok(value) => value,
-                Err(error) => panic!("Failed to validate0: {:?}", error),
-            };
-        validation_state = match validation_state.validate_envelope(&envelope1) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate1: {:?}", error),
-        };
-        validation_state = match validation_state.validate_envelope(&envelope2) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate2: {:?}", error),
-        };
-
-        let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::Sha256.digest(&envelope2.content_bytes),
-            last_timestamp: timestamp2,
-            entry_state: EntryValidationState {
-                hash_algorithm: HashAlgorithm::Sha256,
-                permissions: HashMap::from([
-                    (
-                        alice_pub.fingerprint(),
-                        HashSet::from([model::Permission::Release, model::Permission::Yank]),
-                    ),
-                    (bob_pub.fingerprint(), HashSet::default()),
-                ]),
-                releases: HashMap::from([(Version::new(1, 1, 0), ReleaseState::Yanked)]),
-                known_keys: HashMap::from([
-                    (alice_pub.fingerprint(), alice_pub),
-                    (bob_pub.fingerprint(), bob_pub),
-                ]),
             },
         });
 
