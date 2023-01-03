@@ -39,7 +39,7 @@ fn execute_test(test: Test) {
 
             let envelope = Envelope::signed_contents(&key, record).unwrap();
 
-            *last = Some(hash::HashAlgorithm::Sha256.digest(&envelope.content_bytes));
+            *last = Some(hash::HashAlgorithm::Sha256.digest(envelope.content_bytes()));
 
             Some(envelope)
         })

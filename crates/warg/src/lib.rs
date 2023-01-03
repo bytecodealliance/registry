@@ -27,7 +27,7 @@ pub mod protobuf {
     }
 }
 
-use std::error::Error;
+use anyhow::Error;
 
 use prost::Message;
 use thiserror::Error;
@@ -42,13 +42,13 @@ use signing::SignatureParseError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Envelope<Contents> {
     /// The content represented by content_bytes
-    pub contents: Contents,
+    contents: Contents,
     /// The serialized representation of the content
-    pub content_bytes: Vec<u8>,
+    content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
-    pub key_id: signing::KeyID,
+    key_id: signing::KeyID,
     /// The signature for the content_bytes
-    pub signature: signing::Signature,
+    signature: signing::Signature,
 }
 
 impl<Contents> Envelope<Contents> {
@@ -63,13 +63,18 @@ impl<Contents> Envelope<Contents> {
         let content_bytes: Vec<u8> = contents.encode();
 
         let key_id = private_key.public_key().fingerprint();
-        let signature = contents.signature(private_key)?;
+        let signature = contents.sign(private_key)?;
         Ok(Envelope {
             contents,
             content_bytes,
             key_id,
             signature,
         })
+    }
+
+    /// Get the byte representation of the envelope contents.
+    pub fn content_bytes(&self) -> &[u8] {
+        &self.content_bytes
     }
 
     /// Get the representation of the entire envelope as a byte vector.
@@ -87,7 +92,7 @@ impl<Contents> Envelope<Contents> {
     /// This is the logical inverse of `Envelope::as_bytes`.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
     where
-        Contents: for<'a> TryFrom<&'a [u8], Error = ErrorBox>,
+        Contents: for<'a> TryFrom<&'a [u8], Error = Error>,
     {
         // Parse outer envelope
         let envelope = protobuf::Envelope::decode(&*bytes)?;
@@ -95,8 +100,7 @@ impl<Contents> Envelope<Contents> {
         let content_bytes = envelope.contents.clone();
         let contents = content_bytes
             .as_slice()
-            .try_into()
-            .map_err(ParseEnvelopeError::ContentsParseError)?;
+            .try_into()?;
         // Read key ID and signature
         let key_id = envelope.key_id.into();
         let signature = envelope.signature.parse()?;
@@ -110,8 +114,6 @@ impl<Contents> Envelope<Contents> {
     }
 }
 
-type ErrorBox = Box<dyn Error + Send + Sync + 'static>;
-
 /// Errors that occur in the process of parsing an envelope from bytes
 #[derive(Error, Debug)]
 pub enum ParseEnvelopeError {
@@ -119,7 +121,7 @@ pub enum ParseEnvelopeError {
     ProtobufEnvelopeParseError(#[from] prost::DecodeError),
 
     #[error("Failed to parse envelope contents from bytes")]
-    ContentsParseError(ErrorBox),
+    ContentsParseError(#[from] Error),
 
     #[error("Failed to parse envelope key id")]
     KeyIDParseError(#[from] HashParseError),
@@ -131,11 +133,11 @@ pub enum ParseEnvelopeError {
 pub trait Signable: Encode {
     const PREFIX: &'static [u8];
 
-    fn signature(
+    fn sign(
         &self,
         private_key: &signing::PrivateKey,
     ) -> Result<signing::Signature, SignatureError> {
-        let prefixed_content = [Self::PREFIX, self.encode().as_slice()].concat();
+        let prefixed_content = [Self::PREFIX, b":", self.encode().as_slice()].concat();
         private_key.sign(&prefixed_content)
     }
 
@@ -144,7 +146,7 @@ pub trait Signable: Encode {
         msg: &[u8],
         signature: &signing::Signature,
     ) -> Result<(), SignatureError> {
-        let prefixed_content = [Self::PREFIX, msg].concat();
+        let prefixed_content = [Self::PREFIX, b":", msg].concat();
         public_key.verify(&prefixed_content, signature)
     }
 }

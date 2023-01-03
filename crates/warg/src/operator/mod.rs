@@ -1,4 +1,5 @@
 use prost::Message;
+use anyhow::Error;
 use thiserror::Error;
 
 use crate::hash;
@@ -6,12 +7,12 @@ use crate::hash;
 pub mod model;
 pub mod validate;
 
-use crate::{protobuf, Encode, ErrorBox, Signable};
+use crate::{protobuf, Encode, Signable};
 
 // Deserialization
 
 impl TryFrom<&[u8]> for model::OperatorRecord {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         protobuf::OperatorRecord::decode(bytes)?.try_into()
@@ -19,7 +20,7 @@ impl TryFrom<&[u8]> for model::OperatorRecord {
 }
 
 impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(record: protobuf::OperatorRecord) -> Result<Self, Self::Error> {
         let prev: Option<hash::Digest> = match record.prev {
@@ -31,7 +32,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
         let prost_timestamp = protobuf::pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
-        let entries: Result<Vec<model::OperatorEntry>, ErrorBox> = record
+        let entries: Result<Vec<model::OperatorEntry>, Error> = record
             .entries
             .into_iter()
             .map(|proto_entry| proto_entry.try_into())
@@ -52,7 +53,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
 struct InvalidTimestampError;
 
 impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(entry: protobuf::OperatorEntry) -> Result<Self, Self::Error> {
         use protobuf::operator_entry::Contents;
@@ -79,14 +80,14 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
 struct EmptyContentError;
 
 impl TryFrom<i32> for model::Permission {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
         let proto_perm = protobuf::OperatorPermission::from_i32(permission)
             .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
             protobuf::OperatorPermission::Unspecified => {
-                Err(Box::new(PermissionParseError { value: permission }))
+                Err(Error::new(PermissionParseError { value: permission }))
             }
             protobuf::OperatorPermission::Commit => Ok(model::Permission::Commit),
         }
@@ -102,7 +103,7 @@ struct PermissionParseError {
 // Serialization
 
 impl Signable for model::OperatorRecord {
-    const PREFIX: &'static [u8] = b"WARG-OPERATOR-RECORD-SIGNATURE-V0:";
+    const PREFIX: &'static [u8] = b"WARG-OPERATOR-RECORD-SIGNATURE-V0";
 }
 
 impl Encode for model::OperatorRecord {
