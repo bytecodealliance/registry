@@ -1,4 +1,5 @@
 use prost::Message;
+use anyhow::Error;
 use thiserror::Error;
 
 use crate::hash;
@@ -6,12 +7,12 @@ use crate::hash;
 pub mod model;
 pub mod validate;
 
-use crate::{protobuf, Encode, ErrorBox, Signable};
+use crate::{protobuf, Encode, Signable};
 
 // Deserialization
 
 impl TryFrom<&[u8]> for model::PackageRecord {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         protobuf::PackageRecord::decode(bytes)?.try_into()
@@ -19,7 +20,7 @@ impl TryFrom<&[u8]> for model::PackageRecord {
 }
 
 impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
         let prev: Option<hash::Digest> = match record.prev {
@@ -31,7 +32,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
         let prost_timestamp = protobuf::pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
-        let entries: Result<Vec<model::PackageEntry>, ErrorBox> = record
+        let entries: Result<Vec<model::PackageEntry>, Error> = record
             .entries
             .into_iter()
             .map(|proto_entry| proto_entry.try_into())
@@ -52,7 +53,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
 struct InvalidTimestampError;
 
 impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(entry: protobuf::PackageEntry) -> Result<Self, Self::Error> {
         use protobuf::package_entry::Contents;
@@ -73,7 +74,7 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
                 version: release
                     .version
                     .parse()
-                    .map_err(|error| Box::new(error) as ErrorBox)?,
+                    .map_err(|error| Error::new(error) as Error)?,
                 content: release.content_hash.parse()?,
             },
             Contents::Yank(yank) => model::PackageEntry::Yank {
@@ -89,14 +90,14 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
 struct EmptyContentError;
 
 impl TryFrom<i32> for model::Permission {
-    type Error = ErrorBox;
+    type Error = Error;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
         let proto_perm = protobuf::PackagePermission::from_i32(permission)
             .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
             protobuf::PackagePermission::Unspecified => {
-                Err(Box::new(PermissionParseError { value: permission }))
+                Err(Error::new(PermissionParseError { value: permission }))
             }
             protobuf::PackagePermission::Release => Ok(model::Permission::Release),
             protobuf::PackagePermission::Yank => Ok(model::Permission::Yank),
@@ -113,7 +114,7 @@ struct PermissionParseError {
 // Serialization
 
 impl Signable for model::PackageRecord {
-    const PREFIX: &'static [u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0:";
+    const PREFIX: &'static [u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0";
 }
 
 impl Encode for model::PackageRecord {
