@@ -95,7 +95,9 @@ impl TryFrom<i32> for model::Permission {
         let proto_perm = protobuf::PackagePermission::from_i32(permission)
             .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
-            protobuf::PackagePermission::Unspecified => Err(Box::new(PermissionParseError { value: permission })),
+            protobuf::PackagePermission::Unspecified => {
+                Err(Box::new(PermissionParseError { value: permission }))
+            }
             protobuf::PackagePermission::Release => Ok(model::Permission::Release),
             protobuf::PackagePermission::Yank => Ok(model::Permission::Yank),
         }

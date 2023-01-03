@@ -85,7 +85,9 @@ impl TryFrom<i32> for model::Permission {
         let proto_perm = protobuf::OperatorPermission::from_i32(permission)
             .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
         match proto_perm {
-            protobuf::OperatorPermission::Unspecified => Err(Box::new(PermissionParseError { value: permission })),
+            protobuf::OperatorPermission::Unspecified => {
+                Err(Box::new(PermissionParseError { value: permission }))
+            }
             protobuf::OperatorPermission::Commit => Ok(model::Permission::Commit),
         }
     }
