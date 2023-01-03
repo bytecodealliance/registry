@@ -1,15 +1,22 @@
 use std::fs::{self, DirEntry};
 
 use hashbrown::HashMap;
-use serde::{Serialize, Deserialize};
-use warg_protocol::{protobuf, package::{self, validate::ValidationState}, signing, hash, Envelope};
-use serde_json;
-use semver::Version;
 use pretty_assertions::assert_eq;
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use warg_protocol::{
+    hash,
+    package::{self, validate::ValidationState},
+    protobuf, signing, Envelope,
+};
 
 #[test]
 fn test_package_logs() {
-    let mut entries: Vec<DirEntry> = fs::read_dir("./tests/package-logs").unwrap().collect::<Result<Vec<DirEntry>, _>>().unwrap();
+    let mut entries: Vec<DirEntry> = fs::read_dir("./tests/package-logs")
+        .unwrap()
+        .collect::<Result<Vec<DirEntry>, _>>()
+        .unwrap();
     entries.sort_by_key(|e| e.file_name());
 
     for entry in entries {
@@ -21,19 +28,23 @@ fn test_package_logs() {
 }
 
 fn execute_test(test: Test) {
-    let envelopes: Vec<Envelope<package::model::PackageRecord>> = test.input.into_iter().scan(None, |last, e_data| {
-        dbg!(e_data.contents.clone());
-        let key: signing::PrivateKey = e_data.key.parse().unwrap();
-        let mut record: package::model::PackageRecord = e_data.contents.try_into().unwrap();
+    let envelopes: Vec<Envelope<package::model::PackageRecord>> = test
+        .input
+        .into_iter()
+        .scan(None, |last, e_data| {
+            dbg!(e_data.contents.clone());
+            let key: signing::PrivateKey = e_data.key.parse().unwrap();
+            let mut record: package::model::PackageRecord = e_data.contents.try_into().unwrap();
 
-        record.prev = last.clone();
+            record.prev = last.clone();
 
-        let envelope = Envelope::signed_contents(&key, record).unwrap();
+            let envelope = Envelope::signed_contents(&key, record).unwrap();
 
-        *last = Some(hash::HashAlgorithm::Sha256.digest(&envelope.content_bytes));
+            *last = Some(hash::HashAlgorithm::Sha256.digest(&envelope.content_bytes));
 
-        Some(envelope)
-    }).collect();
+            Some(envelope)
+        })
+        .collect();
 
     let mut validation_state = Ok(package::validate::ValidationState::Uninitialized);
 
@@ -52,8 +63,10 @@ fn execute_test(test: Test) {
             } else {
                 panic!("Test did not initialize state. Test input must not be empty.");
             }
+        }
+        Err(error) => PackageStateSummary::Invalid {
+            error: format!("{}", error),
         },
-        Err(error) => PackageStateSummary::Invalid { error: format!("{}", error) },
     };
 
     assert_eq!(test.output, result);
@@ -62,13 +75,13 @@ fn execute_test(test: Test) {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Test {
     input: Vec<EnvelopeData>,
-    output: PackageStateSummary
+    output: PackageStateSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnvelopeData {
     key: String,
-    contents: protobuf::PackageRecord
+    contents: protobuf::PackageRecord,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,7 +91,9 @@ pub enum PackageStateSummary {
         permissions: HashMap<String, Vec<String>>,
         releases: HashMap<String, ReleaseStateSummary>,
     },
-    Invalid { error: String }
+    Invalid {
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,14 +118,13 @@ impl From<package::validate::EntryValidationState> for PackageStateSummary {
             })
             .collect();
 
-        let mut releases: Vec<(Version, package::validate::ReleaseState)> = state
-            .releases
+        let mut releases: Vec<(Version, package::validate::ReleaseState)> =
+            state.releases.into_iter().collect();
+
+        releases.sort_by_key(|(v, _s)| v.clone());
+
+        let releases = releases
             .into_iter()
-            .collect();
-
-        releases.sort_by_key(|(v,_s)| v.clone());
-
-        let releases = releases.into_iter()
             .map(|(k, v)| (format!("{}", k), v.into()))
             .collect();
 
