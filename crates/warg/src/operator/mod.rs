@@ -1,5 +1,5 @@
 use prost::Message;
-use anyhow::Error;
+use anyhow::{Error, Context};
 use thiserror::Error;
 
 use crate::hash;
@@ -7,14 +7,12 @@ use crate::hash;
 pub mod model;
 pub mod validate;
 
-use crate::{protobuf, Encode, Signable};
+use crate::{protobuf, Decode, Encode, Signable};
 
 // Deserialization
 
-impl TryFrom<&[u8]> for model::OperatorRecord {
-    type Error = Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+impl Decode for model::OperatorRecord {
+    fn decode(bytes: &[u8]) -> Result<Self, Error> {
         protobuf::OperatorRecord::decode(bytes)?.try_into()
     }
 }
@@ -28,7 +26,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
             None => None,
         };
         let version = record.version;
-        let pbjson_timestamp = record.time.ok_or_else(|| Box::new(InvalidTimestampError))?;
+        let pbjson_timestamp = record.time.context(InvalidTimestampError)?;
         let prost_timestamp = protobuf::pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
@@ -197,10 +195,8 @@ mod tests {
             ],
         };
 
-        let first_envelope = match Envelope::signed_contents(&alice_priv, record) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope 1: {:?}", error),
-        };
+        let first_envelope = Envelope::signed_contents(&alice_priv, record)
+                .expect("Failed to sign envelope 1");
 
         let bytes = first_envelope.to_bytes();
 

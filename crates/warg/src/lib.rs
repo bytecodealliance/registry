@@ -92,15 +92,14 @@ impl<Contents> Envelope<Contents> {
     /// This is the logical inverse of `Envelope::as_bytes`.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
     where
-        Contents: for<'a> TryFrom<&'a [u8], Error = Error>,
+        Contents: Decode,
     {
         // Parse outer envelope
         let envelope = protobuf::Envelope::decode(&*bytes)?;
         // Parse contents
         let content_bytes = envelope.contents.clone();
-        let contents = content_bytes
-            .as_slice()
-            .try_into()?;
+        let contents = Contents::decode(content_bytes.as_slice())?;
+
         // Read key ID and signature
         let key_id = envelope.key_id.into();
         let signature = envelope.signature.parse()?;
@@ -149,6 +148,10 @@ pub trait Signable: Encode {
         let prefixed_content = [Self::PREFIX, b":", msg].concat();
         public_key.verify(&prefixed_content, signature)
     }
+}
+
+pub trait Decode: Sized {
+    fn decode(bytes: &[u8]) -> Result<Self, Error>;
 }
 
 pub trait Encode {
