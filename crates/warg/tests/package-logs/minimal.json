@@ -1,0 +1,36 @@
+{
+    "input": [
+        {
+            "key": "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=",
+            "contents": {
+                "prev": null,
+                "version": 0,
+                "time": "2022-12-16T20:05:20.153436500+00:00",
+                "entries": [
+                    {
+                        "init": {
+                            "key": "ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF",
+                            "hashAlgorithm":"sha256"
+                        }
+                    },
+                    {
+                        "grantFlat": {
+                            "key": "ecdsa-p256:A4yBQt9Im8xnO9Sr9PT7OrOUQP8Olijcq1dPwtdTpigm",
+                            "permission": "PACKAGE_PERMISSION_RELEASE"
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "output": {
+        "Valid": {
+            "hash_algorithm": "sha256",
+            "permissions": {
+                "sha256:1tm0zQd6gpwCdSM784Q8gpTiUN/MgrjqFXRekpgqgg0=": ["release", "yank"],
+                "sha256:giXncO6CqKl0x3MrnKJG1wsfA9ydvSX1gBxctFXe5Qg=": ["release"]
+            },
+            "releases": {}
+        }
+    }
+}

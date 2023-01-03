@@ -30,7 +30,7 @@ impl HashAlgorithm {
 impl fmt::Display for HashAlgorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HashAlgorithm::Sha256 => write!(f, "SHA256"),
+            HashAlgorithm::Sha256 => write!(f, "sha256"),
         }
     }
 }
@@ -40,7 +40,7 @@ impl FromStr for HashAlgorithm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "SHA256" => Ok(HashAlgorithm::Sha256),
+            "sha256" => Ok(HashAlgorithm::Sha256),
             _ => Err(HashAlgorithmParseError {
                 value: s.to_owned(),
             }),

@@ -113,3 +113,23 @@ impl From<String> for KeyID {
         KeyID(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_roundtrip_alice() {
+        let key_str = "ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF";
+        let pub_key: PublicKey = key_str.parse().unwrap();
+        assert_eq!(key_str, &format!("{pub_key}"));
+    }
+
+    #[test]
+    fn test_roundtrip_bob() {
+        let key_str = "ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu";
+        let pub_key: PublicKey = key_str.parse().unwrap();
+        assert_eq!(key_str, &format!("{pub_key}"));
+    }
+}

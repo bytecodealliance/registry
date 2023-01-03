@@ -114,3 +114,16 @@ impl From<p256::ecdsa::SigningKey> for PrivateKey {
         PrivateKey(Secret::from(PrivateKeyInner::EcdsaP256(key)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_roundtrip() {
+        let key_str = "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=";
+        let pub_key: PrivateKey = key_str.parse().unwrap();
+        assert_eq!(key_str, &format!("{pub_key}"));
+    }
+}
