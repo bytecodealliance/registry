@@ -8,10 +8,10 @@ use alloc::vec::Vec;
 
 use digest::Digest;
 
-use crate::hash::Hash;
 use super::fork::Fork;
 use super::path::Path;
 use super::proof::Proof;
+use crate::hash::Hash;
 
 pub enum Node<D: Digest, K, V> {
     Leaf(Arc<(K, V)>),

@@ -7,8 +7,8 @@ use core::{iter::repeat, marker::PhantomData, ops::Deref};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 
-use crate::hash::Hash;
 use super::path::Path;
+use crate::hash::Hash;
 
 /// An inclusion proof of the specified value in a map
 ///

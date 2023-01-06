@@ -9,11 +9,11 @@ use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::hash::Hash;
 use super::iter::Iter;
 use super::link::Link;
 use super::path::Path;
 use super::proof::Proof;
+use crate::hash::Hash;
 
 /// Immutable Map w/ Inclusion Proofs
 ///
