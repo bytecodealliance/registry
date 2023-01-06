@@ -6,8 +6,8 @@ use core::ops::{Index, IndexMut};
 use alloc::sync::Arc;
 use digest::Digest;
 
-use crate::hash::Hash;
 use super::link::Link;
+use crate::hash::Hash;
 
 pub struct Fork<D: Digest, K, V>([Option<Arc<Link<D, K, V>>>; 2]);
 

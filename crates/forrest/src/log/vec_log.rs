@@ -4,9 +4,9 @@ use alloc::{vec, vec::Vec};
 
 use digest::Digest;
 
-use crate::hash::Hash;
 use super::node::{Node, Side};
 use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, HashProvider, VerifiableLog};
+use crate::hash::Hash;
 
 /// A verifiable log where the node hashes are stored
 /// contiguously in memory by index.
@@ -127,8 +127,8 @@ where
 impl<D> AsRef<[Hash<D>]> for VecLog<D>
 where
     D: Digest,
-    Hash<D>: Debug {
-
+    Hash<D>: Debug,
+{
     fn as_ref(&self) -> &[Hash<D>] {
         &self.tree[..]
     }
@@ -174,8 +174,8 @@ mod tests {
     #[test]
     fn test_log_modifications() {
         let data: [&str; 25] = [
-            "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14",
-            "40", "59", "26", "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
+            "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14", "40", "59",
+            "26", "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
         ];
 
         let mut tree: VecLog<Sha256> = VecLog::default();

@@ -26,15 +26,15 @@ pub enum InclusionProofError {
 }
 
 /// The nodes visited when verifying the inclusion proof.
-/// 
+///
 /// The first [InclusionProofWalk.initial_walk_len] nodes
 /// describe the walk up to the balanced root which is
 /// the leafs ancestor.
-/// 
+///
 /// The next [InclusionProofWalk.lower_broots] nodes
 /// describe the walk from the rightmost (lowest) broot
 /// up towards the broot that was reached.
-/// 
+///
 /// The next [InclusionProofWalk.upper_broots] nodes
 /// describes the walk from the intersection of the
 /// previous two to the leftmost (tallest) broot.
@@ -121,7 +121,7 @@ impl InclusionProof {
 
     /// Evaluate an inclusion proof.
     /// Callers should verify that the returned root matches their expectation.
-    /// 
+    ///
     /// Walks the inclusion proof, hashes each layer, returns the root hash.
     pub fn evaluate<D: Digest>(
         &self,
@@ -161,7 +161,7 @@ impl InclusionProof {
             .iter()
             .map(|node| (*node, hashes.hash_for(*node).unwrap()))
             .fold(current, combine);
-    
+
         Ok(current.1)
     }
 }
@@ -190,7 +190,7 @@ pub struct ConsistencyProof {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ConsistencyProofError {
     /// Indicates that the new point is actually older
-    PointsOutOfOrder
+    PointsOutOfOrder,
 }
 
 impl ConsistencyProof {
@@ -250,7 +250,6 @@ mod tests {
             initial_walk_len: 2,
             lower_broots: 0,
             upper_broots: 0,
-            
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
 
@@ -322,7 +321,8 @@ mod tests {
         log.push(&[110u8]);
         log.push(&[112u8]);
 
-        let artificial_branch: Hash<Sha256> = hash_branch(log.as_ref()[9].clone(), log.as_ref()[12].clone());
+        let artificial_branch: Hash<Sha256> =
+            hash_branch(log.as_ref()[9].clone(), log.as_ref()[12].clone());
         let root: Hash<Sha256> = hash_branch(log.as_ref()[3].clone(), artificial_branch);
 
         // node 6

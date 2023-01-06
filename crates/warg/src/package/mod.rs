@@ -1,5 +1,5 @@
-use prost::Message;
 use anyhow::Error;
+use prost::Message;
 use thiserror::Error;
 
 use crate::hash;

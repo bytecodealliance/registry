@@ -1,5 +1,5 @@
+use anyhow::{Context, Error};
 use prost::Message;
-use anyhow::{Error, Context};
 use thiserror::Error;
 
 use crate::hash;
@@ -195,8 +195,8 @@ mod tests {
             ],
         };
 
-        let first_envelope = Envelope::signed_contents(&alice_priv, record)
-                .expect("Failed to sign envelope 1");
+        let first_envelope =
+            Envelope::signed_contents(&alice_priv, record).expect("Failed to sign envelope 1");
 
         let bytes = first_envelope.to_bytes();
 
