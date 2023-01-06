@@ -1,10 +1,10 @@
-use std::{fmt, ops::Deref, str::FromStr};
-
-use hex;
 use digest::Digest as DigestTrait;
+use hex;
+use serde::{Deserialize, Serialize};
+use std::{fmt, ops::Deref, str::FromStr};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum HashAlgorithm {
     Sha256,
@@ -99,6 +99,21 @@ impl FromStr for Digest {
     }
 }
 
+impl Serialize for Digest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Digest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum HashParseError {
     #[error("expected 2 parts, found {0}")]
@@ -134,7 +149,7 @@ mod tests {
         let digest_str = "sha256:7d38b5cd25a2baf85ad3bb5b9311383e671a8a142eb302b324d4a5fba8748c69";
         assert!(digest_str.parse::<Digest>().is_ok());
 
-        let (algo, encoded) = digest_str.split_once(":").unwrap();
+        let (algo, encoded) = digest_str.split_once(':').unwrap();
         let digest_str = String::from(algo) + ":" + &encoded.to_uppercase();
         assert!(digest_str.parse::<Digest>().is_err());
     }

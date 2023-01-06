@@ -1,36 +1,23 @@
-{
-    "input": [
-        {
-            "key": "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=",
-            "contents": {
-                "prev": null,
-                "version": 0,
-                "time": "2022-12-16T20:05:20.153436500+00:00",
-                "entries": [
-                    {
-                        "init": {
-                            "key": "ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF",
-                            "hashAlgorithm":"sha256"
-                        }
-                    },
-                    {
-                        "grantFlat": {
-                            "key": "ecdsa-p256:A4yBQt9Im8xnO9Sr9PT7OrOUQP8Olijcq1dPwtdTpigm",
-                            "permission": "PACKAGE_PERMISSION_RELEASE"
-                        }
+[
+    {
+        "key": "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=",
+        "contents": {
+            "version": 0,
+            "time": "2022-12-16T20:05:20.153436500+00:00",
+            "entries": [
+                {
+                    "init": {
+                        "key": "ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF",
+                        "hashAlgorithm":"sha256"
                     }
-                ]
-            }
-        }
-    ],
-    "output": {
-        "Valid": {
-            "hash_algorithm": "sha256",
-            "permissions": {
-                "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": ["release", "yank"],
-                "sha256:8225e770ee82a8a974c7732b9ca246d70b1f03dc9dbd25f5801c5cb455dee508": ["release"]
-            },
-            "releases": {}
+                },
+                {
+                    "grantFlat": {
+                        "key": "ecdsa-p256:A4yBQt9Im8xnO9Sr9PT7OrOUQP8Olijcq1dPwtdTpigm",
+                        "permission": "PACKAGE_PERMISSION_RELEASE"
+                    }
+                }
+            ]
         }
     }
-}
+]

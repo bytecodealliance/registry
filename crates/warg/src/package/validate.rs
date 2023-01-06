@@ -1,18 +1,17 @@
-use std::time::SystemTime;
-
-use hashbrown::{HashMap, HashSet};
-use semver::Version;
+use super::{model, PACKAGE_RECORD_VERSION};
+use crate::{hash, signing, Envelope, Signable};
+use indexmap::{map::Entry, IndexMap, IndexSet};
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
+use std::time::SystemTime;
 use thiserror::Error;
-
-use crate::hash;
-use crate::signing;
-
-use super::model;
-use crate::{Envelope, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
+    #[error("The validation state is unsupported")]
+    UnsupportedState,
+
     #[error("The first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
@@ -71,62 +70,76 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub enum ValidationState {
-    #[default]
-    Uninitialized,
-    Initialized(ValidationStateInit),
+/// Represents information about a package yanking.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Yank {
+    /// The key id that yanked the package.
+    pub by: signing::KeyID,
+    /// The timestamp of the yank.
+    #[serde(with = "crate::timestamp")]
+    pub timestamp: SystemTime,
 }
 
-/// The state known to record validation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationStateInit {
-    /// Last record hash
-    pub last_record: hash::Digest,
-    /// Last timestamp
-    pub last_timestamp: SystemTime,
-    /// The state known to entry validation
-    pub entry_state: EntryValidationState,
+/// Represents information about a release.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Release {
+    /// The version of the release.
+    pub version: Version,
+    /// The release content digest.
+    pub content: hash::Digest,
+    /// The key id that released the package.
+    pub by: signing::KeyID,
+    /// The timestamp of the release.
+    #[serde(with = "crate::timestamp")]
+    pub timestamp: SystemTime,
+    /// The information relating to the package being yanked.
+    ///
+    /// This is `None` if the package has not been yanked.
+    pub yanked: Option<Yank>,
 }
 
-impl ValidationState {
-    /// Determine the state of the validator (or error) after the next
-    /// package record envelope has been processed.
-    pub fn validate_envelope(
-        self,
-        envelope: &Envelope<model::PackageRecord>,
-    ) -> Result<ValidationState, ValidationError> {
-        let state = self.validate_record(envelope.key_id.clone(), envelope)?;
+/// Information about the current validation root of the package log.
+///
+/// A root is the last validated record digest and timestamp.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct Root {
+    /// The digest of the last validated record.
+    digest: hash::Digest,
+    /// The timestamp of the last validated record.
+    #[serde(with = "crate::timestamp")]
+    timestamp: SystemTime,
+}
 
-        if let ValidationState::Initialized(initialized_state) = &state {
-            if let Some(key) = initialized_state
-                .entry_state
-                .known_keys
-                .get(&envelope.key_id)
-            {
-                model::PackageRecord::verify(
-                    key.clone(),
-                    &envelope.content_bytes,
-                    &envelope.signature,
-                )?;
-            } else {
-                return Err(ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id.clone(),
-                });
-            }
-        } else {
-            return Err(ValidationError::InitialRecordDoesNotInit);
-        }
+/// A validator for package records.
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Validator {
+    /// The hash algorithm used by the package log.
+    /// This is `None` until the first (i.e. init) record is validated.
+    algorithm: Option<hash::HashAlgorithm>,
+    /// The current root of the validator.
+    root: Option<Root>,
+    /// The permissions of each key.
+    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    /// The releases in the package log.
+    releases: IndexMap<Version, Release>,
+    /// The keys known to the validator.
+    keys: IndexMap<signing::KeyID, signing::PublicKey>,
+}
 
-        Ok(state)
+impl Validator {
+    /// Create a new package log validator.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn validate_record(
-        self,
-        key_id: signing::KeyID,
+    /// Validates an individual package record.
+    ///
+    /// It is expected that `validate` is called in order of the
+    /// records in the log.
+    pub fn validate(
+        &mut self,
         envelope: &Envelope<model::PackageRecord>,
-    ) -> Result<ValidationState, ValidationError> {
+    ) -> Result<(), ValidationError> {
         let record = &envelope.contents;
 
         // Validate previous hash
@@ -139,36 +152,70 @@ impl ValidationState {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        let entry_state = self.validate_record_entries(key_id, record)?;
+        self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
 
-        let last_record = entry_state.hash_algorithm.digest(&envelope.content_bytes);
-        let last_timestamp = record.timestamp;
-        Ok(ValidationState::Initialized(ValidationStateInit {
-            last_record,
-            last_timestamp,
-            entry_state,
-        }))
+        // At this point the digest algorithm must be set via an init entry
+        let algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key =
+            self.keys
+                .get(&envelope.key_id)
+                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
+                    key_id: envelope.key_id.clone(),
+                })?;
+
+        // Validate the envelope signature
+        model::PackageRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
+
+        // Update the validator root
+        self.root = Some(Root {
+            digest: algorithm.digest(&envelope.content_bytes),
+            timestamp: record.timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// Gets the releases known to the validator.
+    pub fn releases(&self) -> impl Iterator<Item = &Release> {
+        self.releases.values()
+    }
+
+    /// Finds the latest release matching the given version requirement.
+    ///
+    /// Releases that have been yanked are not considered.
+    pub fn find_latest_release(&self, req: &VersionReq) -> Option<&Release> {
+        self.releases
+            .values()
+            .filter(|release| release.yanked.is_none() && req.matches(&release.version))
+            .max_by(|a, b| a.version.cmp(&b.version))
+    }
+
+    /// Gets the public key of the given key id.
+    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
+        self.keys.get(key_id)
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
-        match (&self, &record.prev) {
-            (ValidationState::Uninitialized, None) => Ok(()),
-            (ValidationState::Uninitialized, Some(_)) => {
-                Err(ValidationError::PreviousHashOnFirstRecord)
-            }
-            (ValidationState::Initialized(_), None) => {
-                Err(ValidationError::NoPreviousHashAfterInit)
-            }
-            (ValidationState::Initialized(state), Some(prev)) => {
-                if prev.algorithm() != state.entry_state.hash_algorithm {
+        match (&self.root, &record.prev) {
+            (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
+            (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
+            (None, None) => Ok(()),
+            (Some(expected), Some(found)) => {
+                if found.algorithm() != expected.digest.algorithm() {
                     return Err(ValidationError::IncorrectHashAlgorithm {
-                        found: prev.algorithm(),
-                        expected: state.entry_state.hash_algorithm,
+                        found: found.algorithm(),
+                        expected: expected.digest.algorithm(),
                     });
                 }
-                if prev != &state.last_record {
+
+                if found != &expected.digest {
                     return Err(ValidationError::RecordHashDoesNotMatch);
                 }
+
                 Ok(())
             }
         }
@@ -178,7 +225,7 @@ impl ValidationState {
         &self,
         record: &model::PackageRecord,
     ) -> Result<(), ValidationError> {
-        if record.version == 0 {
+        if record.version == PACKAGE_RECORD_VERSION {
             Ok(())
         } else {
             Err(ValidationError::ProtocolVersionNotAllowed {
@@ -191,199 +238,193 @@ impl ValidationState {
         &self,
         record: &model::PackageRecord,
     ) -> Result<(), ValidationError> {
-        if let ValidationState::Initialized(state) = &self {
-            if record.timestamp < state.last_timestamp {
+        if let Some(root) = &self.root {
+            if record.timestamp < root.timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
             }
         }
+
         Ok(())
     }
 
     fn validate_record_entries(
-        self,
-        key_id: signing::KeyID,
-        record: &model::PackageRecord,
-    ) -> Result<EntryValidationState, ValidationError> {
-        let mut entry_validation_state = match self {
-            ValidationState::Uninitialized => None,
-            ValidationState::Initialized(state) => Some(state.entry_state),
-        };
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        timestamp: SystemTime,
+        entries: &[model::PackageEntry],
+    ) -> Result<(), ValidationError> {
+        for entry in entries {
+            if let Some(permission) = entry.required_permission() {
+                self.check_key_permission(signer_key_id, permission)?;
+            }
 
-        for entry in &record.entries {
-            entry_validation_state = match entry_validation_state {
-                Some(state) => Some(state.validate_next(key_id.clone(), entry)?),
-                None => Some(EntryValidationState::validate_first(key_id.clone(), entry)?),
-            };
-        }
-
-        match entry_validation_state {
-            Some(state) => Ok(state),
-            None => Err(ValidationError::InitialRecordDoesNotInit),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryValidationState {
-    /// The hash algorithm used by this package
-    pub hash_algorithm: hash::HashAlgorithm,
-    /// The permissions associated with a given key_id
-    pub permissions: HashMap<signing::KeyID, HashSet<model::Permission>>,
-    /// The state of all releases
-    pub releases: HashMap<Version, ReleaseState>,
-    /// The relevant known keys to this
-    known_keys: HashMap<signing::KeyID, signing::PublicKey>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReleaseState {
-    Unreleased,
-    Released { content: hash::Digest },
-    Yanked,
-}
-
-impl EntryValidationState {
-    pub fn validate_first(
-        key_id: signing::KeyID,
-        entry: &model::PackageEntry,
-    ) -> Result<Self, ValidationError> {
-        match entry {
-            model::PackageEntry::Init {
+            // Process an init entry specially
+            if let model::PackageEntry::Init {
                 hash_algorithm,
-                key: init_key,
-            } => Ok(EntryValidationState {
-                hash_algorithm: *hash_algorithm,
-                permissions: HashMap::from([(
-                    key_id,
-                    HashSet::from([model::Permission::Release, model::Permission::Yank]),
-                )]),
-                releases: HashMap::default(),
-                known_keys: HashMap::from([(init_key.fingerprint(), init_key.clone())]),
-            }),
-            _ => Err(ValidationError::FirstEntryIsNotInit),
+                key,
+            } = entry
+            {
+                self.validate_init_entry(signer_key_id, *hash_algorithm, key)?;
+                continue;
+            }
+
+            // Must have seen an init entry by now
+            if self.algorithm.is_none() {
+                return Err(ValidationError::FirstEntryIsNotInit);
+            }
+
+            match entry {
+                model::PackageEntry::Init { .. } => unreachable!(), // handled above
+                model::PackageEntry::GrantFlat { key, permission } => {
+                    self.validate_grant_entry(signer_key_id, key, *permission)?
+                }
+                model::PackageEntry::RevokeFlat { key_id, permission } => {
+                    self.validate_revoke_entry(signer_key_id, key_id, *permission)?
+                }
+                model::PackageEntry::Release { version, content } => {
+                    self.validate_release_entry(signer_key_id, timestamp, version, content)?
+                }
+                model::PackageEntry::Yank { version } => {
+                    self.validate_yank_entry(signer_key_id, timestamp, version)?
+                }
+            }
         }
+
+        Ok(())
     }
 
-    pub fn validate_next(
-        mut self,
-        key_id: signing::KeyID,
-        entry: &model::PackageEntry,
-    ) -> Result<EntryValidationState, ValidationError> {
-        if let Some(needed_permission) = entry.required_permission() {
-            self.check_key_permission(key_id.clone(), needed_permission)?;
+    fn validate_init_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        algorithm: hash::HashAlgorithm,
+        init_key: &signing::PublicKey,
+    ) -> Result<(), ValidationError> {
+        if self.algorithm.is_some() {
+            return Err(ValidationError::InitialEntryAfterBeginning);
         }
 
-        match entry {
-            // Invalid re-initialization
-            model::PackageEntry::Init { .. } => Err(ValidationError::InitialEntryAfterBeginning),
+        assert!(self.permissions.is_empty());
+        assert!(self.releases.is_empty());
+        assert!(self.keys.is_empty());
 
-            model::PackageEntry::GrantFlat { key, permission } => {
-                // Check that the current key has the permission they're trying to revoke
-                self.check_key_permission(key_id.clone(), *permission)?;
+        self.algorithm = Some(algorithm);
+        self.permissions.insert(
+            signer_key_id.clone(),
+            IndexSet::from(model::Permission::all()),
+        );
+        self.keys.insert(init_key.fingerprint(), init_key.clone());
 
-                let grant_key_id = key.fingerprint();
-                self.known_keys.insert(grant_key_id.clone(), key.clone());
+        Ok(())
+    }
 
-                match self.permissions.entry(grant_key_id) {
-                    hashbrown::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().insert(*permission);
-                    }
-                    hashbrown::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(HashSet::from([*permission]));
-                    }
-                };
+    fn validate_grant_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        key: &signing::PublicKey,
+        permission: model::Permission,
+    ) -> Result<(), ValidationError> {
+        // Check that the current key has the permission they're trying to grant
+        self.check_key_permission(signer_key_id, permission)?;
 
-                Ok(self)
+        let grant_key_id = key.fingerprint();
+        self.keys.insert(grant_key_id.clone(), key.clone());
+        self.permissions
+            .entry(grant_key_id)
+            .or_default()
+            .insert(permission);
+
+        Ok(())
+    }
+
+    fn validate_revoke_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        key_id: &signing::KeyID,
+        permission: model::Permission,
+    ) -> Result<(), ValidationError> {
+        // Check that the current key has the permission they're trying to revoke
+        self.check_key_permission(signer_key_id, permission)?;
+
+        if let Some(set) = self.permissions.get_mut(key_id) {
+            if set.remove(&permission) {
+                return Ok(());
             }
+        }
 
-            model::PackageEntry::RevokeFlat {
-                key_id: revoke_key_id,
-                permission,
-            } => {
-                // Check that the current key has the permission they're trying to revoke
-                self.check_key_permission(key_id.clone(), *permission)?;
+        // Permission not found to remove
+        Err(ValidationError::PermissionNotFoundToRevoke {
+            permission,
+            key_id: key_id.clone(),
+        })
+    }
 
-                match self.permissions.entry(revoke_key_id.clone()) {
-                    hashbrown::hash_map::Entry::Occupied(mut entry) => {
-                        let permissions_set = entry.get_mut();
-                        if !permissions_set.contains(permission) {
-                            return Err(ValidationError::PermissionNotFoundToRevoke {
-                                permission: *permission,
-                                key_id: revoke_key_id.clone(),
-                            });
-                        }
-                        entry.get_mut().remove(permission);
-                    }
-                    hashbrown::hash_map::Entry::Vacant(_) => {
-                        return Err(ValidationError::PermissionNotFoundToRevoke {
-                            permission: *permission,
-                            key_id: revoke_key_id.clone(),
-                        })
-                    }
-                };
-                Ok(self)
+    fn validate_release_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        timestamp: SystemTime,
+        version: &Version,
+        content: &hash::Digest,
+    ) -> Result<(), ValidationError> {
+        match self.releases.entry(version.clone()) {
+            Entry::Occupied(e) => {
+                return Err(ValidationError::ReleaseOfReleased {
+                    version: e.key().clone(),
+                })
             }
+            Entry::Vacant(e) => {
+                let version = e.key().clone();
+                e.insert(Release {
+                    version,
+                    content: content.clone(),
+                    by: signer_key_id.clone(),
+                    timestamp,
+                    yanked: None,
+                });
+            }
+        }
 
-            model::PackageEntry::Release { version, content } => {
-                let version = version.clone();
-                let content = content.clone();
+        Ok(())
+    }
 
-                // Check the state of the specified version
-                let old_state = self
-                    .releases
-                    .get(&version)
-                    .cloned()
-                    .unwrap_or(ReleaseState::Unreleased);
-
-                match old_state {
-                    ReleaseState::Unreleased => {
-                        self.releases
-                            .insert(version, ReleaseState::Released { content });
-                        Ok(self)
-                    }
-                    ReleaseState::Released { content: _ } => {
-                        Err(ValidationError::ReleaseOfReleased { version })
-                    }
-                    ReleaseState::Yanked => Err(ValidationError::ReleaseOfReleased { version }),
+    fn validate_yank_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        timestamp: SystemTime,
+        version: &Version,
+    ) -> Result<(), ValidationError> {
+        match self.releases.get_mut(version) {
+            Some(e) => match e.yanked.as_ref() {
+                Some(_) => Err(ValidationError::YankOfYanked {
+                    version: version.clone(),
+                }),
+                None => {
+                    e.yanked = Some(Yank {
+                        by: signer_key_id.clone(),
+                        timestamp,
+                    });
+                    Ok(())
                 }
-            }
-
-            model::PackageEntry::Yank { version } => {
-                let version = version.clone();
-
-                // Check the state of the specified version
-                let old_state = self
-                    .releases
-                    .get(&version)
-                    .cloned()
-                    .unwrap_or(ReleaseState::Unreleased);
-
-                match old_state {
-                    ReleaseState::Unreleased => Err(ValidationError::YankOfUnreleased { version }),
-                    ReleaseState::Released { content: _ } => {
-                        self.releases.insert(version, ReleaseState::Yanked);
-                        Ok(self)
-                    }
-                    ReleaseState::Yanked => Err(ValidationError::YankOfYanked { version }),
-                }
-            }
+            },
+            None => Err(ValidationError::YankOfUnreleased {
+                version: version.clone(),
+            }),
         }
     }
 
     fn check_key_permission(
         &self,
-        key_id: signing::KeyID,
+        key_id: &signing::KeyID,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
-        if let Some(available_permissions) = self.permissions.get(&key_id) {
+        if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
-                return Ok(()); // Needed permission found
+                return Ok(());
             }
         }
 
         // Needed permission not found
         Err(ValidationError::UnauthorizedAction {
-            key_id,
+            key_id: key_id.clone(),
             needed_permission: permission,
         })
     }
@@ -391,22 +432,22 @@ impl EntryValidationState {
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
-
     use super::*;
-    use crate::signing::tests::generate_p256_pair;
-
     use crate::hash::HashAlgorithm;
+    use crate::signing::tests::generate_p256_pair;
+    use anyhow::Result;
+    use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
 
     #[test]
-    fn test_validate_base_log() {
+    fn test_validate_base_log() -> Result<()> {
         let (alice_pub, alice_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
 
         let timestamp = SystemTime::now();
         let record = model::PackageRecord {
             prev: None,
-            version: 0,
+            version: PACKAGE_RECORD_VERSION,
             timestamp,
             entries: vec![model::PackageEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
@@ -414,44 +455,45 @@ mod tests {
             }],
         };
 
-        let envelope = match Envelope::signed_contents(&alice_priv, record) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope: {:?}", error),
-        };
+        let envelope = Envelope::signed_contents(&alice_priv, record)?;
+        let mut validator = Validator::default();
+        validator.validate(&envelope)?;
 
-        let validation_state = match ValidationState::Uninitialized.validate_envelope(&envelope) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate: {:?}", error),
-        };
-
-        let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
-            last_timestamp: timestamp,
-            entry_state: EntryValidationState {
-                hash_algorithm: HashAlgorithm::Sha256,
-                permissions: HashMap::from([(
-                    alice_pub.fingerprint(),
-                    HashSet::from([model::Permission::Release, model::Permission::Yank]),
+        assert_eq!(
+            validator,
+            Validator {
+                root: Some(Root {
+                    digest: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
+                    timestamp,
+                }),
+                algorithm: Some(HashAlgorithm::Sha256),
+                permissions: IndexMap::from([(
+                    alice_id.clone(),
+                    IndexSet::from([model::Permission::Release, model::Permission::Yank]),
                 )]),
-                releases: HashMap::default(),
-                known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub.clone())]),
-            },
-        });
+                releases: IndexMap::default(),
+                keys: IndexMap::from([(alice_id, alice_pub)]),
+            }
+        );
 
-        assert_eq!(expected_state, validation_state);
+        Ok(())
     }
 
     #[test]
-    fn test_validate_larger_log() {
+    fn test_validate_larger_log() -> Result<()> {
         let (alice_pub, alice_priv) = generate_p256_pair();
         let (bob_pub, bob_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
+        let bob_id = bob_pub.fingerprint();
+
         let hash_algo = hash::HashAlgorithm::Sha256;
+        let mut validator = Validator::default();
 
         // In envelope 0: alice inits and grants bob release
         let timestamp0 = SystemTime::now();
         let record0 = model::PackageRecord {
             prev: None,
-            version: 0,
+            version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp0,
             entries: vec![
                 model::PackageEntry::Init {
@@ -464,37 +506,57 @@ mod tests {
                 },
             ],
         };
-        let envelope0 = match Envelope::signed_contents(&alice_priv, record0) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope0: {:?}", error),
-        };
+        let envelope0 = Envelope::signed_contents(&alice_priv, record0)?;
+        validator.validate(&envelope0)?;
 
         // In envelope 1: bob releases 1.1.0
         let timestamp1 = timestamp0 + Duration::from_secs(1);
         let content = hash_algo.digest(&[0, 1, 2, 3]);
         let record1 = model::PackageRecord {
             prev: Some(hash_algo.digest(&envelope0.content_bytes)),
-            version: 0,
+            version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp1,
             entries: vec![model::PackageEntry::Release {
                 version: Version::new(1, 1, 0),
-                content,
+                content: content.clone(),
             }],
         };
-        let envelope1 = match Envelope::signed_contents(&bob_priv, record1) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope1: {:?}", error),
-        };
+
+        let envelope1 = Envelope::signed_contents(&bob_priv, record1)?;
+        validator.validate(&envelope1)?;
+
+        // At this point, the validator should consider 1.1.0 released
+        assert_eq!(
+            validator.find_latest_release(&"~1".parse()?),
+            Some(&Release {
+                version: Version::new(1, 1, 0),
+                content: content.clone(),
+                by: bob_id.clone(),
+                timestamp: timestamp1,
+                yanked: None
+            })
+        );
+        assert!(validator.find_latest_release(&"~1.2".parse()?).is_none());
+        assert_eq!(
+            validator.releases().collect::<Vec<_>>(),
+            vec![&Release {
+                version: Version::new(1, 1, 0),
+                content: content.clone(),
+                by: bob_id.clone(),
+                timestamp: timestamp1,
+                yanked: None
+            }]
+        );
 
         // In envelope 2: alice revokes bobs access and yanks 1.1.0
         let timestamp2 = timestamp1 + Duration::from_secs(1);
         let record2 = model::PackageRecord {
             prev: Some(hash_algo.digest(&envelope1.content_bytes)),
-            version: 0,
+            version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp2,
             entries: vec![
                 model::PackageEntry::RevokeFlat {
-                    key_id: bob_pub.fingerprint(),
+                    key_id: bob_id.clone(),
                     permission: model::Permission::Release,
                 },
                 model::PackageEntry::Yank {
@@ -502,45 +564,57 @@ mod tests {
                 },
             ],
         };
-        let envelope2 = match Envelope::signed_contents(&alice_priv, record2) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope2: {:?}", error),
-        };
+        let envelope2 = Envelope::signed_contents(&alice_priv, record2)?;
+        validator.validate(&envelope2)?;
 
-        let mut validation_state =
-            match ValidationState::Uninitialized.validate_envelope(&envelope0) {
-                Ok(value) => value,
-                Err(error) => panic!("Failed to validate0: {:?}", error),
-            };
-        validation_state = match validation_state.validate_envelope(&envelope1) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate1: {:?}", error),
-        };
-        validation_state = match validation_state.validate_envelope(&envelope2) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate2: {:?}", error),
-        };
+        // At this point, the validator should consider 1.1.0 yanked
+        assert!(validator.find_latest_release(&"~1".parse()?).is_none());
+        assert_eq!(
+            validator.releases().collect::<Vec<_>>(),
+            vec![&Release {
+                version: Version::new(1, 1, 0),
+                content: content.clone(),
+                by: bob_id.clone(),
+                timestamp: timestamp1,
+                yanked: Some(Yank {
+                    by: alice_id.clone(),
+                    timestamp: timestamp2
+                })
+            }]
+        );
 
-        let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::Sha256.digest(&envelope2.content_bytes),
-            last_timestamp: timestamp2,
-            entry_state: EntryValidationState {
-                hash_algorithm: HashAlgorithm::Sha256,
-                permissions: HashMap::from([
+        assert_eq!(
+            validator,
+            Validator {
+                algorithm: Some(HashAlgorithm::Sha256),
+                root: Some(Root {
+                    digest: HashAlgorithm::Sha256.digest(&envelope2.content_bytes),
+                    timestamp: timestamp2,
+                }),
+                permissions: IndexMap::from([
                     (
-                        alice_pub.fingerprint(),
-                        HashSet::from([model::Permission::Release, model::Permission::Yank]),
+                        alice_id.clone(),
+                        IndexSet::from([model::Permission::Release, model::Permission::Yank]),
                     ),
-                    (bob_pub.fingerprint(), HashSet::default()),
+                    (bob_id.clone(), IndexSet::default()),
                 ]),
-                releases: HashMap::from([(Version::new(1, 1, 0), ReleaseState::Yanked)]),
-                known_keys: HashMap::from([
-                    (alice_pub.fingerprint(), alice_pub),
-                    (bob_pub.fingerprint(), bob_pub),
-                ]),
-            },
-        });
+                releases: IndexMap::from([(
+                    Version::new(1, 1, 0),
+                    Release {
+                        version: Version::new(1, 1, 0),
+                        content,
+                        by: bob_id.clone(),
+                        timestamp: timestamp1,
+                        yanked: Some(Yank {
+                            by: alice_id.clone(),
+                            timestamp: timestamp2
+                        })
+                    }
+                )]),
+                keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub),]),
+            }
+        );
 
-        assert_eq!(expected_state, validation_state);
+        Ok(())
     }
 }

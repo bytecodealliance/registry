@@ -1,10 +1,8 @@
+use crate::{hash, signing};
 use core::fmt;
-use std::{str::FromStr, time::SystemTime};
-
 use semver::Version;
-
-use crate::hash;
-use crate::signing;
+use serde::{Deserialize, Serialize};
+use std::{str::FromStr, time::SystemTime};
 
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,11 +18,18 @@ pub struct PackageRecord {
 }
 
 /// Each permission represents the ability to use the specified entry
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Permission {
     Release,
     Yank,
+}
+
+impl Permission {
+    /// Gets an array of all permissions.
+    pub fn all() -> [Permission; 2] {
+        [Permission::Release, Permission::Yank]
+    }
 }
 
 impl fmt::Display for Permission {

@@ -1,15 +1,13 @@
+use crate::{hash, protobuf, Decode, Encode, Signable};
 use anyhow::Error;
 use prost::Message;
 use thiserror::Error;
 
-use crate::hash;
-
 pub mod model;
 pub mod validate;
 
-use crate::{protobuf, Decode, Encode, Signable};
-
-// Deserialization
+/// The currently supported package protocol version.
+pub const PACKAGE_RECORD_VERSION: u32 = 0;
 
 impl Decode for model::PackageRecord {
     fn decode(bytes: &[u8]) -> Result<Self, Error> {
@@ -200,7 +198,7 @@ mod tests {
 
         let record = model::PackageRecord {
             prev: None,
-            version: 0,
+            version: PACKAGE_RECORD_VERSION,
             timestamp: SystemTime::now(),
             entries: vec![
                 model::PackageEntry::Init {

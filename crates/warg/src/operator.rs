@@ -1,13 +1,10 @@
+use crate::{hash, protobuf, Decode, Encode, Signable};
 use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
 
-use crate::hash;
-
 pub mod model;
 pub mod validate;
-
-use crate::{protobuf, Decode, Encode, Signable};
 
 // Deserialization
 

@@ -1,81 +1,105 @@
-use std::fs::{self, DirEntry};
-
-use hashbrown::HashMap;
+use anyhow::{anyhow, Context, Result};
 use pretty_assertions::assert_eq;
-use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use std::{
+    fs::{self, DirEntry},
+    path::Path,
+};
 use warg_protocol::{
     hash,
-    package::{self, validate::ValidationState},
+    package::{self, validate::Validator},
     protobuf, signing, Envelope,
 };
 
 #[test]
-fn test_package_logs() {
-    let mut entries: Vec<DirEntry> = fs::read_dir("./tests/package-logs")
-        .unwrap()
-        .collect::<Result<Vec<DirEntry>, _>>()
-        .unwrap();
+fn test_package_logs() -> Result<()> {
+    let mut entries: Vec<DirEntry> =
+        fs::read_dir("./tests/package-logs")?.collect::<Result<Vec<_>, _>>()?;
     entries.sort_by_key(|e| e.file_name());
 
-    for entry in entries {
-        let file_contents = std::fs::read_to_string(entry.path()).unwrap();
-        let test: Test = serde_json::from_str(&file_contents).unwrap();
+    fs::create_dir_all("./tests/package-logs/output")?;
 
-        execute_test(test);
+    for entry in entries {
+        if entry.metadata()?.is_file() {
+            execute_test(&entry.path())?;
+        }
     }
+
+    Ok(())
 }
 
-fn execute_test(test: Test) {
-    let envelopes: Vec<Envelope<package::model::PackageRecord>> = test
-        .input
-        .into_iter()
-        .scan(None, |last, e_data| {
-            dbg!(e_data.contents.clone());
-            let key: signing::PrivateKey = e_data.key.parse().unwrap();
-            let mut record: package::model::PackageRecord = e_data.contents.try_into().unwrap();
+fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
+    let mut validator = Validator::new();
+    for record in input.into_iter().scan(None, |last, e_data| {
+        let key: signing::PrivateKey = e_data.key.parse().unwrap();
+        let mut record: package::model::PackageRecord = e_data.contents.try_into().unwrap();
 
-            record.prev = last.clone();
+        record.prev = last.clone();
 
-            let envelope = Envelope::signed_contents(&key, record).unwrap();
+        let envelope = Envelope::signed_contents(&key, record).unwrap();
 
-            *last = Some(hash::HashAlgorithm::Sha256.digest(envelope.content_bytes()));
+        *last = Some(hash::HashAlgorithm::Sha256.digest(envelope.content_bytes()));
 
-            Some(envelope)
-        })
-        .collect();
-
-    let mut validation_state = Ok(package::validate::ValidationState::Uninitialized);
-
-    for envelope in envelopes {
-        if matches!(validation_state, Err(_)) {
-            break;
-        }
-
-        validation_state = validation_state.unwrap().validate_envelope(&envelope);
+        Some(envelope)
+    }) {
+        validator.validate(&record)?;
     }
 
-    let result = match validation_state {
-        Ok(state) => {
-            if let ValidationState::Initialized(state) = state {
-                state.entry_state.into()
-            } else {
-                panic!("Test did not initialize state. Test input must not be empty.");
-            }
-        }
-        Err(error) => PackageStateSummary::Invalid {
-            error: format!("{}", error),
-        },
+    Ok(validator)
+}
+
+fn execute_test(input_path: &Path) -> Result<()> {
+    let output_path = Path::new("./tests/package-logs/output").join(
+        input_path
+            .file_name()
+            .ok_or_else(|| anyhow!("expected a file name for test input"))?,
+    );
+    let input: Vec<EnvelopeData> =
+        serde_json::from_str(&fs::read_to_string(input_path).with_context(|| {
+            format!(
+                "failed to read input file `{path}`",
+                path = input_path.display()
+            )
+        })?)
+        .with_context(|| {
+            format!(
+                "failed to deserialize input file `{path}`",
+                path = input_path.display()
+            )
+        })?;
+
+    let output = match validate_input(input) {
+        Ok(validator) => Output::Valid(validator),
+        Err(e) => Output::Error(e.to_string()),
     };
 
-    assert_eq!(test.output, result);
-}
+    if std::env::var_os("BLESS").is_some() {
+        // Update the test baseline
+        fs::write(&output_path, serde_json::to_string_pretty(&output)?).with_context(|| {
+            format!(
+                "failed to write output file `{path}`",
+                path = output_path.display()
+            )
+        })?;
+    } else {
+        assert_eq!(
+            serde_json::from_str::<Output>(&fs::read_to_string(&output_path).with_context(
+                || {
+                    format!(
+                        "failed to read output file `{path}`",
+                        path = output_path.display()
+                    )
+                }
+            )?)
+            .with_context(|| format!(
+                "failed to deserialize output file `{path}`",
+                path = output_path.display()
+            ))?,
+            output
+        );
+    }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Test {
-    input: Vec<EnvelopeData>,
-    output: PackageStateSummary,
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,68 +108,9 @@ pub struct EnvelopeData {
     contents: protobuf::PackageRecord,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PackageStateSummary {
-    Valid {
-        hash_algorithm: String,
-        permissions: HashMap<String, Vec<String>>,
-        releases: HashMap<String, ReleaseStateSummary>,
-    },
-    Invalid {
-        error: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ReleaseStateSummary {
-    Unreleased,
-    Released { content: String },
-    Yanked,
-}
-
-impl From<package::validate::EntryValidationState> for PackageStateSummary {
-    fn from(state: package::validate::EntryValidationState) -> Self {
-        let permissions = state
-            .permissions
-            .into_iter()
-            .map(|(k, v)| {
-                let mut vec_perms: Vec<String> = v
-                    .into_iter()
-                    .map(|permission| format!("{}", permission))
-                    .collect();
-                vec_perms.sort();
-                (format!("{}", k), vec_perms)
-            })
-            .collect();
-
-        let mut releases: Vec<(Version, package::validate::ReleaseState)> =
-            state.releases.into_iter().collect();
-
-        releases.sort_by_key(|(v, _s)| v.clone());
-
-        let releases = releases
-            .into_iter()
-            .map(|(k, v)| (format!("{}", k), v.into()))
-            .collect();
-
-        PackageStateSummary::Valid {
-            hash_algorithm: format!("{}", state.hash_algorithm),
-            permissions,
-            releases,
-        }
-    }
-}
-
-impl From<package::validate::ReleaseState> for ReleaseStateSummary {
-    fn from(release_state: package::validate::ReleaseState) -> Self {
-        match release_state {
-            package::validate::ReleaseState::Unreleased => ReleaseStateSummary::Unreleased,
-            package::validate::ReleaseState::Released { content } => {
-                ReleaseStateSummary::Released {
-                    content: format!("{}", content),
-                }
-            }
-            package::validate::ReleaseState::Yanked => ReleaseStateSummary::Yanked,
-        }
-    }
+pub enum Output {
+    Valid(Validator),
+    Error(String),
 }

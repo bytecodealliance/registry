@@ -1,12 +1,11 @@
+use super::{SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64;
-use p256;
-
 use core::fmt;
+use p256;
+use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
 use std::str::FromStr;
 use thiserror::Error;
-
-use super::{SignatureAlgorithm, SignatureAlgorithmParseError};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Signature {
@@ -35,7 +34,7 @@ impl fmt::Display for Signature {
             f,
             "{}:{}",
             self.signature_algorithm(),
-            base64::encode(&self.bytes())
+            base64::encode(self.bytes())
         )
     }
 }
@@ -58,6 +57,21 @@ impl FromStr for Signature {
         };
 
         Ok(sig)
+    }
+}
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
 

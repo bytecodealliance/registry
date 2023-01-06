@@ -1,13 +1,11 @@
+use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64;
+use core::fmt;
 use p256;
 use secrecy::{ExposeSecret, Secret, Zeroize};
 use signature::{Error as SignatureError, Signer};
-
-use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
-
-use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 
 /// Represents a private key
 pub struct PrivateKey(Secret<PrivateKeyInner>);
@@ -53,7 +51,7 @@ impl fmt::Display for PrivateKey {
             f,
             "{}:{}",
             self.signature_algorithm(),
-            base64::encode(&self.bytes())
+            base64::encode(self.bytes())
         )
     }
 }
