@@ -180,8 +180,19 @@ impl Validator {
     }
 
     /// Gets the releases known to the validator.
+    ///
+    /// The releases are returned in package log order.
+    ///
+    /// Yanked releases are included.
     pub fn releases(&self) -> impl Iterator<Item = &Release> {
         self.releases.values()
+    }
+
+    /// Gets the release with the given version.
+    ///
+    /// Returns `None` if a release with the given version does not exist.
+    pub fn release(&self, version: &Version) -> Option<&Release> {
+        self.releases.get(version)
     }
 
     /// Finds the latest release matching the given version requirement.
@@ -195,6 +206,8 @@ impl Validator {
     }
 
     /// Gets the public key of the given key id.
+    ///
+    /// Returns `None` if the key id is not recognized.
     pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
         self.keys.get(key_id)
     }
