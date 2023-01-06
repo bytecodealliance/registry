@@ -1,9 +1,9 @@
-use std::fs::{self, DirEntry};
-
-use hashbrown::HashMap;
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use std::{
+    collections::HashMap,
+    fs::{self, DirEntry},
+};
 use warg_protocol::{
     hash,
     operator::{self, validate::ValidationState},

@@ -1,12 +1,11 @@
-mod private_key;
-mod public_key;
-mod signature;
-
+use crate::hash::HashAlgorithm;
 use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::hash::HashAlgorithm;
+mod private_key;
+mod public_key;
+mod signature;
 
 pub use self::private_key::{PrivateKey, PrivateKeyParseError};
 pub use self::public_key::{KeyID, PublicKey, PublicKeyParseError};

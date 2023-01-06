@@ -1,15 +1,12 @@
-use std::time::SystemTime;
-
-use hashbrown::{HashMap, HashSet};
+use super::model;
+use crate::{hash, signing, Envelope, Signable};
 use semver::Version;
 use signature::Error as SignatureError;
+use std::{
+    collections::{hash_map::Entry, HashMap, HashSet},
+    time::SystemTime,
+};
 use thiserror::Error;
-
-use crate::hash;
-use crate::signing;
-
-use super::model;
-use crate::{Envelope, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -105,11 +102,7 @@ impl ValidationState {
                 .known_keys
                 .get(&envelope.key_id)
             {
-                model::OperatorRecord::verify(
-                    key.clone(),
-                    &envelope.content_bytes,
-                    &envelope.signature,
-                )?;
+                model::OperatorRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
             } else {
                 return Err(ValidationError::KeyIDNotRecognized {
                     key_id: envelope.key_id.clone(),
@@ -269,16 +262,16 @@ impl EntryValidationState {
 
             model::OperatorEntry::GrantFlat { key, permission } => {
                 // Check that the current key has the permission they're trying to revoke
-                self.check_key_permission(key_id.clone(), *permission)?;
+                self.check_key_permission(key_id, *permission)?;
 
                 let grant_key_id = key.fingerprint();
                 self.known_keys.insert(grant_key_id.clone(), key.clone());
 
                 match self.permissions.entry(grant_key_id) {
-                    hashbrown::hash_map::Entry::Occupied(mut entry) => {
+                    Entry::Occupied(mut entry) => {
                         entry.get_mut().insert(*permission);
                     }
-                    hashbrown::hash_map::Entry::Vacant(entry) => {
+                    Entry::Vacant(entry) => {
                         entry.insert(HashSet::from([*permission]));
                     }
                 };
@@ -291,7 +284,7 @@ impl EntryValidationState {
                 self.check_key_permission(key_id.clone(), *permission)?;
 
                 match self.permissions.entry(key_id.clone()) {
-                    hashbrown::hash_map::Entry::Occupied(mut entry) => {
+                    Entry::Occupied(mut entry) => {
                         let permissions_set = entry.get_mut();
                         if !permissions_set.contains(permission) {
                             return Err(ValidationError::PermissionNotFoundToRevoke {
@@ -301,7 +294,7 @@ impl EntryValidationState {
                         }
                         entry.get_mut().remove(permission);
                     }
-                    hashbrown::hash_map::Entry::Vacant(_) => {
+                    Entry::Vacant(_) => {
                         return Err(ValidationError::PermissionNotFoundToRevoke {
                             permission: *permission,
                             key_id: key_id.clone(),
@@ -376,7 +369,7 @@ mod tests {
                     alice_pub.fingerprint(),
                     HashSet::from([model::Permission::Commit]),
                 )]),
-                known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub.clone())]),
+                known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub)]),
             },
         });
 

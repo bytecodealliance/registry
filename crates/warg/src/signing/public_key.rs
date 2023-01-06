@@ -1,12 +1,11 @@
+use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64;
-use p256;
-use signature::{Error as SignatureError, Verifier};
-
 use core::fmt;
+use p256;
+use serde::{Deserialize, Serialize};
+use signature::{Error as SignatureError, Verifier};
 use std::str::FromStr;
 use thiserror::Error;
-
-use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PublicKey {
@@ -52,7 +51,7 @@ impl fmt::Display for PublicKey {
             f,
             "{}:{}",
             self.signature_algorithm(),
-            base64::encode(&self.bytes())
+            base64::encode(self.bytes())
         )
     }
 }
@@ -78,6 +77,24 @@ impl FromStr for PublicKey {
     }
 }
 
+impl Serialize for PublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}", self))
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum PublicKeyParseError {
     #[error("expected 2 parts, found {0}")]
@@ -99,7 +116,8 @@ impl From<p256::ecdsa::VerifyingKey> for PublicKey {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct KeyID(String);
 
 impl fmt::Display for KeyID {
@@ -111,6 +129,12 @@ impl fmt::Display for KeyID {
 impl From<String> for KeyID {
     fn from(s: String) -> Self {
         KeyID(s)
+    }
+}
+
+impl From<KeyID> for String {
+    fn from(id: KeyID) -> Self {
+        id.0
     }
 }
 

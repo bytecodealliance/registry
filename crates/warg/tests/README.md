@@ -1,11 +1,22 @@
 # Log Tests
 
-The `package.rs` and `operator.rs` modules
+The `package.rs` and `operator.rs` tests perform the following:
 
-1. read in tests from the `package-logs` and `operator-logs` directories respectively,
-2. construct signed logs using the contents,
-3. attempt to validate them, and
-4. compare the validation output to what was specified in the test file.
+1. read in tests from the `package-logs` and `operator-logs` directories 
+  respectively
+2. construct signed logs using the contents
+3. validate the logs
+4. compare the output to what was specified in corresponding output file.
+
+## Updating Test Output
+
+Set the `BLESS` environment variable to a non-empty value and run the tests.
+
+This will update all of the test output files to the current output of the 
+tests.
+
+After the test outputs have been updated, review any changes to ensure the 
+tests have the expected output.
 
 ## Keys
 
@@ -13,7 +24,8 @@ Log tests need private keys to sign envelopes,
 public keys to include in e.g. `Init` and `GrantFlat` entries,
 and fingerprints to use in e.g. `RevokeFlat` entries.
 
-These Keys have been generated randomly using ECDSA and the P-256 curve for test purposes only.
+These Keys have been generated randomly using ECDSA and the P-256 curve for 
+test purposes only.
 
 * Alice
   * Private Key: `ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=`
