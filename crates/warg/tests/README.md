@@ -18,8 +18,8 @@ These Keys have been generated randomly using ECDSA and the P-256 curve for test
 * Alice
   * Private Key: `ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=`
   * Public Key: `ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF`
-  * Fingerprint: `sha256:1tm0zQd6gpwCdSM784Q8gpTiUN/MgrjqFXRekpgqgg0=`
+  * Fingerprint: `sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d`
 * Bob
   * Private Key: `ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew=`
   * Public Key: `ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu`
-  * Fingerprint: `sha256:jtgkghznXDgUWPgJeZard3gFULp/ucJA5Hmbt4GUGrs=`
+  * Fingerprint: `sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb`

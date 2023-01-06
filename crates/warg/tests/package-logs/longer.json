@@ -32,7 +32,7 @@
                     {
                         "release": {
                             "version": "1.0.0",
-                            "content_hash": "sha256:1tm0zQd6gpwCdSM784Q8gpTiUN/MgrjqFXRekpgqgg0="
+                            "content_hash": "sha256:7d38b5cd25a2baf85ad3bb5b9311383e671a8a142eb302b324d4a5fba8748c69"
                         }
                     }
                 ]
@@ -47,7 +47,7 @@
                 "entries": [
                     {
                         "revokeFlat": {
-                            "key_id": "sha256:jtgkghznXDgUWPgJeZard3gFULp/ucJA5Hmbt4GUGrs=",
+                            "key_id": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
                             "permission": "PACKAGE_PERMISSION_RELEASE"
                         }
                     },
@@ -64,8 +64,8 @@
         "Valid": {
             "hash_algorithm": "sha256",
             "permissions": {
-                "sha256:1tm0zQd6gpwCdSM784Q8gpTiUN/MgrjqFXRekpgqgg0=": ["release", "yank"],
-                "sha256:jtgkghznXDgUWPgJeZard3gFULp/ucJA5Hmbt4GUGrs=": []
+                "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": ["release", "yank"],
+                "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": []
             },
             "releases": {
                 "1.0.0": "Yanked"
