@@ -19,6 +19,7 @@ pub struct PackageRecord {
 
 /// Each permission represents the ability to use the specified entry
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Permission {
     Release,
