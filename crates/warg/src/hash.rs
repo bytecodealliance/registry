@@ -5,6 +5,7 @@ use std::{fmt, ops::Deref, str::FromStr};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum HashAlgorithm {
     Sha256,
