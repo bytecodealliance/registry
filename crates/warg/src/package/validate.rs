@@ -9,9 +9,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("The validation state is unsupported")]
-    UnsupportedState,
-
     #[error("The first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
