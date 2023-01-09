@@ -70,9 +70,9 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
-/// Represents information about a package yanking.
+/// Represents context about a package yanking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Yank {
+pub struct YankContext {
     /// The key id that yanked the package.
     pub by: signing::KeyID,
     /// The timestamp of the yank.
@@ -86,7 +86,10 @@ pub struct Release {
     /// The version of the release.
     pub version: Version,
     /// The release content digest.
-    pub content: hash::Digest,
+    ///
+    /// This is `None` if the package has been yanked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<hash::Digest>,
     /// The key id that released the package.
     pub by: signing::KeyID,
     /// The timestamp of the release.
@@ -95,7 +98,8 @@ pub struct Release {
     /// The information relating to the package being yanked.
     ///
     /// This is `None` if the package has not been yanked.
-    pub yanked: Option<Yank>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yanked: Option<YankContext>,
 }
 
 /// Information about the current validation root of the package log.
@@ -115,8 +119,10 @@ struct Root {
 pub struct Validator {
     /// The hash algorithm used by the package log.
     /// This is `None` until the first (i.e. init) record is validated.
+    #[serde(skip_serializing_if = "Option::is_none")]
     algorithm: Option<hash::HashAlgorithm>,
     /// The current root of the validator.
+    #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
     /// The permissions of each key.
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
@@ -212,6 +218,11 @@ impl Validator {
         self.keys.get(key_id)
     }
 
+    fn initialized(&self) -> bool {
+        // The package log is initialized if the hash algorithm is set
+        self.algorithm.is_some()
+    }
+
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
         match (&self.root, &record.prev) {
             (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
@@ -282,7 +293,7 @@ impl Validator {
             }
 
             // Must have seen an init entry by now
-            if self.algorithm.is_none() {
+            if !self.initialized() {
                 return Err(ValidationError::FirstEntryIsNotInit);
             }
 
@@ -312,7 +323,7 @@ impl Validator {
         algorithm: hash::HashAlgorithm,
         init_key: &signing::PublicKey,
     ) -> Result<(), ValidationError> {
-        if self.algorithm.is_some() {
+        if self.initialized() {
             return Err(ValidationError::InitialEntryAfterBeginning);
         }
 
@@ -388,7 +399,7 @@ impl Validator {
                 let version = e.key().clone();
                 e.insert(Release {
                     version,
-                    content: content.clone(),
+                    content: Some(content.clone()),
                     by: signer_key_id.clone(),
                     timestamp,
                     yanked: None,
@@ -411,7 +422,10 @@ impl Validator {
                     version: version.clone(),
                 }),
                 None => {
-                    e.yanked = Some(Yank {
+                    // Explicitly remove the content digest so the yank
+                    // must be respected
+                    e.content = None;
+                    e.yanked = Some(YankContext {
                         by: signer_key_id.clone(),
                         timestamp,
                     });
@@ -448,12 +462,11 @@ mod tests {
     use super::*;
     use crate::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
-    use anyhow::Result;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
 
     #[test]
-    fn test_validate_base_log() -> Result<()> {
+    fn test_validate_base_log() {
         let (alice_pub, alice_priv) = generate_p256_pair();
         let alice_id = alice_pub.fingerprint();
 
@@ -468,9 +481,9 @@ mod tests {
             }],
         };
 
-        let envelope = Envelope::signed_contents(&alice_priv, record)?;
+        let envelope = Envelope::signed_contents(&alice_priv, record).unwrap();
         let mut validator = Validator::default();
-        validator.validate(&envelope)?;
+        validator.validate(&envelope).unwrap();
 
         assert_eq!(
             validator,
@@ -488,12 +501,10 @@ mod tests {
                 keys: IndexMap::from([(alice_id, alice_pub)]),
             }
         );
-
-        Ok(())
     }
 
     #[test]
-    fn test_validate_larger_log() -> Result<()> {
+    fn test_validate_larger_log() {
         let (alice_pub, alice_priv) = generate_p256_pair();
         let (bob_pub, bob_priv) = generate_p256_pair();
         let alice_id = alice_pub.fingerprint();
@@ -519,8 +530,8 @@ mod tests {
                 },
             ],
         };
-        let envelope0 = Envelope::signed_contents(&alice_priv, record0)?;
-        validator.validate(&envelope0)?;
+        let envelope0 = Envelope::signed_contents(&alice_priv, record0).unwrap();
+        validator.validate(&envelope0).unwrap();
 
         // In envelope 1: bob releases 1.1.0
         let timestamp1 = timestamp0 + Duration::from_secs(1);
@@ -535,26 +546,28 @@ mod tests {
             }],
         };
 
-        let envelope1 = Envelope::signed_contents(&bob_priv, record1)?;
-        validator.validate(&envelope1)?;
+        let envelope1 = Envelope::signed_contents(&bob_priv, record1).unwrap();
+        validator.validate(&envelope1).unwrap();
 
         // At this point, the validator should consider 1.1.0 released
         assert_eq!(
-            validator.find_latest_release(&"~1".parse()?),
+            validator.find_latest_release(&"~1".parse().unwrap()),
             Some(&Release {
                 version: Version::new(1, 1, 0),
-                content: content.clone(),
+                content: Some(content.clone()),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
                 yanked: None
             })
         );
-        assert!(validator.find_latest_release(&"~1.2".parse()?).is_none());
+        assert!(validator
+            .find_latest_release(&"~1.2".parse().unwrap())
+            .is_none());
         assert_eq!(
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                content: content.clone(),
+                content: Some(content),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
                 yanked: None
@@ -577,19 +590,21 @@ mod tests {
                 },
             ],
         };
-        let envelope2 = Envelope::signed_contents(&alice_priv, record2)?;
-        validator.validate(&envelope2)?;
+        let envelope2 = Envelope::signed_contents(&alice_priv, record2).unwrap();
+        validator.validate(&envelope2).unwrap();
 
         // At this point, the validator should consider 1.1.0 yanked
-        assert!(validator.find_latest_release(&"~1".parse()?).is_none());
+        assert!(validator
+            .find_latest_release(&"~1".parse().unwrap())
+            .is_none());
         assert_eq!(
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                content: content.clone(),
+                content: None,
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                yanked: Some(Yank {
+                yanked: Some(YankContext {
                     by: alice_id.clone(),
                     timestamp: timestamp2
                 })
@@ -615,10 +630,10 @@ mod tests {
                     Version::new(1, 1, 0),
                     Release {
                         version: Version::new(1, 1, 0),
-                        content,
+                        content: None,
                         by: bob_id.clone(),
                         timestamp: timestamp1,
-                        yanked: Some(Yank {
+                        yanked: Some(YankContext {
                             by: alice_id.clone(),
                             timestamp: timestamp2
                         })
@@ -627,7 +642,5 @@ mod tests {
                 keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub),]),
             }
         );
-
-        Ok(())
     }
 }

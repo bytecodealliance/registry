@@ -15,7 +15,6 @@
     "releases": {
       "1.0.0": {
         "version": "1.0.0",
-        "content": "sha256:7d38b5cd25a2baf85ad3bb5b9311383e671a8a142eb302b324d4a5fba8748c69",
         "by": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
         "timestamp": "1671221120.153436500",
         "yanked": {
