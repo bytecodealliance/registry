@@ -71,7 +71,6 @@ pub enum ValidationError {
 }
 
 /// Represents the current state of a release.
-/// Represents context about a package yanking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum ReleaseState {
