@@ -70,14 +70,24 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
+/// Represents the current state of a release.
 /// Represents context about a package yanking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct YankContext {
-    /// The key id that yanked the package.
-    pub by: signing::KeyID,
-    /// The timestamp of the yank.
-    #[serde(with = "crate::timestamp")]
-    pub timestamp: SystemTime,
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ReleaseState {
+    /// The release is currently available.
+    Released {
+        /// The content digest associated with the release.
+        content: hash::Digest,
+    },
+    /// The release has been yanked.
+    Yanked {
+        /// The key id that yanked the package.
+        by: signing::KeyID,
+        /// The timestamp of the yank.
+        #[serde(with = "crate::timestamp")]
+        timestamp: SystemTime,
+    },
 }
 
 /// Represents information about a release.
@@ -85,21 +95,30 @@ pub struct YankContext {
 pub struct Release {
     /// The version of the release.
     pub version: Version,
-    /// The release content digest.
-    ///
-    /// This is `None` if the package has been yanked.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<hash::Digest>,
     /// The key id that released the package.
     pub by: signing::KeyID,
     /// The timestamp of the release.
     #[serde(with = "crate::timestamp")]
     pub timestamp: SystemTime,
-    /// The information relating to the package being yanked.
+    /// The current state of the release.
+    pub state: ReleaseState,
+}
+
+impl Release {
+    /// Determines if the release has been yanked.
+    pub fn yanked(&self) -> bool {
+        matches!(self.state, ReleaseState::Yanked { .. })
+    }
+
+    /// Gets the content associated with the release.
     ///
-    /// This is `None` if the package has not been yanked.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yanked: Option<YankContext>,
+    /// Returns `None` if the release has been yanked.
+    pub fn content(&self) -> Option<&hash::Digest> {
+        match &self.state {
+            ReleaseState::Released { content } => Some(content),
+            ReleaseState::Yanked { .. } => None,
+        }
+    }
 }
 
 /// Information about the current validation root of the package log.
@@ -207,7 +226,7 @@ impl Validator {
     pub fn find_latest_release(&self, req: &VersionReq) -> Option<&Release> {
         self.releases
             .values()
-            .filter(|release| release.yanked.is_none() && req.matches(&release.version))
+            .filter(|release| !release.yanked() && req.matches(&release.version))
             .max_by(|a, b| a.version.cmp(&b.version))
     }
 
@@ -399,10 +418,11 @@ impl Validator {
                 let version = e.key().clone();
                 e.insert(Release {
                     version,
-                    content: Some(content.clone()),
                     by: signer_key_id.clone(),
                     timestamp,
-                    yanked: None,
+                    state: ReleaseState::Released {
+                        content: content.clone(),
+                    },
                 });
             }
         }
@@ -417,18 +437,15 @@ impl Validator {
         version: &Version,
     ) -> Result<(), ValidationError> {
         match self.releases.get_mut(version) {
-            Some(e) => match e.yanked.as_ref() {
-                Some(_) => Err(ValidationError::YankOfYanked {
+            Some(e) => match e.state {
+                ReleaseState::Yanked { .. } => Err(ValidationError::YankOfYanked {
                     version: version.clone(),
                 }),
-                None => {
-                    // Explicitly remove the content digest so the yank
-                    // must be respected
-                    e.content = None;
-                    e.yanked = Some(YankContext {
+                ReleaseState::Released { .. } => {
+                    e.state = ReleaseState::Yanked {
                         by: signer_key_id.clone(),
                         timestamp,
-                    });
+                    };
                     Ok(())
                 }
             },
@@ -554,10 +571,11 @@ mod tests {
             validator.find_latest_release(&"~1".parse().unwrap()),
             Some(&Release {
                 version: Version::new(1, 1, 0),
-                content: Some(content.clone()),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                yanked: None
+                state: ReleaseState::Released {
+                    content: content.clone()
+                }
             })
         );
         assert!(validator
@@ -567,10 +585,9 @@ mod tests {
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                content: Some(content),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                yanked: None
+                state: ReleaseState::Released { content }
             }]
         );
 
@@ -601,13 +618,12 @@ mod tests {
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                content: None,
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                yanked: Some(YankContext {
+                state: ReleaseState::Yanked {
                     by: alice_id.clone(),
                     timestamp: timestamp2
-                })
+                }
             }]
         );
 
@@ -630,13 +646,12 @@ mod tests {
                     Version::new(1, 1, 0),
                     Release {
                         version: Version::new(1, 1, 0),
-                        content: None,
                         by: bob_id.clone(),
                         timestamp: timestamp1,
-                        yanked: Some(YankContext {
+                        state: ReleaseState::Yanked {
                             by: alice_id.clone(),
                             timestamp: timestamp2
-                        })
+                        }
                     }
                 )]),
                 keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub),]),
