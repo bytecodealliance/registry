@@ -1,8 +1,7 @@
+use crate::{hash, signing};
 use core::fmt;
+use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
-
-use crate::hash;
-use crate::signing;
 
 /// A operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,10 +17,18 @@ pub struct OperatorRecord {
 }
 
 /// Each permission represents the ability to use the specified entry
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Permission {
     Commit,
+}
+
+impl Permission {
+    /// Gets an array of all permissions.
+    pub const fn all() -> [Permission; 1] {
+        [Permission::Commit]
+    }
 }
 
 impl fmt::Display for Permission {
@@ -66,4 +73,14 @@ pub enum OperatorEntry {
         key_id: signing::KeyID,
         permission: Permission,
     },
+}
+
+impl OperatorEntry {
+    /// Check permission is required to submit this entry
+    pub fn required_permission(&self) -> Option<Permission> {
+        match self {
+            Self::Init { .. } => None,
+            Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(Permission::Commit),
+        }
+    }
 }

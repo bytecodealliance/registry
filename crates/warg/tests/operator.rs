@@ -1,12 +1,13 @@
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     fs::{self, DirEntry},
+    path::Path,
 };
 use warg_protocol::{
     hash,
-    operator::{self, validate::ValidationState},
+    operator::{self, validate::Validator},
     protobuf, signing, Envelope,
 };
 
@@ -14,24 +15,23 @@ use warg_protocol::{
 fn test_operator_logs() {
     let mut entries: Vec<DirEntry> = fs::read_dir("./tests/operator-logs")
         .unwrap()
-        .collect::<Result<Vec<DirEntry>, _>>()
+        .collect::<Result<Vec<_>, _>>()
         .unwrap();
     entries.sort_by_key(|e| e.file_name());
 
-    for entry in entries {
-        let file_contents = std::fs::read_to_string(entry.path()).unwrap();
-        let test: Test = serde_json::from_str(&file_contents).unwrap();
+    fs::create_dir_all("./tests/operator-logs/output").unwrap();
 
-        execute_test(test);
+    for entry in entries {
+        if entry.metadata().unwrap().is_file() {
+            execute_test(&entry.path());
+        }
     }
 }
 
-fn execute_test(test: Test) {
-    let envelopes: Vec<Envelope<operator::model::OperatorRecord>> = test
-        .input
+fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
+    input
         .into_iter()
         .scan(None, |last, e_data| {
-            dbg!(e_data.contents.clone());
             let key: signing::PrivateKey = e_data.key.parse().unwrap();
             let mut record: operator::model::OperatorRecord = e_data.contents.try_into().unwrap();
 
@@ -43,38 +43,71 @@ fn execute_test(test: Test) {
 
             Some(envelope)
         })
-        .collect();
-
-    let mut validation_state = Ok(operator::validate::ValidationState::Uninitialized);
-
-    for envelope in envelopes {
-        if matches!(validation_state, Err(_)) {
-            break;
-        }
-
-        validation_state = validation_state.unwrap().validate_envelope(&envelope);
-    }
-
-    let result = match validation_state {
-        Ok(state) => {
-            if let ValidationState::Initialized(state) = state {
-                state.entry_state.into()
-            } else {
-                panic!("Test did not initialize state. Test input must not be empty.");
-            }
-        }
-        Err(error) => OperatorStateSummary::Invalid {
-            error: format!("{}", error),
-        },
-    };
-
-    assert_eq!(test.output, result);
+        .try_fold(Validator::new(), |mut validator, record| {
+            validator.validate(&record)?;
+            Ok(validator)
+        })
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Test {
-    input: Vec<EnvelopeData>,
-    output: OperatorStateSummary,
+fn execute_test(input_path: &Path) {
+    let output_path = Path::new("./tests/operator-logs/output").join(
+        input_path
+            .file_name()
+            .expect("expected a file name for test input"),
+    );
+    let input: Vec<EnvelopeData> = serde_json::from_str(
+        &fs::read_to_string(input_path)
+            .map_err(|e| {
+                format!(
+                    "failed to read input file `{path}`: {e}",
+                    path = input_path.display()
+                )
+            })
+            .unwrap(),
+    )
+    .map_err(|e| {
+        format!(
+            "failed to deserialize input file `{path}`: {e}",
+            path = input_path.display()
+        )
+    })
+    .unwrap();
+
+    let output = match validate_input(input) {
+        Ok(validator) => Output::Valid(validator),
+        Err(e) => Output::Error(e.to_string()),
+    };
+
+    if std::env::var_os("BLESS").is_some() {
+        // Update the test baseline
+        fs::write(&output_path, serde_json::to_string_pretty(&output).unwrap())
+            .map_err(|e| {
+                format!(
+                    "failed to write output file `{path}`: {e}",
+                    path = output_path.display()
+                )
+            })
+            .unwrap();
+    } else {
+        assert_eq!(
+            serde_json::from_str::<Output>(
+                &fs::read_to_string(&output_path)
+                    .map_err(|e| {
+                        format!(
+                            "failed to read output file `{path}`: {e}",
+                            path = output_path.display()
+                        )
+                    })
+                    .unwrap()
+            )
+            .map_err(|e| format!(
+                "failed to deserialize output file `{path}`: {e}",
+                path = output_path.display()
+            ))
+            .unwrap(),
+            output
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,35 +116,9 @@ pub struct EnvelopeData {
     contents: protobuf::OperatorRecord,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OperatorStateSummary {
-    Valid {
-        hash_algorithm: String,
-        permissions: HashMap<String, Vec<String>>,
-    },
-    Invalid {
-        error: String,
-    },
-}
-
-impl From<operator::validate::EntryValidationState> for OperatorStateSummary {
-    fn from(state: operator::validate::EntryValidationState) -> Self {
-        let permissions = state
-            .permissions
-            .into_iter()
-            .map(|(k, v)| {
-                let mut vec_perms: Vec<String> = v
-                    .into_iter()
-                    .map(|permission| format!("{}", permission))
-                    .collect();
-                vec_perms.sort();
-                (format!("{}", k), vec_perms)
-            })
-            .collect();
-
-        OperatorStateSummary::Valid {
-            hash_algorithm: format!("{}", state.hash_algorithm),
-            permissions,
-        }
-    }
+pub enum Output {
+    Valid(Validator),
+    Error(String),
 }
