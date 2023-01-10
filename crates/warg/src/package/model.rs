@@ -28,7 +28,7 @@ pub enum Permission {
 
 impl Permission {
     /// Gets an array of all permissions.
-    pub fn all() -> [Permission; 2] {
+    pub const fn all() -> [Permission; 2] {
         [Permission::Release, Permission::Yank]
     }
 }
@@ -92,11 +92,9 @@ impl PackageEntry {
     /// Check permission is required to submit this entry
     pub fn required_permission(&self) -> Option<Permission> {
         match self {
-            PackageEntry::Init { .. } => None,
-            PackageEntry::GrantFlat { .. } => None,
-            PackageEntry::RevokeFlat { .. } => None,
-            PackageEntry::Release { .. } => Some(Permission::Release),
-            PackageEntry::Yank { .. } => Some(Permission::Yank),
+            Self::Init { .. } | Self::GrantFlat { .. } | Self::RevokeFlat { .. } => None,
+            Self::Release { .. } => Some(Permission::Release),
+            Self::Yank { .. } => Some(Permission::Yank),
         }
     }
 }

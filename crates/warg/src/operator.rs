@@ -6,7 +6,8 @@ use thiserror::Error;
 pub mod model;
 pub mod validate;
 
-// Deserialization
+/// The currently supported operator protocol version.
+pub const OPERATOR_RECORD_VERSION: u32 = 0;
 
 impl Decode for model::OperatorRecord {
     fn decode(bytes: &[u8]) -> Result<Self, Error> {

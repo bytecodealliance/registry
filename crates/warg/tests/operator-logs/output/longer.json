@@ -1,0 +1,19 @@
+{
+  "Valid": {
+    "algorithm": "sha256",
+    "root": {
+      "digest": "sha256:d359ec419c53bf9901626f6f2932f3f2ecf8c46d136dec52b8523e9a06f6d75a",
+      "timestamp": "1671221120.153436500"
+    },
+    "permissions": {
+      "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": [
+        "commit"
+      ],
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": []
+    },
+    "keys": {
+      "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": "ecdsa-p256:A1OfZz5Y9Ny7VKPVwroCTQPAr9tmlI4U/UTYHZHA87AF",
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": "ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu"
+    }
+  }
+}

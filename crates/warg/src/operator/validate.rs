@@ -1,11 +1,9 @@
-use super::model;
+use super::{model, OPERATOR_RECORD_VERSION};
 use crate::{hash, signing, Envelope, Signable};
-use semver::Version;
+use indexmap::{IndexMap, IndexSet};
+use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    time::SystemTime,
-};
+use std::time::SystemTime;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -16,7 +14,7 @@ pub enum ValidationError {
     #[error("The initial record is empty and does not \"init\"")]
     InitialRecordDoesNotInit,
 
-    #[error("The Key ID used to sign this envelope is not known to this package log")]
+    #[error("The Key ID used to sign this envelope is not known to this operator log")]
     KeyIDNotRecognized { key_id: signing::KeyID },
 
     #[error("A second \"init\" entry was found")]
@@ -33,15 +31,6 @@ pub enum ValidationError {
         permission: model::Permission,
         key_id: signing::KeyID,
     },
-
-    #[error("An entry attempted to release already released version {version}")]
-    ReleaseOfReleased { version: Version },
-
-    #[error("An entry attempted to yank version {version} which had not yet been released")]
-    YankOfUnreleased { version: Version },
-
-    #[error("An entry attempted to yank already yanked version {version}")]
-    YankOfYanked { version: Version },
 
     #[error("Unable to verify signature")]
     SignatureError(#[from] SignatureError),
@@ -68,58 +57,48 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub enum ValidationState {
-    #[default]
-    Uninitialized,
-    Initialized(ValidationStateInit),
+/// Information about the current validation root of the operator log.
+///
+/// A root is the last validated record digest and timestamp.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct Root {
+    /// The digest of the last validated record.
+    digest: hash::Digest,
+    /// The timestamp of the last validated record.
+    #[serde(with = "crate::timestamp")]
+    timestamp: SystemTime,
 }
 
-/// The state known to record validation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationStateInit {
-    /// Last record hash
-    last_record: hash::Digest,
-    /// Last timestamp
-    last_timestamp: SystemTime,
-    /// The state known to entry validation
-    pub entry_state: EntryValidationState,
+/// A validator for operator records.
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Validator {
+    /// The hash algorithm used by the operator log.
+    /// This is `None` until the first (i.e. init) record is validated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    algorithm: Option<hash::HashAlgorithm>,
+    /// The current root of the validator.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root: Option<Root>,
+    /// The permissions of each key.
+    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    /// The keys known to the validator.
+    keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
-impl ValidationState {
-    /// Determine the state of the validator (or error) after the next
-    /// package record envelope has been processed.
-    pub fn validate_envelope(
-        self,
-        envelope: &Envelope<model::OperatorRecord>,
-    ) -> Result<ValidationState, ValidationError> {
-        let state = self.validate_record(envelope.key_id.clone(), envelope)?;
-
-        if let ValidationState::Initialized(initialized_state) = &state {
-            if let Some(key) = initialized_state
-                .entry_state
-                .known_keys
-                .get(&envelope.key_id)
-            {
-                model::OperatorRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
-            } else {
-                return Err(ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id.clone(),
-                });
-            }
-        } else {
-            return Err(ValidationError::InitialRecordDoesNotInit);
-        }
-
-        Ok(state)
+impl Validator {
+    /// Create a new operator log validator.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn validate_record(
-        self,
-        key_id: signing::KeyID,
+    /// Validates an individual operator record.
+    ///
+    /// It is expected that `validate` is called in order of the
+    /// records in the log.
+    pub fn validate(
+        &mut self,
         envelope: &Envelope<model::OperatorRecord>,
-    ) -> Result<ValidationState, ValidationError> {
+    ) -> Result<(), ValidationError> {
         let record = &envelope.contents;
 
         // Validate previous hash
@@ -132,36 +111,62 @@ impl ValidationState {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        let entry_state = self.validate_record_entries(key_id, record)?;
+        self.validate_record_entries(&envelope.key_id, &record.entries)?;
 
-        let last_record = entry_state.hash_algorithm.digest(&envelope.content_bytes);
-        let last_timestamp = record.timestamp;
-        Ok(ValidationState::Initialized(ValidationStateInit {
-            last_record,
-            last_timestamp,
-            entry_state,
-        }))
+        // At this point the digest algorithm must be set via an init entry
+        let algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key =
+            self.keys
+                .get(&envelope.key_id)
+                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
+                    key_id: envelope.key_id.clone(),
+                })?;
+
+        // Validate the envelope signature
+        model::OperatorRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
+
+        // Update the validator root
+        self.root = Some(Root {
+            digest: algorithm.digest(&envelope.content_bytes),
+            timestamp: record.timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// Gets the public key of the given key id.
+    ///
+    /// Returns `None` if the key id is not recognized.
+    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
+        self.keys.get(key_id)
+    }
+
+    fn initialized(&self) -> bool {
+        // The package log is initialized if the hash algorithm is set
+        self.algorithm.is_some()
     }
 
     fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
-        match (&self, &record.prev) {
-            (ValidationState::Uninitialized, None) => Ok(()),
-            (ValidationState::Uninitialized, Some(_)) => {
-                Err(ValidationError::PreviousHashOnFirstRecord)
-            }
-            (ValidationState::Initialized(_), None) => {
-                Err(ValidationError::NoPreviousHashAfterInit)
-            }
-            (ValidationState::Initialized(state), Some(prev)) => {
-                if prev.algorithm() != state.entry_state.hash_algorithm {
+        match (&self.root, &record.prev) {
+            (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
+            (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
+            (None, None) => Ok(()),
+            (Some(expected), Some(found)) => {
+                if found.algorithm() != expected.digest.algorithm() {
                     return Err(ValidationError::IncorrectHashAlgorithm {
-                        found: prev.algorithm(),
-                        expected: state.entry_state.hash_algorithm,
+                        found: found.algorithm(),
+                        expected: expected.digest.algorithm(),
                     });
                 }
-                if prev != &state.last_record {
+
+                if found != &expected.digest {
                     return Err(ValidationError::RecordHashDoesNotMatch);
                 }
+
                 Ok(())
             }
         }
@@ -171,7 +176,7 @@ impl ValidationState {
         &self,
         record: &model::OperatorRecord,
     ) -> Result<(), ValidationError> {
-        if record.version == 0 {
+        if record.version == OPERATOR_RECORD_VERSION {
             Ok(())
         } else {
             Err(ValidationError::ProtocolVersionNotAllowed {
@@ -184,142 +189,132 @@ impl ValidationState {
         &self,
         record: &model::OperatorRecord,
     ) -> Result<(), ValidationError> {
-        if let ValidationState::Initialized(state) = &self {
-            if record.timestamp < state.last_timestamp {
+        if let Some(root) = &self.root {
+            if record.timestamp < root.timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
             }
         }
+
         Ok(())
     }
 
     fn validate_record_entries(
-        self,
-        key_id: signing::KeyID,
-        record: &model::OperatorRecord,
-    ) -> Result<EntryValidationState, ValidationError> {
-        let mut entry_validation_state = match self {
-            ValidationState::Uninitialized => None,
-            ValidationState::Initialized(state) => Some(state.entry_state),
-        };
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        entries: &[model::OperatorEntry],
+    ) -> Result<(), ValidationError> {
+        for entry in entries {
+            if let Some(permission) = entry.required_permission() {
+                self.check_key_permission(signer_key_id, permission)?;
+            }
 
-        for entry in &record.entries {
-            entry_validation_state = match entry_validation_state {
-                Some(state) => Some(state.validate_next(key_id.clone(), entry)?),
-                None => Some(EntryValidationState::validate_first(key_id.clone(), entry)?),
-            };
-        }
-
-        match entry_validation_state {
-            Some(state) => Ok(state),
-            None => Err(ValidationError::InitialRecordDoesNotInit),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryValidationState {
-    /// The hash algorithm used by this package
-    pub hash_algorithm: hash::HashAlgorithm,
-    /// The permissions associated with a given key_id
-    pub permissions: HashMap<signing::KeyID, HashSet<model::Permission>>,
-    /// The relevant known keys to this
-    pub known_keys: HashMap<signing::KeyID, signing::PublicKey>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReleaseState {
-    Unreleased,
-    Released { content: hash::Digest },
-    Yanked,
-}
-
-impl EntryValidationState {
-    pub fn validate_first(
-        key_id: signing::KeyID,
-        entry: &model::OperatorEntry,
-    ) -> Result<Self, ValidationError> {
-        match entry {
-            model::OperatorEntry::Init {
+            // Process an init entry specially
+            if let model::OperatorEntry::Init {
                 hash_algorithm,
-                key: init_key,
-            } => Ok(EntryValidationState {
-                hash_algorithm: *hash_algorithm,
-                permissions: HashMap::from([(key_id, HashSet::from([model::Permission::Commit]))]),
-                known_keys: HashMap::from([(init_key.fingerprint(), init_key.clone())]),
-            }),
-            _ => Err(ValidationError::FirstEntryIsNotInit),
+                key,
+            } = entry
+            {
+                self.validate_init_entry(signer_key_id, *hash_algorithm, key)?;
+                continue;
+            }
+
+            // Must have seen an init entry by now
+            if !self.initialized() {
+                return Err(ValidationError::FirstEntryIsNotInit);
+            }
+
+            match entry {
+                model::OperatorEntry::Init { .. } => unreachable!(), // handled above
+                model::OperatorEntry::GrantFlat { key, permission } => {
+                    self.validate_grant_entry(signer_key_id, key, *permission)?
+                }
+                model::OperatorEntry::RevokeFlat { key_id, permission } => {
+                    self.validate_revoke_entry(signer_key_id, key_id, *permission)?
+                }
+            }
         }
+
+        Ok(())
     }
 
-    pub fn validate_next(
-        mut self,
-        key_id: signing::KeyID,
-        entry: &model::OperatorEntry,
-    ) -> Result<EntryValidationState, ValidationError> {
-        match entry {
-            // Invalid re-initialization
-            model::OperatorEntry::Init { .. } => Err(ValidationError::InitialEntryAfterBeginning),
+    fn validate_init_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        algorithm: hash::HashAlgorithm,
+        init_key: &signing::PublicKey,
+    ) -> Result<(), ValidationError> {
+        if self.initialized() {
+            return Err(ValidationError::InitialEntryAfterBeginning);
+        }
 
-            model::OperatorEntry::GrantFlat { key, permission } => {
-                // Check that the current key has the permission they're trying to revoke
-                self.check_key_permission(key_id, *permission)?;
+        assert!(self.permissions.is_empty());
+        assert!(self.keys.is_empty());
 
-                let grant_key_id = key.fingerprint();
-                self.known_keys.insert(grant_key_id.clone(), key.clone());
+        self.algorithm = Some(algorithm);
+        self.permissions.insert(
+            signer_key_id.clone(),
+            IndexSet::from(model::Permission::all()),
+        );
+        self.keys.insert(init_key.fingerprint(), init_key.clone());
 
-                match self.permissions.entry(grant_key_id) {
-                    Entry::Occupied(mut entry) => {
-                        entry.get_mut().insert(*permission);
-                    }
-                    Entry::Vacant(entry) => {
-                        entry.insert(HashSet::from([*permission]));
-                    }
-                };
+        Ok(())
+    }
 
-                Ok(self)
-            }
+    fn validate_grant_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        key: &signing::PublicKey,
+        permission: model::Permission,
+    ) -> Result<(), ValidationError> {
+        // Check that the current key has the permission they're trying to grant
+        self.check_key_permission(signer_key_id, permission)?;
 
-            model::OperatorEntry::RevokeFlat { key_id, permission } => {
-                // Check that the current key has the permission they're trying to revoke
-                self.check_key_permission(key_id.clone(), *permission)?;
+        let grant_key_id = key.fingerprint();
+        self.keys.insert(grant_key_id.clone(), key.clone());
+        self.permissions
+            .entry(grant_key_id)
+            .or_default()
+            .insert(permission);
 
-                match self.permissions.entry(key_id.clone()) {
-                    Entry::Occupied(mut entry) => {
-                        let permissions_set = entry.get_mut();
-                        if !permissions_set.contains(permission) {
-                            return Err(ValidationError::PermissionNotFoundToRevoke {
-                                permission: *permission,
-                                key_id: key_id.clone(),
-                            });
-                        }
-                        entry.get_mut().remove(permission);
-                    }
-                    Entry::Vacant(_) => {
-                        return Err(ValidationError::PermissionNotFoundToRevoke {
-                            permission: *permission,
-                            key_id: key_id.clone(),
-                        })
-                    }
-                };
-                Ok(self)
+        Ok(())
+    }
+
+    fn validate_revoke_entry(
+        &mut self,
+        signer_key_id: &signing::KeyID,
+        key_id: &signing::KeyID,
+        permission: model::Permission,
+    ) -> Result<(), ValidationError> {
+        // Check that the current key has the permission they're trying to revoke
+        self.check_key_permission(signer_key_id, permission)?;
+
+        if let Some(set) = self.permissions.get_mut(key_id) {
+            if set.remove(&permission) {
+                return Ok(());
             }
         }
+
+        // Permission not found to remove
+        Err(ValidationError::PermissionNotFoundToRevoke {
+            permission,
+            key_id: key_id.clone(),
+        })
     }
 
     fn check_key_permission(
         &self,
-        key_id: signing::KeyID,
+        key_id: &signing::KeyID,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
-        if let Some(available_permissions) = self.permissions.get(&key_id) {
+        if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
-                return Ok(()); // Needed permission found
+                return Ok(());
             }
         }
 
         // Needed permission not found
         Err(ValidationError::UnauthorizedAction {
-            key_id,
+            key_id: key_id.clone(),
             needed_permission: permission,
         })
     }
@@ -338,6 +333,7 @@ mod tests {
     #[test]
     fn test_validate_base_log() {
         let (alice_pub, alice_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
 
         let timestamp = SystemTime::now();
         let record = model::OperatorRecord {
@@ -350,29 +346,25 @@ mod tests {
             }],
         };
 
-        let envelope = match Envelope::signed_contents(&alice_priv, record) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to sign envelope: {:?}", error),
-        };
+        let envelope =
+            Envelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+        let mut validator = Validator::default();
+        validator.validate(&envelope).unwrap();
 
-        let validation_state = match ValidationState::Uninitialized.validate_envelope(&envelope) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to validate: {:?}", error),
-        };
-
-        let expected_state = ValidationState::Initialized(ValidationStateInit {
-            last_record: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
-            last_timestamp: timestamp,
-            entry_state: EntryValidationState {
-                hash_algorithm: HashAlgorithm::Sha256,
-                permissions: HashMap::from([(
-                    alice_pub.fingerprint(),
-                    HashSet::from([model::Permission::Commit]),
+        assert_eq!(
+            validator,
+            Validator {
+                root: Some(Root {
+                    digest: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
+                    timestamp,
+                }),
+                algorithm: Some(HashAlgorithm::Sha256),
+                permissions: IndexMap::from([(
+                    alice_id.clone(),
+                    IndexSet::from([model::Permission::Commit]),
                 )]),
-                known_keys: HashMap::from([(alice_pub.fingerprint(), alice_pub)]),
-            },
-        });
-
-        assert_eq!(expected_state, validation_state);
+                keys: IndexMap::from([(alice_id, alice_pub)]),
+            }
+        );
     }
 }
