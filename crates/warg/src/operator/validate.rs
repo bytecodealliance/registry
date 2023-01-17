@@ -63,12 +63,12 @@ pub enum ValidationError {
 ///
 /// A root is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Root {
+pub struct Root {
     /// The digest of the last validated record.
-    digest: DynHash,
+    pub digest: DynHash,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
-    timestamp: SystemTime,
+    pub timestamp: SystemTime,
 }
 
 /// A validator for operator records.
@@ -82,8 +82,10 @@ pub struct Validator {
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
     /// The permissions of each key.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
     /// The keys known to the validator.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
@@ -91,6 +93,13 @@ impl Validator {
     /// Create a new operator log validator.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Gets the current root of the validator.
+    ///
+    /// Returns `None` if no records have been validated yet.
+    pub fn root(&self) -> &Option<Root> {
+        &self.root
     }
 
     /// Validates an individual operator record.
