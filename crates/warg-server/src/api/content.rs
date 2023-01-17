@@ -10,7 +10,7 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
-use sha2::{Digest, Sha256};
+use warg_crypto::hash::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tower_http::services::ServeDir;

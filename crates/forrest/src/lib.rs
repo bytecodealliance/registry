@@ -12,6 +12,5 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
-pub mod hash;
 pub mod log;
 pub mod map;

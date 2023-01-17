@@ -1,13 +1,15 @@
-use crate::{hash, signing};
+use crate::signing;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
+
+use warg_crypto::hash::{HashAlgorithm, DynHash};
 
 /// A operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorRecord {
     /// The hash of the previous operator record envelope
-    pub prev: Option<hash::Digest>,
+    pub prev: Option<DynHash>,
     /// The version of the registry protocol used
     pub version: u32,
     /// When this record was published
@@ -57,7 +59,7 @@ pub enum OperatorEntry {
     /// Must be the first entry of every log and not appear elsewhere.
     Init {
         /// The hash algorithm this log will use for linking
-        hash_algorithm: hash::HashAlgorithm,
+        hash_algorithm: HashAlgorithm,
         /// The original operator key
         key: signing::PublicKey,
     },

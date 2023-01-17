@@ -2,19 +2,17 @@ use core::fmt::Debug;
 
 use alloc::{vec, vec::Vec};
 
-use digest::Digest;
+use warg_crypto::hash::{SupportedDigest, Hash};
 
 use super::node::{Node, Side};
 use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, HashProvider, VerifiableLog};
-use crate::hash::Hash;
 
 /// A verifiable log where the node hashes are stored
 /// contiguously in memory by index.
 #[derive(Debug, Clone)]
 pub struct VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     /// The number of entries
     length: usize,
@@ -28,8 +26,7 @@ where
 /// Length is the number of total leaf nodes present
 impl<D> VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     fn get_digest(&self, node: Node) -> Hash<D> {
         self.tree[node.index()].clone()
@@ -42,8 +39,7 @@ where
 
 impl<D> Default for VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     fn default() -> Self {
         VecLog {
@@ -55,8 +51,7 @@ where
 
 impl<D> VerifiableLog<D> for VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     fn root(&self) -> Hash<D> {
         self.root_at(self.checkpoint()).unwrap()
@@ -126,8 +121,7 @@ where
 
 impl<D> AsRef<[Hash<D>]> for VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     fn as_ref(&self) -> &[Hash<D>] {
         &self.tree[..]
@@ -136,8 +130,7 @@ where
 
 impl<D> HashProvider<D> for VecLog<D>
 where
-    D: Digest,
-    Hash<D>: Debug,
+    D: SupportedDigest
 {
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
         VerifiableLog::hash_for(self, node)
@@ -152,12 +145,13 @@ where
 mod tests {
     use std::dbg;
 
+    use warg_crypto::hash::Sha256;
+
     use crate::log::proofs::{ConsistencyProof, InclusionProof, InclusionProofError};
 
     use super::*;
-    use sha2::Sha256;
 
-    fn naive_merkle<D: Digest, E: AsRef<[u8]>>(elements: &[E]) -> Hash<D> {
+    fn naive_merkle<D: SupportedDigest, E: AsRef<[u8]>>(elements: &[E]) -> Hash<D> {
         let res = match elements.len() {
             0 => hash_empty::<D>(),
             1 => hash_leaf::<D>(&elements[0]),

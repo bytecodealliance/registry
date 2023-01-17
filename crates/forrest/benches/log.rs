@@ -3,7 +3,7 @@ use std::{iter::repeat_with, time::Duration};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode};
 use forrest::log::{VecLog, VerifiableLog};
 use rand::Rng;
-use sha2::Sha256;
+use warg_crypto::hash::Sha256;
 
 fn run(items: impl Iterator<Item = [u8; 32]>) -> VecLog<Sha256> {
     let mut log: VecLog<Sha256> = VecLog::default();

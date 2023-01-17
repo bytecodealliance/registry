@@ -3,7 +3,7 @@ use std::{iter::repeat_with, time::Duration};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use forrest::map::Map;
 use rand::Rng;
-use sha2::Sha256;
+use warg_crypto::hash::Sha256;
 
 fn create(items: impl Iterator<Item = ([u8; 32], [u8; 32])>) -> Map<Sha256, [u8; 32], [u8; 32]> {
     Map::<Sha256, _, _>::default().extend(items)

@@ -27,8 +27,7 @@ pub use proof::Proof;
 
 #[cfg(test)]
 mod test {
-    use digest::Digest;
-    use sha2::Sha256;
+    use warg_crypto::hash::{SupportedDigest, Digest, Sha256};
 
     use super::Map;
 
@@ -156,7 +155,7 @@ mod test {
 
     #[test]
     fn prove() {
-        fn check<D: Digest, K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        fn check<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>>(
             tree: &Map<D, K, V>,
             key: K,
             peers: usize,

@@ -1,8 +1,9 @@
 use super::{model, OPERATOR_RECORD_VERSION};
-use crate::{hash, signing, Envelope, Signable};
+use crate::{signing, Envelope, Signable};
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
+use warg_crypto::hash::{HashAlgorithm, DynHash};
 use std::time::SystemTime;
 use thiserror::Error;
 
@@ -37,8 +38,8 @@ pub enum ValidationError {
 
     #[error("Record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
-        found: hash::HashAlgorithm,
-        expected: hash::HashAlgorithm,
+        found: HashAlgorithm,
+        expected: HashAlgorithm,
     },
 
     #[error("Previous record hash does not match")]
@@ -63,7 +64,7 @@ pub enum ValidationError {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct Root {
     /// The digest of the last validated record.
-    digest: hash::Digest,
+    digest: DynHash,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
     timestamp: SystemTime,
@@ -75,7 +76,7 @@ pub struct Validator {
     /// The hash algorithm used by the operator log.
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    algorithm: Option<hash::HashAlgorithm>,
+    algorithm: Option<HashAlgorithm>,
     /// The current root of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
@@ -240,7 +241,7 @@ impl Validator {
     fn validate_init_entry(
         &mut self,
         signer_key_id: &signing::KeyID,
-        algorithm: hash::HashAlgorithm,
+        algorithm: HashAlgorithm,
         init_key: &signing::PublicKey,
     ) -> Result<(), ValidationError> {
         if self.initialized() {
@@ -327,7 +328,7 @@ mod tests {
     use super::*;
     use crate::signing::tests::generate_p256_pair;
 
-    use crate::hash::HashAlgorithm;
+    use warg_crypto::hash::HashAlgorithm;
     use std::time::SystemTime;
 
     #[test]

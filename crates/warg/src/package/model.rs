@@ -1,14 +1,16 @@
-use crate::{hash, signing};
+use crate::signing;
 use core::fmt;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
 
+use warg_crypto::hash::{HashAlgorithm, DynHash};
+
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageRecord {
     /// The hash of the previous package record envelope
-    pub prev: Option<hash::Digest>,
+    pub prev: Option<DynHash>,
     /// The version of the registry protocol used
     pub version: u32,
     /// When this record was published
@@ -61,7 +63,7 @@ pub enum PackageEntry {
     /// Must be the first entry of every log and not appear elsewhere.
     Init {
         /// The hash algorithm this log will use for linking
-        hash_algorithm: hash::HashAlgorithm,
+        hash_algorithm: HashAlgorithm,
         /// The key of the original package maintainer
         key: signing::PublicKey,
     },
@@ -81,7 +83,7 @@ pub enum PackageEntry {
     /// The version must not have been released yet.
     Release {
         version: Version,
-        content: hash::Digest,
+        content: DynHash,
     },
     /// Yank a version of a package.
     /// The version must have been released and not yanked.

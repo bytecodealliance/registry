@@ -6,31 +6,30 @@ use core::marker::PhantomData;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use digest::Digest;
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::fork::Fork;
 use super::path::Path;
 use super::proof::Proof;
-use crate::hash::Hash;
 
-pub enum Node<D: Digest, K, V> {
+pub enum Node<D: SupportedDigest, K, V> {
     Leaf(Arc<(K, V)>),
     Fork(Fork<D, K, V>),
 }
 
-impl<D: Digest, K, V> From<Fork<D, K, V>> for Node<D, K, V> {
+impl<D: SupportedDigest, K, V> From<Fork<D, K, V>> for Node<D, K, V> {
     fn from(fork: Fork<D, K, V>) -> Self {
         Self::Fork(fork)
     }
 }
 
-impl<D: Digest, K, V> From<(K, V)> for Node<D, K, V> {
+impl<D: SupportedDigest, K, V> From<(K, V)> for Node<D, K, V> {
     fn from(leaf: (K, V)) -> Self {
         Self::Leaf(leaf.into())
     }
 }
 
-impl<D: Digest, K, V> Clone for Node<D, K, V> {
+impl<D: SupportedDigest, K, V> Clone for Node<D, K, V> {
     fn clone(&self) -> Self {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
@@ -39,13 +38,13 @@ impl<D: Digest, K, V> Clone for Node<D, K, V> {
     }
 }
 
-impl<D: Digest, K, V> Default for Node<D, K, V> {
+impl<D: SupportedDigest, K, V> Default for Node<D, K, V> {
     fn default() -> Self {
         Self::Fork(Fork::default())
     }
 }
 
-impl<D: Digest, K, V> Node<D, K, V> {
+impl<D: SupportedDigest, K, V> Node<D, K, V> {
     pub fn get(&self, mut rhs: Path<D>) -> Option<&V> {
         match (rhs.next(), self) {
             (Some(idx), Self::Fork(fork)) => fork[idx].as_ref()?.node.get(rhs),
@@ -84,7 +83,7 @@ impl<D: Digest, K, V> Node<D, K, V> {
 
 impl<D, K, V> Node<D, K, V>
 where
-    D: Digest,
+    D: SupportedDigest,
     K: AsRef<[u8]>,
     V: AsRef<[u8]>,
 {
