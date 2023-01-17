@@ -3,18 +3,17 @@
 
 use core::iter::FusedIterator;
 
-use digest::Digest;
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{link::Link, node::Node};
-use crate::hash::Hash;
 
-pub struct Path<D: Digest> {
+pub struct Path<D: SupportedDigest> {
     all: Hash<D>,
     lhs: usize,
     rhs: usize,
 }
 
-impl<D: Digest> Path<D> {
+impl<D: SupportedDigest> Path<D> {
     fn get(&self, at: usize) -> bool {
         let shift = 7 - at % 8;
         let byte = at / 8;
@@ -40,7 +39,7 @@ impl<D: Digest> Path<D> {
     }
 }
 
-impl<D: Digest, K: AsRef<[u8]>> From<K> for Path<D> {
+impl<D: SupportedDigest, K: AsRef<[u8]>> From<K> for Path<D> {
     fn from(key: K) -> Self {
         let all = D::digest(key);
 
@@ -52,10 +51,10 @@ impl<D: Digest, K: AsRef<[u8]>> From<K> for Path<D> {
     }
 }
 
-impl<D: Digest> FusedIterator for Path<D> {}
-impl<D: Digest> ExactSizeIterator for Path<D> {}
+impl<D: SupportedDigest> FusedIterator for Path<D> {}
+impl<D: SupportedDigest> ExactSizeIterator for Path<D> {}
 
-impl<D: Digest> DoubleEndedIterator for Path<D> {
+impl<D: SupportedDigest> DoubleEndedIterator for Path<D> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.lhs == self.rhs {
             return None;
@@ -66,7 +65,7 @@ impl<D: Digest> DoubleEndedIterator for Path<D> {
     }
 }
 
-impl<D: Digest> Iterator for Path<D> {
+impl<D: SupportedDigest> Iterator for Path<D> {
     type Item = bool;
 
     #[inline]
@@ -86,34 +85,41 @@ impl<D: Digest> Iterator for Path<D> {
     }
 }
 
-#[test]
-#[allow(clippy::identity_op)]
-fn test() {
-    let mut path = Path::<sha2::Sha256>::from("foo");
-    let mut hash = sha2::Sha256::digest("foo").into_iter().map(usize::from);
+#[cfg(test)]
+mod tests {
+    use warg_crypto::hash::Digest;
+    use warg_crypto::hash::Sha256;
+    use super::*;
 
-    for _ in 0..hash.len() / 2 {
-        let lhs = hash.next().unwrap();
-        assert_eq!((lhs >> 7) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 6) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 5) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 4) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 3) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 2) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 1) & 1 == 1, path.next().unwrap());
-        assert_eq!((lhs >> 0) & 1 == 1, path.next().unwrap());
+    #[test]
+    #[allow(clippy::identity_op)]
+    fn test() {
+        let mut path = Path::<Sha256>::from("foo");
+        let mut hash = Sha256::digest("foo").into_iter().map(usize::from);
 
-        let rhs = hash.next_back().unwrap();
-        assert_eq!((rhs >> 0) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 1) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 2) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 3) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 4) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 5) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 6) & 1 == 1, path.next_back().unwrap());
-        assert_eq!((rhs >> 7) & 1 == 1, path.next_back().unwrap());
+        for _ in 0..hash.len() / 2 {
+            let lhs = hash.next().unwrap();
+            assert_eq!((lhs >> 7) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 6) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 5) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 4) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 3) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 2) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 1) & 1 == 1, path.next().unwrap());
+            assert_eq!((lhs >> 0) & 1 == 1, path.next().unwrap());
+
+            let rhs = hash.next_back().unwrap();
+            assert_eq!((rhs >> 0) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 1) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 2) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 3) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 4) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 5) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 6) & 1 == 1, path.next_back().unwrap());
+            assert_eq!((rhs >> 7) & 1 == 1, path.next_back().unwrap());
+        }
+
+        assert!(hash.next().is_none());
+        assert!(path.next().is_none());
     }
-
-    assert!(hash.next().is_none());
-    assert!(path.next().is_none());
 }

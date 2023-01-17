@@ -10,8 +10,6 @@
 //! which is a [`VerifiableLog`] whose contents are structured
 //! using binary in-order interval numbering as described in
 //! [Dat - Distributed Dataset Synchronization and Versioning][2].
-//!
-use digest::Digest;
 
 /// Logic for manipulating log tree node indices
 pub mod node;
@@ -19,8 +17,10 @@ pub mod node;
 pub mod proofs;
 mod vec_log;
 
+
+use warg_crypto::hash::{SupportedDigest, Hash};
+
 use self::node::Node;
-use crate::hash::Hash;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to
@@ -56,7 +56,7 @@ use crate::hash::Hash;
 /// [2]: https://www.rfc-editor.org/rfc/rfc6962
 pub trait VerifiableLog<D>
 where
-    D: Digest,
+    D: SupportedDigest
 {
     /// Get the root representing the state of the log
     fn root(&self) -> Hash<D>;
@@ -90,7 +90,7 @@ impl Checkpoint {
 /// A collection of hash data
 pub trait HashProvider<D>
 where
-    D: Digest,
+    D: SupportedDigest,
 {
     /// Does this hash exist in the collection?
     fn has_hash(&self, node: Node) -> bool;
@@ -102,12 +102,12 @@ where
 pub use vec_log::VecLog;
 
 /// Compute the hash for an empty tree using a given Digest algorithm.
-pub fn hash_empty<D: Digest>() -> Hash<D> {
+pub fn hash_empty<D: SupportedDigest>() -> Hash<D> {
     D::new().finalize().into()
 }
 
 /// Compute the hash for a leaf in a tree using a given Digest algorithm.
-pub fn hash_leaf<D: Digest>(data: impl AsRef<[u8]>) -> Hash<D> {
+pub fn hash_leaf<D: SupportedDigest>(data: impl AsRef<[u8]>) -> Hash<D> {
     let mut digest = D::new();
     digest.update(&[0u8]);
     digest.update(data);
@@ -115,7 +115,7 @@ pub fn hash_leaf<D: Digest>(data: impl AsRef<[u8]>) -> Hash<D> {
 }
 
 /// Compute the hash for a branch in a tree using a given Digest algorithm.
-pub fn hash_branch<D: Digest>(left: impl AsRef<[u8]>, right: impl AsRef<[u8]>) -> Hash<D> {
+pub fn hash_branch<D: SupportedDigest>(left: impl AsRef<[u8]>, right: impl AsRef<[u8]>) -> Hash<D> {
     let mut digest = D::new();
     digest.update(&[1u8]);
     digest.update(left);

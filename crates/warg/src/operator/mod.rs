@@ -1,7 +1,9 @@
-use crate::{hash, protobuf, Decode, Encode, Signable};
+use crate::{protobuf, Decode, Encode, Signable};
 use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
+
+use warg_crypto::hash::DynHash;
 
 pub mod model;
 pub mod validate;
@@ -19,7 +21,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::OperatorRecord) -> Result<Self, Self::Error> {
-        let prev: Option<hash::Digest> = match record.prev {
+        let prev: Option<DynHash> = match record.prev {
             Some(hash_string) => Some(hash_string.parse()?),
             None => None,
         };
@@ -164,7 +166,7 @@ mod tests {
 
     use std::time::SystemTime;
 
-    use crate::hash::HashAlgorithm;
+    use warg_crypto::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
     use crate::Envelope;
 

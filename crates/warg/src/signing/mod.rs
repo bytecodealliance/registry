@@ -1,7 +1,8 @@
-use crate::hash::HashAlgorithm;
 use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
+
+use warg_crypto::hash::HashAlgorithm;
 
 mod private_key;
 mod public_key;

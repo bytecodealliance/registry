@@ -4,16 +4,16 @@
 use core::borrow::Borrow;
 use core::fmt::{Debug, Formatter, LowerHex};
 
-use digest::{Digest, Output};
 use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use warg_crypto::hash::{Hash, SupportedDigest, Output};
 
 use super::iter::Iter;
 use super::link::Link;
 use super::path::Path;
 use super::proof::Proof;
-use crate::hash::Hash;
 
 /// Immutable Map w/ Inclusion Proofs
 ///
@@ -85,28 +85,28 @@ use crate::hash::Hash;
 /// // Empty tree:
 /// H(0b00)
 /// ```
-pub struct Map<D: Digest, K, V>(Link<D, K, V>, usize);
+pub struct Map<D: SupportedDigest, K, V>(Link<D, K, V>, usize);
 
-impl<D: Digest, K: AsRef<[u8]>, V: AsRef<[u8]>> Default for Map<D, K, V> {
+impl<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>> Default for Map<D, K, V> {
     fn default() -> Self {
         Self(Link::default(), 0)
     }
 }
 
-impl<D: Digest, K, V> Eq for Map<D, K, V> {}
-impl<D: Digest, K, V> PartialEq for Map<D, K, V> {
+impl<D: SupportedDigest, K, V> Eq for Map<D, K, V> {}
+impl<D: SupportedDigest, K, V> PartialEq for Map<D, K, V> {
     fn eq(&self, other: &Self) -> bool {
         self.0.hash == other.0.hash
     }
 }
 
-impl<D: Digest, K, V> core::hash::Hash for Map<D, K, V> {
+impl<D: SupportedDigest, K, V> core::hash::Hash for Map<D, K, V> {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.0.hash.hash(state);
     }
 }
 
-impl<D: Digest, K, V> Debug for Map<D, K, V>
+impl<D: SupportedDigest, K, V> Debug for Map<D, K, V>
 where
     Output<D>: LowerHex,
 {
@@ -115,7 +115,7 @@ where
     }
 }
 
-impl<D: Digest, K, V> Map<D, K, V> {
+impl<D: SupportedDigest, K, V> Map<D, K, V> {
     /// The hash of the root of the tree.
     ///
     /// This uniquely identifies the map and its contents.
@@ -157,7 +157,7 @@ impl<D: Digest, K, V> Map<D, K, V> {
     }
 }
 
-impl<D: Digest, K: AsRef<[u8]>, V: AsRef<[u8]>> Map<D, K, V> {
+impl<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>> Map<D, K, V> {
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
@@ -181,7 +181,7 @@ impl<D: Digest, K: AsRef<[u8]>, V: AsRef<[u8]>> Map<D, K, V> {
     }
 }
 
-impl<D: Digest, K: Serialize, V: Serialize> Serialize for Map<D, K, V> {
+impl<D: SupportedDigest, K: Serialize, V: Serialize> Serialize for Map<D, K, V> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(self.len()))?;
 
@@ -195,16 +195,16 @@ impl<D: Digest, K: Serialize, V: Serialize> Serialize for Map<D, K, V> {
 
 impl<'de, D, K, V> Deserialize<'de> for Map<D, K, V>
 where
-    D: Digest,
+    D: SupportedDigest,
     K: AsRef<[u8]> + Deserialize<'de>,
     V: AsRef<[u8]> + Deserialize<'de>,
 {
     fn deserialize<X: Deserializer<'de>>(deserializer: X) -> Result<Self, X::Error> {
-        struct MapVisitor<D: Digest, K, V>(Map<D, K, V>);
+        struct MapVisitor<D: SupportedDigest, K, V>(Map<D, K, V>);
 
         impl<'a, D, K, V> Visitor<'a> for MapVisitor<D, K, V>
         where
-            D: Digest,
+            D: SupportedDigest,
             K: AsRef<[u8]> + Deserialize<'a>,
             V: AsRef<[u8]> + Deserialize<'a>,
         {
@@ -231,7 +231,7 @@ where
 #[cfg(test)]
 fn test() {
     use alloc::{string::String, vec::Vec};
-    use sha2::Sha256;
+    use warg_crypto::hash::Sha256;
 
     let a = Map::<Sha256, &str, &str>::default();
     let b = a.insert("foo", "bar");

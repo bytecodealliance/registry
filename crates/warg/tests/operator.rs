@@ -5,8 +5,8 @@ use std::{
     fs::{self, DirEntry},
     path::Path,
 };
+use warg_crypto::hash::HashAlgorithm;
 use warg_protocol::{
-    hash,
     operator::{self, validate::Validator},
     protobuf, signing, Envelope,
 };
@@ -39,7 +39,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
 
             let envelope = Envelope::signed_contents(&key, record).unwrap();
 
-            *last = Some(hash::HashAlgorithm::Sha256.digest(envelope.content_bytes()));
+            *last = Some(HashAlgorithm::Sha256.digest(envelope.content_bytes()));
 
             Some(envelope)
         })

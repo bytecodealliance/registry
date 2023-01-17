@@ -1,13 +1,13 @@
 use anyhow::Error;
-use hash::HashParseError;
+use warg_crypto::hash::DynHashParseError;
 use prost::Message;
 use signature::Error as SignatureError;
 use signing::SignatureParseError;
 use thiserror::Error;
 
-pub mod hash;
 pub mod operator;
 pub mod package;
+pub mod registry;
 pub mod signing;
 
 /// Types for converting to and from protobuf
@@ -118,7 +118,7 @@ pub enum ParseEnvelopeError {
     ContentsParseError(#[from] Error),
 
     #[error("Failed to parse envelope key id")]
-    KeyIDParseError(#[from] HashParseError),
+    KeyIDParseError(#[from] DynHashParseError),
 
     #[error("Failed to parse envelope signature")]
     SignatureParseError(#[from] SignatureParseError),

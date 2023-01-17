@@ -1,11 +1,16 @@
 use super::{model, PACKAGE_RECORD_VERSION};
-use crate::{hash, signing, Envelope, Signable};
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
 use std::time::SystemTime;
 use thiserror::Error;
+
+
+use warg_crypto::hash::{HashAlgorithm, DynHash};
+
+
+use crate::{signing, Envelope, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -47,8 +52,8 @@ pub enum ValidationError {
 
     #[error("Record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
-        found: hash::HashAlgorithm,
-        expected: hash::HashAlgorithm,
+        found: HashAlgorithm,
+        expected: HashAlgorithm,
     },
 
     #[error("Previous record hash does not match")]
@@ -74,7 +79,7 @@ pub enum ReleaseState {
     /// The release is currently available.
     Released {
         /// The content digest associated with the release.
-        content: hash::Digest,
+        content: DynHash,
     },
     /// The release has been yanked.
     Yanked {
@@ -109,7 +114,7 @@ impl Release {
     /// Gets the content associated with the release.
     ///
     /// Returns `None` if the release has been yanked.
-    pub fn content(&self) -> Option<&hash::Digest> {
+    pub fn content(&self) -> Option<&DynHash> {
         match &self.state {
             ReleaseState::Released { content } => Some(content),
             ReleaseState::Yanked { .. } => None,
@@ -123,7 +128,7 @@ impl Release {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct Root {
     /// The digest of the last validated record.
-    digest: hash::Digest,
+    digest: DynHash,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
     timestamp: SystemTime,
@@ -135,7 +140,7 @@ pub struct Validator {
     /// The hash algorithm used by the package log.
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    algorithm: Option<hash::HashAlgorithm>,
+    algorithm: Option<HashAlgorithm>,
     /// The current root of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
@@ -335,7 +340,7 @@ impl Validator {
     fn validate_init_entry(
         &mut self,
         signer_key_id: &signing::KeyID,
-        algorithm: hash::HashAlgorithm,
+        algorithm: HashAlgorithm,
         init_key: &signing::PublicKey,
     ) -> Result<(), ValidationError> {
         if self.initialized() {
@@ -402,7 +407,7 @@ impl Validator {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         version: &Version,
-        content: &hash::Digest,
+        content: &DynHash,
     ) -> Result<(), ValidationError> {
         match self.releases.entry(version.clone()) {
             Entry::Occupied(e) => {
@@ -473,7 +478,7 @@ impl Validator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hash::HashAlgorithm;
+    use warg_crypto::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
@@ -523,7 +528,7 @@ mod tests {
         let alice_id = alice_pub.fingerprint();
         let bob_id = bob_pub.fingerprint();
 
-        let hash_algo = hash::HashAlgorithm::Sha256;
+        let hash_algo = HashAlgorithm::Sha256;
         let mut validator = Validator::default();
 
         // In envelope 0: alice inits and grants bob release

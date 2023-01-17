@@ -1,11 +1,13 @@
-mod content;
+mod api;
+mod policy;
+mod services;
 
 use std::path::PathBuf;
 
 use anyhow::Result;
 use axum::{http::StatusCode, response::IntoResponse, Router};
 
-use content::ContentConfig;
+use api::content::ContentConfig;
 
 #[derive(Debug, Default)]
 pub struct Config {

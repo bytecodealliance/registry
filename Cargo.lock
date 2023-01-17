@@ -551,12 +551,11 @@ version = "0.1.0"
 dependencies = [
  "ciborium",
  "criterion",
- "digest",
  "hashbrown",
  "rand",
  "serde",
  "serde_bytes",
- "sha2",
+ "warg-crypto",
 ]
 
 [[package]]
@@ -2015,12 +2014,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "warg-crypto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "digest",
+ "hex",
+ "serde",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "warg-protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
- "digest",
+ "forrest",
  "hex",
  "indexmap",
  "p256",
@@ -2036,9 +2047,9 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha2",
  "signature",
  "thiserror",
+ "warg-crypto",
 ]
 
 [[package]]
@@ -2048,13 +2059,16 @@ dependencies = [
  "anyhow",
  "axum",
  "clap 4.0.32",
+ "forrest",
  "futures",
- "sha2",
+ "serde",
  "tempfile",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "warg-crypto",
+ "warg-protocol",
 ]
 
 [[package]]

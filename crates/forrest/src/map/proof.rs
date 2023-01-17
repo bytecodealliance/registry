@@ -4,11 +4,11 @@
 use alloc::vec::Vec;
 use core::{iter::repeat, marker::PhantomData, ops::Deref};
 
-use digest::Digest;
+use warg_crypto::hash::{Hash, SupportedDigest};
+
 use serde::{Deserialize, Serialize};
 
 use super::path::Path;
-use crate::hash::Hash;
 
 /// An inclusion proof of the specified value in a map
 ///
@@ -31,7 +31,7 @@ use crate::hash::Hash;
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "H: Serialize, V: serde_bytes::Serialize"))]
 #[serde(bound(deserialize = "H: Deserialize<'de>, V: serde_bytes::Deserialize<'de>"))]
-pub struct Proof<D: Digest, H, V> {
+pub struct Proof<D: SupportedDigest, H, V> {
     #[serde(skip)]
     pub(crate) digest: PhantomData<D>,
 
@@ -42,7 +42,7 @@ pub struct Proof<D: Digest, H, V> {
     pub(crate) value: V,
 }
 
-impl<D: Digest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H, V> {
+impl<D: SupportedDigest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H, V> {
     /// Verifies a proof for a given map and key.
     #[must_use]
     pub fn verify<Q: ?Sized + AsRef<[u8]>>(&self, root: &Hash<D>, key: &Q) -> bool {
@@ -89,7 +89,7 @@ impl<D: Digest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H, V> {
 #[cfg(test)]
 fn test() {
     use serde_bytes::ByteBuf;
-    use sha2::Sha256;
+    use warg_crypto::hash::Sha256;
 
     let a = super::Map::<Sha256, &str, &[u8]>::default();
     let b = a.insert("foo", b"bar");

@@ -1,7 +1,5 @@
 use alloc::vec::Vec;
-
-use crate::hash::Hash;
-use digest::Digest;
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{hash_branch, node::Node, Checkpoint, HashProvider};
 
@@ -123,7 +121,7 @@ impl InclusionProof {
     /// Callers should verify that the returned root matches their expectation.
     ///
     /// Walks the inclusion proof, hashes each layer, returns the root hash.
-    pub fn evaluate<D: Digest>(
+    pub fn evaluate<D: SupportedDigest>(
         &self,
         hashes: &impl HashProvider<D>,
     ) -> Result<Hash<D>, InclusionProofError> {
@@ -166,7 +164,7 @@ impl InclusionProof {
     }
 }
 
-fn combine<D: Digest>(first: (Node, Hash<D>), second: (Node, Hash<D>)) -> (Node, Hash<D>) {
+fn combine<D: SupportedDigest>(first: (Node, Hash<D>), second: (Node, Hash<D>)) -> (Node, Hash<D>) {
     let (lhs, rhs) = if first.0.index() < second.0.index() {
         (first.1, second.1)
     } else {
@@ -222,9 +220,9 @@ mod tests {
 
     use super::*;
 
-    use sha2::Sha256;
+    use warg_crypto::hash::Sha256;
 
-    impl<D: Digest> HashProvider<D> for Vec<Hash<D>> {
+    impl<D: SupportedDigest> HashProvider<D> for Vec<Hash<D>> {
         fn hash_for(&self, node: Node) -> Option<Hash<D>> {
             Some(self.get(node.index())?.clone())
         }

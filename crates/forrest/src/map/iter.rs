@@ -4,18 +4,18 @@
 use alloc::{vec, vec::Vec};
 use core::iter::FusedIterator;
 
-use digest::Digest;
+use warg_crypto::hash::SupportedDigest;
 
 use super::node::Node;
 
 /// An iterator over map items
-pub struct Iter<'a, D: Digest, K, V> {
+pub struct Iter<'a, D: SupportedDigest, K, V> {
     stack: Vec<(&'a Node<D, K, V>, bool)>,
     total: usize,
     index: usize,
 }
 
-impl<'a, D: Digest, K, V> Iter<'a, D, K, V> {
+impl<'a, D: SupportedDigest, K, V> Iter<'a, D, K, V> {
     pub(crate) fn new(root: &'a Node<D, K, V>, total: usize) -> Self {
         Self {
             stack: vec![(root, false)],
@@ -25,10 +25,10 @@ impl<'a, D: Digest, K, V> Iter<'a, D, K, V> {
     }
 }
 
-impl<'a, D: Digest, K, V> ExactSizeIterator for Iter<'a, D, K, V> {}
-impl<'a, D: Digest, K, V> FusedIterator for Iter<'a, D, K, V> {}
+impl<'a, D: SupportedDigest, K, V> ExactSizeIterator for Iter<'a, D, K, V> {}
+impl<'a, D: SupportedDigest, K, V> FusedIterator for Iter<'a, D, K, V> {}
 
-impl<'a, D: Digest, K, V> Iterator for Iter<'a, D, K, V> {
+impl<'a, D: SupportedDigest, K, V> Iterator for Iter<'a, D, K, V> {
     type Item = (&'a K, &'a V);
 
     fn size_hint(&self) -> (usize, Option<usize>) {
