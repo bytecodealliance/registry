@@ -87,9 +87,9 @@ impl<D: SupportedDigest> Iterator for Path<D> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use warg_crypto::hash::Digest;
     use warg_crypto::hash::Sha256;
-    use super::*;
 
     #[test]
     #[allow(clippy::identity_op)]

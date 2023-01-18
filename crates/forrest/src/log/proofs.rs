@@ -1,13 +1,13 @@
 use alloc::vec::Vec;
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::{hash_branch, node::Node, Checkpoint, HashProvider};
+use super::{hash_branch, node::Node, LogData};
 
 /// A proof that a leaf is present for a root
 #[derive(Debug, Clone, PartialEq)]
 pub struct InclusionProof {
     /// The point in the logs history where the leaf should be present
-    pub point: Checkpoint,
+    pub log_length: usize,
     /// The node that you are checking is present in the given point.
     pub leaf: Node,
 }
@@ -74,7 +74,7 @@ impl InclusionProof {
     /// Collects all of the node indices that must be visited
     /// in order to validate the inlcusion proof into.
     pub fn walk(&self) -> Result<InclusionProofWalk, InclusionProofError> {
-        let length = self.point.length();
+        let length = self.log_length;
         let broots = Node::broots_for_len(length);
         let mut current_node = self.leaf;
 
@@ -123,7 +123,7 @@ impl InclusionProof {
     /// Walks the inclusion proof, hashes each layer, returns the root hash.
     pub fn evaluate<D: SupportedDigest>(
         &self,
-        hashes: &impl HashProvider<D>,
+        hashes: &impl LogData<D>,
     ) -> Result<Hash<D>, InclusionProofError> {
         let walk = self.walk()?;
 
@@ -179,9 +179,9 @@ fn combine<D: SupportedDigest>(first: (Node, Hash<D>), second: (Node, Hash<D>)) 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ConsistencyProof {
     /// The older of the two points
-    pub old_point: Checkpoint,
+    pub old_length: usize,
     /// The newer of the two points
-    pub new_point: Checkpoint,
+    pub new_length: usize,
 }
 
 /// Errors occuring when validating a consistency proof
@@ -196,14 +196,14 @@ impl ConsistencyProof {
     /// Each inclusion proof verifies that one of the balanced roots
     /// of the old tree is present in the root of the new tree.
     pub fn inclusions(&self) -> Result<Vec<InclusionProof>, ConsistencyProofError> {
-        if self.old_point > self.new_point {
+        if self.old_length > self.new_length {
             return Err(ConsistencyProofError::PointsOutOfOrder);
         }
 
-        let incls = Node::broots_for_len(self.old_point.length())
+        let incls = Node::broots_for_len(self.old_length)
             .into_iter()
             .map(|broot| InclusionProof {
-                point: self.new_point,
+                log_length: self.new_length,
                 leaf: broot,
             })
             .collect();
@@ -216,21 +216,11 @@ impl ConsistencyProof {
 mod tests {
     use alloc::vec;
 
-    use crate::log::{VecLog, VerifiableLog};
+    use crate::log::{LogBuilder, VecLog};
 
     use super::*;
 
     use warg_crypto::hash::Sha256;
-
-    impl<D: SupportedDigest> HashProvider<D> for Vec<Hash<D>> {
-        fn hash_for(&self, node: Node) -> Option<Hash<D>> {
-            Some(self.get(node.index())?.clone())
-        }
-
-        fn has_hash(&self, node: Node) -> bool {
-            self.get(node.index()).is_some()
-        }
-    }
 
     #[test]
     fn test_inc_even_2() {
@@ -240,7 +230,7 @@ mod tests {
         log.push(&[102u8]);
 
         let inc_proof = InclusionProof {
-            point: Checkpoint(2),
+            log_length: 2,
             leaf: Node(0),
         };
         let expected = InclusionProofWalk {
@@ -266,7 +256,7 @@ mod tests {
 
         // node 0
         let inc_proof = InclusionProof {
-            point: Checkpoint(3),
+            log_length: 3,
             leaf: Node(0),
         };
         let expected = InclusionProofWalk {
@@ -280,7 +270,7 @@ mod tests {
 
         // node 2
         let inc_proof = InclusionProof {
-            point: Checkpoint(3),
+            log_length: 3,
             leaf: Node(2),
         };
         let expected = InclusionProofWalk {
@@ -294,7 +284,7 @@ mod tests {
 
         // node 4
         let inc_proof = InclusionProof {
-            point: Checkpoint(3),
+            log_length: 3,
             leaf: Node(4),
         };
         let expected = InclusionProofWalk {
@@ -325,7 +315,7 @@ mod tests {
 
         // node 6
         let inc_proof = InclusionProof {
-            point: Checkpoint(7),
+            log_length: 7,
             leaf: Node(6),
         };
         let expected = InclusionProofWalk {

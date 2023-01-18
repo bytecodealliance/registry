@@ -1,5 +1,6 @@
 pub mod package;
 pub mod publish;
+pub mod data;
 pub mod validator;
 pub mod transparency;
 

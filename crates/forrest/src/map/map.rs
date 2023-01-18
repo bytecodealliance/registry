@@ -8,7 +8,7 @@ use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use warg_crypto::hash::{Hash, SupportedDigest, Output};
+use warg_crypto::hash::{Hash, Output, SupportedDigest};
 
 use super::iter::Iter;
 use super::link::Link;
@@ -86,6 +86,12 @@ use super::proof::Proof;
 /// H(0b00)
 /// ```
 pub struct Map<D: SupportedDigest, K, V>(Link<D, K, V>, usize);
+
+impl<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>> Clone for Map<D, K, V> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+}
 
 impl<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>> Default for Map<D, K, V> {
     fn default() -> Self {

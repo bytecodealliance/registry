@@ -12,15 +12,13 @@
 //! [Dat - Distributed Dataset Synchronization and Versioning][2].
 
 /// Logic for manipulating log tree node indices
-pub mod node;
+mod node;
 /// Logic for constructing and validating proofs
 pub mod proofs;
+mod stack_log;
 mod vec_log;
 
-
-use warg_crypto::hash::{SupportedDigest, Hash};
-
-use self::node::Node;
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to
@@ -54,52 +52,95 @@ use self::node::Node;
 /// [0]: https://en.wikipedia.org/wiki/Merkle_tree
 /// [1]: https://www.researchgate.net/publication/326120012_Dat_-_Distributed_Dataset_Synchronization_And_Versioning
 /// [2]: https://www.rfc-editor.org/rfc/rfc6962
-pub trait VerifiableLog<D>
+pub trait LogBuilder<D>
+where
+    D: SupportedDigest,
+{
+    /// Get the checkpoint (hash and length) of the log at this point.
+    fn checkpoint(&self) -> Checkpoint<D>;
+
+    /// Push a new entry into the log.
+    fn push(&mut self, entry: impl AsRef<[u8]>) -> Node;
+}
+
+/// A point in the history of a log, represented by its length
+#[derive(Debug, Clone, PartialOrd, Ord)]
+pub struct Checkpoint<D>
+where
+    D: SupportedDigest,
+{
+    root: Hash<D>,
+    length: usize,
+}
+
+impl<D> Checkpoint<D>
+where
+    D: SupportedDigest,
+{
+    /// The root hash of the log at this checkpoint
+    pub fn root(&self) -> Hash<D> {
+        self.root.clone()
+    }
+
+    /// The length of the log at this checkpoint
+    pub fn length(&self) -> usize {
+        self.length
+    }
+}
+
+impl<D> Eq for Checkpoint<D>
+where D: SupportedDigest {}
+
+impl<D> PartialEq for Checkpoint<D>
 where
     D: SupportedDigest
 {
-    /// Get the root representing the state of the log
-    fn root(&self) -> Hash<D>;
+    fn eq(&self, other: &Self) -> bool {
+        self.root == other.root
+        && self.length == other.length
+    }
+}
 
-    /// Get the checkpoint for the current log state
-    fn checkpoint(&self) -> Checkpoint;
+/// A collection of hash data
+pub trait LogData<D>
+where
+    D: SupportedDigest,
+{
+    /// Returns the number of leaves that have been added to the log
+    fn length(&self) -> usize;
 
-    /// Get the root hash for a given checkpoint.
-    /// None if the log has not yet reached the checkpoint.
-    fn root_at(&self, point: Checkpoint) -> Option<Hash<D>>;
+    /// Does this hash exist in the collection?
+    fn has_hash(&self, node: Node) -> bool;
 
     /// Get the hash for a given node
     /// None if node does not yet exist
     fn hash_for(&self, node: Node) -> Option<Hash<D>>;
 
-    /// Push a new entry into the log
-    fn push(&mut self, entry: impl AsRef<[u8]>) -> (Checkpoint, Node);
-}
+    /// Get the root of the log when it was at some length
+    fn root_at(&self, length: usize) -> Option<Hash<D>> {
+        if length > self.length() {
+            return None;
+        }
 
-/// A point in the history of a log, represented by its length
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Checkpoint(pub usize);
+        let roots = Node::broots_for_len(length);
 
-impl Checkpoint {
-    /// The length of the log at this checkpoint
-    pub fn length(&self) -> usize {
-        self.0
+        let result = roots
+            .into_iter()
+            .rev()
+            .map(|node| self.hash_for(node).unwrap())
+            .reduce(|old, new| {
+                // Ordering due to reversal of iterator
+                hash_branch::<D>(new, old)
+            })
+            .unwrap_or(hash_empty::<D>());
+
+        Some(result)
     }
 }
 
-/// A collection of hash data
-pub trait HashProvider<D>
-where
-    D: SupportedDigest,
-{
-    /// Does this hash exist in the collection?
-    fn has_hash(&self, node: Node) -> bool;
-
-    /// What is the hash for this node?
-    fn hash_for(&self, node: Node) -> Option<Hash<D>>;
-}
-
+pub use node::{Node, Side};
 pub use vec_log::VecLog;
+pub use stack_log::StackLog;
 
 /// Compute the hash for an empty tree using a given Digest algorithm.
 pub fn hash_empty<D: SupportedDigest>() -> Hash<D> {

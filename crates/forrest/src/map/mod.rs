@@ -27,7 +27,7 @@ pub use proof::Proof;
 
 #[cfg(test)]
 mod test {
-    use warg_crypto::hash::{SupportedDigest, Digest, Sha256};
+    use warg_crypto::hash::{Digest, Sha256, SupportedDigest};
 
     use super::Map;
 

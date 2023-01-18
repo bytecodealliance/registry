@@ -1,7 +1,7 @@
 use std::{iter::repeat_with, time::Duration};
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode};
-use forrest::log::{VecLog, VerifiableLog};
+use forrest::log::{LogBuilder, VecLog};
 use rand::Rng;
 use warg_crypto::hash::Sha256;
 

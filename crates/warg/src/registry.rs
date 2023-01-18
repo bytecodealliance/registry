@@ -1,5 +1,34 @@
-use warg_crypto::hash::{DynHash, SupportedDigest, Digest, Output, Hash};
+use warg_crypto::hash::{DynHash, SupportedDigest, Hash};
 use crate::{Encode, Signable, operator::model::OperatorRecord, Envelope, package::model::PackageRecord};
+
+pub struct SimpleEncoder{
+    bytes: Vec<u8>
+}
+
+impl SimpleEncoder {
+    pub fn new(prefix: &[u8]) -> SimpleEncoder {
+        Self {
+            bytes: Vec::from(prefix),
+        }
+    }
+
+    pub fn append_unsigned(&mut self, i: u64) {
+        leb128::write::unsigned(&mut self.bytes, i).unwrap();
+    }
+
+    fn append_str(&mut self, s: &str) {
+        self.bytes.extend_from_slice(s.as_bytes());
+    }
+
+    pub fn append_len_str(&mut self, s: &str) {
+        self.append_unsigned(s.len() as u64);
+        self.append_str(s);
+    }
+
+    pub fn finalize(self) -> Vec<u8> {
+        self.bytes
+    }
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MapCheckpoint {
@@ -14,23 +43,18 @@ impl Signable for MapCheckpoint {
 
 impl Encode for MapCheckpoint {
     fn encode(&self) -> Vec<u8> {
-        let mut checkpoint = Vec::new();
-        checkpoint.extend_from_slice(b"WARG-MAP-CHECKPOINT-V0");
+        let mut checkpoint = SimpleEncoder::new(b"WARG-MAP-CHECKPOINT-V0");
 
-        // TODO: leb128 of log_length
-
+        checkpoint.append_unsigned(self.log_length as u64);
+        
         let log_root = self.log_root.to_string();
-        let log_root_len = log_root.len();
-        // TODO: leb128 of len(log_root_len)
-        checkpoint.extend_from_slice(log_root.as_bytes());
+        checkpoint.append_len_str(&log_root);
 
 
         let map_root = self.map_root.to_string();
-        let map_root_len = map_root.len();
-        // TODO: leb128 of len(map_root_len)
-        checkpoint.extend_from_slice(map_root.as_bytes());
+        checkpoint.append_len_str(&map_root);
 
-        checkpoint
+        checkpoint.finalize()
     }
 }
 
@@ -41,17 +65,33 @@ pub struct MapLeaf {
 
 impl Encode for MapLeaf {
     fn encode(&self) -> Vec<u8> {
-        let mut leaf = Vec::new();
-        leaf.extend_from_slice(b"WARG-MAP-LEAF-V0");
+        let mut leaf = SimpleEncoder::new(b"WARG-MAP-LEAF-V0");
 
         let record_id = self.record_id.0.to_string();
-        let record_id_len = record_id.len();
-        // TODO: leb128 of len(record_id_len)
-        leaf.extend_from_slice(record_id.as_bytes());
+        leaf.append_len_str(&record_id);
 
-        leaf
+        leaf.finalize()
     }
 }
+
+// #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+// pub struct LogCheckpoint {
+//     pub log_root: DynHash,
+//     pub log_length: u32,
+// }
+
+// impl Encode for LogCheckpoint {
+//     fn encode(&self) -> Vec<u8> {
+//         let mut checkpoint = SimpleEncoder::new(b"WARG-LOG-CHECKPOINT-V0");
+
+//         checkpoint.append_unsigned(self.log_length as u64);
+        
+//         let log_root = self.log_root.to_string();
+//         checkpoint.append_len_str(&log_root);
+
+//         checkpoint.finalize()
+//     }
+// }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LogLeaf {
@@ -61,20 +101,15 @@ pub struct LogLeaf {
 
 impl Encode for LogLeaf {
     fn encode(&self) -> Vec<u8> {
-        let mut leaf = Vec::new();
-        leaf.extend_from_slice(b"WARG-LOG-LEAF-V0");
+        let mut leaf = SimpleEncoder::new(b"WARG-MAP-LEAF-V0");
 
         let log_id = self.log_id.0.to_string();
-        let log_id_len = log_id.len();
-        // TODO: leb128 of len(log_id_len)
-        leaf.extend_from_slice(log_id.as_bytes());
+        leaf.append_len_str(&log_id);
 
         let record_id = self.record_id.0.to_string();
-        let record_id_len = record_id.len();
-        // TODO: leb128 of len(record_id_len)
-        leaf.extend_from_slice(record_id.as_bytes());
+        leaf.append_len_str(&record_id);
 
-        leaf
+        leaf.finalize()
     }
 }
 
