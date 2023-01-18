@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::task::JoinHandle;
 
 use warg_protocol::package::validate::Validator as PackageValidator;
+use warg_protocol::registry::LogLeaf;
 
 use crate::policy::Policy;
 
-use super::transparency::TransparencyService;
 use super::package::{PackageService, PackageRecordStatus};
 use super::PublishInfo;
 
@@ -15,12 +15,12 @@ use super::PublishInfo;
 pub struct ValidatorFactory {
     policy: Arc<Policy>,
     packager: Arc<PackageService>,
-    recorder: Arc<TransparencyService>
+    log_tx: Sender<LogLeaf>
 }
 
 impl ValidatorFactory {
     pub fn create(&self) -> ValidatorService {
-        ValidatorService::new(self.packager.clone(), self.recorder.clone())
+        ValidatorService::new(self.packager.clone(), self.log_tx.clone())
     }
 }
 
@@ -30,16 +30,16 @@ pub struct ValidatorService {
 }
 
 impl ValidatorService {
-    pub fn new(packager: Arc<PackageService>, recorder: Arc<TransparencyService>) -> Self {
+    pub fn new(packager: Arc<PackageService>, log_tx: Sender<LogLeaf>) -> Self {
         let (mailbox, rx) = mpsc::channel::<PublishInfo>(4);
         let handle = tokio::spawn(async move {
-            Self::process(rx, packager, recorder).await;
+            Self::process(rx, packager, log_tx).await;
         });
 
         Self { mailbox, handle }
     }
 
-    async fn process(mut rx: Receiver<PublishInfo>, packager: Arc<PackageService>, recorder: Arc<TransparencyService>) {
+    async fn process(mut rx: Receiver<PublishInfo>, packager: Arc<PackageService>, log_tx: Sender<LogLeaf>) {
         let mut validator = PackageValidator::new();
 
         while let Some(info) = rx.recv().await {
@@ -53,7 +53,7 @@ impl ValidatorService {
                         .set_record_status(package_id.clone(), record_id.clone(), status)
                         .await;
 
-                    recorder.record(package_id, record_id).await;
+                    log_tx.send(LogLeaf { log_id: package_id, record_id }).await.unwrap();
                 },
                 Err(error) => {
                     let status = super::package::PackageRecordStatus::Rejected {

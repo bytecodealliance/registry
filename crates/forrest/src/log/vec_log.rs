@@ -2,17 +2,17 @@ use core::fmt::Debug;
 
 use alloc::{vec, vec::Vec};
 
-use warg_crypto::hash::{SupportedDigest, Hash};
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::{Node, Side};
-use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, HashProvider, VerifiableLog};
+use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, LogBuilder, LogData};
 
 /// A verifiable log where the node hashes are stored
 /// contiguously in memory by index.
 #[derive(Debug, Clone)]
 pub struct VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     /// The number of entries
     length: usize,
@@ -26,7 +26,7 @@ where
 /// Length is the number of total leaf nodes present
 impl<D> VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     fn get_digest(&self, node: Node) -> Hash<D> {
         self.tree[node.index()].clone()
@@ -39,7 +39,7 @@ where
 
 impl<D> Default for VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     fn default() -> Self {
         VecLog {
@@ -49,43 +49,18 @@ where
     }
 }
 
-impl<D> VerifiableLog<D> for VecLog<D>
+impl<D> LogBuilder<D> for VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
-    fn root(&self) -> Hash<D> {
-        self.root_at(self.checkpoint()).unwrap()
-    }
-
-    fn checkpoint(&self) -> Checkpoint {
-        Checkpoint(self.length)
-    }
-
-    fn root_at(&self, point: Checkpoint) -> Option<Hash<D>> {
-        if point > self.checkpoint() {
-            return None;
+    fn checkpoint(&self) -> Checkpoint<D> {
+        Checkpoint {
+            root: self.root_at(self.length).unwrap(),
+            length: self.length,
         }
-
-        let roots = Node::broots_for_len(point.length());
-
-        let result = roots
-            .into_iter()
-            .rev()
-            .map(|node| self.get_digest(node))
-            .reduce(|old, new| {
-                // Ordering due to reversal of iterator
-                hash_branch::<D>(new, old)
-            })
-            .unwrap_or(hash_empty::<D>());
-
-        Some(result)
     }
 
-    fn hash_for(&self, node: Node) -> Option<Hash<D>> {
-        self.tree.get(node.index()).map(|h| h.clone())
-    }
-
-    fn push(&mut self, entry: impl AsRef<[u8]>) -> (Checkpoint, Node) {
+    fn push(&mut self, entry: impl AsRef<[u8]>) -> Node {
         // Compute entry digest
         let leaf_digest = hash_leaf::<D>(entry);
 
@@ -115,29 +90,33 @@ where
             self.set_digest(current_node, current_digest.clone());
         }
 
-        (Checkpoint(self.length), leaf_node)
+        leaf_node
     }
 }
 
 impl<D> AsRef<[Hash<D>]> for VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     fn as_ref(&self) -> &[Hash<D>] {
         &self.tree[..]
     }
 }
 
-impl<D> HashProvider<D> for VecLog<D>
+impl<D> LogData<D> for VecLog<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
+    fn length(&self) -> usize {
+        self.length
+    }
+
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
-        VerifiableLog::hash_for(self, node)
+        self.tree.get(node.index()).map(|h| h.clone())
     }
 
     fn has_hash(&self, node: Node) -> bool {
-        VerifiableLog::hash_for(self, node).is_some()
+        self.tree.len() > node.index()
     }
 }
 
@@ -180,7 +159,7 @@ mod tests {
 
             let naive_root = naive_merkle::<Sha256, _>(&data[..i + 1]);
 
-            let tree_root = tree.root();
+            let tree_root = tree.checkpoint().root();
             assert_eq!(
                 tree_root, naive_root,
                 "at {}: (in-order) {:?} != (naive) {:?}",
@@ -195,9 +174,9 @@ mod tests {
             let leaf_node = Node(i * 2);
 
             for (j, root) in roots.iter().enumerate() {
-                let now = Checkpoint(j + 1);
+                let log_length = j + 1;
                 let inc_proof = InclusionProof {
-                    point: now,
+                    log_length,
                     leaf: leaf_node,
                 };
                 let result = inc_proof.evaluate(&tree);
@@ -213,14 +192,14 @@ mod tests {
 
         // Check consistency proofs
         for (i, _) in data.iter().enumerate() {
-            let old_point = Checkpoint(i + 1);
+            let old_length = i + 1;
 
             for (j, new_root) in roots.iter().enumerate().skip(i) {
-                let new_point = Checkpoint(j + 1);
+                let new_length = j + 1;
 
                 let con_proof = ConsistencyProof {
-                    old_point,
-                    new_point,
+                    old_length,
+                    new_length,
                 };
                 let mut old_broots = Vec::new();
 

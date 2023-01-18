@@ -20,6 +20,7 @@ signature = "1.5"
 indexmap = { version = "1.9.2", features = ["serde"] }
 forrest = { path = "../forrest" }
 warg-crypto = { path = "../warg-crypto" }
+leb128 = "0.2.5"
 
 [dev-dependencies]
 rand_core = { version = "0.6", features = ["getrandom"]}

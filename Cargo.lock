@@ -555,6 +555,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_bytes",
+ "sha2",
  "warg-crypto",
 ]
 
@@ -918,6 +919,12 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+
+[[package]]
+name = "leb128"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "libc"
@@ -2034,6 +2041,7 @@ dependencies = [
  "forrest",
  "hex",
  "indexmap",
+ "leb128",
  "p256",
  "pbjson",
  "pbjson-build",
