@@ -32,12 +32,12 @@ async fn process(input: Input) -> Output {
         let Input { mut log, mut log_rx } = input;
         while let Some(leaf) = log_rx.recv().await {
             log.push(leaf.encode());
-    
+
             let checkpoint = log.checkpoint();
             let log_root: DynHash = checkpoint.root().into();
             let log_length = checkpoint.length() as u32;
-    
-            log_data_tx.send(leaf.clone());
+
+            log_data_tx.send(leaf.clone()).await.unwrap();
             summary_tx.send(Summary { leaf, log_root, log_length }).await.unwrap();
         }
 
