@@ -5,8 +5,11 @@ use thiserror::Error;
 
 use warg_crypto::hash::DynHash;
 
-pub mod model;
-pub mod validate;
+mod model;
+mod validate;
+
+pub use model::{OperatorRecord, OperatorEntry};
+pub use validate::{ValidationError, Validator};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;
