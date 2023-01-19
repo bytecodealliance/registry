@@ -1,11 +1,9 @@
-pub mod package;
-pub mod publish;
+pub mod core;
 pub mod data;
-pub mod validator;
 pub mod transparency;
 
 use crate::api::package::ContentSource;
-use warg_protocol::package::model::PackageRecord;
+use warg_protocol::package::PackageRecord;
 use warg_protocol::Envelope;
 
 use warg_protocol::registry::{LogId, RecordId};

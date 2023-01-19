@@ -5,8 +5,11 @@ use thiserror::Error;
 
 use warg_crypto::hash::DynHash;
 
-pub mod model;
-pub mod validate;
+mod model;
+mod validate;
+
+pub use model::{PackageRecord, PackageEntry, Permission};
+pub use validate::{ReleaseState, Release, ValidationError, Validator};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

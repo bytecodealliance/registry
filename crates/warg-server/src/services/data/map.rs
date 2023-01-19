@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use crate::services::transparency::map::VerifiableMap;
+use crate::services::transparency::VerifiableMap;
 
 type MapData = Arc<RwLock<Vec<VerifiableMap>>>;
 
 pub struct Input {
     pub maps: Vec<VerifiableMap>,
-    pub map_rx: Receiver<VerifiableMap>
+    pub map_rx: Receiver<VerifiableMap>,
 }
 
 pub struct Output {
     pub data: MapData,
-    _handle: JoinHandle<()>
+    _handle: JoinHandle<()>,
 }
 
 pub async fn process(input: Input) -> Output {
@@ -33,8 +33,5 @@ pub async fn process(input: Input) -> Output {
         }
     });
 
-    Output {
-        data,
-        _handle
-    }
+    Output { data, _handle }
 }

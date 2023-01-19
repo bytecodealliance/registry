@@ -1,5 +1,5 @@
 use warg_crypto::hash::{DynHash, SupportedDigest, Hash};
-use crate::{Encode, Signable, operator::model::OperatorRecord, Envelope, package::model::PackageRecord};
+use crate::{Encode, Signable, operator::OperatorRecord, Envelope, package::PackageRecord};
 
 pub struct SimpleEncoder{
     bytes: Vec<u8>
@@ -124,7 +124,7 @@ impl LogId {
         Self(hash.into())
     }
 
-    pub fn package_log<D: SupportedDigest>(name: String) -> Self {
+    pub fn package_log<D: SupportedDigest>(name: &str) -> Self {
         let mut d = D::new();
         d.update(b"WARG-PACKAGE-LOG-ID-V0:");
         d.update(name.as_bytes());

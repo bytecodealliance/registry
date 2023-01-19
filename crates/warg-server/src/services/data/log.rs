@@ -1,22 +1,22 @@
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use forrest::log::{VecLog, LogBuilder};
-use warg_protocol::Encode;
+use forrest::log::{LogBuilder, VecLog};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::LogLeaf;
+use warg_protocol::Encode;
 
 pub struct Input {
     pub log: VecLog<Sha256>,
-    pub log_rx: Receiver<LogLeaf>
+    pub log_rx: Receiver<LogLeaf>,
 }
 
 pub struct Output {
     pub data: Arc<RwLock<VecLog<Sha256>>>,
-    _handle: JoinHandle<()>
+    _handle: JoinHandle<()>,
 }
 
 pub async fn process(input: Input) -> Output {
@@ -34,8 +34,5 @@ pub async fn process(input: Input) -> Output {
         }
     });
 
-    Output {
-        data,
-        _handle
-    }
+    Output { data, _handle }
 }

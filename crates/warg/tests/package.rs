@@ -7,7 +7,7 @@ use std::{
 };
 use warg_crypto::hash::HashAlgorithm;
 use warg_protocol::{
-    package::{self, validate::Validator},
+    package::{self, Validator},
     protobuf, signing, Envelope,
 };
 
@@ -33,7 +33,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
         .into_iter()
         .scan(None, |last, e_data| {
             let key: signing::PrivateKey = e_data.key.parse().unwrap();
-            let mut record: package::model::PackageRecord = e_data.contents.try_into().unwrap();
+            let mut record: package::PackageRecord = e_data.contents.try_into().unwrap();
 
             record.prev = last.clone();
 

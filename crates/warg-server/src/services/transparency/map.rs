@@ -5,9 +5,9 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 
 use tokio::time;
-use warg_protocol::Encode;
 use warg_crypto::hash::Sha256;
-use warg_protocol::registry::{MapLeaf, MapCheckpoint, LogId, LogLeaf};
+use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
+use warg_protocol::Encode;
 
 use super::log;
 
@@ -15,29 +15,32 @@ pub type VerifiableMap = Map<Sha256, LogId, Vec<u8>>;
 
 pub struct Input {
     pub map: VerifiableMap,
-    pub map_rx: Receiver<log::Summary>
+    pub map_rx: Receiver<log::Summary>,
 }
 
 pub struct Output {
     pub summary_rx: Receiver<Summary>,
     pub map_data_rx: Receiver<VerifiableMap>,
-    pub handle: JoinHandle<VerifiableMap>
+    pub handle: JoinHandle<VerifiableMap>,
 }
 
 #[derive(Debug)]
 pub struct Summary {
     pub leaves: Vec<LogLeaf>,
-    pub checkpoint: MapCheckpoint
+    pub checkpoint: MapCheckpoint,
 }
 
-async fn process(input: Input) -> Output {
+pub async fn process(input: Input) -> Output {
     let (summary_tx, summary_rx) = mpsc::channel::<Summary>(4);
     let (map_data_tx, map_data_rx) = mpsc::channel::<VerifiableMap>(4);
 
     let mut interval = time::interval(Duration::from_secs(5));
 
     let handle = tokio::spawn(async move {
-        let Input { mut map, mut map_rx } = input;
+        let Input {
+            mut map,
+            mut map_rx,
+        } = input;
         let mut current = None;
         let mut leaves = Vec::new();
 
@@ -71,7 +74,10 @@ async fn process(input: Input) -> Output {
 
         if let Some(checkpoint) = current {
             map_data_tx.send(map.clone()).await.unwrap();
-            summary_tx.send(Summary { leaves, checkpoint }).await.unwrap();
+            summary_tx
+                .send(Summary { leaves, checkpoint })
+                .await
+                .unwrap();
         }
 
         map
@@ -80,6 +86,6 @@ async fn process(input: Input) -> Output {
     Output {
         summary_rx,
         map_data_rx,
-        handle
+        handle,
     }
 }

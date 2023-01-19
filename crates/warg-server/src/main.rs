@@ -40,7 +40,10 @@ async fn main() -> Result<()> {
     args.init_tracing();
     tracing::debug!("Args: {args:?}");
 
-    let mut config = Config::default();
+    let demo_operator_key = std::env::var("WARG_DEMO_OPERATOR_KEY")?;
+    let signing_key = demo_operator_key.parse()?;
+
+    let mut config = Config::new(signing_key);
     if let Some(path) = args.content_dir {
         config.enable_content_service(path);
     }
