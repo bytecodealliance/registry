@@ -17,10 +17,12 @@ mod map;
 mod node;
 mod path;
 mod proof;
+mod proof_bundle;
 
 pub use iter::Iter;
 pub use map::Map;
 pub use proof::Proof;
+pub use proof_bundle::ProofBundle;
 
 #[cfg(test)]
 mod test {

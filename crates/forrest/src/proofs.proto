@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proofs;
 
-message MapProofData {
+message MapProofBundle {
     repeated MapInclusionProof proofs = 1;
 }
 
@@ -11,7 +11,7 @@ message MapInclusionProof {
 }
 
 message OptionalHash {
-    optional string hash = 1;
+    optional bytes hash = 1;
 }
 
 message LogProofBundle {

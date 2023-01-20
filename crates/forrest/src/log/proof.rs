@@ -1,10 +1,6 @@
 use alloc::vec::Vec;
-use anyhow::Error;
-use std::collections::HashSet;
 use thiserror::Error;
 use warg_crypto::hash::{Hash, SupportedDigest};
-
-use crate::protobuf;
 
 use super::{hash_branch, node::Node, LogData};
 
