@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use anyhow::Error;
+use prost::Message;
 use std::collections::HashSet;
 use warg_crypto::hash::{Hash, SupportedDigest};
 
@@ -116,6 +117,19 @@ where
             .collect();
 
         (data, c_proofs, i_proofs)
+    }
+
+    /// Turn a bundle into bytes using protobuf
+    pub fn encode(self) -> Vec<u8> {
+        let proto: protobuf::LogProofBundle = self.into();
+        proto.encode_to_vec()
+    }
+
+    /// Parse a bundle from bytes using protobuf
+    pub fn decode(bytes: Vec<u8>) -> Result<Self, Error> {
+        let proto = protobuf::LogProofBundle::decode(bytes.as_slice())?;
+        let bundle = proto.try_into()?;
+        Ok(bundle) 
     }
 }
 
