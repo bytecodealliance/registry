@@ -36,8 +36,14 @@ impl Config {
     pub fn build_router(self) -> Router {
         Router::new()
             .route("/:package_name", post(publish::publish))
-            .route("/:package_name/records/:record_id", get(get_record::get_record))
-            .route("/:package_name/pending/:record_id", get(get_pending_record::get_pending_record))
+            .route(
+                "/:package_name/records/:record_id",
+                get(get_record::get_record),
+            )
+            .route(
+                "/:package_name/pending/:record_id",
+                get(get_pending_record::get_pending_record),
+            )
             .with_state(self)
     }
 }
@@ -142,17 +148,24 @@ mod get_record {
         let record_id: DynHash = record_id.parse()?;
         let record_id: RecordId = record_id.into();
 
-        let info = config.core_service.get_package_record_info(package_name, record_id).await;
+        let info = config
+            .core_service
+            .get_package_record_info(package_name, record_id)
+            .await;
         match info {
-            Some(PackageRecordInfo { record, content_sources, state: RecordState::Published { checkpoint }}) => {
+            Some(PackageRecordInfo {
+                record,
+                content_sources,
+                state: RecordState::Published { checkpoint },
+            }) => {
                 let response = ResponseBody {
                     record,
                     content_sources,
-                    checkpoint
+                    checkpoint,
                 };
                 Ok((StatusCode::OK, Json(response)))
-            },
-            _ => Err(Error::msg("Not found").into()) // todo: improve to 404
+            }
+            _ => Err(Error::msg("Not found").into()), // todo: improve to 404
         }
     }
 }
@@ -168,7 +181,10 @@ mod get_pending_record {
         let record_id: DynHash = record_id.parse()?;
         let record_id: RecordId = record_id.into();
 
-        let status = config.core_service.get_package_record_status(package_name, record_id).await;
+        let status = config
+            .core_service
+            .get_package_record_status(package_name, record_id)
+            .await;
         Ok((StatusCode::OK, Json(status)))
     }
 }

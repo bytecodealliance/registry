@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::{hash_branch, hash_leaf, node::Node, Checkpoint, LogBuilder, hash_empty};
+use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuilder};
 
 /// A log builder which maintains a stack of balanced roots
 #[derive(Clone, Debug, Default)]
@@ -23,9 +23,7 @@ where
             .iter()
             .rev()
             .map(|(_n, hash)| hash.clone())
-            .reduce(|new, old| {
-                hash_branch::<D>(old, new)
-            })
+            .reduce(|new, old| hash_branch::<D>(old, new))
             .unwrap_or(hash_empty::<D>());
 
         Checkpoint {
@@ -73,8 +71,8 @@ where
 mod tests {
     use warg_crypto::hash::Sha256;
 
-    use super::*;
     use super::super::VecLog;
+    use super::*;
 
     #[test]
     fn test_matches_vec_log() {

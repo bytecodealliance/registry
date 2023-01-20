@@ -10,7 +10,7 @@ use axum::{http::StatusCode, response::IntoResponse, Router};
 use api::content::ContentConfig;
 use services::{
     core::{CoreService, State},
-    transparency,
+    transparency, data,
 };
 use tokio::sync::mpsc;
 use warg_protocol::signing::PrivateKey;
@@ -54,6 +54,17 @@ impl Config {
             log_rx: transparency_rx,
         };
 
+        let transparency = transparency::process(input);
+
+        let input = data::Input {
+            log: Default::default(),
+            log_rx: transparency.log_data,
+            maps: Default::default(),
+            map_rx: transparency.map_data,
+        };
+
+        let data = data::process(input);
+
         let initial_state = State::default();
         let core = Arc::new(CoreService::new(initial_state, transparency_tx));
 
@@ -63,10 +74,13 @@ impl Config {
         }
 
         let package_config = api::package::Config::new(core.clone(), self.base_url.clone());
+        let fetch_config = api::fetch::Config::new(core.clone());
+        let proof_config = api::proof::Config::new(data.log_data, data.map_data);
 
-        router = router.nest("/package", package_config.build_router());
-
-        Ok(router)
+        Ok(router
+            .nest("/package", package_config.build_router())
+            .nest("/fetch", fetch_config.build_router())
+            .nest("/proof", proof_config.build_router()))
     }
 }
 

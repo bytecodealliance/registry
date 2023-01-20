@@ -1,15 +1,15 @@
-use std::{fmt, str::FromStr};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 
-mod r#static;
 mod dynamic;
+mod r#static;
 
-pub use sha2::Sha256;
 pub use digest::{Digest, Output};
+pub use sha2::Sha256;
 
-pub use r#static::Hash;
 pub use dynamic::{DynHash, DynHashParseError};
+pub use r#static::Hash;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

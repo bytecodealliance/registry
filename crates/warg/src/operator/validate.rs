@@ -3,9 +3,9 @@ use crate::{signing, Envelope, Signable};
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
-use warg_crypto::hash::{HashAlgorithm, DynHash};
 use std::time::SystemTime;
 use thiserror::Error;
+use warg_crypto::hash::{DynHash, HashAlgorithm};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -328,8 +328,8 @@ mod tests {
     use super::*;
     use crate::signing::tests::generate_p256_pair;
 
-    use warg_crypto::hash::HashAlgorithm;
     use std::time::SystemTime;
+    use warg_crypto::hash::HashAlgorithm;
 
     #[test]
     fn test_validate_base_log() {

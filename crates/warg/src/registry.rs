@@ -1,11 +1,11 @@
 use std::fmt;
 
-use serde::{Serialize, Deserialize};
-use warg_crypto::hash::{DynHash, SupportedDigest, Hash};
-use crate::{Encode, Signable, operator::OperatorRecord, Envelope, package::PackageRecord};
+use crate::{operator::OperatorRecord, package::PackageRecord, Encode, Envelope, Signable};
+use serde::{Deserialize, Serialize};
+use warg_crypto::hash::{DynHash, Hash, SupportedDigest};
 
-pub struct SimpleEncoder{
-    bytes: Vec<u8>
+pub struct SimpleEncoder {
+    bytes: Vec<u8>,
 }
 
 impl SimpleEncoder {
@@ -49,10 +49,9 @@ impl Encode for MapCheckpoint {
         let mut checkpoint = SimpleEncoder::new(b"WARG-MAP-CHECKPOINT-V0");
 
         checkpoint.append_unsigned(self.log_length as u64);
-        
+
         let log_root = self.log_root.to_string();
         checkpoint.append_len_str(&log_root);
-
 
         let map_root = self.map_root.to_string();
         checkpoint.append_len_str(&map_root);
@@ -63,7 +62,7 @@ impl Encode for MapCheckpoint {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MapLeaf {
-    pub record_id: RecordId
+    pub record_id: RecordId,
 }
 
 impl Encode for MapLeaf {
@@ -88,7 +87,7 @@ impl Encode for MapLeaf {
 //         let mut checkpoint = SimpleEncoder::new(b"WARG-LOG-CHECKPOINT-V0");
 
 //         checkpoint.append_unsigned(self.log_length as u64);
-        
+
 //         let log_root = self.log_root.to_string();
 //         checkpoint.append_len_str(&log_root);
 
@@ -99,7 +98,7 @@ impl Encode for MapLeaf {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LogLeaf {
     pub log_id: LogId,
-    pub record_id: RecordId
+    pub record_id: RecordId,
 }
 
 impl Encode for LogLeaf {

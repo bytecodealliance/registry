@@ -9,22 +9,26 @@ use warg_crypto::hash::Sha256;
 use warg_protocol::registry::LogLeaf;
 use warg_protocol::Encode;
 
+pub type ProofLog = VecLog<Sha256>;
+
+pub type LogData = Arc<RwLock<ProofLog>>;
+
 pub struct Input {
-    pub log: VecLog<Sha256>,
+    pub log: ProofLog,
     pub log_rx: Receiver<LogLeaf>,
 }
 
 pub struct Output {
-    pub data: Arc<RwLock<VecLog<Sha256>>>,
-    _handle: JoinHandle<()>,
+    pub data: LogData,
+    pub handle: JoinHandle<()>,
 }
 
-pub async fn process(input: Input) -> Output {
+pub fn process(input: Input) -> Output {
     let Input { log, mut log_rx } = input;
     let data = Arc::new(RwLock::new(log));
     let processor_data = data.clone();
 
-    let _handle = tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let data = processor_data;
 
         while let Some(leaf) = log_rx.recv().await {
@@ -34,5 +38,5 @@ pub async fn process(input: Input) -> Output {
         }
     });
 
-    Output { data, _handle }
+    Output { data, handle }
 }

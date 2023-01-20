@@ -8,7 +8,7 @@ use warg_crypto::hash::DynHash;
 mod model;
 mod validate;
 
-pub use model::{OperatorRecord, OperatorEntry};
+pub use model::{OperatorEntry, OperatorRecord};
 pub use validate::{ValidationError, Validator};
 
 /// The currently supported operator protocol version.
@@ -169,9 +169,9 @@ mod tests {
 
     use std::time::SystemTime;
 
-    use warg_crypto::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
     use crate::Envelope;
+    use warg_crypto::hash::HashAlgorithm;
 
     #[test]
     fn test_envelope_roundtrip() {

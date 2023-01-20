@@ -30,7 +30,7 @@ pub struct Summary {
     pub checkpoint: MapCheckpoint,
 }
 
-pub async fn process(input: Input) -> Output {
+pub fn process(input: Input) -> Output {
     let (summary_tx, summary_rx) = mpsc::channel::<Summary>(4);
     let (map_data_tx, map_data_rx) = mpsc::channel::<VerifiableMap>(4);
 
