@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package proofs;
+
+message MapProofData {
+    repeated MapInclusionProof proofs = 1;
+}
+
+message MapInclusionProof {
+    repeated OptionalHash hashes = 1;
+}
+
+message OptionalHash {
+    optional string hash = 1;
+}
+
+message LogProofBundle {
+    uint32 log_length = 1;
+    repeated uint32 consistent_lengths = 2;
+    repeated uint32 included_indices = 3;
+    repeated HashEntry hashes = 4;
+}
+
+message HashEntry {
+    uint32 index = 1;
+    bytes hash = 2;
+}

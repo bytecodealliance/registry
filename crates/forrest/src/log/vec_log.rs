@@ -35,7 +35,7 @@ where
     fn set_digest(&mut self, node: Node, digest: Hash<D>) {
         self.tree[node.index()] = digest;
     }
-    
+
     /// Get the root of the log when it was at some length
     fn root_at(&self, length: usize) -> Option<Hash<D>> {
         if length > self.length {
@@ -143,7 +143,7 @@ mod tests {
 
     use warg_crypto::hash::Sha256;
 
-    use crate::log::proofs::{ConsistencyProof, InclusionProof, InclusionProofError};
+    use crate::log::proof::{ConsistencyProof, InclusionProof, InclusionProofError};
 
     use super::*;
 
