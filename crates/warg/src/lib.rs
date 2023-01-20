@@ -1,4 +1,7 @@
 use anyhow::Error;
+use serde::{Serialize, Deserialize};
+use serde_with::serde_as;
+use serde_with::base64::Base64;
 use warg_crypto::hash::DynHashParseError;
 use prost::Message;
 use signature::Error as SignatureError;
@@ -36,11 +39,14 @@ pub mod protobuf {
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
 /// the serialization is not canonical.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope<Contents> {
     /// The content represented by content_bytes
+    #[serde(skip_serializing)]
     contents: Contents,
     /// The serialized representation of the content
+    #[serde_as(as = "Base64")]
     content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
     key_id: signing::KeyID,
@@ -74,6 +80,14 @@ impl<Contents> Envelope<Contents> {
         &self.content_bytes
     }
 
+    pub fn key_id(&self) -> &signing::KeyID {
+        &self.key_id
+    }
+
+    pub fn signature(&self) -> &signing::Signature {
+        &self.signature
+    }
+
     /// Get the representation of the entire envelope as a byte vector.
     /// This is the logical inverse of `Envelope::from_bytes`.
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -105,6 +119,12 @@ impl<Contents> Envelope<Contents> {
             key_id,
             signature,
         })
+    }
+}
+
+impl<Content> AsRef<Content> for Envelope<Content> {
+    fn as_ref(&self) -> &Content {
+        &self.contents
     }
 }
 

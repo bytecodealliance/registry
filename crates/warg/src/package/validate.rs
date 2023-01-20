@@ -165,7 +165,7 @@ impl Validator {
     pub fn validate(
         &mut self,
         envelope: &Envelope<model::PackageRecord>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<Vec<DynHash>, ValidationError> {
         let record = &envelope.contents;
 
         // Validate previous hash
@@ -178,7 +178,7 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
+        let contents = self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
         let algorithm = self
@@ -202,7 +202,7 @@ impl Validator {
             timestamp: record.timestamp,
         });
 
-        Ok(())
+        Ok(contents)
     }
 
     /// Gets the releases known to the validator.
@@ -296,7 +296,9 @@ impl Validator {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         entries: &[model::PackageEntry],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<Vec<DynHash>, ValidationError> {
+        let mut contents = Vec::new();
+
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
@@ -326,6 +328,7 @@ impl Validator {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
                 model::PackageEntry::Release { version, content } => {
+                    contents.push(content.clone());
                     self.validate_release_entry(signer_key_id, timestamp, version, content)?
                 }
                 model::PackageEntry::Yank { version } => {
@@ -334,7 +337,7 @@ impl Validator {
             }
         }
 
-        Ok(())
+        Ok(contents)
     }
 
     fn validate_init_entry(

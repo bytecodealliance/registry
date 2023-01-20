@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use warg_protocol::signing::PrivateKey;
 
 pub struct Config {
+    base_url: String,
     signing_key: PrivateKey,
     content: Option<ContentConfig>,
 }
@@ -30,8 +31,9 @@ impl fmt::Debug for Config {
 }
 
 impl Config {
-    pub fn new(signing_key: PrivateKey) -> Self {
+    pub fn new(base_url: String, signing_key: PrivateKey) -> Self {
         Config {
+            base_url,
             signing_key,
             content: None,
         }
@@ -60,7 +62,9 @@ impl Config {
             router = router.nest("/content", upload.build_router()?);
         }
 
-        router = router.nest("/package", api::package::build_router(core.clone()));
+        let package_config = api::package::Config::new(core.clone(), self.base_url.clone());
+
+        router = router.nest("/package", package_config.build_router());
 
         Ok(router)
     }
