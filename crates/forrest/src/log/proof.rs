@@ -1,5 +1,10 @@
 use alloc::vec::Vec;
+use anyhow::Error;
+use std::collections::HashSet;
+use thiserror::Error;
 use warg_crypto::hash::{Hash, SupportedDigest};
+
+use crate::protobuf;
 
 use super::{hash_branch, node::Node, LogData};
 
@@ -13,13 +18,15 @@ pub struct InclusionProof {
 }
 
 /// An error occuring when attempting to validate an inclusion proof.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InclusionProofError {
     /// Indicates that the leaf is too new to be present at
     /// the given point in the log history.
+    #[error("Leaf newer than when it should be included")]
     LeafTooNew,
     /// Indicates that certain hashes weren't known that are
     /// needed to perform proof validation.
+    #[error("Required hash for proof is not available")]
     HashNotKnown,
 }
 
@@ -38,7 +45,7 @@ pub enum InclusionProofError {
 /// previous two to the leftmost (tallest) broot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InclusionProofWalk {
-    nodes: Vec<Node>,
+    pub(crate) nodes: Vec<Node>,
     initial_walk_len: usize,
     lower_broots: usize,
     upper_broots: usize,
@@ -185,9 +192,10 @@ pub struct ConsistencyProof {
 }
 
 /// Errors occuring when validating a consistency proof
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ConsistencyProofError {
     /// Indicates that the new point is actually older
+    #[error("Tries to prove later value comes before earlier")]
     PointsOutOfOrder,
 }
 
@@ -200,7 +208,7 @@ impl ConsistencyProof {
             return Err(ConsistencyProofError::PointsOutOfOrder);
         }
 
-        let incls = Node::broots_for_len(self.old_length)
+        let inclusions = Node::broots_for_len(self.old_length)
             .into_iter()
             .map(|broot| InclusionProof {
                 log_length: self.new_length,
@@ -208,14 +216,12 @@ impl ConsistencyProof {
             })
             .collect();
 
-        Ok(incls)
+        Ok(inclusions)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
-
     use crate::log::{LogBuilder, VecLog};
 
     use super::*;

@@ -13,7 +13,8 @@
 
 mod node;
 /// Logic for constructing and validating proofs
-pub mod proofs;
+pub mod proof;
+pub mod proof_bundle;
 mod sparse_data;
 mod stack_log;
 mod vec_log;

@@ -3,15 +3,16 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{LogData, Node};
 
-pub struct SparseData<D>
+pub struct SparseLogData<D>
 where
     D: SupportedDigest,
 {
-    data: Vec<(Node, Hash<D>)>,
+    pub(crate) data: Vec<(Node, Hash<D>)>,
 }
 
-impl<D> SparseData<D>
-where D: SupportedDigest
+impl<D> SparseLogData<D>
+where
+    D: SupportedDigest,
 {
     fn get_index(&self, node: Node) -> Option<usize> {
         let result = self.data.binary_search_by_key(&node, |entry| entry.0);
@@ -22,7 +23,10 @@ where D: SupportedDigest
     }
 }
 
-impl<D> LogData<D> for SparseData<D> where D: SupportedDigest {
+impl<D> LogData<D> for SparseLogData<D>
+where
+    D: SupportedDigest,
+{
     fn has_hash(&self, node: Node) -> bool {
         self.get_index(node).is_some()
     }

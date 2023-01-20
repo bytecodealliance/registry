@@ -1,3 +1,5 @@
+use digest::generic_array::GenericArray;
+use thiserror::Error;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -88,6 +90,21 @@ where
         self.digest.as_mut()
     }
 }
+
+impl<D: SupportedDigest> TryFrom<Vec<u8>> for Hash<D> {
+    type Error = IncorrectLengthError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let hash = Hash {
+            digest: GenericArray::from_exact_iter(value.into_iter()).ok_or(IncorrectLengthError)?,
+        };
+        Ok(hash)
+    }
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("The provided vector was not the correct length")]
+pub struct  IncorrectLengthError;
 
 impl<D: SupportedDigest> Serialize for Hash<D> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
