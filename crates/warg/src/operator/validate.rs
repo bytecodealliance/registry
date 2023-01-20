@@ -1,5 +1,5 @@
 use super::{model, OPERATOR_RECORD_VERSION};
-use crate::{signing, Envelope, Signable};
+use crate::{signing, ProtoEnvelope, Signable};
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use signature::Error as SignatureError;
@@ -98,9 +98,9 @@ impl Validator {
     /// records in the log.
     pub fn validate(
         &mut self,
-        envelope: &Envelope<model::OperatorRecord>,
+        envelope: &ProtoEnvelope<model::OperatorRecord>,
     ) -> Result<(), ValidationError> {
-        let record = &envelope.contents;
+        let record = envelope.as_ref();
 
         // Validate previous hash
         self.validate_record_hash(record)?;
@@ -112,7 +112,7 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        self.validate_record_entries(&envelope.key_id, &record.entries)?;
+        self.validate_record_entries(envelope.key_id(), &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
         let algorithm = self
@@ -122,17 +122,17 @@ impl Validator {
         // Validate the envelope key id
         let key =
             self.keys
-                .get(&envelope.key_id)
+                .get(envelope.key_id())
                 .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id.clone(),
+                    key_id: envelope.key_id().clone(),
                 })?;
 
         // Validate the envelope signature
-        model::OperatorRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
+        model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator root
         self.root = Some(Root {
-            digest: algorithm.digest(&envelope.content_bytes),
+            digest: algorithm.digest(envelope.content_bytes()),
             timestamp: record.timestamp,
         });
 
@@ -348,7 +348,7 @@ mod tests {
         };
 
         let envelope =
-            Envelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+        ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
         let mut validator = Validator::default();
         validator.validate(&envelope).unwrap();
 
@@ -356,7 +356,7 @@ mod tests {
             validator,
             Validator {
                 root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
+                    digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
                     timestamp,
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),

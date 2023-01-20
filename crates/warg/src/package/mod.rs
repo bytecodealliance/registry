@@ -195,7 +195,7 @@ mod tests {
     use warg_crypto::hash::HashAlgorithm;
 
     use crate::signing::tests::generate_p256_pair;
-    use crate::Envelope;
+    use crate::ProtoEnvelope;
 
     #[test]
     fn test_envelope_roundtrip() {
@@ -226,14 +226,14 @@ mod tests {
             ],
         };
 
-        let first_envelope = match Envelope::signed_contents(&alice_priv, record) {
+        let first_envelope = match ProtoEnvelope::signed_contents(&alice_priv, record) {
             Ok(value) => value,
             Err(error) => panic!("Failed to sign envelope 1: {:?}", error),
         };
 
-        let bytes = first_envelope.to_bytes();
+        let bytes = first_envelope.to_protobuf();
 
-        let second_envelope: Envelope<model::PackageRecord> = match Envelope::from_bytes(bytes) {
+        let second_envelope: ProtoEnvelope<model::PackageRecord> = match ProtoEnvelope::from_protobuf(bytes) {
             Ok(value) => value,
             Err(error) => panic!("Failed to create envelope 2: {:?}", error),
         };

@@ -8,7 +8,7 @@ use std::{
 use warg_crypto::hash::HashAlgorithm;
 use warg_protocol::{
     operator::{self, Validator},
-    protobuf, signing, Envelope,
+    protobuf, signing, ProtoEnvelope,
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
 
             record.prev = last.clone();
 
-            let envelope = Envelope::signed_contents(&key, record).unwrap();
+            let envelope = ProtoEnvelope::signed_contents(&key, record).unwrap();
 
             *last = Some(HashAlgorithm::Sha256.digest(envelope.content_bytes()));
 

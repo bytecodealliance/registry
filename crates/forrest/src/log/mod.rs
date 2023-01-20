@@ -14,6 +14,7 @@
 mod node;
 /// Logic for constructing and validating proofs
 pub mod proofs;
+mod sparse_data;
 mod stack_log;
 mod vec_log;
 
@@ -107,36 +108,12 @@ pub trait LogData<D>
 where
     D: SupportedDigest,
 {
-    /// Returns the number of leaves that have been added to the log
-    fn length(&self) -> usize;
-
     /// Does this hash exist in the collection?
     fn has_hash(&self, node: Node) -> bool;
 
     /// Get the hash for a given node
     /// None if node does not yet exist
     fn hash_for(&self, node: Node) -> Option<Hash<D>>;
-
-    /// Get the root of the log when it was at some length
-    fn root_at(&self, length: usize) -> Option<Hash<D>> {
-        if length > self.length() {
-            return None;
-        }
-
-        let roots = Node::broots_for_len(length);
-
-        let result = roots
-            .into_iter()
-            .rev()
-            .map(|node| self.hash_for(node).unwrap())
-            .reduce(|old, new| {
-                // Ordering due to reversal of iterator
-                hash_branch::<D>(new, old)
-            })
-            .unwrap_or(hash_empty::<D>());
-
-        Some(result)
-    }
 }
 
 /// Compute the hash for an empty tree using a given Digest algorithm.

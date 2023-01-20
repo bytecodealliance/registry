@@ -170,7 +170,7 @@ mod tests {
     use std::time::SystemTime;
 
     use crate::signing::tests::generate_p256_pair;
-    use crate::Envelope;
+    use crate::ProtoEnvelope;
     use warg_crypto::hash::HashAlgorithm;
 
     #[test]
@@ -199,11 +199,11 @@ mod tests {
         };
 
         let first_envelope =
-            Envelope::signed_contents(&alice_priv, record).expect("Failed to sign envelope 1");
+        ProtoEnvelope::signed_contents(&alice_priv, record).expect("Failed to sign envelope 1");
 
-        let bytes = first_envelope.to_bytes();
+        let bytes = first_envelope.to_protobuf();
 
-        let second_envelope: Envelope<model::OperatorRecord> = match Envelope::from_bytes(bytes) {
+        let second_envelope: ProtoEnvelope<model::OperatorRecord> = match ProtoEnvelope::from_protobuf(bytes) {
             Ok(value) => value,
             Err(error) => panic!("Failed to create envelope 2: {:?}", error),
         };

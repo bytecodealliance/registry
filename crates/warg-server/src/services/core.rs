@@ -12,12 +12,12 @@ use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
     registry::{LogId, MapCheckpoint, RecordId},
-    Envelope,
+    ProtoEnvelope, SerdeEnvelope
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
-    checkpoints: Vec<Arc<Envelope<MapCheckpoint>>>,
+    checkpoints: Vec<Arc<ProtoEnvelope<MapCheckpoint>>>,
     operator_state: Arc<Mutex<OperatorInfo>>,
     package_states: HashMap<LogId, Arc<Mutex<PackageInfo>>>,
 }
@@ -25,13 +25,13 @@ pub struct State {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OperatorInfo {
     validator: operator::Validator,
-    log: Vec<Arc<Envelope<operator::OperatorRecord>>>,
+    log: Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>,
     records: HashMap<RecordId, OperatorRecordInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct OperatorRecordInfo {
-    record: Arc<Envelope<operator::OperatorRecord>>,
+    record: Arc<ProtoEnvelope<operator::OperatorRecord>>,
     state: RecordState,
 }
 
@@ -40,13 +40,13 @@ struct PackageInfo {
     id: LogId,
     name: String,
     validator: package::Validator,
-    log: Vec<Arc<Envelope<package::PackageRecord>>>,
+    log: Vec<Arc<ProtoEnvelope<package::PackageRecord>>>,
     records: HashMap<RecordId, PackageRecordInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageRecordInfo {
-    pub record: Arc<Envelope<package::PackageRecord>>,
+    pub record: Arc<ProtoEnvelope<package::PackageRecord>>,
     pub content_sources: Arc<Vec<ContentSource>>,
     pub state: RecordState,
 }
@@ -69,7 +69,7 @@ pub enum RecordState {
     Unknown,
     Processing,
     Published {
-        checkpoint: Arc<Envelope<MapCheckpoint>>,
+        checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
     },
     Rejected {
         reason: String,
@@ -78,14 +78,14 @@ pub enum RecordState {
 
 pub struct CoreService {
     mailbox: mpsc::Sender<Message>,
-    handle: JoinHandle<State>,
+    _handle: JoinHandle<State>,
 }
 
 #[derive(Debug)]
 enum Message {
     SubmitPackageRecord {
         package_name: String,
-        record: Arc<Envelope<package::PackageRecord>>,
+        record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
         response: oneshot::Sender<RecordState>,
     },
@@ -100,23 +100,23 @@ enum Message {
         response: oneshot::Sender<Option<PackageRecordInfo>>,
     },
     NewCheckpoint {
-        checkpoint: Arc<Envelope<MapCheckpoint>>,
+        checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
         leaves: Vec<LogLeaf>,
     },
     FetchSince {
         package_id: LogId,
         since: Option<DynHash>,
-        response: oneshot::Sender<Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error>>,
+        response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
     },
 }
 
 impl CoreService {
-    pub fn new(initial_state: State, transparency_tx: Sender<LogLeaf>) -> Self {
+    pub fn start(initial_state: State, transparency_tx: Sender<LogLeaf>) -> Self {
         let (mailbox, rx) = mpsc::channel::<Message>(4);
-        let handle =
+        let _handle =
             tokio::spawn(async move { Self::process(initial_state, rx, transparency_tx).await });
 
-        Self { mailbox, handle }
+        Self { mailbox, _handle }
     }
 
     async fn process(
@@ -209,7 +209,15 @@ impl CoreService {
                     package_id,
                     since,
                     response,
-                } => {}
+                } => {
+                    if let Some(package_info) = state.package_states.get(&package_id).cloned() {
+                        tokio::spawn(async move {
+                            fetch_since(package_info, since, response).await;
+                        });
+                    } else {
+                        response.send(Err(Error::msg("Package not found"))).unwrap();
+                    }
+                }
             }
         }
 
@@ -219,7 +227,7 @@ impl CoreService {
 
 async fn new_record(
     package_info: Arc<Mutex<PackageInfo>>,
-    record: Arc<Envelope<package::PackageRecord>>,
+    record: Arc<ProtoEnvelope<package::PackageRecord>>,
     content_sources: Vec<ContentSource>,
     response: oneshot::Sender<RecordState>,
     transparency_tx: Sender<LogLeaf>,
@@ -283,7 +291,7 @@ async fn new_record(
 async fn mark_published(
     package_info: Arc<Mutex<PackageInfo>>,
     record_id: RecordId,
-    checkpoint: Arc<Envelope<MapCheckpoint>>,
+    checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
 ) {
     let mut info = package_info.as_ref().blocking_lock();
 
@@ -293,7 +301,7 @@ async fn mark_published(
 async fn fetch_since(
     package_info: Arc<Mutex<PackageInfo>>,
     since: Option<DynHash>,
-    response: oneshot::Sender<Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error>>,
+    response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
 ) {
     let info = package_info.as_ref().blocking_lock();
 
@@ -328,7 +336,7 @@ impl CoreService {
     pub async fn submit_package_record(
         &self,
         package_name: String,
-        record: Arc<Envelope<package::PackageRecord>>,
+        record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
     ) -> RecordState {
         let (tx, rx) = oneshot::channel();
@@ -383,7 +391,7 @@ impl CoreService {
         rx.await.unwrap()
     }
 
-    pub async fn new_checkpoint(&self, checkpoint: Envelope<MapCheckpoint>, leaves: Vec<LogLeaf>) {
+    pub async fn new_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>, leaves: Vec<LogLeaf>) {
         self.mailbox
             .send(Message::NewCheckpoint {
                 checkpoint: Arc::new(checkpoint),
@@ -397,7 +405,7 @@ impl CoreService {
         &self,
         package_name: String,
         since: Option<DynHash>,
-    ) -> Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error> {
+    ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
         let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox

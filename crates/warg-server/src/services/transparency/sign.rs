@@ -2,7 +2,7 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 
 use warg_protocol::registry::{LogLeaf, MapCheckpoint};
-use warg_protocol::{signing, Envelope};
+use warg_protocol::{signing, SerdeEnvelope};
 
 use super::map;
 
@@ -19,7 +19,7 @@ pub struct Output {
 #[derive(Debug)]
 pub struct Signature {
     pub leaves: Vec<LogLeaf>,
-    pub envelope: Envelope<MapCheckpoint>,
+    pub envelope: SerdeEnvelope<MapCheckpoint>,
 }
 
 pub fn process(input: Input) -> Output {
@@ -33,7 +33,7 @@ pub fn process(input: Input) -> Output {
 
         while let Some(message) = sign_rx.recv().await {
             let map::Summary { leaves, checkpoint } = message;
-            let envelope = Envelope::signed_contents(&private_key, checkpoint).unwrap();
+            let envelope = SerdeEnvelope::signed_contents(&private_key, checkpoint).unwrap();
             summary_tx
                 .send(Signature { leaves, envelope })
                 .await

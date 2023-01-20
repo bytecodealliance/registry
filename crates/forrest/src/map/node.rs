@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
-// SPDX-License-Identifier: Apache-2.0
-
 use core::marker::PhantomData;
 
 use alloc::sync::Arc;
@@ -70,10 +67,10 @@ impl<D: SupportedDigest, K, V> Node<D, K, V> {
                 Some(proof)
             }
 
-            (None, Self::Leaf(leaf)) => Some(Proof {
+            (None, Self::Leaf(_)) => Some(Proof {
                 digest: PhantomData,
+                value: PhantomData,
                 peers: Vec::new(),
-                value: &leaf.1,
             }),
 
             _ => None,

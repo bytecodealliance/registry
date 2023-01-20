@@ -51,19 +51,10 @@ mod log_consistency {
 }
 
 mod inclusion {
+    use warg_crypto::hash::DynHash;
+
     use super::*;
 
-    /// ```json
-    /// {
-    ///     "root": "sha256:fdslkgfdshfds",
-    ///     "logs": [
-    ///         {
-    ///             "name": "foobar",
-    ///             "head": "sha256:fdslkgfdshfds"
-    ///         }
-    ///     ]
-    /// }
-    /// ```
     #[derive(Serialize, Deserialize)]
     pub(crate) struct RequestBody {
         root: String,
@@ -73,7 +64,7 @@ mod inclusion {
     #[derive(Serialize, Deserialize)]
     pub(crate) struct LogHead {
         name: String,
-        head: String,
+        head: DynHash,
     }
 
     #[derive(Serialize, Deserialize)]
