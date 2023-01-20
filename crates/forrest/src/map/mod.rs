@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
-// SPDX-License-Identifier: Apache-2.0
-
 //! Immutable Map w/ Inclusion Proofs
 //!
 //! The main type in this module is [`Map`]. It implements an immutable map
@@ -158,11 +155,12 @@ mod test {
         fn check<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>>(
             tree: &Map<D, K, V>,
             key: K,
+            value: V,
             peers: usize,
         ) {
             let proof = tree.prove(&key).unwrap();
             assert_eq!(proof.peers.len(), peers);
-            assert!(proof.verify(tree.root(), &key));
+            assert!(proof.verify(tree.root(), &key, &&value));
         }
 
         let first = Map::<Sha256, &'static str, &'static str>::default();
@@ -171,13 +169,13 @@ mod test {
         assert!(first.prove(&"qux").is_none());
 
         let second = first.insert("foo", "bar");
-        check(&second, "foo", 0);
+        check(&second, "foo", "bar", 0);
         assert!(second.prove(&"baz").is_none());
         assert!(second.prove(&"qux").is_none());
 
         let third = second.insert("baz", "bat");
-        check(&third, "foo", 1);
-        check(&third, "baz", 1);
+        check(&third, "foo", "bar", 1);
+        check(&third, "baz", "bat", 1);
         assert!(third.prove(&"qux").is_none());
     }
 }

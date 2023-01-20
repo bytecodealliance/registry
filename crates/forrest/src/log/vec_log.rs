@@ -35,6 +35,27 @@ where
     fn set_digest(&mut self, node: Node, digest: Hash<D>) {
         self.tree[node.index()] = digest;
     }
+    
+    /// Get the root of the log when it was at some length
+    fn root_at(&self, length: usize) -> Option<Hash<D>> {
+        if length > self.length {
+            return None;
+        }
+
+        let roots = Node::broots_for_len(length);
+
+        let result = roots
+            .into_iter()
+            .rev()
+            .map(|node| self.hash_for(node).unwrap())
+            .reduce(|old, new| {
+                // Ordering due to reversal of iterator
+                hash_branch::<D>(new, old)
+            })
+            .unwrap_or(hash_empty::<D>());
+
+        Some(result)
+    }
 }
 
 impl<D> Default for VecLog<D>
@@ -107,10 +128,6 @@ impl<D> LogData<D> for VecLog<D>
 where
     D: SupportedDigest,
 {
-    fn length(&self) -> usize {
-        self.length
-    }
-
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
         self.tree.get(node.index()).map(|h| h.clone())
     }

@@ -6,7 +6,7 @@ use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::pos
 use serde::{Deserialize, Serialize};
 
 use warg_crypto::hash::DynHash;
-use warg_protocol::Envelope;
+use warg_protocol::ProtoEnvelopeBody;
 
 use crate::services::core::CoreService;
 use crate::AnyError;
@@ -25,8 +25,6 @@ impl Config {
         Router::new().route("/fetch", post(fetch)).with_state(self)
     }
 }
-
-use warg_protocol::package;
 
 #[derive(Default, Debug, Deserialize)]
 pub struct RequestBody {
@@ -47,7 +45,7 @@ pub struct ResponseBody {
 #[derive(Default, Debug, Serialize)]
 struct LogResults {
     name: String,
-    records: Vec<Arc<Envelope<package::PackageRecord>>>,
+    records: Vec<ProtoEnvelopeBody>,
 }
 
 #[debug_handler]
@@ -60,7 +58,7 @@ async fn fetch(
         let records = config.core_service.fetch_since(name.clone(), since).await?;
         let log_result = LogResults {
             name: name.clone(),
-            records,
+            records: records.into_iter().map(|env| env.as_ref().clone().into()).collect(),
         };
         logs.push(log_result);
     }

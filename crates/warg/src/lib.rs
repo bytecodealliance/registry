@@ -1,17 +1,15 @@
 use anyhow::Error;
-use prost::Message;
-use serde::{Deserialize, Serialize};
-use serde_with::base64::Base64;
-use serde_with::serde_as;
 use signature::Error as SignatureError;
-use signing::SignatureParseError;
-use thiserror::Error;
-use warg_crypto::hash::DynHashParseError;
 
+mod proto_envelope;
+mod serde_envelope;
 pub mod operator;
 pub mod package;
 pub mod registry;
 pub mod signing;
+
+pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
+pub use serde_envelope::SerdeEnvelope;
 
 /// Types for converting to and from protobuf
 pub mod protobuf {
@@ -34,114 +32,6 @@ pub mod protobuf {
             nanos: timestamp.nanos,
         }
     }
-}
-
-/// The envelope struct is used to keep around the original
-/// bytes that the content was serialized into in case
-/// the serialization is not canonical.
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Envelope<Contents> {
-    /// The content represented by content_bytes
-    #[serde(skip_serializing)]
-    contents: Contents,
-    /// The serialized representation of the content
-    #[serde_as(as = "Base64")]
-    content_bytes: Vec<u8>,
-    /// The hash of the key that signed this envelope
-    key_id: signing::KeyID,
-    /// The signature for the content_bytes
-    signature: signing::Signature,
-}
-
-impl<Contents> Envelope<Contents> {
-    /// Create an envelope for some contents using a signature.
-    pub fn signed_contents(
-        private_key: &signing::PrivateKey,
-        contents: Contents,
-    ) -> Result<Self, SignatureError>
-    where
-        Contents: Signable,
-    {
-        let content_bytes: Vec<u8> = contents.encode();
-
-        let key_id = private_key.public_key().fingerprint();
-        let signature = contents.sign(private_key)?;
-        Ok(Envelope {
-            contents,
-            content_bytes,
-            key_id,
-            signature,
-        })
-    }
-
-    /// Get the byte representation of the envelope contents.
-    pub fn content_bytes(&self) -> &[u8] {
-        &self.content_bytes
-    }
-
-    pub fn key_id(&self) -> &signing::KeyID {
-        &self.key_id
-    }
-
-    pub fn signature(&self) -> &signing::Signature {
-        &self.signature
-    }
-
-    /// Get the representation of the entire envelope as a byte vector.
-    /// This is the logical inverse of `Envelope::from_bytes`.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let proto_envelope = protobuf::Envelope {
-            contents: self.content_bytes.clone(),
-            key_id: self.key_id.to_string(),
-            signature: self.signature.to_string(),
-        };
-        proto_envelope.encode_to_vec()
-    }
-
-    /// Create an entire envelope from a byte vector.
-    /// This is the logical inverse of `Envelope::as_bytes`.
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
-    where
-        Contents: Decode,
-    {
-        // Parse outer envelope
-        let envelope = protobuf::Envelope::decode(bytes.as_slice())?;
-        let contents = Contents::decode(&envelope.contents)?;
-
-        // Read key ID and signature
-        let key_id = envelope.key_id.into();
-        let signature = envelope.signature.parse()?;
-
-        Ok(Envelope {
-            contents,
-            content_bytes: envelope.contents,
-            key_id,
-            signature,
-        })
-    }
-}
-
-impl<Content> AsRef<Content> for Envelope<Content> {
-    fn as_ref(&self) -> &Content {
-        &self.contents
-    }
-}
-
-/// Errors that occur in the process of parsing an envelope from bytes
-#[derive(Error, Debug)]
-pub enum ParseEnvelopeError {
-    #[error("Failed to parse the outer envelope protobuf message")]
-    ProtobufEnvelopeParseError(#[from] prost::DecodeError),
-
-    #[error("Failed to parse envelope contents from bytes")]
-    ContentsParseError(#[from] Error),
-
-    #[error("Failed to parse envelope key id")]
-    KeyIDParseError(#[from] DynHashParseError),
-
-    #[error("Failed to parse envelope signature")]
-    SignatureParseError(#[from] SignatureParseError),
 }
 
 pub trait Signable: Encode {

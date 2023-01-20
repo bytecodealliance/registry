@@ -66,7 +66,15 @@ impl Config {
         let data = data::process(input);
 
         let initial_state = State::default();
-        let core = Arc::new(CoreService::new(initial_state, transparency_tx));
+        let core = Arc::new(CoreService::start(initial_state, transparency_tx));
+
+        let mut signatures = transparency.signatures;
+        let sig_core = core.clone();
+        tokio::spawn(async move {
+            while let Some(sig) = signatures.recv().await {
+                sig_core.as_ref().new_checkpoint(sig.envelope, sig.leaves).await;
+            }
+        });
 
         let mut router: Router = Router::new();
         if let Some(upload) = self.content {

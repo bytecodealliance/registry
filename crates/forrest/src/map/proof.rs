@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
-// SPDX-License-Identifier: Apache-2.0
-
 use alloc::vec::Vec;
 use core::{iter::repeat, marker::PhantomData, ops::Deref};
 
@@ -16,7 +13,7 @@ use super::path::Path;
 ///
 /// Since the depth of a tree is always `n` and a proof needs to contain all
 /// branch node peers from the leaf to the root, a proof should contain `n`
-/// hashes. However, several strategies can be used to compresss a proof;
+/// hashes. However, several strategies can be used to compress a proof;
 /// saving both memory and bytes on the wire.
 ///
 /// First, the hash of the item and the root are known by both sides and can
@@ -34,18 +31,17 @@ use super::path::Path;
 pub struct Proof<D: SupportedDigest, H, V> {
     #[serde(skip)]
     pub(crate) digest: PhantomData<D>,
+    #[serde(skip)]
+    pub(crate) value: PhantomData<V>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) peers: Vec<Option<H>>,
-
-    #[serde(with = "serde_bytes")]
-    pub(crate) value: V,
 }
 
 impl<D: SupportedDigest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H, V> {
     /// Verifies a proof for a given map and key.
     #[must_use]
-    pub fn verify<Q: ?Sized + AsRef<[u8]>>(&self, root: &Hash<D>, key: &Q) -> bool {
+    pub fn verify<Q: ?Sized + AsRef<[u8]>>(&self, root: &Hash<D>, key: &Q, value: &V) -> bool {
         // Get the path from bottom to top.
         let path = Path::<D>::from(key);
 
@@ -53,7 +49,7 @@ impl<D: SupportedDigest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H,
         let fill = repeat(None).take(path.len() - self.peers.len());
 
         // Calculate the leaf hash.
-        let mut hash = path.hash(&self.value);
+        let mut hash = path.hash(&value);
 
         // Loop over each side and peer.
         let peers = fill.chain(self.peers.iter().map(|x| x.as_deref()));
@@ -107,5 +103,4 @@ fn test() {
     let proof: Proof<Sha256, Hash<Sha256>, ByteBuf> = ciborium::de::from_reader(&buf[..]).unwrap();
     let peers = proof.peers.iter().map(|x| x.as_ref()).collect::<Vec<_>>();
     assert_eq!(p.peers, peers);
-    assert_eq!(*p.value, *proof.value);
 }

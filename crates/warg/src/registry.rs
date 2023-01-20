@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{operator::OperatorRecord, package::PackageRecord, Encode, Envelope, Signable};
+use crate::{operator::OperatorRecord, package::PackageRecord, Encode, Signable, ProtoEnvelope};
 use serde::{Deserialize, Serialize};
 use warg_crypto::hash::{DynHash, Hash, SupportedDigest};
 
@@ -145,7 +145,7 @@ impl AsRef<[u8]> for LogId {
 pub struct RecordId(DynHash);
 
 impl RecordId {
-    pub fn operator_record<D: SupportedDigest>(record: &Envelope<OperatorRecord>) -> Self {
+    pub fn operator_record<D: SupportedDigest>(record: &ProtoEnvelope<OperatorRecord>) -> Self {
         let mut d = D::new();
         d.update(b"WARG-OPERATOR-LOG-RECORD-V0:");
         d.update(record.content_bytes());
@@ -153,7 +153,7 @@ impl RecordId {
         Self(hash.into())
     }
 
-    pub fn package_record<D: SupportedDigest>(record: &Envelope<PackageRecord>) -> Self {
+    pub fn package_record<D: SupportedDigest>(record: &ProtoEnvelope<PackageRecord>) -> Self {
         let mut d = D::new();
         d.update(b"WARG-PACKAGE-LOG-RECORD-V0:");
         d.update(record.content_bytes());

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::registry::RecordId;
-use warg_protocol::Envelope;
+use warg_protocol::ProtoEnvelopeBody;
 
 use crate::services::core::{ContentSource, CoreService, RecordState};
 use crate::AnyError;
@@ -87,7 +87,7 @@ mod publish {
 
     #[derive(Serialize, Deserialize)]
     pub(crate) struct RequestBody {
-        record: Vec<u8>,
+        record: ProtoEnvelopeBody,
         content_sources: Vec<ContentSource>,
     }
 
@@ -97,7 +97,7 @@ mod publish {
         Path(package_name): Path<String>,
         Json(body): Json<RequestBody>,
     ) -> Result<impl IntoResponse, AnyError> {
-        let record = Arc::new(Envelope::from_bytes(body.record)?);
+        let record = Arc::new(body.record.try_into()?);
 
         let record_id = RecordId::package_record::<Sha256>(&record);
 
@@ -127,7 +127,7 @@ mod publish {
 }
 
 mod get_record {
-    use warg_protocol::{package::PackageRecord, registry::MapCheckpoint};
+    use warg_protocol::{SerdeEnvelope, registry::MapCheckpoint};
 
     use crate::services::core::PackageRecordInfo;
 
@@ -135,9 +135,9 @@ mod get_record {
 
     #[derive(Serialize)]
     pub struct ResponseBody {
-        record: Arc<Envelope<PackageRecord>>,
+        record: ProtoEnvelopeBody,
         content_sources: Arc<Vec<ContentSource>>,
-        checkpoint: Arc<Envelope<MapCheckpoint>>,
+        checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
     }
 
     #[debug_handler]
@@ -159,9 +159,9 @@ mod get_record {
                 state: RecordState::Published { checkpoint },
             }) => {
                 let response = ResponseBody {
-                    record,
+                    record: record.as_ref().clone().into(),
                     content_sources,
-                    checkpoint,
+                    checkpoint: checkpoint,
                 };
                 Ok((StatusCode::OK, Json(response)))
             }

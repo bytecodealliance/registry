@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 
-use crate::{signing, Envelope, Signable};
+use crate::{signing, ProtoEnvelope, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -162,9 +162,9 @@ impl Validator {
     /// records in the log.
     pub fn validate(
         &mut self,
-        envelope: &Envelope<model::PackageRecord>,
+        envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
-        let record = &envelope.contents;
+        let record = envelope.as_ref();
 
         // Validate previous hash
         self.validate_record_hash(record)?;
@@ -177,7 +177,7 @@ impl Validator {
 
         // Validate entries
         let contents =
-            self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
+            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
         let algorithm = self
@@ -187,17 +187,17 @@ impl Validator {
         // Validate the envelope key id
         let key =
             self.keys
-                .get(&envelope.key_id)
+                .get(envelope.key_id())
                 .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id.clone(),
+                    key_id: envelope.key_id().clone(),
                 })?;
 
         // Validate the envelope signature
-        model::PackageRecord::verify(key, &envelope.content_bytes, &envelope.signature)?;
+        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator root
         self.root = Some(Root {
-            digest: algorithm.digest(&envelope.content_bytes),
+            digest: algorithm.digest(envelope.content_bytes()),
             timestamp: record.timestamp,
         });
 
@@ -501,7 +501,7 @@ mod tests {
             }],
         };
 
-        let envelope = Envelope::signed_contents(&alice_priv, record).unwrap();
+        let envelope = ProtoEnvelope::signed_contents(&alice_priv, record).unwrap();
         let mut validator = Validator::default();
         validator.validate(&envelope).unwrap();
 
@@ -509,7 +509,7 @@ mod tests {
             validator,
             Validator {
                 root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(&envelope.content_bytes),
+                    digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
                     timestamp,
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),
@@ -550,14 +550,14 @@ mod tests {
                 },
             ],
         };
-        let envelope0 = Envelope::signed_contents(&alice_priv, record0).unwrap();
+        let envelope0 = ProtoEnvelope::signed_contents(&alice_priv, record0).unwrap();
         validator.validate(&envelope0).unwrap();
 
         // In envelope 1: bob releases 1.1.0
         let timestamp1 = timestamp0 + Duration::from_secs(1);
         let content = hash_algo.digest(&[0, 1, 2, 3]);
         let record1 = model::PackageRecord {
-            prev: Some(hash_algo.digest(&envelope0.content_bytes)),
+            prev: Some(hash_algo.digest(envelope0.content_bytes())),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp1,
             entries: vec![model::PackageEntry::Release {
@@ -566,7 +566,7 @@ mod tests {
             }],
         };
 
-        let envelope1 = Envelope::signed_contents(&bob_priv, record1).unwrap();
+        let envelope1 = ProtoEnvelope::signed_contents(&bob_priv, record1).unwrap();
         validator.validate(&envelope1).unwrap();
 
         // At this point, the validator should consider 1.1.0 released
@@ -597,7 +597,7 @@ mod tests {
         // In envelope 2: alice revokes bobs access and yanks 1.1.0
         let timestamp2 = timestamp1 + Duration::from_secs(1);
         let record2 = model::PackageRecord {
-            prev: Some(hash_algo.digest(&envelope1.content_bytes)),
+            prev: Some(hash_algo.digest(envelope1.content_bytes())),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp2,
             entries: vec![
@@ -610,7 +610,7 @@ mod tests {
                 },
             ],
         };
-        let envelope2 = Envelope::signed_contents(&alice_priv, record2).unwrap();
+        let envelope2 = ProtoEnvelope::signed_contents(&alice_priv, record2).unwrap();
         validator.validate(&envelope2).unwrap();
 
         // At this point, the validator should consider 1.1.0 yanked
@@ -635,7 +635,7 @@ mod tests {
             Validator {
                 algorithm: Some(HashAlgorithm::Sha256),
                 root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(&envelope2.content_bytes),
+                    digest: HashAlgorithm::Sha256.digest(envelope2.content_bytes()),
                     timestamp: timestamp2,
                 }),
                 permissions: IndexMap::from([
