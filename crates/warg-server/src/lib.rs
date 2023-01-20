@@ -57,9 +57,9 @@ impl Config {
         let transparency = transparency::process(input);
 
         let input = data::Input {
-            log: Default::default(),
+            log_data: Default::default(),
             log_rx: transparency.log_data,
-            maps: Default::default(),
+            map_data: Default::default(),
             map_rx: transparency.map_data,
         };
 

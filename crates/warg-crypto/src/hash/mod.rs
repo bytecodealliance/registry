@@ -66,3 +66,16 @@ impl<D: SupportedDigest> From<Hash<D>> for DynHash {
         }
     }
 }
+
+impl<D: SupportedDigest> TryFrom<DynHash> for Hash<D> {
+    type Error = Error;
+
+    fn try_from(value: DynHash) -> Result<Self, Self::Error> {
+        if value.algorithm() == D::ALGORITHM {
+            let hash = Hash::try_from(value.bytes)?;
+            Ok(hash)
+        } else {
+            Err(Error::msg("Mismatched algorithms"))
+        }
+    }
+}
