@@ -63,7 +63,7 @@ pub enum ContentSourceKind {
     HttpAnonymous { url: String },
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecordState {
     #[default]
     Unknown,
