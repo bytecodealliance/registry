@@ -1,3 +1,4 @@
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -6,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
@@ -40,7 +41,6 @@ struct PackageInfo {
     name: String,
     validator: package::Validator,
     log: Vec<Arc<Envelope<package::PackageRecord>>>,
-    pending_record: Option<RecordId>,
     records: HashMap<RecordId, PackageRecordInfo>,
 }
 
@@ -103,6 +103,11 @@ enum Message {
         checkpoint: Arc<Envelope<MapCheckpoint>>,
         leaves: Vec<LogLeaf>,
     },
+    FetchSince {
+        package_id: LogId,
+        since: Option<DynHash>,
+        response: oneshot::Sender<Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error>>,
+    },
 }
 
 impl CoreService {
@@ -139,7 +144,6 @@ impl CoreService {
                                 name: package_name,
                                 validator: Default::default(),
                                 log: Default::default(),
-                                pending_record: Default::default(),
                                 records: Default::default(),
                             }))
                         })
@@ -155,7 +159,7 @@ impl CoreService {
                         )
                         .await
                     });
-                },
+                }
                 Message::GetPackageRecordStatus {
                     package_id,
                     record_id,
@@ -173,8 +177,12 @@ impl CoreService {
                     } else {
                         response.send(RecordState::Unknown).unwrap();
                     }
-                },
-                Message::GetPackageRecordInfo { package_id, record_id, response } => {
+                }
+                Message::GetPackageRecordInfo {
+                    package_id,
+                    record_id,
+                    response,
+                } => {
                     if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                         tokio::spawn(async move {
                             let info = package_info.as_ref().blocking_lock();
@@ -187,7 +195,7 @@ impl CoreService {
                     } else {
                         response.send(None).unwrap();
                     }
-                },
+                }
                 Message::NewCheckpoint { checkpoint, leaves } => {
                     for leaf in leaves {
                         let package_info = state.package_states.get(&leaf.log_id).unwrap().clone();
@@ -197,6 +205,11 @@ impl CoreService {
                         });
                     }
                 }
+                Message::FetchSince {
+                    package_id,
+                    since,
+                    response,
+                } => {}
             }
         }
 
@@ -277,6 +290,40 @@ async fn mark_published(
     info.records.get_mut(&record_id).unwrap().state = RecordState::Published { checkpoint };
 }
 
+async fn fetch_since(
+    package_info: Arc<Mutex<PackageInfo>>,
+    since: Option<DynHash>,
+    response: oneshot::Sender<Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error>>,
+) {
+    let info = package_info.as_ref().blocking_lock();
+
+    if let Some(since) = since {
+        if let Some(index) = info
+            .log
+            .iter()
+            .map(|env| {
+                let mut digest = Sha256::new();
+                digest.update(env.content_bytes());
+                let hash: Hash<Sha256> = digest.finalize().into();
+                let dyn_hash: DynHash = hash.into();
+                dyn_hash
+            })
+            .position(|found| found == since)
+        {
+            let mut result = Vec::new();
+            let slice = &info.log[index..];
+            slice.clone_into(&mut result);
+            response.send(Ok(result)).unwrap();
+        } else {
+            response
+                .send(Err(Error::msg("Hash value not found")))
+                .unwrap();
+        }
+    } else {
+        response.send(Ok(info.log.clone())).unwrap();
+    }
+}
+
 impl CoreService {
     pub async fn submit_package_record(
         &self,
@@ -298,7 +345,11 @@ impl CoreService {
         rx.await.unwrap()
     }
 
-    pub async fn get_package_record_status(&self, package_name: String, record_id: RecordId) -> RecordState {
+    pub async fn get_package_record_status(
+        &self,
+        package_name: String,
+        record_id: RecordId,
+    ) -> RecordState {
         let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
@@ -313,7 +364,11 @@ impl CoreService {
         rx.await.unwrap()
     }
 
-    pub async fn get_package_record_info(&self, package_name: String, record_id: RecordId) -> Option<PackageRecordInfo> {
+    pub async fn get_package_record_info(
+        &self,
+        package_name: String,
+        record_id: RecordId,
+    ) -> Option<PackageRecordInfo> {
         let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
@@ -336,5 +391,24 @@ impl CoreService {
             })
             .await
             .unwrap();
+    }
+
+    pub async fn fetch_since(
+        &self,
+        package_name: String,
+        since: Option<DynHash>,
+    ) -> Result<Vec<Arc<Envelope<package::PackageRecord>>>, Error> {
+        let package_id = LogId::package_log::<Sha256>(&package_name);
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(Message::FetchSince {
+                package_id,
+                since,
+                response: tx,
+            })
+            .await
+            .unwrap();
+
+        rx.await.unwrap()
     }
 }

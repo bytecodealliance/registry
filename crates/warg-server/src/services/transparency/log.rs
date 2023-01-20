@@ -26,7 +26,7 @@ pub struct Summary {
     pub log_length: u32,
 }
 
-pub async fn process(input: Input) -> Output {
+pub fn process(input: Input) -> Output {
     let (summary_tx, summary_rx) = mpsc::channel::<Summary>(4);
     let (log_data_tx, log_data_rx) = mpsc::channel::<LogLeaf>(4);
 

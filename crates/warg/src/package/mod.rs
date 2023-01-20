@@ -8,8 +8,8 @@ use warg_crypto::hash::DynHash;
 mod model;
 mod validate;
 
-pub use model::{PackageRecord, PackageEntry, Permission};
-pub use validate::{ReleaseState, Release, ValidationError, Validator};
+pub use model::{PackageEntry, PackageRecord, Permission};
+pub use validate::{Release, ReleaseState, ValidationError, Validator};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

@@ -11,7 +11,6 @@
 //! using binary in-order interval numbering as described in
 //! [Dat - Distributed Dataset Synchronization and Versioning][2].
 
-/// Logic for manipulating log tree node indices
 mod node;
 /// Logic for constructing and validating proofs
 pub mod proofs;
@@ -19,6 +18,10 @@ mod stack_log;
 mod vec_log;
 
 use warg_crypto::hash::{Hash, SupportedDigest};
+
+pub use node::{Node, Side};
+pub use stack_log::StackLog;
+pub use vec_log::VecLog;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to
@@ -88,16 +91,14 @@ where
     }
 }
 
-impl<D> Eq for Checkpoint<D>
-where D: SupportedDigest {}
+impl<D> Eq for Checkpoint<D> where D: SupportedDigest {}
 
 impl<D> PartialEq for Checkpoint<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.root == other.root
-        && self.length == other.length
+        self.root == other.root && self.length == other.length
     }
 }
 
@@ -137,10 +138,6 @@ where
         Some(result)
     }
 }
-
-pub use node::{Node, Side};
-pub use vec_log::VecLog;
-pub use stack_log::StackLog;
 
 /// Compute the hash for an empty tree using a given Digest algorithm.
 pub fn hash_empty<D: SupportedDigest>() -> Hash<D> {

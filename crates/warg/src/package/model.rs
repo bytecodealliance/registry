@@ -4,7 +4,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
 
-use warg_crypto::hash::{HashAlgorithm, DynHash};
+use warg_crypto::hash::{DynHash, HashAlgorithm};
 
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,10 +81,7 @@ pub enum PackageEntry {
     },
     /// Release a version of a package.
     /// The version must not have been released yet.
-    Release {
-        version: Version,
-        content: DynHash,
-    },
+    Release { version: Version, content: DynHash },
     /// Yank a version of a package.
     /// The version must have been released and not yanked.
     Yank { version: Version },

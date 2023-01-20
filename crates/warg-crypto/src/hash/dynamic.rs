@@ -1,9 +1,9 @@
-use std::{fmt, ops::Deref, str::FromStr};
-use thiserror::Error;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
+use std::{fmt, ops::Deref, str::FromStr};
+use thiserror::Error;
 
-use super::{HashAlgorithm, Digest, Sha256};
+use super::{Digest, HashAlgorithm, Sha256};
 
 impl HashAlgorithm {
     pub fn digest(&self, content_bytes: &[u8]) -> DynHash {
@@ -38,8 +38,7 @@ impl DynHash {
     }
 }
 
-impl fmt::Display for DynHash
-{
+impl fmt::Display for DynHash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}:{}", self.algo, hex::encode(self.bytes.as_slice()))
     }

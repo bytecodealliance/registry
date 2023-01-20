@@ -6,9 +6,7 @@ use signature::Error as SignatureError;
 use std::time::SystemTime;
 use thiserror::Error;
 
-
-use warg_crypto::hash::{HashAlgorithm, DynHash};
-
+use warg_crypto::hash::{DynHash, HashAlgorithm};
 
 use crate::{signing, Envelope, Signable};
 
@@ -178,7 +176,8 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        let contents = self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
+        let contents =
+            self.validate_record_entries(&envelope.key_id, record.timestamp, &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
         let algorithm = self
@@ -481,10 +480,10 @@ impl Validator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use warg_crypto::hash::HashAlgorithm;
     use crate::signing::tests::generate_p256_pair;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
+    use warg_crypto::hash::HashAlgorithm;
 
     #[test]
     fn test_validate_base_log() {

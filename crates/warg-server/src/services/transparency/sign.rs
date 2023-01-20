@@ -22,7 +22,7 @@ pub struct Signature {
     pub envelope: Envelope<MapCheckpoint>,
 }
 
-pub async fn process(input: Input) -> Output {
+pub fn process(input: Input) -> Output {
     let (summary_tx, signatures) = mpsc::channel::<Signature>(4);
 
     let handle = tokio::spawn(async move {

@@ -2,21 +2,30 @@ use anyhow::Result;
 use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::AnyError;
+use crate::{services::data, AnyError};
 
-struct ProofConfig {}
+#[derive(Clone)]
+pub struct Config {
+    log: data::LogData,
+    map: data::MapData,
+}
 
-impl ProofConfig {
-    pub fn build_router(self) -> Result<Router> {
-        let router = Router::new()
-            .route("/consistency", post(consistency::prove))
-            .route("/inclusion", post(inclusion::prove));
+impl Config {
+    pub fn new(log: data::LogData, map: data::MapData) -> Self {
+        Self { log, map }
+    }
 
-        Ok(router)
+    pub fn build_router(self) -> Router {
+        Router::new()
+            .route("/log/consistency", post(log_consistency::prove))
+            .route("/inclusion", post(inclusion::prove))
+            .with_state(self)
     }
 }
 
-mod consistency {
+mod log_consistency {
+    use axum::extract::State;
+
     use super::*;
 
     #[derive(Serialize, Deserialize)]
@@ -32,6 +41,7 @@ mod consistency {
 
     #[debug_handler]
     pub(crate) async fn prove(
+        State(config): State<Config>,
         Json(body): Json<RequestBody>,
     ) -> Result<impl IntoResponse, AnyError> {
         let response = ResponseBody { proof: todo!() };

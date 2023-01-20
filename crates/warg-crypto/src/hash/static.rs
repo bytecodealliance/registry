@@ -1,13 +1,16 @@
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use std::{fmt, ops::{Deref, DerefMut}};
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
 use super::{Output, SupportedDigest};
 
 #[derive(Hash, PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {
-    pub(crate) digest: Output<D>
+    pub(crate) digest: Output<D>,
 }
 
 impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
@@ -19,7 +22,9 @@ impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
 // Derived clone does not have precise enough bounds and type info.
 impl<D: SupportedDigest> Clone for Hash<D> {
     fn clone(&self) -> Self {
-        Self { digest: self.digest.clone() }
+        Self {
+            digest: self.digest.clone(),
+        }
     }
 }
 
@@ -30,17 +35,25 @@ impl<D: SupportedDigest> PartialEq for Hash<D> {
     }
 }
 
-impl<D: SupportedDigest> fmt::Display for Hash<D>
-{
+impl<D: SupportedDigest> fmt::Display for Hash<D> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}:{}", D::ALGORITHM, hex::encode(self.digest.as_slice()))
+        write!(
+            f,
+            "{}:{}",
+            D::ALGORITHM,
+            hex::encode(self.digest.as_slice())
+        )
     }
 }
 
-impl<D: SupportedDigest> fmt::Debug for Hash<D>
-{
+impl<D: SupportedDigest> fmt::Debug for Hash<D> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Hash<{}>({})", D::ALGORITHM, hex::encode(self.digest.as_slice()))
+        write!(
+            f,
+            "Hash<{}>({})",
+            D::ALGORITHM,
+            hex::encode(self.digest.as_slice())
+        )
     }
 }
 
@@ -121,7 +134,7 @@ impl<'de, T: SupportedDigest> Deserialize<'de> for Hash<T> {
         let buffer = Output::<T>::default();
         let visitor = CopyVisitor::from(buffer);
         Ok(Self {
-            digest: deserializer.deserialize_bytes(visitor)?
+            digest: deserializer.deserialize_bytes(visitor)?,
         })
     }
 }

@@ -28,7 +28,7 @@ pub struct Output {
     pub signatures: Receiver<sign::Signature>,
 }
 
-pub async fn process(input: Input) -> Output {
+pub fn process(input: Input) -> Output {
     let Input {
         log,
         map,
@@ -36,17 +36,15 @@ pub async fn process(input: Input) -> Output {
         private_key,
     } = input;
 
-    let log_output = log::process(log::Input { log, log_rx }).await;
+    let log_output = log::process(log::Input { log, log_rx });
     let map_output = map::process(map::Input {
         map,
         map_rx: log_output.summary_rx,
-    })
-    .await;
+    });
     let sign_output = sign::process(sign::Input {
         private_key,
         sign_rx: map_output.summary_rx,
-    })
-    .await;
+    });
 
     Output {
         log_handle: log_output.handle,
