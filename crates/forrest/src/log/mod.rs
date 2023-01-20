@@ -13,8 +13,8 @@
 
 mod node;
 /// Logic for constructing and validating proofs
-pub mod proof;
-pub mod proof_bundle;
+mod proof;
+mod proof_bundle;
 mod sparse_data;
 mod stack_log;
 mod vec_log;
@@ -24,6 +24,8 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 pub use node::{Node, Side};
 pub use stack_log::StackLog;
 pub use vec_log::VecLog;
+pub use proof::{ConsistencyProof, ConsistencyProofError, InclusionProof, InclusionProofWalk, InclusionProofError};
+pub use proof_bundle::ProofBundle;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to

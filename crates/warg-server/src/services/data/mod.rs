@@ -1,4 +1,6 @@
-use tokio::{sync::mpsc::Receiver, task::JoinHandle};
+use std::sync::Arc;
+
+use tokio::{sync::{mpsc::Receiver, RwLock}, task::JoinHandle};
 use warg_protocol::registry::LogLeaf;
 
 use super::transparency::VerifiableMap;
@@ -10,15 +12,15 @@ pub use log::{LogData, ProofLog};
 pub use map::MapData;
 
 pub struct Input {
-    pub log: log::ProofLog,
+    pub log_data: LogData,
     pub log_rx: Receiver<LogLeaf>,
-    pub maps: Vec<VerifiableMap>,
+    pub map_data: MapData,
     pub map_rx: Receiver<VerifiableMap>,
 }
 
 pub struct Output {
-    pub map_data: map::MapData,
-    pub log_data: log::LogData,
+    pub map_data: Arc<RwLock<map::MapData>>,
+    pub log_data: Arc<RwLock<log::LogData>>,
 
     pub map_data_handle: JoinHandle<()>,
     pub log_data_handle: JoinHandle<()>,
@@ -26,16 +28,16 @@ pub struct Output {
 
 pub fn process(input: Input) -> Output {
     let Input {
-        log,
+        log_data,
         log_rx,
-        maps,
+        map_data,
         map_rx,
     } = input;
 
-    let log_input = log::Input { log, log_rx };
+    let log_input = log::Input { data: log_data, log_rx };
     let log_output = log::process(log_input);
 
-    let map_input = map::Input { maps, map_rx };
+    let map_input = map::Input { data: map_data, map_rx };
     let map_output = map::process(map_input);
 
     Output {

@@ -10,9 +10,15 @@ use std::{
 
 use super::{Output, SupportedDigest};
 
-#[derive(Hash, PartialOrd, Ord)]
+#[derive(PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {
     pub(crate) digest: Output<D>,
+}
+
+impl<D: SupportedDigest> std::hash::Hash for Hash<D> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.digest.hash(state);
+    }
 }
 
 impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
