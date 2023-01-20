@@ -6,20 +6,20 @@
       "timestamp": "1671221120.153436500"
     },
     "permissions": {
-      "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": [
+      "0": [
         "release",
         "yank"
       ],
-      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": []
+      "1": []
     },
     "releases": {
       "1.0.0": {
         "version": "1.0.0",
-        "by": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
+        "by": 1,
         "timestamp": "1671221120.153436500",
         "state": {
           "status": "yanked",
-          "by": "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d",
+          "by": 0,
           "timestamp": "1671221120.153436500"
         }
       }

@@ -4,7 +4,6 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 use warg_crypto::{signing, Signable};
 
@@ -70,6 +69,11 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
+/// Represents an index of a key known to the validator.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct KeyIndex(usize);
+
 /// Represents the current state of a release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
@@ -81,8 +85,8 @@ pub enum ReleaseState {
     },
     /// The release has been yanked.
     Yanked {
-        /// The key id that yanked the package.
-        by: signing::KeyID,
+        /// The key index that yanked the package.
+        by: KeyIndex,
         /// The timestamp of the yank.
         #[serde(with = "crate::timestamp")]
         timestamp: SystemTime,
@@ -94,8 +98,8 @@ pub enum ReleaseState {
 pub struct Release {
     /// The version of the release.
     pub version: Version,
-    /// The key id that released the package.
-    pub by: signing::KeyID,
+    /// The key index that released the package.
+    pub by: KeyIndex,
     /// The timestamp of the release.
     #[serde(with = "crate::timestamp")]
     pub timestamp: SystemTime,
@@ -143,13 +147,13 @@ pub struct Validator {
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
     /// The permissions of each key.
-    #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    #[serde(skip_serializing_if = "IndexMap::is_empty", default)]
+    permissions: IndexMap<KeyIndex, IndexSet<model::Permission>>,
     /// The releases in the package log.
-    #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(skip_serializing_if = "IndexMap::is_empty", default)]
     releases: IndexMap<Version, Release>,
     /// The keys known to the validator.
-    #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(skip_serializing_if = "IndexMap::is_empty", default)]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
@@ -239,6 +243,13 @@ impl Validator {
             .max_by(|a, b| a.version.cmp(&b.version))
     }
 
+    /// Gets a key known to the validator.
+    ///
+    /// Returns `None` if the given index is invalid.
+    pub fn key(&self, index: KeyIndex) -> Option<(&signing::KeyID, &signing::PublicKey)> {
+        self.keys.get_index(index.0)
+    }
+
     /// Gets the public key of the given key id.
     ///
     /// Returns `None` if the key id is not recognized.
@@ -306,19 +317,16 @@ impl Validator {
         entries: &[model::PackageEntry],
     ) -> Result<Vec<DynHash>, ValidationError> {
         let mut contents = Vec::new();
+        let mut signer_key_index = None;
 
         for entry in entries {
-            if let Some(permission) = entry.required_permission() {
-                self.check_key_permission(signer_key_id, permission)?;
-            }
-
             // Process an init entry specially
             if let model::PackageEntry::Init {
                 hash_algorithm,
                 key,
             } = entry
             {
-                self.validate_init_entry(signer_key_id, *hash_algorithm, key)?;
+                self.validate_init_entry(*hash_algorithm, key)?;
                 continue;
             }
 
@@ -327,20 +335,38 @@ impl Validator {
                 return Err(ValidationError::FirstEntryIsNotInit);
             }
 
+            if signer_key_index.is_none() {
+                signer_key_index =
+                    Some(KeyIndex(self.keys.get_index_of(signer_key_id).ok_or_else(
+                        || ValidationError::KeyIDNotRecognized {
+                            key_id: signer_key_id.clone(),
+                        },
+                    )?));
+            }
+
+            if let Some(permission) = entry.required_permission() {
+                self.check_key_permission(signer_key_index.unwrap(), permission)?;
+            }
+
             match entry {
                 model::PackageEntry::Init { .. } => unreachable!(), // handled above
                 model::PackageEntry::GrantFlat { key, permission } => {
-                    self.validate_grant_entry(signer_key_id, key, *permission)?
+                    self.validate_grant_entry(signer_key_index.unwrap(), key, *permission)?
                 }
                 model::PackageEntry::RevokeFlat { key_id, permission } => {
-                    self.validate_revoke_entry(signer_key_id, key_id, *permission)?
+                    self.validate_revoke_entry(signer_key_index.unwrap(), key_id, *permission)?
                 }
                 model::PackageEntry::Release { version, content } => {
                     contents.push(content.clone());
-                    self.validate_release_entry(signer_key_id, timestamp, version, content)?
+                    self.validate_release_entry(
+                        signer_key_index.unwrap(),
+                        timestamp,
+                        version,
+                        content,
+                    )?
                 }
                 model::PackageEntry::Yank { version } => {
-                    self.validate_yank_entry(signer_key_id, timestamp, version)?
+                    self.validate_yank_entry(signer_key_index.unwrap(), timestamp, version)?
                 }
             }
         }
@@ -350,7 +376,6 @@ impl Validator {
 
     fn validate_init_entry(
         &mut self,
-        signer_key_id: &signing::KeyID,
         algorithm: HashAlgorithm,
         init_key: &signing::PublicKey,
     ) -> Result<(), ValidationError> {
@@ -363,28 +388,27 @@ impl Validator {
         assert!(self.keys.is_empty());
 
         self.algorithm = Some(algorithm);
-        self.permissions.insert(
-            signer_key_id.clone(),
-            IndexSet::from(model::Permission::all()),
-        );
-        self.keys.insert(init_key.fingerprint(), init_key.clone());
+        let (index, _) = self
+            .keys
+            .insert_full(init_key.fingerprint(), init_key.clone());
+        self.permissions
+            .insert(KeyIndex(index), IndexSet::from(model::Permission::all()));
 
         Ok(())
     }
 
     fn validate_grant_entry(
         &mut self,
-        signer_key_id: &signing::KeyID,
+        signer_key_index: KeyIndex,
         key: &signing::PublicKey,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
         // Check that the current key has the permission they're trying to grant
-        self.check_key_permission(signer_key_id, permission)?;
+        self.check_key_permission(signer_key_index, permission)?;
 
-        let grant_key_id = key.fingerprint();
-        self.keys.insert(grant_key_id.clone(), key.clone());
+        let (index, _) = self.keys.insert_full(key.fingerprint(), key.clone());
         self.permissions
-            .entry(grant_key_id)
+            .entry(KeyIndex(index))
             .or_default()
             .insert(permission);
 
@@ -393,14 +417,18 @@ impl Validator {
 
     fn validate_revoke_entry(
         &mut self,
-        signer_key_id: &signing::KeyID,
+        signer_key_index: KeyIndex,
         key_id: &signing::KeyID,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
         // Check that the current key has the permission they're trying to revoke
-        self.check_key_permission(signer_key_id, permission)?;
+        self.check_key_permission(signer_key_index, permission)?;
 
-        if let Some(set) = self.permissions.get_mut(key_id) {
+        if let Some(set) = self
+            .keys
+            .get_index_of(key_id)
+            .and_then(|index| self.permissions.get_mut(&KeyIndex(index)))
+        {
             if set.remove(&permission) {
                 return Ok(());
             }
@@ -415,7 +443,7 @@ impl Validator {
 
     fn validate_release_entry(
         &mut self,
-        signer_key_id: &signing::KeyID,
+        signer_key_index: KeyIndex,
         timestamp: SystemTime,
         version: &Version,
         content: &DynHash,
@@ -430,7 +458,7 @@ impl Validator {
                 let version = e.key().clone();
                 e.insert(Release {
                     version,
-                    by: signer_key_id.clone(),
+                    by: signer_key_index,
                     timestamp,
                     state: ReleaseState::Released {
                         content: content.clone(),
@@ -444,7 +472,7 @@ impl Validator {
 
     fn validate_yank_entry(
         &mut self,
-        signer_key_id: &signing::KeyID,
+        signer_key_index: KeyIndex,
         timestamp: SystemTime,
         version: &Version,
     ) -> Result<(), ValidationError> {
@@ -455,7 +483,7 @@ impl Validator {
                 }),
                 ReleaseState::Released { .. } => {
                     e.state = ReleaseState::Yanked {
-                        by: signer_key_id.clone(),
+                        by: signer_key_index,
                         timestamp,
                     };
                     Ok(())
@@ -469,18 +497,18 @@ impl Validator {
 
     fn check_key_permission(
         &self,
-        key_id: &signing::KeyID,
+        key_index: KeyIndex,
         permission: model::Permission,
     ) -> Result<(), ValidationError> {
-        if let Some(available_permissions) = self.permissions.get(key_id) {
-            if available_permissions.contains(&permission) {
+        if let Some(set) = self.permissions.get(&key_index) {
+            if set.contains(&permission) {
                 return Ok(());
             }
         }
 
         // Needed permission not found
         Err(ValidationError::UnauthorizedAction {
-            key_id: key_id.clone(),
+            key_id: self.keys.get_index(key_index.0).unwrap().0.clone(),
             needed_permission: permission,
         })
     }
@@ -523,7 +551,7 @@ mod tests {
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),
                 permissions: IndexMap::from([(
-                    alice_id.clone(),
+                    KeyIndex(0),
                     IndexSet::from([model::Permission::Release, model::Permission::Yank]),
                 )]),
                 releases: IndexMap::default(),
@@ -583,7 +611,7 @@ mod tests {
             validator.find_latest_release(&"~1".parse().unwrap()),
             Some(&Release {
                 version: Version::new(1, 1, 0),
-                by: bob_id.clone(),
+                by: KeyIndex(1),
                 timestamp: timestamp1,
                 state: ReleaseState::Released {
                     content: content.clone()
@@ -597,7 +625,7 @@ mod tests {
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                by: bob_id.clone(),
+                by: KeyIndex(1),
                 timestamp: timestamp1,
                 state: ReleaseState::Released { content }
             }]
@@ -630,10 +658,10 @@ mod tests {
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
                 version: Version::new(1, 1, 0),
-                by: bob_id.clone(),
+                by: KeyIndex(1),
                 timestamp: timestamp1,
                 state: ReleaseState::Yanked {
-                    by: alice_id.clone(),
+                    by: KeyIndex(0),
                     timestamp: timestamp2
                 }
             }]
@@ -649,24 +677,24 @@ mod tests {
                 }),
                 permissions: IndexMap::from([
                     (
-                        alice_id.clone(),
+                        KeyIndex(0),
                         IndexSet::from([model::Permission::Release, model::Permission::Yank]),
                     ),
-                    (bob_id.clone(), IndexSet::default()),
+                    (KeyIndex(1), IndexSet::default()),
                 ]),
                 releases: IndexMap::from([(
                     Version::new(1, 1, 0),
                     Release {
                         version: Version::new(1, 1, 0),
-                        by: bob_id.clone(),
+                        by: KeyIndex(1),
                         timestamp: timestamp1,
                         state: ReleaseState::Yanked {
-                            by: alice_id.clone(),
+                            by: KeyIndex(0),
                             timestamp: timestamp2
                         }
                     }
                 )]),
-                keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub),]),
+                keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub)]),
             }
         );
     }

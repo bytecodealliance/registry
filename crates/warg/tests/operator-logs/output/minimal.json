@@ -6,10 +6,10 @@
       "timestamp": "1671221120.153436500"
     },
     "permissions": {
-      "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d": [
+      "0": [
         "commit"
       ],
-      "sha256:8225e770ee82a8a974c7732b9ca246d70b1f03dc9dbd25f5801c5cb455dee508": [
+      "1": [
         "commit"
       ]
     },
