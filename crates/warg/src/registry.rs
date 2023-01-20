@@ -1,3 +1,6 @@
+use std::fmt;
+
+use serde::{Serialize, Deserialize};
 use warg_crypto::hash::{DynHash, SupportedDigest, Hash};
 use crate::{Encode, Signable, operator::OperatorRecord, Envelope, package::PackageRecord};
 
@@ -30,7 +33,7 @@ impl SimpleEncoder {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MapCheckpoint {
     pub log_root: DynHash,
     pub log_length: u32,
@@ -157,5 +160,17 @@ impl RecordId {
         d.update(record.content_bytes());
         let hash: Hash<D> = d.finalize().into();
         Self(hash.into())
+    }
+}
+
+impl fmt::Display for RecordId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<DynHash> for RecordId {
+    fn from(value: DynHash) -> Self {
+        Self(value)
     }
 }

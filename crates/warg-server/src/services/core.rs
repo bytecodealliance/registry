@@ -1,11 +1,12 @@
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use warg_crypto::hash::Sha256;
+use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
@@ -44,9 +45,22 @@ struct PackageInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct PackageRecordInfo {
-    record: Arc<Envelope<package::PackageRecord>>,
-    state: RecordState,
+pub struct PackageRecordInfo {
+    pub record: Arc<Envelope<package::PackageRecord>>,
+    pub content_sources: Arc<Vec<ContentSource>>,
+    pub state: RecordState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentSource {
+    pub content_digest: DynHash,
+    pub kind: ContentSourceKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ContentSourceKind {
+    HttpAnonymous { url: String },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -72,16 +86,22 @@ enum Message {
     SubmitPackageRecord {
         package_name: String,
         record: Arc<Envelope<package::PackageRecord>>,
+        content_sources: Vec<ContentSource>,
         response: oneshot::Sender<RecordState>,
+    },
+    GetPackageRecordStatus {
+        package_id: LogId,
+        record_id: RecordId,
+        response: oneshot::Sender<RecordState>,
+    },
+    GetPackageRecordInfo {
+        package_id: LogId,
+        record_id: RecordId,
+        response: oneshot::Sender<Option<PackageRecordInfo>>,
     },
     NewCheckpoint {
         checkpoint: Arc<Envelope<MapCheckpoint>>,
         leaves: Vec<LogLeaf>,
-    },
-    GetRecordStatus {
-        package_id: LogId,
-        record_id: RecordId,
-        response: oneshot::Sender<RecordState>,
     },
 }
 
@@ -106,6 +126,7 @@ impl CoreService {
                 Message::SubmitPackageRecord {
                     package_name,
                     record,
+                    content_sources,
                     response,
                 } => {
                     let package_id = LogId::package_log::<Sha256>(&package_name);
@@ -125,19 +146,17 @@ impl CoreService {
                         .clone();
                     let transparency_tx = transparency_tx.clone();
                     tokio::spawn(async move {
-                        new_record(package_info, record, response, transparency_tx).await
+                        new_record(
+                            package_info,
+                            record,
+                            content_sources,
+                            response,
+                            transparency_tx,
+                        )
+                        .await
                     });
-                }
-                Message::NewCheckpoint { checkpoint, leaves } => {
-                    for leaf in leaves {
-                        let package_info = state.package_states.get(&leaf.log_id).unwrap().clone();
-                        let checkpoint_clone = checkpoint.clone();
-                        tokio::spawn(async move {
-                            mark_published(package_info, leaf.record_id, checkpoint_clone).await
-                        });
-                    }
-                }
-                Message::GetRecordStatus {
+                },
+                Message::GetPackageRecordStatus {
                     package_id,
                     record_id,
                     response,
@@ -154,6 +173,29 @@ impl CoreService {
                     } else {
                         response.send(RecordState::Unknown).unwrap();
                     }
+                },
+                Message::GetPackageRecordInfo { package_id, record_id, response } => {
+                    if let Some(package_info) = state.package_states.get(&package_id).cloned() {
+                        tokio::spawn(async move {
+                            let info = package_info.as_ref().blocking_lock();
+                            if let Some(record_info) = info.records.get(&record_id) {
+                                response.send(Some(record_info.clone())).unwrap();
+                            } else {
+                                response.send(None).unwrap();
+                            }
+                        });
+                    } else {
+                        response.send(None).unwrap();
+                    }
+                },
+                Message::NewCheckpoint { checkpoint, leaves } => {
+                    for leaf in leaves {
+                        let package_info = state.package_states.get(&leaf.log_id).unwrap().clone();
+                        let checkpoint_clone = checkpoint.clone();
+                        tokio::spawn(async move {
+                            mark_published(package_info, leaf.record_id, checkpoint_clone).await
+                        });
+                    }
                 }
             }
         }
@@ -165,6 +207,7 @@ impl CoreService {
 async fn new_record(
     package_info: Arc<Mutex<PackageInfo>>,
     record: Arc<Envelope<package::PackageRecord>>,
+    content_sources: Vec<ContentSource>,
     response: oneshot::Sender<RecordState>,
     transparency_tx: Sender<LogLeaf>,
 ) {
@@ -172,11 +215,26 @@ async fn new_record(
 
     let record_id = RecordId::package_record::<Sha256>(&record);
     let mut hypothetical = info.validator.clone();
-    let state = match hypothetical.validate(&record) {
-        Ok(()) => {
+    match hypothetical.validate(&record) {
+        Ok(contents) => {
+            let provided_contents: HashSet<DynHash> = content_sources
+                .iter()
+                .map(|source| source.content_digest.clone())
+                .collect();
+            for needed_content in contents {
+                if !provided_contents.contains(&needed_content) {
+                    let state = RecordState::Rejected {
+                        reason: format!("Needed content {} but not provided", needed_content),
+                    };
+                    response.send(state).unwrap();
+                    return;
+                }
+            }
+
             let state = RecordState::Processing;
             let record_info = PackageRecordInfo {
                 record: record.clone(),
+                content_sources: Arc::new(content_sources),
                 state: state.clone(),
             };
 
@@ -192,22 +250,21 @@ async fn new_record(
             info.log.push(record);
             info.records.insert(record_id, record_info);
 
-            state
+            response.send(state).unwrap();
         }
         Err(error) => {
             let reason = error.to_string();
             let state = RecordState::Rejected { reason };
             let record_info = PackageRecordInfo {
                 record,
+                content_sources: Arc::new(content_sources),
                 state: state.clone(),
             };
             info.records.insert(record_id, record_info);
 
-            state
+            response.send(state).unwrap();
         }
     };
-
-    response.send(state).unwrap();
 }
 
 async fn mark_published(
@@ -221,21 +278,63 @@ async fn mark_published(
 }
 
 impl CoreService {
-    pub async fn new_package_record(
+    pub async fn submit_package_record(
         &self,
         package_name: String,
         record: Arc<Envelope<package::PackageRecord>>,
+        content_sources: Vec<ContentSource>,
     ) -> RecordState {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::SubmitPackageRecord {
                 package_name,
                 record,
+                content_sources,
                 response: tx,
             })
             .await
             .unwrap();
 
         rx.await.unwrap()
+    }
+
+    pub async fn get_package_record_status(&self, package_name: String, record_id: RecordId) -> RecordState {
+        let package_id = LogId::package_log::<Sha256>(&package_name);
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(Message::GetPackageRecordStatus {
+                package_id,
+                record_id,
+                response: tx,
+            })
+            .await
+            .unwrap();
+
+        rx.await.unwrap()
+    }
+
+    pub async fn get_package_record_info(&self, package_name: String, record_id: RecordId) -> Option<PackageRecordInfo> {
+        let package_id = LogId::package_log::<Sha256>(&package_name);
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(Message::GetPackageRecordInfo {
+                package_id,
+                record_id,
+                response: tx,
+            })
+            .await
+            .unwrap();
+
+        rx.await.unwrap()
+    }
+
+    pub async fn new_checkpoint(&self, checkpoint: Envelope<MapCheckpoint>, leaves: Vec<LogLeaf>) {
+        self.mailbox
+            .send(Message::NewCheckpoint {
+                checkpoint: Arc::new(checkpoint),
+                leaves,
+            })
+            .await
+            .unwrap();
     }
 }
