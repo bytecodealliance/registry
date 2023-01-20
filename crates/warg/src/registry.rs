@@ -135,6 +135,12 @@ impl LogId {
     }
 }
 
+impl Into<DynHash> for LogId {
+    fn into(self) -> DynHash {
+        self.0
+    }
+}
+
 impl AsRef<[u8]> for LogId {
     fn as_ref(&self) -> &[u8] {
         self.0.bytes()

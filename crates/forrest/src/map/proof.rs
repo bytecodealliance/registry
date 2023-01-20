@@ -79,6 +79,15 @@ impl<D: SupportedDigest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H,
 
         &hash == root
     }
+
+    /// Convert a proof to an owned proof
+    pub fn owned(self) -> Proof<D, Hash<D>, V> {
+        Proof {
+            digest: PhantomData,
+            value: PhantomData,
+            peers: self.peers.into_iter().map(|h| h.map(|h| h.deref().clone())).collect(),
+        }
+    }
 }
 
 #[test]
