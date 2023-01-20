@@ -50,7 +50,7 @@ impl<D: SupportedDigest, K, V> Node<D, K, V> {
         }
     }
 
-    pub fn prove(&self, mut rhs: Path<D>) -> Option<Proof<D, &Hash<D>, &V>> {
+    pub fn prove(&self, mut rhs: Path<D>) -> Option<Proof<D, &Hash<D>, V>> {
         match (rhs.next(), self) {
             (Some(idx), Self::Fork(fork)) => {
                 let mut proof = fork[idx].as_ref()?.node.prove(rhs)?;

@@ -78,12 +78,13 @@ mod inclusion {
     #[derive(Serialize, Deserialize)]
     pub(crate) struct LogHead {
         name: String,
-        head: String,
+        head: DynHash,
     }
 
     #[derive(Serialize, Deserialize)]
     pub(crate) struct ResponseBody {
-        proof: Vec<u8>,
+        log: Vec<u8>,
+        map: Vec<u8>
     }
 
     #[debug_handler]
@@ -92,21 +93,30 @@ mod inclusion {
         Json(body): Json<RequestBody>,
     ) -> Result<impl IntoResponse, AnyError> {
         let log = config.log.as_ref().blocking_read();
-
-        let root: Hash<Sha256> = body.checkpoint.log_root.try_into()?;
+        let log_root: Hash<Sha256> = body.checkpoint.log_root.try_into()?;
 
         let mut leaves = Vec::new();
-        for log_head in body.logs {
-            let record_hash: DynHash = log_head.head.parse()?;
+        for log_head in body.logs.iter() {
             leaves.push(LogLeaf {
                 log_id: LogId::package_log::<Sha256>(&log_head.name),
-                record_id: RecordId::from(record_hash),
+                record_id: RecordId::from(log_head.head.clone()),
             });
         }
 
-        let bundle = log.inclusion(root, leaves)?;
+        let log_bundle = log.inclusion(log_root, leaves)?;
+        drop(log);
 
-        let response = ResponseBody { proof: bundle.encode() };
+        let map = config.map.as_ref().blocking_read();
+        let map_root = body.checkpoint.map_root.try_into()?;
+
+        let mut log_ids = Vec::new();
+        for log_head in body.logs {
+            log_ids.push(LogId::package_log::<Sha256>(&log_head.name))
+        }
+
+        let map_bundle = map.inclusion(map_root, log_ids)?;
+
+        let response = ResponseBody { log: log_bundle.encode(), map: map_bundle.encode() };
 
         Ok((StatusCode::OK, Json(response)))
     }

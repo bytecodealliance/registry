@@ -151,7 +151,7 @@ impl<D: SupportedDigest, K, V> Map<D, K, V> {
     }
 
     /// Gets the value for a given key and a proof of its presence in this map.
-    pub fn prove<Q: ?Sized>(&self, key: &Q) -> Option<Proof<D, &Hash<D>, &V>>
+    pub fn prove<Q: ?Sized>(&self, key: &Q) -> Option<Proof<D, &Hash<D>, V>>
     where
         K: Borrow<Q>,
         Q: AsRef<[u8]>,
