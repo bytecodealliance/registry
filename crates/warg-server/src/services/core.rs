@@ -15,11 +15,43 @@ use warg_protocol::{
     ProtoEnvelope, SerdeEnvelope
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct State {
-    checkpoints: Vec<Arc<ProtoEnvelope<MapCheckpoint>>>,
+    checkpoints: Vec<Arc<SerdeEnvelope<MapCheckpoint>>>,
     operator_state: Arc<Mutex<OperatorInfo>>,
     package_states: HashMap<LogId, Arc<Mutex<PackageInfo>>>,
+}
+
+impl State {
+    pub fn new(init_checkpoint: SerdeEnvelope<MapCheckpoint>, init_record: ProtoEnvelope<operator::OperatorRecord>) -> Self {
+        let checkpoint = Arc::new(init_checkpoint);
+        let record = Arc::new(init_record);
+
+        let checkpoints = vec![checkpoint.clone()];
+
+        let mut validator = operator::Validator::default();
+        validator.validate(&record).unwrap();
+
+        let log = vec![record.clone()];
+
+        let mut records = HashMap::new();
+        let record_info = OperatorRecordInfo {
+            record: record.clone(),
+            state: RecordState::Published { checkpoint },
+        };
+        records.insert(RecordId::operator_record::<Sha256>(&record), record_info);
+
+        let operator_state = OperatorInfo {
+            validator,
+            log,
+            records,
+        };
+        Self {
+            checkpoints,
+            operator_state: Arc::new(Mutex::new(operator_state)),
+            package_states: Default::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

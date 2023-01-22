@@ -2,17 +2,12 @@ mod api;
 mod policy;
 mod services;
 
-use std::{fmt, path::PathBuf, sync::Arc};
+use std::{fmt, path::PathBuf};
 
 use anyhow::Result;
 use axum::{http::StatusCode, response::IntoResponse, Router};
 
 use api::content::ContentConfig;
-use services::{
-    core::{CoreService, State},
-    transparency, data,
-};
-use tokio::sync::mpsc;
 use warg_crypto::signing::PrivateKey;
 
 pub struct Config {
@@ -45,42 +40,12 @@ impl Config {
     }
 
     pub fn build_router(self) -> Result<Router> {
-        let (transparency_tx, transparency_rx) = mpsc::channel(4);
-
-        let input = transparency::Input {
-            log: transparency::VerifiableLog::default(),
-            map: transparency::VerifiableMap::default(),
-            private_key: self.signing_key,
-            log_rx: transparency_rx,
-        };
-
-        let transparency = transparency::process(input);
-
-        let input = data::Input {
-            log_data: Default::default(),
-            log_rx: transparency.log_data,
-            map_data: Default::default(),
-            map_rx: transparency.map_data,
-        };
-
-        let data = data::process(input);
-
-        let initial_state = State::default();
-        let core = Arc::new(CoreService::start(initial_state, transparency_tx));
-
-        let mut signatures = transparency.signatures;
-        let sig_core = core.clone();
-        tokio::spawn(async move {
-            while let Some(sig) = signatures.recv().await {
-                sig_core.as_ref().new_checkpoint(sig.envelope, sig.leaves).await;
-            }
-        });
-
         let mut router: Router = Router::new();
         if let Some(upload) = self.content {
             router = router.nest("/content", upload.build_router()?);
         }
 
+        let (core, data) = services::init(self.signing_key);
         let package_config = api::package::Config::new(core.clone(), self.base_url.clone());
         let fetch_config = api::fetch::Config::new(core.clone());
         let proof_config = api::proof::Config::new(data.log_data, data.map_data);

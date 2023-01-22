@@ -30,6 +30,24 @@ pub struct ProofData {
 }
 
 impl ProofData {
+    pub fn new(init: LogLeaf) -> Self {
+        let mut log = ProofLog::default();
+        let init_node = log.push(init.clone());
+
+        let mut leaf_index = HashMap::new();
+        let mut root_index = HashMap::new();
+
+        let checkpoint = log.checkpoint();
+        leaf_index.insert(init, init_node.clone());
+        root_index.insert(checkpoint.root(), checkpoint.length());
+
+        Self {
+            log,
+            leaf_index,
+            root_index,
+        }
+    }
+
     /// Generate a proof bundle for the consistency of the log across two times
     pub fn consistency(&self, old_root: Hash<Sha256>, new_root: Hash<Sha256>) -> Result<ProofBundle<Sha256, LogLeaf>, Error> {
         let old_len = self.root_index.get(&old_root).ok_or(Error::msg("Old root not found"))?;
