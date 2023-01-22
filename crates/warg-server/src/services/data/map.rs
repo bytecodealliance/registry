@@ -26,6 +26,14 @@ pub struct MapData {
 }
 
 impl MapData {
+    pub fn new(init: MapLeaf) -> Self {
+        let map = VerifiableMap::default();
+        let map = map.insert(LogId::operator_log::<Sha256>(), init);
+        let mut map_index = HashMap::default();
+        map_index.insert(map.root().clone(), map);
+        Self { map_index }
+    }
+
     pub fn inclusion(&self, root: Hash<Sha256>, log_ids: Vec<LogId>) -> Result<ProofBundle<Sha256, MapLeaf>, Error> {
         let map = self.map_index.get(&root).ok_or(Error::msg("Unknown map root"))?;
 

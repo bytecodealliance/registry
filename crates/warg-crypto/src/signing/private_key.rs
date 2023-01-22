@@ -35,7 +35,6 @@ impl PrivateKey {
     pub fn sign(&self, msg: &[u8]) -> Result<Signature, SignatureError> {
         match self.0.expose_secret() {
             PrivateKeyInner::EcdsaP256(key) => {
-                
                 Ok(Signature::P256(key.try_sign(msg)?))
             },
         }
