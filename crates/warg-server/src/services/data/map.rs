@@ -1,11 +1,11 @@
-use std::{sync::Arc, collections::HashMap};
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
 use forrest::map::ProofBundle;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use warg_crypto::hash::{Sha256, Hash};
+use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::{LogId, MapLeaf};
 
 use crate::services::transparency::VerifiableMap;
@@ -22,7 +22,7 @@ pub struct Output {
 
 #[derive(Default)]
 pub struct MapData {
-    map_index: HashMap<Hash<Sha256>, VerifiableMap>
+    map_index: HashMap<Hash<Sha256>, VerifiableMap>,
 }
 
 impl MapData {
@@ -34,8 +34,15 @@ impl MapData {
         Self { map_index }
     }
 
-    pub fn inclusion(&self, root: Hash<Sha256>, log_ids: Vec<LogId>) -> Result<ProofBundle<Sha256, MapLeaf>, Error> {
-        let map = self.map_index.get(&root).ok_or(Error::msg("Unknown map root"))?;
+    pub fn inclusion(
+        &self,
+        root: Hash<Sha256>,
+        log_ids: Vec<LogId>,
+    ) -> Result<ProofBundle<Sha256, MapLeaf>, Error> {
+        let map = self
+            .map_index
+            .get(&root)
+            .ok_or(Error::msg("Unknown map root"))?;
 
         let mut proofs = Vec::new();
         for log_id in log_ids {

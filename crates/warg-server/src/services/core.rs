@@ -12,18 +12,23 @@ use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
     registry::{LogId, MapCheckpoint, RecordId},
-    ProtoEnvelope, SerdeEnvelope
+    ProtoEnvelope, SerdeEnvelope,
 };
 
 #[derive(Clone, Debug)]
 pub struct State {
     checkpoints: Vec<Arc<SerdeEnvelope<MapCheckpoint>>>,
-    operator_state: Arc<Mutex<OperatorInfo>>,
+    checkpoint_index: HashMap<Hash<Sha256>, usize>,
+    operator_info: Arc<Mutex<OperatorInfo>>,
     package_states: HashMap<LogId, Arc<Mutex<PackageInfo>>>,
 }
 
 impl State {
-    pub fn new(init_checkpoint: SerdeEnvelope<MapCheckpoint>, init_record: ProtoEnvelope<operator::OperatorRecord>) -> Self {
+    pub fn new(
+        init_checkpoint: SerdeEnvelope<MapCheckpoint>,
+        init_record: ProtoEnvelope<operator::OperatorRecord>,
+    ) -> Self {
+        let checkpoint_hash: Hash<Sha256> = Hash::of(init_checkpoint.as_ref());
         let checkpoint = Arc::new(init_checkpoint);
         let record = Arc::new(init_record);
 
@@ -40,15 +45,18 @@ impl State {
             state: RecordState::Published { checkpoint },
         };
         records.insert(RecordId::operator_record::<Sha256>(&record), record_info);
+        let checkpoint_indices = vec![0];
 
-        let operator_state = OperatorInfo {
+        let operator_info = OperatorInfo {
             validator,
             log,
             records,
+            checkpoint_indices
         };
         Self {
             checkpoints,
-            operator_state: Arc::new(Mutex::new(operator_state)),
+            checkpoint_index: HashMap::from([(checkpoint_hash, 1)]),
+            operator_info: Arc::new(Mutex::new(operator_info)),
             package_states: Default::default(),
         }
     }
@@ -58,6 +66,7 @@ impl State {
 struct OperatorInfo {
     validator: operator::Validator,
     log: Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>,
+    checkpoint_indices: Vec<usize>,
     records: HashMap<RecordId, OperatorRecordInfo>,
 }
 
@@ -73,6 +82,7 @@ struct PackageInfo {
     name: String,
     validator: package::Validator,
     log: Vec<Arc<ProtoEnvelope<package::PackageRecord>>>,
+    checkpoint_indices: Vec<usize>,
     records: HashMap<RecordId, PackageRecordInfo>,
 }
 
@@ -135,7 +145,13 @@ enum Message {
         checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
         leaves: Vec<LogLeaf>,
     },
-    FetchSince {
+    FetchOperatorRecords {
+        root: Hash<Sha256>,
+        since: Option<DynHash>,
+        response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error>>,
+    },
+    FetchPackageRecords {
+        root: Hash<Sha256>,
         package_id: LogId,
         since: Option<DynHash>,
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
@@ -176,6 +192,7 @@ impl CoreService {
                                 name: package_name,
                                 validator: Default::default(),
                                 log: Default::default(),
+                                checkpoint_indices: Default::default(),
                                 records: Default::default(),
                             }))
                         })
@@ -229,25 +246,71 @@ impl CoreService {
                     }
                 }
                 Message::NewCheckpoint { checkpoint, leaves } => {
+                    state.checkpoints.push(checkpoint.clone());
+                    let checkpoint_index = state.checkpoints.len();
+                    state
+                        .checkpoint_index
+                        .insert(Hash::of(checkpoint.as_ref().as_ref()), checkpoint_index);
                     for leaf in leaves {
                         let package_info = state.package_states.get(&leaf.log_id).unwrap().clone();
                         let checkpoint_clone = checkpoint.clone();
                         tokio::spawn(async move {
-                            mark_published(package_info, leaf.record_id, checkpoint_clone).await
+                            mark_published(
+                                package_info,
+                                leaf.record_id,
+                                checkpoint_clone,
+                                checkpoint_index,
+                            )
+                            .await
                         });
                     }
                 }
-                Message::FetchSince {
+                Message::FetchOperatorRecords {
+                    root,
+                    since,
+                    response,
+                } => {
+                    if let Some(checkpoint_index) = state.checkpoint_index.get(&root).map(|i| *i) {
+                        let operator_info = state.operator_info.clone();
+                        tokio::spawn(async move {
+                            response
+                                .send(fetch_operator_records(
+                                    operator_info,
+                                    since,
+                                    checkpoint_index,
+                                ))
+                                .unwrap();
+                        });
+                    } else {
+                        response
+                            .send(Err(Error::msg("Checkpoint not known")))
+                            .unwrap();
+                    }
+                }
+                Message::FetchPackageRecords {
+                    root,
                     package_id,
                     since,
                     response,
                 } => {
-                    if let Some(package_info) = state.package_states.get(&package_id).cloned() {
-                        tokio::spawn(async move {
-                            fetch_since(package_info, since, response).await;
-                        });
+                    if let Some(checkpoint_index) = state.checkpoint_index.get(&root).map(|i| *i) {
+                        if let Some(package_info) = state.package_states.get(&package_id).cloned() {
+                            tokio::spawn(async move {
+                                response
+                                    .send(fetch_package_records(
+                                        package_info,
+                                        since,
+                                        checkpoint_index,
+                                    ))
+                                    .unwrap();
+                            });
+                        } else {
+                            response.send(Err(Error::msg("Package not found"))).unwrap();
+                        }
                     } else {
-                        response.send(Err(Error::msg("Package not found"))).unwrap();
+                        response
+                            .send(Err(Error::msg("Checkpoint not known")))
+                            .unwrap();
                     }
                 }
             }
@@ -324,42 +387,71 @@ async fn mark_published(
     package_info: Arc<Mutex<PackageInfo>>,
     record_id: RecordId,
     checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
+    checkpoint_index: usize,
 ) {
     let mut info = package_info.as_ref().blocking_lock();
 
     info.records.get_mut(&record_id).unwrap().state = RecordState::Published { checkpoint };
+    // Requires publishes to be marked in order for correctness
+    info.checkpoint_indices.push(checkpoint_index);
 }
 
-async fn fetch_since(
+fn fetch_operator_records(
+    operator_info: Arc<Mutex<OperatorInfo>>,
+    since: Option<DynHash>,
+    checkpoint_index: usize,
+) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
+    let info = operator_info.as_ref().blocking_lock();
+
+    let start = match since {
+        Some(hash) => get_record_index(&info.log, hash)?,
+        None => 0,
+    };
+    let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
+    let mut result = Vec::new();
+    let slice = &info.log[start..end];
+    slice.clone_into(&mut result);
+    Ok(result)
+}
+
+fn fetch_package_records(
     package_info: Arc<Mutex<PackageInfo>>,
     since: Option<DynHash>,
-    response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
-) {
+    checkpoint_index: usize,
+) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
     let info = package_info.as_ref().blocking_lock();
 
-    if let Some(since) = since {
-        if let Some(index) = info
-            .log
-            .iter()
-            .map(|env| {
-                let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
-                let dyn_hash: DynHash = hash.into();
-                dyn_hash
-            })
-            .position(|found| found == since)
-        {
-            let mut result = Vec::new();
-            let slice = &info.log[index..];
-            slice.clone_into(&mut result);
-            response.send(Ok(result)).unwrap();
+    let start = match since {
+        Some(hash) => get_record_index(&info.log, hash)?,
+        None => 0,
+    };
+    let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
+    let mut result = Vec::new();
+    let slice = &info.log[start..end];
+    slice.clone_into(&mut result);
+    Ok(result)
+}
+
+fn get_record_index<R>(log: &Vec<Arc<ProtoEnvelope<R>>>, hash: DynHash) -> Result<usize, Error> {
+    log
+        .iter()
+        .map(|env| {
+            let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
+            let dyn_hash: DynHash = hash.into();
+            dyn_hash
+        })
+        .position(|found| found == hash)
+        .ok_or_else(|| Error::msg("Hash value not found"))
+}
+
+fn get_records_before_checkpoint(indices: &Vec<usize>, checkpoint_index: usize) -> usize {
+    indices.iter().fold(0, |count, index| {
+        if *index < checkpoint_index {
+            count + 1
         } else {
-            response
-                .send(Err(Error::msg("Hash value not found")))
-                .unwrap();
+            count
         }
-    } else {
-        response.send(Ok(info.log.clone())).unwrap();
-    }
+    })
 }
 
 impl CoreService {
@@ -421,7 +513,11 @@ impl CoreService {
         rx.await.unwrap()
     }
 
-    pub async fn new_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>, leaves: Vec<LogLeaf>) {
+    pub async fn new_checkpoint(
+        &self,
+        checkpoint: SerdeEnvelope<MapCheckpoint>,
+        leaves: Vec<LogLeaf>,
+    ) {
         self.mailbox
             .send(Message::NewCheckpoint {
                 checkpoint: Arc::new(checkpoint),
@@ -431,15 +527,37 @@ impl CoreService {
             .unwrap();
     }
 
-    pub async fn fetch_since(
+    pub async fn fetch_operator_records(
         &self,
+        root: DynHash,
+        since: Option<DynHash>,
+    ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
+        let root = root.try_into()?;
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(Message::FetchOperatorRecords {
+                root,
+                since,
+                response: tx,
+            })
+            .await
+            .unwrap();
+
+        rx.await.unwrap()
+    }
+
+    pub async fn fetch_package_records(
+        &self,
+        root: DynHash,
         package_name: String,
         since: Option<DynHash>,
     ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
+        let root = root.try_into()?;
         let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(Message::FetchSince {
+            .send(Message::FetchPackageRecords {
+                root,
                 package_id,
                 since,
                 response: tx,

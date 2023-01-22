@@ -26,9 +26,11 @@ impl Config {
     }
 }
 
-#[derive(Default, Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RequestBody {
-    logs: Vec<LogSince>,
+    root: DynHash,
+    operator: Option<DynHash>,
+    packages: Vec<LogSince>,
 }
 
 #[derive(Default, Debug, Deserialize)]
@@ -39,11 +41,12 @@ struct LogSince {
 
 #[derive(Default, Debug, Serialize)]
 pub struct ResponseBody {
-    logs: Vec<LogResults>,
+    operator: Vec<ProtoEnvelopeBody>,
+    packages: Vec<PackageResults>,
 }
 
 #[derive(Default, Debug, Serialize)]
-struct LogResults {
+struct PackageResults {
     name: String,
     records: Vec<ProtoEnvelopeBody>,
 }
@@ -53,15 +56,30 @@ async fn fetch(
     State(config): State<Config>,
     Json(body): Json<RequestBody>,
 ) -> Result<impl IntoResponse, AnyError> {
-    let mut logs = Vec::new();
-    for LogSince { name, since } in body.logs {
-        let records = config.core_service.fetch_since(name.clone(), since).await?;
-        let log_result = LogResults {
+    let mut packages = Vec::new();
+    let operator = config
+        .core_service
+        .fetch_operator_records(body.root.clone(), body.operator)
+        .await?;
+    let operator = operator
+        .into_iter()
+        .map(|env| env.as_ref().clone().into())
+        .collect();
+
+    for LogSince { name, since } in body.packages {
+        let records = config
+            .core_service
+            .fetch_package_records(body.root.clone(), name.clone(), since)
+            .await?;
+        let log_result = PackageResults {
             name: name.clone(),
-            records: records.into_iter().map(|env| env.as_ref().clone().into()).collect(),
+            records: records
+                .into_iter()
+                .map(|env| env.as_ref().clone().into())
+                .collect(),
         };
-        logs.push(log_result);
+        packages.push(log_result);
     }
-    let response = ResponseBody { logs };
+    let response = ResponseBody { operator, packages };
     Ok((StatusCode::OK, Json(response)))
 }

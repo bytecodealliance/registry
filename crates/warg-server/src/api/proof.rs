@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use axum::extract::State;
+use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -19,7 +19,8 @@ pub struct Config {
 impl Config {
     pub fn new(
         log: Arc<RwLock<data::log::ProofData>>,
-        map: Arc<RwLock<data::map::MapData>>,) -> Self {
+        map: Arc<RwLock<data::map::MapData>>,
+    ) -> Self {
         Self { log, map }
     }
 
@@ -57,7 +58,9 @@ mod log_consistency {
 
         let bundle = log.consistency(old_root, new_root)?;
 
-        let response = ResponseBody { proof: bundle.encode() };
+        let response = ResponseBody {
+            proof: bundle.encode(),
+        };
 
         Ok((StatusCode::OK, Json(response)))
     }
@@ -65,7 +68,7 @@ mod log_consistency {
 
 mod inclusion {
     use warg_crypto::hash::DynHash;
-    use warg_protocol::registry::{LogLeaf, LogId, RecordId, MapCheckpoint};
+    use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, RecordId};
 
     use super::*;
 
@@ -84,7 +87,7 @@ mod inclusion {
     #[derive(Serialize, Deserialize)]
     pub(crate) struct ResponseBody {
         log: Vec<u8>,
-        map: Vec<u8>
+        map: Vec<u8>,
     }
 
     #[debug_handler]
@@ -116,7 +119,10 @@ mod inclusion {
 
         let map_bundle = map.inclusion(map_root, log_ids)?;
 
-        let response = ResponseBody { log: log_bundle.encode(), map: map_bundle.encode() };
+        let response = ResponseBody {
+            log: log_bundle.encode(),
+            map: map_bundle.encode(),
+        };
 
         Ok((StatusCode::OK, Json(response)))
     }

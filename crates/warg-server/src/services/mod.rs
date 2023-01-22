@@ -4,11 +4,22 @@ pub mod transparency;
 
 use std::{sync::Arc, time::SystemTime};
 
-use self::{core::{CoreService, State}, transparency::{VerifiableLog, VerifiableMap}, data::{log, map}};
+use self::{
+    core::{CoreService, State},
+    data::{log, map},
+    transparency::{VerifiableLog, VerifiableMap},
+};
 use forrest::log::LogBuilder;
 use tokio::sync::mpsc;
-use warg_crypto::{signing::PrivateKey, hash::{HashAlgorithm, Sha256}};
-use warg_protocol::{registry::{LogLeaf, LogId, RecordId, MapLeaf, MapCheckpoint}, operator, ProtoEnvelope, SerdeEnvelope};
+use warg_crypto::{
+    hash::{HashAlgorithm, Sha256},
+    signing::PrivateKey,
+};
+use warg_protocol::{
+    operator,
+    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
+    ProtoEnvelope, SerdeEnvelope,
+};
 
 pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let (transparency_tx, transparency_rx) = mpsc::channel(4);
@@ -17,7 +28,10 @@ pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let log_id = LogId::operator_log::<Sha256>();
     let record_id = RecordId::operator_record::<Sha256>(&init_envelope);
 
-    let log_leaf = LogLeaf { log_id: log_id.clone(), record_id: record_id.clone() };
+    let log_leaf = LogLeaf {
+        log_id: log_id.clone(),
+        record_id: record_id.clone(),
+    };
     let map_leaf = MapLeaf { record_id };
 
     let mut log = VerifiableLog::default();
@@ -62,7 +76,10 @@ pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let sig_core = core.clone();
     tokio::spawn(async move {
         while let Some(sig) = signatures.recv().await {
-            sig_core.as_ref().new_checkpoint(sig.envelope, sig.leaves).await;
+            sig_core
+                .as_ref()
+                .new_checkpoint(sig.envelope, sig.leaves)
+                .await;
         }
     });
 
@@ -74,7 +91,10 @@ fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRe
         prev: None,
         version: 0,
         timestamp: SystemTime::now(),
-        entries: vec![operator::OperatorEntry::Init { hash_algorithm: HashAlgorithm::Sha256, key: signing_key.public_key() }],
+        entries: vec![operator::OperatorEntry::Init {
+            hash_algorithm: HashAlgorithm::Sha256,
+            key: signing_key.public_key(),
+        }],
     };
     ProtoEnvelope::signed_contents(&signing_key, init_record).unwrap()
 }
