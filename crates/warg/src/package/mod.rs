@@ -1,8 +1,9 @@
-use crate::{protobuf, Decode, Encode, Signable};
+use crate::protobuf;
 use anyhow::Error;
 use prost::Message;
 use thiserror::Error;
 
+use warg_crypto::{Decode, Encode, Signable};
 use warg_crypto::hash::DynHash;
 
 mod model;
@@ -194,7 +195,7 @@ mod tests {
 
     use warg_crypto::hash::HashAlgorithm;
 
-    use crate::signing::tests::generate_p256_pair;
+    use warg_crypto::signing::generate_p256_pair;
     use crate::ProtoEnvelope;
 
     #[test]

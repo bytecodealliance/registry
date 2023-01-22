@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use signature::Error as SignatureError;
-use crate::{signing, Signable};
+
+use warg_crypto::{signing, Signable};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SerdeEnvelope<Contents> {
@@ -17,7 +17,7 @@ impl<Contents> SerdeEnvelope<Contents> {
     pub fn signed_contents(
         private_key: &signing::PrivateKey,
         contents: Contents,
-    ) -> Result<Self, SignatureError>
+    ) -> Result<Self, signing::SignatureError>
     where
         Contents: Signable,
     {

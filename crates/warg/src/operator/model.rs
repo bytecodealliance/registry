@@ -1,8 +1,8 @@
-use crate::signing;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
 
+use warg_crypto::signing;
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 
 /// A operator record is a collection of entries published together by the same author

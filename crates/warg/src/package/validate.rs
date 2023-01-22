@@ -2,13 +2,13 @@ use super::{model, PACKAGE_RECORD_VERSION};
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use signature::Error as SignatureError;
 use std::time::SystemTime;
 use thiserror::Error;
 
+use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 
-use crate::{signing, ProtoEnvelope, Signable};
+use crate::ProtoEnvelope;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -46,7 +46,7 @@ pub enum ValidationError {
     YankOfYanked { version: Version },
 
     #[error("Unable to verify signature")]
-    SignatureError(#[from] SignatureError),
+    SignatureError(#[from] signing::SignatureError),
 
     #[error("Record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
@@ -480,7 +480,7 @@ impl Validator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::signing::tests::generate_p256_pair;
+    use warg_crypto::signing::generate_p256_pair;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
     use warg_crypto::hash::HashAlgorithm;

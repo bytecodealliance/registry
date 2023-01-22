@@ -1,21 +1,27 @@
+use std::marker::PhantomData;
+
 use alloc::vec::Vec;
-use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuilder};
 
 /// A log builder which maintains a stack of balanced roots
-#[derive(Clone, Debug, Default)]
-pub struct StackLog<D>
+#[derive(Clone, Debug)]
+pub struct StackLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     stack: Vec<(Node, Hash<D>)>,
     length: usize,
+    /// Marker for value type
+    _value: PhantomData<V>
 }
 
-impl<D> LogBuilder<D> for StackLog<D>
+impl<D, V> LogBuilder<D, V> for StackLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn checkpoint(&self) -> Checkpoint<D> {
         let root = self
@@ -32,7 +38,7 @@ where
         }
     }
 
-    fn push(&mut self, entry: impl AsRef<[u8]>) -> Node {
+    fn push(&mut self, entry: V) -> Node {
         let node = Node(self.length * 2);
 
         let leaf_digest = hash_leaf::<D>(entry);
@@ -45,9 +51,10 @@ where
     }
 }
 
-impl<D> StackLog<D>
+impl<D, V> StackLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn reduce(&mut self) {
         while self.stack.len() >= 2 {
@@ -67,6 +74,16 @@ where
     }
 }
 
+impl<D, V> Default for StackLog<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes
+{
+    fn default() -> Self {
+        Self { stack: Default::default(), length: Default::default(), _value: Default::default() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use warg_crypto::hash::Sha256;
@@ -76,8 +93,8 @@ mod tests {
 
     #[test]
     fn test_matches_vec_log() {
-        let mut vec_log: VecLog<Sha256> = VecLog::default();
-        let mut stack_log: StackLog<Sha256> = StackLog::default();
+        let mut vec_log: VecLog<Sha256, &str> = VecLog::default();
+        let mut stack_log: StackLog<Sha256, &str> = StackLog::default();
 
         let data: [&str; 25] = [
             "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14", "40", "59",

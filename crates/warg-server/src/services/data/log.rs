@@ -6,54 +6,47 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use forrest::log::{LogBuilder, VecLog, ProofBundle, ConsistencyProof, InclusionProof, Node};
+use forrest::log::{LogBuilder, VecLog, ProofBundle, Node, LogData};
 use warg_crypto::hash::{Sha256, Hash};
 use warg_protocol::registry::LogLeaf;
-use warg_protocol::Encode;
 
-pub type ProofLog = VecLog<Sha256>;
+pub type ProofLog = VecLog<Sha256, LogLeaf>;
 
 pub struct Input {
-    pub data: LogData,
+    pub data: ProofData,
     pub log_rx: Receiver<LogLeaf>,
 }
 
 pub struct Output {
-    pub data: Arc<RwLock<LogData>>,
+    pub data: Arc<RwLock<ProofData>>,
     pub handle: JoinHandle<()>,
 }
 
 #[derive(Default)]
-pub struct LogData {
+pub struct ProofData {
     log: ProofLog,
     leaf_index: HashMap<LogLeaf, Node>,
     root_index: HashMap<Hash<Sha256>, usize>
 }
 
-impl LogData {
+impl ProofData {
     /// Generate a proof bundle for the consistency of the log across two times
-    pub fn consistency(&self, old_root: Hash<Sha256>, new_root: Hash<Sha256>) -> Result<ProofBundle<Sha256>, Error> {
+    pub fn consistency(&self, old_root: Hash<Sha256>, new_root: Hash<Sha256>) -> Result<ProofBundle<Sha256, LogLeaf>, Error> {
         let old_len = self.root_index.get(&old_root).ok_or(Error::msg("Old root not found"))?;
         let new_len = self.root_index.get(&new_root).ok_or(Error::msg("New root not found"))?;
 
-        let proof = ConsistencyProof {
-            old_length: *old_len,
-            new_length: *new_len,
-        };
+        let proof = self.log.prove_consistency(*old_len, *new_len);
         let bundle = ProofBundle::bundle(vec![proof], vec![], &self.log)?;
         Ok(bundle)
     }
 
     /// Generate a proof bundle for a group of inclusion proofs
-    pub fn inclusion(&self, root: Hash<Sha256>, leaves: Vec<LogLeaf>) -> Result<ProofBundle<Sha256>, Error> {
+    pub fn inclusion(&self, root: Hash<Sha256>, leaves: Vec<LogLeaf>) -> Result<ProofBundle<Sha256, LogLeaf>, Error> {
         let log_length = self.root_index.get(&root).ok_or(Error::msg("Root not found"))?.clone();
         let mut proofs = Vec::new();
         for leaf in leaves {
             let node = self.leaf_index.get(&leaf).ok_or(Error::msg("Leaf not found"))?.clone();
-            let proof = InclusionProof {
-                log_length,
-                leaf: node,
-            };
+            let proof = self.log.prove_inclusion(node, log_length);
             proofs.push(proof);
         }
         let bundle = ProofBundle::bundle(vec![], proofs, &self.log)?;
@@ -71,7 +64,7 @@ pub fn process(input: Input) -> Output {
 
         while let Some(leaf) = log_rx.recv().await {
             let mut data = data.as_ref().blocking_write();
-            let node = data.log.push(leaf.encode());
+            let node = data.log.push(leaf.clone());
 
             let checkpoint = data.log.checkpoint();
             data.root_index.insert(checkpoint.root(), checkpoint.length());

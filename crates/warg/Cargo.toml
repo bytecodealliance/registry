@@ -15,16 +15,11 @@ hex = "0.4"
 base64 = "0.13.0"
 serde_with = { version = "2.2.0", features = ["base64"] }
 semver = { version = "1.0", features = ["serde"] }
-p256 = "0.11"
-secrecy = "0.8"
-signature = "1.5"
 indexmap = { version = "1.9.2", features = ["serde"] }
 forrest = { path = "../forrest" }
 warg-crypto = { path = "../warg-crypto" }
-leb128 = "0.2.5"
 
 [dev-dependencies]
-rand_core = { version = "0.6", features = ["getrandom"]}
 pretty_assertions = "1.1.0"
 serde_json = "1.0"
 

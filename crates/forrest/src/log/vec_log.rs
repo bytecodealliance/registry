@@ -1,7 +1,9 @@
 use core::fmt::Debug;
+use std::marker::PhantomData;
 
 use alloc::{vec, vec::Vec};
 
+use warg_crypto::VisitBytes;
 use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::{Node, Side};
@@ -10,23 +12,27 @@ use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, LogBuilder, LogData}
 /// A verifiable log where the node hashes are stored
 /// contiguously in memory by index.
 #[derive(Debug, Clone)]
-pub struct VecLog<D>
+pub struct VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     /// The number of entries
     length: usize,
     /// The tree data structure
     tree: Vec<Hash<D>>,
+    /// Marker for value type
+    _value: PhantomData<V>
 }
 
 /// Height is the number of child-edges between the node and leaves
 /// A leaf has height 0
 ///
 /// Length is the number of total leaf nodes present
-impl<D> VecLog<D>
+impl<D, V> VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn get_digest(&self, node: Node) -> Hash<D> {
         self.tree[node.index()].clone()
@@ -58,21 +64,24 @@ where
     }
 }
 
-impl<D> Default for VecLog<D>
+impl<D, V> Default for VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn default() -> Self {
         VecLog {
             length: 0,
             tree: vec![],
+            _value: PhantomData
         }
     }
 }
 
-impl<D> LogBuilder<D> for VecLog<D>
+impl<D, V> LogBuilder<D, V> for VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn checkpoint(&self) -> Checkpoint<D> {
         Checkpoint {
@@ -81,7 +90,7 @@ where
         }
     }
 
-    fn push(&mut self, entry: impl AsRef<[u8]>) -> Node {
+    fn push(&mut self, entry: V) -> Node {
         // Compute entry digest
         let leaf_digest = hash_leaf::<D>(entry);
 
@@ -115,18 +124,20 @@ where
     }
 }
 
-impl<D> AsRef<[Hash<D>]> for VecLog<D>
+impl<D, V> AsRef<[Hash<D>]> for VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn as_ref(&self) -> &[Hash<D>] {
         &self.tree[..]
     }
 }
 
-impl<D> LogData<D> for VecLog<D>
+impl<D, V> LogData<D, V> for VecLog<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
         self.tree.get(node.index()).map(|h| h.clone())
@@ -139,15 +150,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::dbg;
-
     use warg_crypto::hash::Sha256;
 
-    use crate::log::proof::{ConsistencyProof, InclusionProof, InclusionProofError};
+    use crate::log::proof::InclusionProofError;
 
     use super::*;
 
-    fn naive_merkle<D: SupportedDigest, E: AsRef<[u8]>>(elements: &[E]) -> Hash<D> {
+    fn naive_merkle<D: SupportedDigest, E: VisitBytes>(elements: &[E]) -> Hash<D> {
         let res = match elements.len() {
             0 => hash_empty::<D>(),
             1 => hash_leaf::<D>(&elements[0]),
@@ -163,12 +172,12 @@ mod tests {
 
     #[test]
     fn test_log_modifications() {
-        let data: [&str; 25] = [
+        let data = [
             "93", "67", "30", "37", "23", "75", "57", "89", "76", "42", "9", "14", "40", "59",
             "26", "66", "77", "38", "47", "34", "8", "81", "101", "102", "103",
         ];
 
-        let mut tree: VecLog<Sha256> = VecLog::default();
+        let mut tree: VecLog<Sha256, &str> = VecLog::default();
         let mut roots = Vec::new();
 
         for i in 0..data.len() {
@@ -187,16 +196,13 @@ mod tests {
         }
 
         // Check inclusion proofs
-        for (i, _entry) in data.iter().enumerate() {
+        for (i, _) in data.iter().enumerate() {
             let leaf_node = Node(i * 2);
 
             for (j, root) in roots.iter().enumerate() {
                 let log_length = j + 1;
-                let inc_proof = InclusionProof {
-                    log_length,
-                    leaf: leaf_node,
-                };
-                let result = inc_proof.evaluate(&tree);
+                let inc_proof = tree.prove_inclusion(leaf_node, log_length);
+                let result = inc_proof.evaluate_value(&tree, &data[i]);
                 if j >= i {
                     assert!(result.is_ok());
                     assert_eq!(root.clone(), result.unwrap());
@@ -210,24 +216,17 @@ mod tests {
         // Check consistency proofs
         for (i, _) in data.iter().enumerate() {
             let old_length = i + 1;
+            let old_root = tree.root_at(old_length).unwrap();
 
             for (j, new_root) in roots.iter().enumerate().skip(i) {
+                let new_root = new_root.clone();
                 let new_length = j + 1;
 
-                let con_proof = ConsistencyProof {
-                    old_length,
-                    new_length,
-                };
-                let mut old_broots = Vec::new();
-
-                for inc_proof in con_proof.inclusions().unwrap() {
-                    old_broots.push(inc_proof.leaf.clone());
-                    let result = inc_proof.evaluate(&tree);
-                    dbg!(i, j, inc_proof);
-                    dbg!(&result);
-                    assert!(result.is_ok());
-                    assert_eq!(new_root.clone(), result.unwrap());
-                }
+                let proof = tree.prove_consistency(old_length, new_length);
+                let results = proof.evaluate(&tree).unwrap();
+                let (found_old_root, found_new_root) = results;
+                assert_eq!(old_root, found_old_root);
+                assert_eq!(new_root, found_new_root);
             }
         }
     }

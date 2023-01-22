@@ -71,7 +71,8 @@ impl<'de> Deserialize<'de> for Signature {
     where
         D: serde::Deserializer<'de>,
     {
-        Self::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+        let string: String = String::deserialize(deserializer)?;
+        Self::from_str(&string).map_err(serde::de::Error::custom)
     }
 }
 

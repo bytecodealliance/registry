@@ -5,13 +5,12 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 
 use tokio::time;
-use warg_crypto::hash::{Sha256, Hash, DynHash};
+use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
-use warg_protocol::Encode;
 
 use super::log;
 
-pub type VerifiableMap = Map<Sha256, Hash<Sha256>, Vec<u8>>;
+pub type VerifiableMap = Map<Sha256, LogId, MapLeaf>;
 
 pub struct Input {
     pub map: VerifiableMap,
@@ -49,9 +48,7 @@ pub fn process(input: Input) -> Output {
                 message = map_rx.recv() => {
                     if let Some(message) = message {
                         let leaf = message.leaf;
-                        let hash: DynHash = leaf.log_id.clone().into();
-                        let hash: Hash<Sha256> = hash.try_into().unwrap();
-                        map = map.insert(hash, MapLeaf { record_id: leaf.record_id.clone() }.encode());
+                        map = map.insert(leaf.log_id.clone(), MapLeaf { record_id: leaf.record_id.clone() });
                         leaves.push(leaf);
 
                         current = Some(MapCheckpoint {

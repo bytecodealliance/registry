@@ -1,8 +1,9 @@
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 
+use warg_crypto::signing;
 use warg_protocol::registry::{LogLeaf, MapCheckpoint};
-use warg_protocol::{signing, SerdeEnvelope};
+use warg_protocol::SerdeEnvelope;
 
 use super::map;
 

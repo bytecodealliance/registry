@@ -2489,10 +2489,17 @@ name = "warg-crypto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.13.1",
  "digest",
  "hex",
+ "leb128",
+ "p256",
+ "pretty_assertions",
+ "rand_core",
+ "secrecy",
  "serde",
  "sha2",
+ "signature",
  "thiserror",
 ]
 
@@ -2505,8 +2512,6 @@ dependencies = [
  "forrest",
  "hex",
  "indexmap",
- "leb128",
- "p256",
  "pbjson",
  "pbjson-build",
  "pbjson-types",
@@ -2514,13 +2519,10 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
- "rand_core",
- "secrecy",
  "semver",
  "serde",
  "serde_json",
  "serde_with",
- "signature",
  "thiserror",
  "warg-crypto",
 ]

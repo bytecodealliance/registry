@@ -1,14 +1,15 @@
 use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
+use rand_core::OsRng;
 
-use warg_crypto::hash::HashAlgorithm;
+use crate::hash::HashAlgorithm;
 
 mod private_key;
 mod public_key;
 mod signature;
 
-pub use self::private_key::{PrivateKey, PrivateKeyParseError};
+pub use self::private_key::{PrivateKey, PrivateKeyParseError, SignatureError};
 pub use self::public_key::{KeyID, PublicKey, PublicKeyParseError};
 pub use self::signature::{Signature, SignatureParseError};
 
@@ -55,17 +56,16 @@ pub struct SignatureAlgorithmParseError {
     value: String,
 }
 
+pub fn generate_p256_pair() -> (PublicKey, PrivateKey) {
+    let private_key = p256::ecdsa::SigningKey::random(&mut OsRng);
+    let public_key = p256::ecdsa::VerifyingKey::from(&private_key);
+    (PublicKey::from(public_key), PrivateKey::from(private_key))
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
 
-    use rand_core::OsRng;
-
-    pub fn generate_p256_pair() -> (PublicKey, PrivateKey) {
-        let private_key = p256::ecdsa::SigningKey::random(&mut OsRng);
-        let public_key = p256::ecdsa::VerifyingKey::from(&private_key);
-        (PublicKey::from(public_key), PrivateKey::from(private_key))
-    }
 
     #[test]
     pub fn test_correct_key_passes_verify() {

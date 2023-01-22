@@ -1,11 +1,9 @@
 use alloc::vec::Vec;
-use core::{iter::repeat, marker::PhantomData, ops::Deref};
+use core::{iter::repeat, marker::PhantomData};
 
-use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
-use serde::{Deserialize, Serialize};
-
-use super::path::Path;
+use super::{path::{Path, Side}, map::{hash_leaf, hash_branch}};
 
 /// An inclusion proof of the specified value in a map
 ///
@@ -24,92 +22,91 @@ use super::path::Path;
 ///
 /// Third, since sparse peers are more likely at the bottom of the tree, we
 /// can omit all leading sparse peers. The verifier can dynamically reconstruct
-/// them during verification.
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "H: Serialize, V: serde_bytes::Serialize"))]
-#[serde(bound(deserialize = "H: Deserialize<'de>, V: serde_bytes::Deserialize<'de>"))]
-pub struct Proof<D: SupportedDigest, H, V> {
-    #[serde(skip)]
-    pub(crate) digest: PhantomData<D>,
-    #[serde(skip)]
-    pub(crate) value: PhantomData<V>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) peers: Vec<Option<H>>,
+pub struct Proof<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes
+{
+    value: PhantomData<V>,
+    peers: Vec<Option<Hash<D>>>,
 }
 
-impl<D: SupportedDigest, H: Deref<Target = Hash<D>>, V: AsRef<[u8]>> Proof<D, H, V> {
-    /// Verifies a proof for a given map and key.
-    #[must_use]
-    pub fn verify<Q: ?Sized + AsRef<[u8]>>(&self, root: &Hash<D>, key: &Q, value: &V) -> bool {
+impl<D, V> Proof<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes
+{
+    pub(crate) fn new(peers: Vec<Option<Hash<D>>>) -> Self {
+        Self {
+            value: PhantomData,
+            peers,
+        }
+    }
+
+    pub(crate) fn push(&mut self, peer: Option<Hash<D>>) {
+        // This is an optimization. The size of a proof is always
+        // known: it is the number of bits in the digest. Therefore,
+        // we can skip all leading nodes with no peer. The validator,
+        // can reconstruct this.
+        if !self.peers.is_empty() || peer.is_some() {
+            self.peers.push(peer);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.peers.len()
+    }
+
+    /// Computes the root obtained by evaluating this inclusion proof with the given leaf
+    pub fn evaluate<K: ?Sized + VisitBytes>(&self, key: &K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.
-        let path = Path::<D>::from(key);
+        let path = Path::<D>::new(key);
 
         // Determine how many empty leading peers there will be.
         let fill = repeat(None).take(path.len() - self.peers.len());
 
         // Calculate the leaf hash.
-        let mut hash = path.hash(&value);
+        let mut hash = hash_leaf(key, &value);
 
         // Loop over each side and peer.
-        let peers = fill.chain(self.peers.iter().map(|x| x.as_deref()));
+        let peers = fill.chain(self.peers.iter().cloned());
         for (side, peer) in path.rev().zip(peers) {
-            // Reconstruct the fork.
-            let fork = match side {
-                false => [Some(&hash), peer],
-                true => [peer, Some(&hash)],
+            hash = match side {
+                Side::Left => hash_branch(Some(hash), peer),
+                Side::Right => hash_branch(peer, Some(hash)),
             };
-
-            // Calculate the hash inputs.
-            let (x, l, r): (u8, &[u8], &[u8]) = match fork {
-                [Some(l), Some(r)] => (0b11, l, r),
-                [Some(l), None] => (0b10, l, &[]),
-                [None, Some(r)] => (0b01, &[], r),
-                [None, None] => (0b00, &[], &[]),
-            };
-
-            // Calculate the hash at this level.
-            hash = D::new()
-                .chain_update(&[x])
-                .chain_update(l)
-                .chain_update(r)
-                .finalize()
-                .into();
         }
 
-        &hash == root
-    }
-
-    /// Convert a proof to an owned proof
-    pub fn owned(self) -> Proof<D, Hash<D>, V> {
-        Proof {
-            digest: PhantomData,
-            value: PhantomData,
-            peers: self.peers.into_iter().map(|h| h.map(|h| h.deref().clone())).collect(),
-        }
+        hash
     }
 }
 
-#[test]
-#[cfg(test)]
-fn test() {
-    use serde_bytes::ByteBuf;
-    use warg_crypto::hash::Sha256;
-
-    let a = super::Map::<Sha256, &str, &[u8]>::default();
-    let b = a.insert("foo", b"bar");
-    let c = b.insert("baz", b"bat");
-    let p = c.prove("baz").unwrap();
-
-    let mut buf = Vec::new();
-    ciborium::ser::into_writer(&p, &mut buf).unwrap();
-
-    for byte in &buf {
-        std::eprint!("{:02x}", byte);
+impl<D, V> From<Proof<D, V>> for Vec<Option<Hash<D>>>
+where
+    D: SupportedDigest,
+    V: VisitBytes
+{
+    fn from(value: Proof<D, V>) -> Self {
+        value.peers
     }
-    std::eprintln!();
+}
 
-    let proof: Proof<Sha256, Hash<Sha256>, ByteBuf> = ciborium::de::from_reader(&buf[..]).unwrap();
-    let peers = proof.peers.iter().map(|x| x.as_ref()).collect::<Vec<_>>();
-    assert_eq!(p.peers, peers);
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_proof_evaluate() {
+        use warg_crypto::hash::Sha256;
+
+        let a = crate::map::Map::<Sha256, &str, &[u8]>::default();
+        let b = a.insert("foo", b"bar");
+        let c = b.insert("baz", b"bat");
+
+        let root = c.root().clone();
+
+        let p = c.prove(&"baz").unwrap();
+
+        assert_eq!(root.clone(), p.evaluate(&"baz", &b"bat".as_slice()));
+        assert_ne!(root.clone(), p.evaluate(&"other", &b"bar".as_slice()));
+    }
 }

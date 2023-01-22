@@ -3,9 +3,10 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use signature::Error as SignatureError;
-use crate::{signing, protobuf, Decode, Signable};
-use signing::SignatureParseError;
+use crate::protobuf;
+
+use warg_crypto::{signing, Decode, Signable};
+
 use thiserror::Error;
 use warg_crypto::hash::DynHashParseError;
 
@@ -29,7 +30,7 @@ impl<Contents> ProtoEnvelope<Contents> {
     pub fn signed_contents(
         private_key: &signing::PrivateKey,
         contents: Contents,
-    ) -> Result<Self, SignatureError>
+    ) -> Result<Self, signing::SignatureError>
     where
         Contents: Signable,
     {
@@ -111,7 +112,7 @@ pub enum ParseEnvelopeError {
     KeyIDParseError(#[from] DynHashParseError),
 
     #[error("Failed to parse envelope signature")]
-    SignatureParseError(#[from] SignatureParseError),
+    SignatureParseError(#[from] signing::SignatureParseError),
 }
 
 #[serde_as]

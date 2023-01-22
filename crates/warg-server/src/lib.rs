@@ -13,7 +13,7 @@ use services::{
     transparency, data,
 };
 use tokio::sync::mpsc;
-use warg_protocol::signing::PrivateKey;
+use warg_crypto::signing::PrivateKey;
 
 pub struct Config {
     base_url: String,
