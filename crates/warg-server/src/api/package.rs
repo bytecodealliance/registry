@@ -127,7 +127,7 @@ mod publish {
 }
 
 mod get_record {
-    use warg_protocol::{SerdeEnvelope, registry::MapCheckpoint};
+    use warg_protocol::{registry::MapCheckpoint, SerdeEnvelope};
 
     use crate::services::core::PackageRecordInfo;
 

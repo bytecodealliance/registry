@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use tokio::{sync::{mpsc::Receiver, RwLock}, task::JoinHandle};
+use tokio::{
+    sync::{mpsc::Receiver, RwLock},
+    task::JoinHandle,
+};
 use warg_protocol::registry::LogLeaf;
 
 use super::transparency::VerifiableMap;
@@ -31,10 +34,16 @@ pub fn process(input: Input) -> Output {
         map_rx,
     } = input;
 
-    let log_input = log::Input { data: log_data, log_rx };
+    let log_input = log::Input {
+        data: log_data,
+        log_rx,
+    };
     let log_output = log::process(log_input);
 
-    let map_input = map::Input { data: map_data, map_rx };
+    let map_input = map::Input {
+        data: map_data,
+        map_rx,
+    };
     let map_output = map::process(map_input);
 
     Output {

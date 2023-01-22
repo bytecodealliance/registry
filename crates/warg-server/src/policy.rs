@@ -8,5 +8,5 @@ pub trait Policy {
 
 pub enum PolicyDecision {
     Accept,
-    Reject
+    Reject,
 }
