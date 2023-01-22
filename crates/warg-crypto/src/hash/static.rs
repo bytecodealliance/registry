@@ -3,10 +3,9 @@ use thiserror::Error;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-};
+use std::fmt;
+
+use crate::{VisitBytes, ByteVisitor};
 
 use super::{Output, SupportedDigest};
 
@@ -15,15 +14,56 @@ pub struct Hash<D: SupportedDigest> {
     pub(crate) digest: Output<D>,
 }
 
-impl<D: SupportedDigest> std::hash::Hash for Hash<D> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.digest.hash(state);
+struct HashVisitor<D: SupportedDigest> {
+    digest: D
+}
+
+impl<D> HashVisitor<D>
+where
+    D: SupportedDigest
+{
+    fn new() -> Self {
+        HashVisitor { digest: D::new() }
+    }
+
+    fn finalize(self) -> Hash<D> {
+        Hash {
+            digest: self.digest.finalize()
+        }
     }
 }
 
-impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
-    fn from(digest: Output<D>) -> Self {
-        Hash { digest }
+impl<D: SupportedDigest> ByteVisitor for HashVisitor<D> {
+    fn visit_bytes(&mut self, bytes: impl AsRef<[u8]>) {
+        self.digest.update(bytes)
+    }
+}
+
+impl<D: SupportedDigest> Hash<D> {
+    pub fn of<Content: ?Sized + VisitBytes>(content: &Content) -> Self {
+        let mut visitor = HashVisitor::new();
+        content.visit(&mut visitor);
+        visitor.finalize()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.digest.as_slice()
+    }
+
+    pub fn len(&self) -> usize {
+        self.bytes().len()
+    }
+}
+
+impl<D: SupportedDigest> VisitBytes for Hash<D> {
+    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+        visitor.visit_bytes(self.bytes())
+    }
+}
+
+impl<D: SupportedDigest> std::hash::Hash for Hash<D> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.digest.hash(state);
     }
 }
 
@@ -58,42 +98,10 @@ impl<D: SupportedDigest> fmt::Debug for Hash<D> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "Hash<{}>({})",
+            "Hash<{:?}>({})",
             D::ALGORITHM,
             hex::encode(self.digest.as_slice())
         )
-    }
-}
-
-impl<D: SupportedDigest> Deref for Hash<D> {
-    type Target = Output<D>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.digest
-    }
-}
-
-impl<D: SupportedDigest> DerefMut for Hash<D> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.digest
-    }
-}
-
-impl<D: SupportedDigest, U: ?Sized> AsRef<U> for Hash<D>
-where
-    Output<D>: AsRef<U>,
-{
-    fn as_ref(&self) -> &U {
-        self.digest.as_ref()
-    }
-}
-
-impl<D: SupportedDigest, U> AsMut<U> for Hash<D>
-where
-    Output<D>: AsMut<U>,
-{
-    fn as_mut(&mut self) -> &mut U {
-        self.digest.as_mut()
     }
 }
 
@@ -159,5 +167,34 @@ impl<'de, T: SupportedDigest> Deserialize<'de> for Hash<T> {
         Ok(Self {
             digest: deserializer.deserialize_bytes(visitor)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::Sha256;
+
+    use super::*;
+
+    #[test]
+    fn test_hash_empties_have_no_impact() {
+        let empty: &[u8] = &[];
+
+        let h0: Hash<Sha256> = Hash::of(&(0u8, 1u8));
+        let h1: Hash<Sha256> = Hash::of(&(0u8, 1u8, empty));
+        let h2: Hash<Sha256> = Hash::of(&(0u8, empty, 1u8));
+        let h3: Hash<Sha256> = Hash::of(&(0u8, empty, 1u8, empty));
+        let h4: Hash<Sha256> = Hash::of(&(empty, 0u8, 1u8));
+        let h5: Hash<Sha256> = Hash::of(&(empty, 0u8, 1u8, empty));
+        let h6: Hash<Sha256> = Hash::of(&(empty, 0u8, empty, 1u8));
+        let h7: Hash<Sha256> = Hash::of(&(empty, 0u8, empty, 1u8, empty));
+
+        assert_eq!(h0, h1);
+        assert_eq!(h0, h2);
+        assert_eq!(h0, h3);
+        assert_eq!(h0, h4);
+        assert_eq!(h0, h5);
+        assert_eq!(h0, h6);
+        assert_eq!(h0, h7);
     }
 }

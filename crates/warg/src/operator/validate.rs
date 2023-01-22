@@ -1,10 +1,11 @@
 use super::{model, OPERATOR_RECORD_VERSION};
-use crate::{signing, ProtoEnvelope, Signable};
+use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
-use signature::Error as SignatureError;
 use std::time::SystemTime;
 use thiserror::Error;
+
+use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 
 #[derive(Error, Debug)]
@@ -34,7 +35,7 @@ pub enum ValidationError {
     },
 
     #[error("Unable to verify signature")]
-    SignatureError(#[from] SignatureError),
+    SignatureError(#[from] signing::SignatureError),
 
     #[error("Record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
@@ -326,7 +327,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
-    use crate::signing::tests::generate_p256_pair;
+    use warg_crypto::signing::generate_p256_pair;
 
     use std::time::SystemTime;
     use warg_crypto::hash::HashAlgorithm;

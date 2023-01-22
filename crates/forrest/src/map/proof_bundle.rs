@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
-use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 use crate::{map::proof::Proof, protobuf};
 
@@ -9,21 +9,23 @@ use crate::{map::proof::Proof, protobuf};
 pub struct ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
-    proofs: Vec<Proof<D, Hash<D>, V>>,
+    proofs: Vec<Proof<D, V>>,
 }
 
 impl<D, V> ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     /// Bundles inclusion proofs together
-    pub fn bundle(proofs: Vec<Proof<D, Hash<D>, V>>) -> Self {
+    pub fn bundle(proofs: Vec<Proof<D, V>>) -> Self {
         ProofBundle { proofs }
     }
 
     /// Splits a bundle into its constituent inclusion proofs
-    pub fn unbundle(self) -> Vec<Proof<D, Hash<D>, V>> {
+    pub fn unbundle(self) -> Vec<Proof<D, V>> {
         self.proofs
     }
 
@@ -44,6 +46,7 @@ where
 impl<D, V> From<ProofBundle<D, V>> for protobuf::MapProofBundle
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     fn from(value: ProofBundle<D, V>) -> Self {
         let proofs = value
@@ -55,13 +58,15 @@ where
     }
 }
 
-impl<D, V> From<Proof<D, Hash<D>, V>> for protobuf::MapInclusionProof
+impl<D, V> From<Proof<D, V>> for protobuf::MapInclusionProof
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
-    fn from(value: Proof<D, Hash<D>, V>) -> Self {
+    fn from(value: Proof<D, V>) -> Self {
+        let peers: Vec<Option<Hash<D>>> = value.into();
         protobuf::MapInclusionProof {
-            hashes: value.peers.into_iter().map(|h| h.into()).collect()
+            hashes: peers.into_iter().map(|h| h.into()).collect()
         }
     }
 }
@@ -71,7 +76,7 @@ where D: SupportedDigest
 {
     fn from(value: Option<Hash<D>>) -> Self {
         protobuf::OptionalHash {
-            hash: value.map(|h| h.as_ref().to_vec())
+            hash: value.map(|h| h.bytes().to_vec())
         }
     }
 }
@@ -79,6 +84,7 @@ where D: SupportedDigest
 impl<D, V> TryFrom<protobuf::MapProofBundle> for ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     type Error = Error;
 
@@ -92,19 +98,16 @@ where
     }
 }
 
-impl<D, V> TryFrom<protobuf::MapInclusionProof> for Proof<D, Hash<D>, V>
+impl<D, V> TryFrom<protobuf::MapInclusionProof> for Proof<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     type Error = Error;
 
     fn try_from(value: protobuf::MapInclusionProof) -> Result<Self, Self::Error> {
         let peers: Result<Vec<Option<Hash<D>>>, Error> = value.hashes.into_iter().map(|h| h.try_into()).collect();
-        let proof = Proof {
-            digest: std::marker::PhantomData,
-            value: std::marker::PhantomData,
-            peers: peers?
-        };
+        let proof = Proof::new(peers?);
         Ok(proof)
     }
 }

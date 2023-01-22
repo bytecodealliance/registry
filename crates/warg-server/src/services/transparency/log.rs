@@ -4,9 +4,8 @@ use tokio::task::JoinHandle;
 use forrest::log::{LogBuilder, StackLog};
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::registry::LogLeaf;
-use warg_protocol::Encode;
 
-pub type VerifiableLog = StackLog<Sha256>;
+pub type VerifiableLog = StackLog<Sha256, LogLeaf>;
 
 pub struct Input {
     pub log: VerifiableLog,
@@ -36,7 +35,7 @@ pub fn process(input: Input) -> Output {
             mut log_rx,
         } = input;
         while let Some(leaf) = log_rx.recv().await {
-            log.push(leaf.encode());
+            log.push(leaf.clone());
 
             let checkpoint = log.checkpoint();
             let log_root: DynHash = checkpoint.root().into();

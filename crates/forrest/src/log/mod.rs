@@ -19,7 +19,7 @@ mod sparse_data;
 mod stack_log;
 mod vec_log;
 
-use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 pub use node::{Node, Side};
 pub use stack_log::StackLog;
@@ -59,15 +59,16 @@ pub use proof_bundle::ProofBundle;
 /// [0]: https://en.wikipedia.org/wiki/Merkle_tree
 /// [1]: https://www.researchgate.net/publication/326120012_Dat_-_Distributed_Dataset_Synchronization_And_Versioning
 /// [2]: https://www.rfc-editor.org/rfc/rfc6962
-pub trait LogBuilder<D>
+pub trait LogBuilder<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     /// Get the checkpoint (hash and length) of the log at this point.
     fn checkpoint(&self) -> Checkpoint<D>;
 
     /// Push a new entry into the log.
-    fn push(&mut self, entry: impl AsRef<[u8]>) -> Node;
+    fn push(&mut self, entry: V) -> Node;
 }
 
 /// A point in the history of a log, represented by its length
@@ -107,9 +108,10 @@ where
 }
 
 /// A collection of hash data
-pub trait LogData<D>
+pub trait LogData<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     /// Does this hash exist in the collection?
     fn has_hash(&self, node: Node) -> bool;
@@ -117,26 +119,31 @@ where
     /// Get the hash for a given node
     /// None if node does not yet exist
     fn hash_for(&self, node: Node) -> Option<Hash<D>>;
+
+    /// Construct an inclusion proof for this log
+    fn prove_inclusion(&self, leaf: Node, log_length: usize) -> InclusionProof<D, V> {
+        InclusionProof::new(leaf, log_length)
+    }
+
+    /// Construct a consistency proof for this log
+    fn prove_consistency(&self, old_length: usize, new_length: usize) -> ConsistencyProof<D, V> {
+        ConsistencyProof::new(old_length, new_length)
+    }
 }
 
 /// Compute the hash for an empty tree using a given Digest algorithm.
-pub fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-    D::new().finalize().into()
+pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
+    Hash::of(&())
 }
 
 /// Compute the hash for a leaf in a tree using a given Digest algorithm.
-pub fn hash_leaf<D: SupportedDigest>(data: impl AsRef<[u8]>) -> Hash<D> {
-    let mut digest = D::new();
-    digest.update(&[0u8]);
-    digest.update(data);
-    digest.finalize().into()
+pub(crate) fn hash_leaf<D: SupportedDigest>(data: impl VisitBytes) -> Hash<D> {
+    let input = (0u8, data);
+    Hash::of(&input)
 }
 
 /// Compute the hash for a branch in a tree using a given Digest algorithm.
-pub fn hash_branch<D: SupportedDigest>(left: impl AsRef<[u8]>, right: impl AsRef<[u8]>) -> Hash<D> {
-    let mut digest = D::new();
-    digest.update(&[1u8]);
-    digest.update(left);
-    digest.update(right);
-    digest.finalize().into()
+pub(crate) fn hash_branch<D: SupportedDigest>(left: impl VisitBytes, right: impl VisitBytes) -> Hash<D> {
+    let input = (1u8, left, right);
+    Hash::of(&input)
 }

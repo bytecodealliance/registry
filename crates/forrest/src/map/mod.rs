@@ -11,7 +11,6 @@
 #![allow(clippy::module_inception)]
 
 mod fork;
-mod iter;
 mod link;
 mod map;
 mod node;
@@ -19,14 +18,13 @@ mod path;
 mod proof;
 mod proof_bundle;
 
-pub use iter::Iter;
 pub use map::Map;
 pub use proof::Proof;
 pub use proof_bundle::ProofBundle;
 
 #[cfg(test)]
 mod test {
-    use warg_crypto::hash::{Digest, Sha256, SupportedDigest};
+    use warg_crypto::{hash::{Sha256, SupportedDigest, Hash}, VisitBytes};
 
     use super::Map;
 
@@ -43,15 +41,7 @@ mod test {
         assert_ne!(second.root(), third.root());
 
         // Ensure the empty tree has the known root.
-        assert_eq!(&**first.root(), &Sha256::digest(&[0x00u8]));
-
-        // Check that values returned are correct.
-        assert_eq!(first.get(&"foo"), None);
-        assert_eq!(second.get(&"baz"), None);
-        assert_eq!(second.get(&"foo"), Some(&"bar"));
-        assert_eq!(second.get(&"baz"), None);
-        assert_eq!(third.get(&"foo"), Some(&"bar"));
-        assert_eq!(third.get(&"baz"), Some(&"bat"));
+        assert_eq!(first.root().clone(), Hash::of(&0u8));
     }
 
     #[test]
@@ -102,67 +92,28 @@ mod test {
     fn replace() {
         let first = Map::<Sha256, &'static str, &'static str>::default();
         let second = first.insert("foo", "bar");
-        assert_eq!(second.get(&"foo"), Some(&"bar"));
         assert_eq!(second.len(), 1);
 
         let third = second.insert("foo", "baz");
-        assert_eq!(third.get(&"foo"), Some(&"baz"));
         assert_eq!(third.len(), 1);
-    }
 
-    #[test]
-    fn iter() {
-        let first = Map::<Sha256, &'static str, &'static str>::default();
-        let mut iter = first.iter();
-        assert_eq!(iter.next(), None);
-
-        let second = first.insert("foo", "bar");
-        let mut iter = second.iter();
-        assert_eq!(iter.len(), 1);
-        assert_eq!(iter.next(), Some((&"foo", &"bar")));
-        assert_eq!(iter.len(), 0);
-        assert_eq!(iter.next(), None);
-
-        let third = second.insert("baz", "bat");
-        let mut iter = third.iter();
-        assert_eq!(iter.len(), 2);
-        assert_eq!(iter.next(), Some((&"foo", &"bar")));
-        assert_eq!(iter.len(), 1);
-        assert_eq!(iter.next(), Some((&"baz", &"bat")));
-        assert_eq!(iter.len(), 0);
-        assert_eq!(iter.next(), None);
-
-        let extended = first.extend([("foo", "bar"), ("baz", "bat")]);
-        let mut iter = extended.iter();
-        assert_eq!(iter.len(), 2);
-        assert_eq!(iter.next(), Some((&"foo", &"bar")));
-        assert_eq!(iter.len(), 1);
-        assert_eq!(iter.next(), Some((&"baz", &"bat")));
-        assert_eq!(iter.len(), 0);
-        assert_eq!(iter.next(), None);
-
-        // The order of iteration DOES NOT depend on order of insertion.
-        let extended = first.extend([("baz", "bat"), ("foo", "bar")]);
-        let mut iter = extended.iter();
-        assert_eq!(iter.len(), 2);
-        assert_eq!(iter.next(), Some((&"foo", &"bar")));
-        assert_eq!(iter.len(), 1);
-        assert_eq!(iter.next(), Some((&"baz", &"bat")));
-        assert_eq!(iter.len(), 0);
-        assert_eq!(iter.next(), None);
+        // Ensure the digests don't match.
+        assert_ne!(first.root(), second.root());
+        assert_ne!(first.root(), third.root());
+        assert_ne!(second.root(), third.root());
     }
 
     #[test]
     fn prove() {
-        fn check<D: SupportedDigest, K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        fn check<D: SupportedDigest, K: VisitBytes + Clone, V: VisitBytes>(
             tree: &Map<D, K, V>,
             key: K,
             value: V,
             peers: usize,
         ) {
-            let proof = tree.prove(&key).unwrap();
-            assert_eq!(proof.peers.len(), peers);
-            assert!(proof.verify(tree.root(), &key, &&value));
+            let proof = tree.prove(&key.clone()).unwrap();
+            assert_eq!(proof.len(), peers);
+            assert_eq!(tree.root().clone(), proof.evaluate(&key, &value));
         }
 
         let first = Map::<Sha256, &'static str, &'static str>::default();

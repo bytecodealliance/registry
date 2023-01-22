@@ -11,7 +11,7 @@ pub use sha2::Sha256;
 pub use dynamic::{DynHash, DynHashParseError};
 pub use r#static::Hash;
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum HashAlgorithm {
@@ -23,12 +23,6 @@ impl fmt::Display for HashAlgorithm {
         match self {
             HashAlgorithm::Sha256 => write!(f, "sha256"),
         }
-    }
-}
-
-impl fmt::Debug for HashAlgorithm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
     }
 }
 

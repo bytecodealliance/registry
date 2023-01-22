@@ -12,14 +12,14 @@ use crate::{services::data, AnyError};
 
 #[derive(Clone)]
 pub struct Config {
-    log: Arc<RwLock<data::LogData>>,
-    map: Arc<RwLock<data::MapData>>,
+    log: Arc<RwLock<data::log::ProofData>>,
+    map: Arc<RwLock<data::map::MapData>>,
 }
 
 impl Config {
     pub fn new(
-        log: Arc<RwLock<data::LogData>>,
-        map: Arc<RwLock<data::MapData>>,) -> Self {
+        log: Arc<RwLock<data::log::ProofData>>,
+        map: Arc<RwLock<data::map::MapData>>,) -> Self {
         Self { log, map }
     }
 

@@ -1,6 +1,7 @@
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 
-use warg_protocol::{registry::LogLeaf, signing};
+use warg_crypto::signing;
+use warg_protocol::registry::LogLeaf;
 
 mod log;
 mod map;

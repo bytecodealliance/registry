@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
-use std::collections::HashSet;
-use warg_crypto::hash::{Hash, SupportedDigest};
+use std::{collections::HashSet, marker::PhantomData};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 use crate::{
     log::{
@@ -15,25 +15,31 @@ use crate::{
 };
 
 /// A collection of inclusion proof info
-pub struct ProofBundle<D>
+pub struct ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     log_length: u32,
     consistent_lengths: Vec<u32>,
     included_indices: Vec<Node>,
     hashes: Vec<(Node, Hash<D>)>,
+    /// Marker for value type
+    _digest: PhantomData<D>,
+    /// Marker for value type
+    _value: PhantomData<V>
 }
 
-impl<D> ProofBundle<D>
+impl<D, V> ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     /// Bundles inclusion proofs together
     pub fn bundle(
-        consistency_proofs: Vec<ConsistencyProof>,
-        inclusion_proofs: Vec<InclusionProof>,
-        data: &impl LogData<D>,
+        consistency_proofs: Vec<ConsistencyProof<D, V>>,
+        inclusion_proofs: Vec<InclusionProof<D, V>>,
+        data: &impl LogData<D, V>,
     ) -> Result<Self, Error> {
         let mut log_length = None;
         let mut nodes_needed = HashSet::new();
@@ -43,28 +49,31 @@ where
             consistent_lengths.push(proof.old_length as u32);
             for proof in proof.inclusions()? {
                 if let Some(log_length) = log_length {
-                    if log_length != proof.log_length {
+                    if log_length != proof.log_length() {
                         return Err(Error::msg("Bundle must contain proofs for the same root"));
                     }
                 } else {
-                    log_length = Some(proof.log_length);
+                    log_length = Some(proof.log_length());
                 }
                 let walk = proof.walk()?;
                 for walk_index in walk.nodes {
                     nodes_needed.insert(walk_index);
                 }
+                // Consistency proofs also need the leaf hash for each inclusion
+                // proof in order to construct the old root and perform evaluations
+                nodes_needed.insert(proof.leaf());
             }
         }
 
         let mut included_indices = Vec::new();
         for proof in inclusion_proofs.iter() {
-            included_indices.push(proof.leaf);
+            included_indices.push(proof.leaf());
             if let Some(log_length) = log_length {
-                if log_length != proof.log_length {
+                if log_length != proof.log_length() {
                     return Err(Error::msg("Bundle must contain proofs for the same root"));
                 }
             } else {
-                log_length = Some(proof.log_length);
+                log_length = Some(proof.log_length());
             }
             let walk = proof.walk()?;
             for walk_index in walk.nodes {
@@ -88,6 +97,8 @@ where
                 consistent_lengths,
                 included_indices,
                 hashes,
+                _digest: PhantomData,
+                _value: PhantomData
             })
         } else {
             return Err(Error::msg("A bundle can not be made from no proofs"));
@@ -95,25 +106,19 @@ where
     }
 
     /// Splits a bundle into its constituent inclusion proofs
-    pub fn unbundle(self) -> (SparseLogData<D>, Vec<ConsistencyProof>, Vec<InclusionProof>) {
-        let data = SparseLogData { data: self.hashes };
+    pub fn unbundle(self) -> (SparseLogData<D, V>, Vec<ConsistencyProof<D, V>>, Vec<InclusionProof<D, V>>) {
+        let data = SparseLogData::from(self.hashes);
 
         let c_proofs = self
             .consistent_lengths
             .into_iter()
-            .map(|len| ConsistencyProof {
-                old_length: len as usize,
-                new_length: self.log_length as usize,
-            })
+            .map(|len| ConsistencyProof::new(len as usize, self.log_length as usize))
             .collect();
 
         let i_proofs = self
             .included_indices
             .into_iter()
-            .map(|index| InclusionProof {
-                log_length: self.log_length as usize,
-                leaf: index,
-            })
+            .map(|index| InclusionProof::new(index, self.log_length as usize))
             .collect();
 
         (data, c_proofs, i_proofs)
@@ -133,11 +138,12 @@ where
     }
 }
 
-impl<D> From<ProofBundle<D>> for protobuf::LogProofBundle
+impl<D, V> From<ProofBundle<D, V>> for protobuf::LogProofBundle
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
-    fn from(value: ProofBundle<D>) -> Self {
+    fn from(value: ProofBundle<D, V>) -> Self {
         let included_indices = value
             .included_indices
             .into_iter()
@@ -148,7 +154,7 @@ where
             .into_iter()
             .map(|(node, hash)| protobuf::HashEntry {
                 index: node.0 as u32,
-                hash: hash.as_ref().to_vec(),
+                hash: hash.bytes().to_vec(),
             })
             .collect();
         protobuf::LogProofBundle {
@@ -160,9 +166,10 @@ where
     }
 }
 
-impl<D> TryFrom<protobuf::LogProofBundle> for ProofBundle<D>
+impl<D, V> TryFrom<protobuf::LogProofBundle> for ProofBundle<D, V>
 where
     D: SupportedDigest,
+    V: VisitBytes
 {
     type Error = Error;
 
@@ -181,6 +188,8 @@ where
             consistent_lengths: value.consistent_lengths,
             included_indices,
             hashes,
+            _digest: PhantomData,
+            _value: PhantomData
         };
         Ok(bundle)
     }

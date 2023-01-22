@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
+use warg_crypto::hash::{DynHash, Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
@@ -310,9 +310,7 @@ async fn fetch_since(
             .log
             .iter()
             .map(|env| {
-                let mut digest = Sha256::new();
-                digest.update(env.content_bytes());
-                let hash: Hash<Sha256> = digest.finalize().into();
+                let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
                 let dyn_hash: DynHash = hash.into();
                 dyn_hash
             })

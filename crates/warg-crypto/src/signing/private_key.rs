@@ -3,9 +3,11 @@ use base64;
 use core::fmt;
 use p256;
 use secrecy::{ExposeSecret, Secret, Zeroize};
-use signature::{Error as SignatureError, Signer};
+use signature::Signer;
 use std::str::FromStr;
 use thiserror::Error;
+
+pub use signature::Error as SignatureError;
 
 /// Represents a private key
 pub struct PrivateKey(Secret<PrivateKeyInner>);
@@ -32,7 +34,10 @@ impl PrivateKey {
     /// Sign a given message with this key
     pub fn sign(&self, msg: &[u8]) -> Result<Signature, SignatureError> {
         match self.0.expose_secret() {
-            PrivateKeyInner::EcdsaP256(key) => Ok(Signature::P256(key.try_sign(msg)?)),
+            PrivateKeyInner::EcdsaP256(key) => {
+                
+                Ok(Signature::P256(key.try_sign(msg)?))
+            },
         }
     }
 

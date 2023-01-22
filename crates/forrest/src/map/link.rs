@@ -1,13 +1,30 @@
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::{fork::Fork, node::Node};
+use super::node::Node;
 
-pub struct Link<D: SupportedDigest, K, V> {
-    pub hash: Hash<D>,
-    pub node: Node<D, K, V>,
+pub struct Link<D: SupportedDigest> {
+    hash: Hash<D>,
+    node: Node<D>,
 }
 
-impl<D: SupportedDigest, K, V> Clone for Link<D, K, V> {
+impl<D: SupportedDigest> Link<D> {
+    pub fn new(node: Node<D>) -> Self {
+        Self {
+            hash: node.hash(),
+            node
+        }
+    }
+
+    pub fn hash(&self) -> &Hash<D> {
+        &self.hash
+    }
+
+    pub fn node(&self) -> &Node<D> {
+        &self.node
+    }
+}
+
+impl<D: SupportedDigest> Clone for Link<D> {
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),
@@ -16,13 +33,13 @@ impl<D: SupportedDigest, K, V> Clone for Link<D, K, V> {
     }
 }
 
-impl<D: SupportedDigest, K, V> Default for Link<D, K, V> {
+impl<D: SupportedDigest> Default for Link<D> {
     fn default() -> Self {
-        let fork = Fork::default();
+        let node = Node::default();
 
         Link {
-            hash: fork.hash(),
-            node: Node::Fork(fork),
+            hash: node.hash(),
+            node,
         }
     }
 }

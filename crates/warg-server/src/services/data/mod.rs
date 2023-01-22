@@ -5,22 +5,19 @@ use warg_protocol::registry::LogLeaf;
 
 use super::transparency::VerifiableMap;
 
-mod log;
-mod map;
-
-pub use log::{LogData, ProofLog};
-pub use map::MapData;
+pub mod log;
+pub mod map;
 
 pub struct Input {
-    pub log_data: LogData,
+    pub log_data: log::ProofData,
     pub log_rx: Receiver<LogLeaf>,
-    pub map_data: MapData,
+    pub map_data: map::MapData,
     pub map_rx: Receiver<VerifiableMap>,
 }
 
 pub struct Output {
     pub map_data: Arc<RwLock<map::MapData>>,
-    pub log_data: Arc<RwLock<log::LogData>>,
+    pub log_data: Arc<RwLock<log::ProofData>>,
 
     pub map_data_handle: JoinHandle<()>,
     pub log_data_handle: JoinHandle<()>,

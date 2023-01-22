@@ -1,12 +1,8 @@
-use anyhow::Error;
-use signature::Error as SignatureError;
-
 mod proto_envelope;
 mod serde_envelope;
 pub mod operator;
 pub mod package;
 pub mod registry;
-pub mod signing;
 
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
 pub use serde_envelope::SerdeEnvelope;
@@ -32,35 +28,6 @@ pub mod protobuf {
             nanos: timestamp.nanos,
         }
     }
-}
-
-pub trait Signable: Encode {
-    const PREFIX: &'static [u8];
-
-    fn sign(
-        &self,
-        private_key: &signing::PrivateKey,
-    ) -> Result<signing::Signature, SignatureError> {
-        let prefixed_content = [Self::PREFIX, b":", self.encode().as_slice()].concat();
-        private_key.sign(&prefixed_content)
-    }
-
-    fn verify(
-        public_key: &signing::PublicKey,
-        msg: &[u8],
-        signature: &signing::Signature,
-    ) -> Result<(), SignatureError> {
-        let prefixed_content = [Self::PREFIX, b":", msg].concat();
-        public_key.verify(&prefixed_content, signature)
-    }
-}
-
-pub trait Decode: Sized {
-    fn decode(bytes: &[u8]) -> Result<Self, Error>;
-}
-
-pub trait Encode {
-    fn encode(&self) -> Vec<u8>;
 }
 
 /// Helper module for serializing and deserializing timestamps.

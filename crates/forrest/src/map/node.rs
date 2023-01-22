@@ -1,32 +1,20 @@
-use core::marker::PhantomData;
-
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use warg_crypto::VisitBytes;
 use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::fork::Fork;
+use super::link::Link;
 use super::path::Path;
 use super::proof::Proof;
 
-pub enum Node<D: SupportedDigest, K, V> {
-    Leaf(Arc<(K, V)>),
-    Fork(Fork<D, K, V>),
+pub enum Node<D: SupportedDigest> {
+    Leaf(Hash<D>),
+    Fork(Fork<D>),
 }
 
-impl<D: SupportedDigest, K, V> From<Fork<D, K, V>> for Node<D, K, V> {
-    fn from(fork: Fork<D, K, V>) -> Self {
-        Self::Fork(fork)
-    }
-}
-
-impl<D: SupportedDigest, K, V> From<(K, V)> for Node<D, K, V> {
-    fn from(leaf: (K, V)) -> Self {
-        Self::Leaf(leaf.into())
-    }
-}
-
-impl<D: SupportedDigest, K, V> Clone for Node<D, K, V> {
+impl<D: SupportedDigest> Clone for Node<D> {
     fn clone(&self) -> Self {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
@@ -35,64 +23,46 @@ impl<D: SupportedDigest, K, V> Clone for Node<D, K, V> {
     }
 }
 
-impl<D: SupportedDigest, K, V> Default for Node<D, K, V> {
+impl<D: SupportedDigest> Default for Node<D> {
     fn default() -> Self {
         Self::Fork(Fork::default())
     }
 }
 
-impl<D: SupportedDigest, K, V> Node<D, K, V> {
-    pub fn get(&self, mut rhs: Path<D>) -> Option<&V> {
-        match (rhs.next(), self) {
-            (Some(idx), Self::Fork(fork)) => fork[idx].as_ref()?.node.get(rhs),
-            (None, Self::Leaf(leaf)) => Some(&leaf.1),
-            _ => None,
+impl<D: SupportedDigest> Node<D> {
+    pub fn hash(&self) -> Hash<D> {
+        match self {
+            Node::Leaf(hash) => hash.clone(),
+            Node::Fork(fork) => fork.hash(),
         }
     }
 
-    pub fn prove(&self, mut rhs: Path<D>) -> Option<Proof<D, &Hash<D>, V>> {
-        match (rhs.next(), self) {
+    pub fn prove<V: VisitBytes>(&self, mut path: Path<D>) -> Option<Proof<D, V>> {
+        match (path.next(), self) {
             (Some(idx), Self::Fork(fork)) => {
-                let mut proof = fork[idx].as_ref()?.node.prove(rhs)?;
-                let peer = fork[!idx].as_ref().map(|link| &link.hash);
+                let mut proof = fork[idx].as_ref()?.node().prove(path)?;
+                let peer = fork[idx.opposite()].as_ref().map(|link| link.hash());
 
-                // This is an optimization. The size of a proof is always
-                // known: it is the number of bits in the digest. Therefore,
-                // we can skip all leading nodes with no peer. The validator,
-                // can reconstruct this.
-                if !proof.peers.is_empty() || peer.is_some() {
-                    proof.peers.push(peer);
-                }
+                proof.push(peer.cloned());
 
                 Some(proof)
             }
 
-            (None, Self::Leaf(_)) => Some(Proof {
-                digest: PhantomData,
-                value: PhantomData,
-                peers: Vec::new(),
-            }),
+            (None, Self::Leaf(_)) => Some(Proof::new(Vec::new())),
 
             _ => None,
         }
     }
-}
 
-impl<D, K, V> Node<D, K, V>
-where
-    D: SupportedDigest,
-    K: AsRef<[u8]>,
-    V: AsRef<[u8]>,
-{
     /// A recursive function for setting the value in the tree.
     ///
     /// Returns:
     ///   * the new node that must replace the current node.
     ///   * whether or not this is a new entry in the map.
-    pub fn insert(&self, path: &mut Path<D>, leaf: (K, V)) -> (Self, bool) {
+    pub fn insert(&self, path: &mut Path<D>, leaf: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
-            None => (leaf.into(), matches!(self, Node::Fork(..))),
+            None => (Node::Leaf(leaf), matches!(self, Node::Fork(..))),
 
             // We are not at the end of the path. Recurse...
             Some(index) => match self.clone() {
@@ -100,12 +70,12 @@ where
                     // Choose the branch on the specified side.
                     let node = fork[index]
                         .as_ref()
-                        .map(|link| link.node.clone())
+                        .map(|link| link.node().clone())
                         .unwrap_or_default();
 
                     // Replace its value recursively.
                     let (node, new) = node.insert(path, leaf);
-                    fork[index] = Some(Arc::new(path.link(node)));
+                    fork[index] = Some(Arc::new(Link::new(node)));
                     (Node::Fork(fork), new)
                 }
 

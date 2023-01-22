@@ -4,48 +4,55 @@ use alloc::sync::Arc;
 
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::link::Link;
+use super::{link::Link, map::hash_branch, path::Side};
 
-pub struct Fork<D: SupportedDigest, K, V>([Option<Arc<Link<D, K, V>>>; 2]);
+pub struct Fork<D: SupportedDigest> {
+    left: Option<Arc<Link<D>>>,
+    right: Option<Arc<Link<D>>>
+}
 
-impl<D: SupportedDigest, K, V> Fork<D, K, V> {
+impl<D: SupportedDigest> Fork<D> {
     pub fn hash(&self) -> Hash<D> {
-        match &self.0 {
-            [Some(l), Some(r)] => D::new_with_prefix(&[0b11])
-                .chain_update(&*l.hash)
-                .chain_update(&*r.hash),
-
-            [Some(l), None] => D::new_with_prefix(&[0b10]).chain_update(&*l.hash),
-            [None, Some(r)] => D::new_with_prefix(&[0b01]).chain_update(&*r.hash),
-            [None, None] => D::new_with_prefix(&[0b00]),
-        }
-        .finalize()
-        .into()
+        let lhs = self.left.as_ref().map(|left| left.hash().clone());
+        let rhs = self.right.as_ref().map(|right| right.hash().clone());
+        hash_branch(lhs, rhs)
     }
 }
 
-impl<D: SupportedDigest, K, V> Clone for Fork<D, K, V> {
+impl<D: SupportedDigest> Clone for Fork<D> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            left: self.left.clone(),
+            right: self.right.clone()
+        }
     }
 }
 
-impl<D: SupportedDigest, K, V> Default for Fork<D, K, V> {
+impl<D: SupportedDigest> Default for Fork<D> {
     fn default() -> Self {
-        Self([None, None])
+        Self {
+            left: None,
+            right: None
+        }
     }
 }
 
-impl<D: SupportedDigest, K, V> Index<bool> for Fork<D, K, V> {
-    type Output = Option<Arc<Link<D, K, V>>>;
+impl<D: SupportedDigest> Index<Side> for Fork<D> {
+    type Output = Option<Arc<Link<D>>>;
 
-    fn index(&self, index: bool) -> &Self::Output {
-        &self.0[usize::from(index)]
+    fn index(&self, index: Side) -> &Self::Output {
+        match index {
+            Side::Left => &self.left,
+            Side::Right => &self.right,
+        }
     }
 }
 
-impl<D: SupportedDigest, K, V> IndexMut<bool> for Fork<D, K, V> {
-    fn index_mut(&mut self, index: bool) -> &mut Self::Output {
-        &mut self.0[usize::from(index)]
+impl<D: SupportedDigest> IndexMut<Side> for Fork<D> {
+    fn index_mut(&mut self, index: Side) -> &mut Self::Output {
+        match index {
+            Side::Left => &mut self.left,
+            Side::Right => &mut self.right,
+        }
     }
 }
