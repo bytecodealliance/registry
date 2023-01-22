@@ -156,6 +156,9 @@ enum Message {
         since: Option<DynHash>,
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
     },
+    GetLatestCheckpoint {
+        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>
+    }
 }
 
 impl CoreService {
@@ -312,6 +315,9 @@ impl CoreService {
                             .send(Err(Error::msg("Checkpoint not known")))
                             .unwrap();
                     }
+                },
+                Message::GetLatestCheckpoint { response } => {
+                    response.send(state.checkpoints.last().unwrap().clone()).unwrap()
                 }
             }
         }
@@ -560,6 +566,18 @@ impl CoreService {
                 root,
                 package_id,
                 since,
+                response: tx,
+            })
+            .await
+            .unwrap();
+
+        rx.await.unwrap()
+    }
+
+    pub async fn get_latest_checkpoint(&self) -> Arc<SerdeEnvelope<MapCheckpoint>> {
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(Message::GetLatestCheckpoint {
                 response: tx,
             })
             .await
