@@ -90,7 +90,7 @@ where
         }
     }
 
-    fn push(&mut self, entry: V) -> Node {
+    fn push(&mut self, entry: &V) -> Node {
         // Compute entry digest
         let leaf_digest = hash_leaf::<D>(entry);
 
@@ -181,7 +181,7 @@ mod tests {
         let mut roots = Vec::new();
 
         for i in 0..data.len() {
-            tree.push(data[i]);
+            tree.push(&data[i]);
 
             let naive_root = naive_merkle::<Sha256, _>(&data[..i + 1]);
 

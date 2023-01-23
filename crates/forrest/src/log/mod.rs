@@ -68,7 +68,7 @@ where
     fn checkpoint(&self) -> Checkpoint<D>;
 
     /// Push a new entry into the log.
-    fn push(&mut self, entry: V) -> Node;
+    fn push(&mut self, entry: &V) -> Node;
 }
 
 /// A point in the history of a log, represented by its length

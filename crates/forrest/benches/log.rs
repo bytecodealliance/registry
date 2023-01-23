@@ -8,7 +8,7 @@ use warg_crypto::hash::Sha256;
 fn run(items: impl Iterator<Item = [u8; 32]>) -> VecLog<Sha256, [u8; 32]> {
     let mut log: VecLog<Sha256, [u8; 32]> = VecLog::default();
     for item in items {
-        log.push(item);
+        log.push(&item);
     }
     log
 }
