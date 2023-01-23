@@ -35,7 +35,7 @@ pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let map_leaf = MapLeaf { record_id };
 
     let mut log = VerifiableLog::default();
-    log.push(log_leaf.clone());
+    log.push(&log_leaf);
 
     let map = VerifiableMap::default();
     let map = map.insert(log_id, map_leaf.clone());

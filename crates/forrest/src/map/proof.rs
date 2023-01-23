@@ -67,7 +67,7 @@ where
         let fill = repeat(None).take(path.len() - self.peers.len());
 
         // Calculate the leaf hash.
-        let mut hash = hash_leaf(key, &value);
+        let mut hash = hash_leaf(key, value);
 
         // Loop over each side and peer.
         let peers = fill.chain(self.peers.iter().cloned());

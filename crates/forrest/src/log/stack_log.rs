@@ -38,7 +38,7 @@ where
         }
     }
 
-    fn push(&mut self, entry: V) -> Node {
+    fn push(&mut self, entry: &V) -> Node {
         let node = Node(self.length * 2);
 
         let leaf_digest = hash_leaf::<D>(entry);
@@ -102,8 +102,8 @@ mod tests {
         ];
 
         for leaf in data {
-            vec_log.push(leaf);
-            stack_log.push(leaf);
+            vec_log.push(&leaf);
+            stack_log.push(&leaf);
 
             assert_eq!(vec_log.checkpoint(), stack_log.checkpoint());
         }

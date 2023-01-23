@@ -32,13 +32,13 @@ pub struct ProofData {
 impl ProofData {
     pub fn new(init: LogLeaf) -> Self {
         let mut log = ProofLog::default();
-        let init_node = log.push(init.clone());
+        let init_node = log.push(&init);
 
         let mut leaf_index = HashMap::new();
         let mut root_index = HashMap::new();
 
         let checkpoint = log.checkpoint();
-        leaf_index.insert(init, init_node.clone());
+        leaf_index.insert(init, init_node);
         root_index.insert(checkpoint.root(), checkpoint.length());
 
         Self {
@@ -104,7 +104,7 @@ pub fn process(input: Input) -> Output {
 
         while let Some(leaf) = log_rx.recv().await {
             let mut data = data.as_ref().blocking_write();
-            let node = data.log.push(leaf.clone());
+            let node = data.log.push(&leaf);
 
             let checkpoint = data.log.checkpoint();
             data.root_index

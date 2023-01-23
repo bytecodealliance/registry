@@ -327,8 +327,8 @@ mod tests {
     fn test_inc_even_2() {
         let mut log: VecLog<Sha256, u8> = VecLog::default();
 
-        log.push(100);
-        log.push(102);
+        log.push(&100);
+        log.push(&102);
 
         let inc_proof = InclusionProof::new(Node(0), 2);
         let expected = InclusionProofWalk {
@@ -346,9 +346,9 @@ mod tests {
     fn test_inc_odd_3() {
         let mut log: VecLog<Sha256, u8> = VecLog::default();
 
-        log.push(100);
-        log.push(102);
-        log.push(104);
+        log.push(&100);
+        log.push(&102);
+        log.push(&104);
 
         let root: Hash<Sha256> = hash_branch(log.as_ref()[1].clone(), log.as_ref()[4].clone());
 
@@ -390,13 +390,13 @@ mod tests {
     fn test_inc_odd_7() {
         let mut log: VecLog<Sha256, u8> = VecLog::default();
 
-        log.push(100);
-        log.push(102);
-        log.push(104);
-        log.push(106);
-        log.push(108);
-        log.push(110);
-        log.push(112);
+        log.push(&100);
+        log.push(&102);
+        log.push(&104);
+        log.push(&106);
+        log.push(&108);
+        log.push(&110);
+        log.push(&112);
 
         let artificial_branch: Hash<Sha256> =
             hash_branch(log.as_ref()[9].clone(), log.as_ref()[12].clone());

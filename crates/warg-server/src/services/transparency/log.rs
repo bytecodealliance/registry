@@ -35,7 +35,7 @@ pub fn process(input: Input) -> Output {
             mut log_rx,
         } = input;
         while let Some(leaf) = log_rx.recv().await {
-            log.push(leaf.clone());
+            log.push(&leaf);
 
             let checkpoint = log.checkpoint();
             let log_root: DynHash = checkpoint.root().into();
