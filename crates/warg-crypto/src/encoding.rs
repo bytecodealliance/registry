@@ -1,7 +1,7 @@
 use signature::Error as SignatureError;
 
 use crate::signing;
-use crate::{VisitBytes, ByteVisitor};
+use crate::{ByteVisitor, VisitBytes};
 
 pub trait Encode {
     fn encode(&self) -> Vec<u8>;
@@ -9,7 +9,7 @@ pub trait Encode {
 
 #[derive(Default)]
 struct EncodingVisitor {
-    bytes: Vec<u8>
+    bytes: Vec<u8>,
 }
 
 impl ByteVisitor for EncodingVisitor {
@@ -19,8 +19,9 @@ impl ByteVisitor for EncodingVisitor {
 }
 
 impl<T> Encode for T
-where T: VisitBytes {
-
+where
+    T: VisitBytes,
+{
     fn encode(&self) -> Vec<u8> {
         let mut visitor = EncodingVisitor::default();
         self.visit(&mut visitor);

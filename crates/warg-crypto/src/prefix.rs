@@ -11,20 +11,20 @@ pub trait VisitPrefixEncode {
 
 pub struct PrefixEncodeVisitor<'a, BV>
 where
-    BV: ?Sized + ByteVisitor
+    BV: ?Sized + ByteVisitor,
 {
     buffer: [u8; 10],
-    inner: &'a mut BV
-} 
+    inner: &'a mut BV,
+}
 
 impl<'a, BV> PrefixEncodeVisitor<'a, BV>
 where
-    BV: ?Sized + ByteVisitor
+    BV: ?Sized + ByteVisitor,
 {
     pub fn new(inner: &'a mut BV) -> Self {
         Self {
             buffer: [0u8; 10],
-            inner
+            inner,
         }
     }
 

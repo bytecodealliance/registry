@@ -5,8 +5,8 @@ use std::{
     fs::{self, DirEntry},
     path::Path,
 };
-use warg_crypto::signing;
 use warg_crypto::hash::HashAlgorithm;
+use warg_crypto::signing;
 use warg_protocol::{
     operator::{self, Validator},
     protobuf, ProtoEnvelope,

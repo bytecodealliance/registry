@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::{signing, Signable};
 
 use crate::ProtoEnvelope;
 
@@ -185,12 +185,11 @@ impl Validator {
             .ok_or(ValidationError::InitialRecordDoesNotInit)?;
 
         // Validate the envelope key id
-        let key =
-            self.keys
-                .get(envelope.key_id())
-                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                })?;
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
 
         // Validate the envelope signature
         model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
@@ -480,10 +479,10 @@ impl Validator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use warg_crypto::signing::generate_p256_pair;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
     use warg_crypto::hash::HashAlgorithm;
+    use warg_crypto::signing::generate_p256_pair;
 
     #[test]
     fn test_validate_base_log() {

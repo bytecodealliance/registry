@@ -2,7 +2,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::extract::State;
-use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
+use axum::{
+    debug_handler,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
 use warg_crypto::hash::DynHash;
@@ -90,13 +96,11 @@ async fn fetch_logs(
 
 #[derive(Debug, Serialize)]
 struct CheckpointResponse {
-    checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>
+    checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
 }
 
 #[debug_handler]
-async fn fetch_checkpoint(
-    State(config): State<Config>,
-) -> Result<impl IntoResponse, AnyError> {
+async fn fetch_checkpoint(State(config): State<Config>) -> Result<impl IntoResponse, AnyError> {
     let checkpoint = config.core_service.get_latest_checkpoint().await;
     let response = CheckpointResponse { checkpoint };
     Ok((StatusCode::OK, Json(response)))

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -121,12 +121,11 @@ impl Validator {
             .ok_or(ValidationError::InitialRecordDoesNotInit)?;
 
         // Validate the envelope key id
-        let key =
-            self.keys
-                .get(envelope.key_id())
-                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                })?;
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
 
         // Validate the envelope signature
         model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
@@ -349,7 +348,7 @@ mod tests {
         };
 
         let envelope =
-        ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
         let mut validator = Validator::default();
         validator.validate(&envelope).unwrap();
 

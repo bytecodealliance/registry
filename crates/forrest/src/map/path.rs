@@ -1,6 +1,9 @@
 use core::iter::FusedIterator;
 
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 pub struct Path<D: SupportedDigest> {
     all: Hash<D>,
@@ -13,7 +16,7 @@ pub enum Side {
     /// Side corresponding to the bit value 0
     Left,
     /// Side corresponding to the bit value 1
-    Right
+    Right,
 }
 
 impl Side {
@@ -93,7 +96,7 @@ mod tests {
         match num {
             0 => Side::Left,
             1 => Side::Right,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 

@@ -11,7 +11,7 @@ impl<D: SupportedDigest> Link<D> {
     pub fn new(node: Node<D>) -> Self {
         Self {
             hash: node.hash(),
-            node
+            node,
         }
     }
 

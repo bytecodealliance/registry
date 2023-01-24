@@ -2,8 +2,8 @@ use core::fmt::{Debug, Formatter};
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use warg_crypto::VisitBytes;
 use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::VisitBytes;
 
 use super::link::Link;
 use super::path::Path;
@@ -80,19 +80,19 @@ pub struct Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     link: Link<D>,
     unknown_field: usize,
     _key: PhantomData<K>,
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     pub(crate) fn new(link: Link<D>, len: usize) -> Self {
         Self {
@@ -108,7 +108,7 @@ impl<D, K, V> Clone for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn clone(&self) -> Self {
         Self {
@@ -124,7 +124,7 @@ impl<D, K, V> Default for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn default() -> Self {
         Self {
@@ -140,14 +140,15 @@ impl<D, K, V> Eq for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
-{}
+    V: VisitBytes,
+{
+}
 
 impl<D, K, V> PartialEq for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn eq(&self, other: &Self) -> bool {
         self.link.hash() == other.link.hash()
@@ -158,7 +159,7 @@ impl<D, K, V> core::hash::Hash for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.link.hash().hash(state);
@@ -169,7 +170,7 @@ impl<D, K, V> Debug for Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("Map({:?})", self.link.hash()))
@@ -180,7 +181,7 @@ impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// The hash of the root of the tree.
     ///
@@ -262,7 +263,7 @@ where
 /// ```
 pub(crate) fn hash_branch<D>(lhs: Option<Hash<D>>, rhs: Option<Hash<D>>) -> Hash<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     match (lhs, rhs) {
         (Some(left), Some(right)) => Hash::of(&(0b11, left, right)),

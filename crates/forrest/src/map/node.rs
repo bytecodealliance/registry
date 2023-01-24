@@ -1,8 +1,8 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use warg_crypto::VisitBytes;
 use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::VisitBytes;
 
 use super::fork::Fork;
 use super::link::Link;

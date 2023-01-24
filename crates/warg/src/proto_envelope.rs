@@ -1,9 +1,9 @@
+use crate::protobuf;
 use anyhow::Error;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use crate::protobuf;
 
 use warg_crypto::{signing, Decode, Signable};
 
@@ -128,7 +128,8 @@ pub struct ProtoEnvelopeBody {
 }
 
 impl<Content> TryFrom<ProtoEnvelopeBody> for ProtoEnvelope<Content>
-where Content: Decode
+where
+    Content: Decode,
 {
     type Error = Error;
 
@@ -138,7 +139,7 @@ where Content: Decode
             contents,
             content_bytes: value.content_bytes,
             key_id: value.key_id,
-            signature: value.signature
+            signature: value.signature,
         };
         Ok(envelope)
     }
@@ -149,7 +150,7 @@ impl<Content> From<ProtoEnvelope<Content>> for ProtoEnvelopeBody {
         ProtoEnvelopeBody {
             content_bytes: value.content_bytes,
             key_id: value.key_id,
-            signature: value.signature
+            signature: value.signature,
         }
     }
 }

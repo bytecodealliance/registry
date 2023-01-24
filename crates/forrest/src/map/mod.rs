@@ -24,7 +24,10 @@ pub use proof_bundle::ProofBundle;
 
 #[cfg(test)]
 mod test {
-    use warg_crypto::{hash::{Sha256, SupportedDigest, Hash}, VisitBytes};
+    use warg_crypto::{
+        hash::{Hash, Sha256, SupportedDigest},
+        VisitBytes,
+    };
 
     use super::Map;
 

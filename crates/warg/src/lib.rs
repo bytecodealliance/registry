@@ -1,8 +1,8 @@
-mod proto_envelope;
-mod serde_envelope;
 pub mod operator;
 pub mod package;
+mod proto_envelope;
 pub mod registry;
+mod serde_envelope;
 
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
 pub use serde_envelope::SerdeEnvelope;

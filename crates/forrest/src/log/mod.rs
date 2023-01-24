@@ -19,13 +19,19 @@ mod sparse_data;
 mod stack_log;
 mod vec_log;
 
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 pub use node::{Node, Side};
+pub use proof::{
+    ConsistencyProof, ConsistencyProofError, InclusionProof, InclusionProofError,
+    InclusionProofWalk,
+};
+pub use proof_bundle::ProofBundle;
 pub use stack_log::StackLog;
 pub use vec_log::VecLog;
-pub use proof::{ConsistencyProof, ConsistencyProofError, InclusionProof, InclusionProofWalk, InclusionProofError};
-pub use proof_bundle::ProofBundle;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to
@@ -62,7 +68,7 @@ pub use proof_bundle::ProofBundle;
 pub trait LogBuilder<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// Get the checkpoint (hash and length) of the log at this point.
     fn checkpoint(&self) -> Checkpoint<D>;
@@ -111,7 +117,7 @@ where
 pub trait LogData<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// Does this hash exist in the collection?
     fn has_hash(&self, node: Node) -> bool;
@@ -143,7 +149,10 @@ pub(crate) fn hash_leaf<D: SupportedDigest>(data: impl VisitBytes) -> Hash<D> {
 }
 
 /// Compute the hash for a branch in a tree using a given Digest algorithm.
-pub(crate) fn hash_branch<D: SupportedDigest>(left: impl VisitBytes, right: impl VisitBytes) -> Hash<D> {
+pub(crate) fn hash_branch<D: SupportedDigest>(
+    left: impl VisitBytes,
+    right: impl VisitBytes,
+) -> Hash<D> {
     let input = (1u8, left, right);
     Hash::of(&input)
 }

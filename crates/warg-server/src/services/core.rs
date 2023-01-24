@@ -51,7 +51,7 @@ impl State {
             validator,
             log,
             records,
-            checkpoint_indices
+            checkpoint_indices,
         };
         Self {
             checkpoints,
@@ -157,8 +157,8 @@ enum Message {
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
     },
     GetLatestCheckpoint {
-        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>
-    }
+        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>,
+    },
 }
 
 impl CoreService {
@@ -315,10 +315,10 @@ impl CoreService {
                             .send(Err(Error::msg("Checkpoint not known")))
                             .unwrap();
                     }
-                },
-                Message::GetLatestCheckpoint { response } => {
-                    response.send(state.checkpoints.last().unwrap().clone()).unwrap()
                 }
+                Message::GetLatestCheckpoint { response } => response
+                    .send(state.checkpoints.last().unwrap().clone())
+                    .unwrap(),
             }
         }
 
@@ -439,8 +439,7 @@ fn fetch_package_records(
 }
 
 fn get_record_index<R>(log: &Vec<Arc<ProtoEnvelope<R>>>, hash: DynHash) -> Result<usize, Error> {
-    log
-        .iter()
+    log.iter()
         .map(|env| {
             let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
             let dyn_hash: DynHash = hash.into();
@@ -577,9 +576,7 @@ impl CoreService {
     pub async fn get_latest_checkpoint(&self) -> Arc<SerdeEnvelope<MapCheckpoint>> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(Message::GetLatestCheckpoint {
-                response: tx,
-            })
+            .send(Message::GetLatestCheckpoint { response: tx })
             .await
             .unwrap();
 

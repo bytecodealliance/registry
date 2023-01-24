@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 
 use alloc::{vec, vec::Vec};
 
-use warg_crypto::VisitBytes;
 use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::VisitBytes;
 
 use super::node::{Node, Side};
 use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, LogBuilder, LogData};
@@ -15,14 +15,14 @@ use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, LogBuilder, LogData}
 pub struct VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// The number of entries
     length: usize,
     /// The tree data structure
     tree: Vec<Hash<D>>,
     /// Marker for value type
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 /// Height is the number of child-edges between the node and leaves
@@ -32,7 +32,7 @@ where
 impl<D, V> VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn get_digest(&self, node: Node) -> Hash<D> {
         self.tree[node.index()].clone()
@@ -67,13 +67,13 @@ where
 impl<D, V> Default for VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn default() -> Self {
         VecLog {
             length: 0,
             tree: vec![],
-            _value: PhantomData
+            _value: PhantomData,
         }
     }
 }
@@ -81,7 +81,7 @@ where
 impl<D, V> LogBuilder<D, V> for VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn checkpoint(&self) -> Checkpoint<D> {
         Checkpoint {
@@ -127,7 +127,7 @@ where
 impl<D, V> AsRef<[Hash<D>]> for VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn as_ref(&self) -> &[Hash<D>] {
         &self.tree[..]
@@ -137,7 +137,7 @@ where
 impl<D, V> LogData<D, V> for VecLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
         self.tree.get(node.index()).map(|h| h.clone())

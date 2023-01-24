@@ -2,8 +2,8 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
 
-use warg_crypto::signing;
 use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::signing;
 
 /// A operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]

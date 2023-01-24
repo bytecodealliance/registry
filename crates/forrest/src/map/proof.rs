@@ -1,9 +1,15 @@
 use alloc::vec::Vec;
 use core::{iter::repeat, marker::PhantomData};
 
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
-use super::{path::{Path, Side}, map::{hash_leaf, hash_branch}};
+use super::{
+    map::{hash_branch, hash_leaf},
+    path::{Path, Side},
+};
 
 /// An inclusion proof of the specified value in a map
 ///
@@ -25,7 +31,7 @@ use super::{path::{Path, Side}, map::{hash_leaf, hash_branch}};
 pub struct Proof<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     value: PhantomData<V>,
     peers: Vec<Option<Hash<D>>>,
@@ -34,7 +40,7 @@ where
 impl<D, V> Proof<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     pub(crate) fn new(peers: Vec<Option<Hash<D>>>) -> Self {
         Self {
@@ -85,7 +91,7 @@ where
 impl<D, V> From<Proof<D, V>> for Vec<Option<Hash<D>>>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn from(value: Proof<D, V>) -> Self {
         value.peers
