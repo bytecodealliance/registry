@@ -2485,6 +2485,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "warg-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap 4.0.32",
+ "forrest",
+ "indexmap",
+ "reqwest",
+ "serde",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "warg-crypto",
+ "warg-protocol",
+ "warg-server",
+]
+
+[[package]]
 name = "warg-crypto"
 version = "0.1.0"
 dependencies = [
@@ -2533,10 +2553,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.13.1",
  "clap 4.0.32",
  "forrest",
  "futures",
+ "indexmap",
  "reqwest",
  "serde",
  "tempfile",

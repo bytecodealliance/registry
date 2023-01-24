@@ -20,7 +20,7 @@ mod proof_bundle;
 
 pub use map::Map;
 pub use proof::Proof;
-pub use proof_bundle::ProofBundle;
+pub use proof_bundle::ProofBundle as MapProofBundle;
 
 #[cfg(test)]
 mod test {

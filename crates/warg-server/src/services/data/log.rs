@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use forrest::log::{LogBuilder, LogData, Node, ProofBundle, VecLog};
+use forrest::log::{LogBuilder, LogData, LogProofBundle, Node, VecLog};
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
 
@@ -53,7 +53,7 @@ impl ProofData {
         &self,
         old_root: Hash<Sha256>,
         new_root: Hash<Sha256>,
-    ) -> Result<ProofBundle<Sha256, LogLeaf>, Error> {
+    ) -> Result<LogProofBundle<Sha256, LogLeaf>, Error> {
         let old_len = self
             .root_index
             .get(&old_root)
@@ -64,7 +64,7 @@ impl ProofData {
             .ok_or(Error::msg("New root not found"))?;
 
         let proof = self.log.prove_consistency(*old_len, *new_len);
-        let bundle = ProofBundle::bundle(vec![proof], vec![], &self.log)?;
+        let bundle = LogProofBundle::bundle(vec![proof], vec![], &self.log)?;
         Ok(bundle)
     }
 
@@ -72,8 +72,8 @@ impl ProofData {
     pub fn inclusion(
         &self,
         root: Hash<Sha256>,
-        leaves: Vec<LogLeaf>,
-    ) -> Result<ProofBundle<Sha256, LogLeaf>, Error> {
+        leaves: &[LogLeaf],
+    ) -> Result<LogProofBundle<Sha256, LogLeaf>, Error> {
         let log_length = self
             .root_index
             .get(&root)
@@ -84,12 +84,12 @@ impl ProofData {
             let node = self
                 .leaf_index
                 .get(&leaf)
-                .ok_or(Error::msg("Leaf not found"))?
+                .ok_or(Error::msg("Leaf not found with provided root"))?
                 .clone();
             let proof = self.log.prove_inclusion(node, log_length);
             proofs.push(proof);
         }
-        let bundle = ProofBundle::bundle(vec![], proofs, &self.log)?;
+        let bundle = LogProofBundle::bundle(vec![], proofs, &self.log)?;
         Ok(bundle)
     }
 }

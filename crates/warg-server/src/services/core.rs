@@ -479,7 +479,7 @@ impl CoreService {
 
     pub async fn get_package_record_status(
         &self,
-        package_name: String,
+        package_name: &str,
         record_id: RecordId,
     ) -> RecordState {
         let package_id = LogId::package_log::<Sha256>(&package_name);

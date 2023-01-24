@@ -32,6 +32,7 @@ pub use proof::{
 pub use proof_bundle::ProofBundle;
 pub use stack_log::StackLog;
 pub use vec_log::VecLog;
+pub use proof_bundle::ProofBundle as LogProofBundle;
 
 /// A [merkle tree][0] log data type based on [DAT][1].
 /// where the merkle tree computation is conformant to

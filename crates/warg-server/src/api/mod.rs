@@ -1,4 +1,4 @@
-pub(crate) mod content;
-pub(crate) mod fetch;
-pub(crate) mod package;
-pub(crate) mod proof;
+pub mod content;
+pub mod fetch;
+pub mod package;
+pub mod proof;

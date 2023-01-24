@@ -158,7 +158,7 @@ where
     pub fn evaluate_value(
         &self,
         hashes: &impl LogData<D, V>,
-        value: V,
+        value: &V
     ) -> Result<Hash<D>, InclusionProofError> {
         self.evaluate_hash(hashes, hash_leaf(value))
     }
@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(inc_proof.walk().unwrap(), expected);
 
         assert_eq!(
-            inc_proof.evaluate_value(&log, 100).unwrap(),
+            inc_proof.evaluate_value(&log, &100).unwrap(),
             log.as_ref()[1].clone()
         );
     }
@@ -372,7 +372,7 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate_value(&log, 100).unwrap(), root);
+        assert_eq!(inc_proof.evaluate_value(&log, &100).unwrap(), root);
 
         // node 2
         let inc_proof = InclusionProof::new(Node(2), 3);
@@ -383,7 +383,7 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate_value(&log, 102u8).unwrap(), root);
+        assert_eq!(inc_proof.evaluate_value(&log, &102u8).unwrap(), root);
 
         // node 4
         let inc_proof = InclusionProof::new(Node(4), 3);
@@ -394,7 +394,7 @@ mod tests {
             upper_broots: 1,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate_value(&log, 104u8).unwrap(), root);
+        assert_eq!(inc_proof.evaluate_value(&log, &104u8).unwrap(), root);
     }
 
     #[test]
@@ -422,6 +422,6 @@ mod tests {
             upper_broots: 0,
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
-        assert_eq!(inc_proof.evaluate_value(&log, 106).unwrap(), root);
+        assert_eq!(inc_proof.evaluate_value(&log, &106).unwrap(), root);
     }
 }

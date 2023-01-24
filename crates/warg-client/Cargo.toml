@@ -1,22 +1,23 @@
 [package]
-name = "warg-server"
+name = "warg-client"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 anyhow = "1.0.68"
+thiserror = "1.0"
 axum = { version = "0.6.1", features = ["http2", "headers", "macros"] }
 clap = { version = "4.0.32", features = ["derive"] }
-futures = "0.3.25"
 serde = { version = "1.0.152", features = ["rc"] }
-tempfile = "3.3.0"
 tokio = { version = "1.23.1", features = ["full"] }
-tower-http = { version = "0.3.5", features = ["fs"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
+reqwest = { version = "0.11.14", features = ["json"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 
-warg-crypto ={ path = "../warg-crypto" }
+warg-crypto = { path = "../warg-crypto" }
+forrest = { path = "../forrest" }
 warg-protocol = { path = "../warg" }
-forrest ={ path = "../forrest" }
-reqwest = "0.11.14"
+warg-server ={ path = "../warg-server" }

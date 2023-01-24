@@ -1,6 +1,6 @@
-mod api;
+pub mod api;
 mod policy;
-mod services;
+pub mod services;
 
 use std::{fmt, path::PathBuf};
 
