@@ -11,7 +11,7 @@ mod model;
 mod validate;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use validate::{ValidationError, Validator};
+pub use validate::{Root, ValidationError, Validator};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;
