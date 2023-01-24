@@ -179,50 +179,12 @@ impl Validator {
     ) -> Result<Vec<DynHash>, ValidationError> {
         let snapshot = self.snapshot();
 
-        let mut op = || {
-            let record = envelope.as_ref();
-
-            // Validate previous hash
-            self.validate_record_hash(record)?;
-
-            // Validate version
-            self.validate_record_version(record)?;
-
-            // Validate timestamp
-            self.validate_record_timestamp(record)?;
-
-            // Validate entries
-            let contents =
-                self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
-
-            // At this point the digest algorithm must be set via an init entry
-            let algorithm = self
-                .algorithm
-                .ok_or(ValidationError::InitialRecordDoesNotInit)?;
-
-            // Validate the envelope key id
-            let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
-                ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                }
-            })?;
-
-            // Validate the envelope signature
-            model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
-
-            // Update the validator root
-            self.root = Some(Root {
-                digest: algorithm.digest(envelope.content_bytes()),
-                timestamp: record.timestamp,
-            });
-
-            Ok(contents)
-        };
-
-        op().map_err(|e| {
+        let result = self.validate_envelope(envelope);
+        if result.is_err() {
             self.rollback(snapshot);
-            e
-        })
+        }
+
+        result
     }
 
     /// Gets the releases known to the validator.
@@ -261,6 +223,49 @@ impl Validator {
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()
+    }
+
+    fn validate_envelope(
+        &mut self,
+        envelope: &ProtoEnvelope<model::PackageRecord>,
+    ) -> Result<Vec<DynHash>, ValidationError> {
+        let record = envelope.as_ref();
+
+        // Validate previous hash
+        self.validate_record_hash(record)?;
+
+        // Validate version
+        self.validate_record_version(record)?;
+
+        // Validate timestamp
+        self.validate_record_timestamp(record)?;
+
+        // Validate entries
+        let contents =
+            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+
+        // At this point the digest algorithm must be set via an init entry
+        let algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
+
+        // Validate the envelope signature
+        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+
+        // Update the validator root
+        self.root = Some(Root {
+            digest: algorithm.digest(envelope.content_bytes()),
+            timestamp: record.timestamp,
+        });
+
+        Ok(contents)
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {

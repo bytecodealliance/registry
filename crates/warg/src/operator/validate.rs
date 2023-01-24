@@ -115,49 +115,12 @@ impl Validator {
     ) -> Result<(), ValidationError> {
         let snapshot = self.snapshot();
 
-        let mut op = || -> Result<(), ValidationError> {
-            let record = envelope.as_ref();
-
-            // Validate previous hash
-            self.validate_record_hash(record)?;
-
-            // Validate version
-            self.validate_record_version(record)?;
-
-            // Validate timestamp
-            self.validate_record_timestamp(record)?;
-
-            // Validate entries
-            self.validate_record_entries(envelope.key_id(), &record.entries)?;
-
-            // At this point the digest algorithm must be set via an init entry
-            let algorithm = self
-                .algorithm
-                .ok_or(ValidationError::InitialRecordDoesNotInit)?;
-
-            // Validate the envelope key id
-            let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
-                ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                }
-            })?;
-
-            // Validate the envelope signature
-            model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
-
-            // Update the validator root
-            self.root = Some(Root {
-                digest: algorithm.digest(envelope.content_bytes()),
-                timestamp: record.timestamp,
-            });
-
-            Ok(())
-        };
-
-        op().map_err(|e| {
+        let result = self.validate_envelope(envelope);
+        if result.is_err() {
             self.rollback(snapshot);
-            e
-        })
+        }
+
+        result
     }
 
     /// Gets the public key of the given key id.
@@ -170,6 +133,48 @@ impl Validator {
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()
+    }
+
+    fn validate_envelope(
+        &mut self,
+        envelope: &ProtoEnvelope<model::OperatorRecord>,
+    ) -> Result<(), ValidationError> {
+        let record = envelope.as_ref();
+
+        // Validate previous hash
+        self.validate_record_hash(record)?;
+
+        // Validate version
+        self.validate_record_version(record)?;
+
+        // Validate timestamp
+        self.validate_record_timestamp(record)?;
+
+        // Validate entries
+        self.validate_record_entries(envelope.key_id(), &record.entries)?;
+
+        // At this point the digest algorithm must be set via an init entry
+        let algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
+
+        // Validate the envelope signature
+        model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+
+        // Update the validator root
+        self.root = Some(Root {
+            digest: algorithm.digest(envelope.content_bytes()),
+            timestamp: record.timestamp,
+        });
+
+        Ok(())
     }
 
     fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
