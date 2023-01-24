@@ -334,10 +334,8 @@ async fn new_record(
     transparency_tx: Sender<LogLeaf>,
 ) {
     let mut info = package_info.as_ref().blocking_lock();
-
     let record_id = RecordId::package_record::<Sha256>(&record);
-    let mut hypothetical = info.validator.clone();
-    match hypothetical.validate(&record) {
+    match info.validator.validate(&record) {
         Ok(contents) => {
             let provided_contents: HashSet<DynHash> = content_sources
                 .iter()
@@ -368,7 +366,6 @@ async fn new_record(
                 .await
                 .unwrap();
 
-            info.validator = hypothetical;
             info.log.push(record);
             info.records.insert(record_id, record_info);
 
