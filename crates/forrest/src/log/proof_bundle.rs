@@ -140,8 +140,8 @@ where
     }
 
     /// Parse a bundle from bytes using protobuf
-    pub fn decode(bytes: Vec<u8>) -> Result<Self, Error> {
-        let proto = protobuf::LogProofBundle::decode(bytes.as_slice())?;
+    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        let proto = protobuf::LogProofBundle::decode(bytes)?;
         let bundle = proto.try_into()?;
         Ok(bundle)
     }

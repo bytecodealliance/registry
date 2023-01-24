@@ -59,7 +59,7 @@ impl VisitBytes for MapLeaf {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogLeaf {
     pub log_id: LogId,
     pub record_id: RecordId,
@@ -83,7 +83,8 @@ impl VisitBytes for LogLeaf {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct LogId(DynHash);
 
 impl LogId {
@@ -118,7 +119,8 @@ impl AsRef<[u8]> for LogId {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct RecordId(DynHash);
 
 impl RecordId {

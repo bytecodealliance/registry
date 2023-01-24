@@ -39,8 +39,8 @@ where
     }
 
     /// Parse a bundle from bytes using protobuf
-    pub fn decode(bytes: Vec<u8>) -> Result<Self, Error> {
-        let proto = protobuf::MapProofBundle::decode(bytes.as_slice())?;
+    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        let proto = protobuf::MapProofBundle::decode(bytes)?;
         let bundle = proto.try_into()?;
         Ok(bundle)
     }

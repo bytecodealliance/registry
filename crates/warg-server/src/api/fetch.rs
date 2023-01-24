@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use warg_crypto::hash::DynHash;
@@ -36,37 +37,24 @@ impl Config {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RequestBody {
-    root: DynHash,
-    operator: Option<DynHash>,
-    packages: Vec<LogSince>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FetchRequest {
+    pub root: DynHash,
+    pub operator: Option<DynHash>,
+    pub packages: IndexMap<String, Option<DynHash>>,
 }
 
-#[derive(Debug, Deserialize)]
-struct LogSince {
-    name: String,
-    since: Option<DynHash>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ResponseBody {
-    operator: Vec<ProtoEnvelopeBody>,
-    packages: Vec<PackageResults>,
-}
-
-#[derive(Debug, Serialize)]
-struct PackageResults {
-    name: String,
-    records: Vec<ProtoEnvelopeBody>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FetchResponse {
+    pub operator: Vec<ProtoEnvelopeBody>,
+    pub packages: IndexMap<String, Vec<ProtoEnvelopeBody>>,
 }
 
 #[debug_handler]
 async fn fetch_logs(
     State(config): State<Config>,
-    Json(body): Json<RequestBody>,
+    Json(body): Json<FetchRequest>,
 ) -> Result<impl IntoResponse, AnyError> {
-    let mut packages = Vec::new();
     let operator = config
         .core_service
         .fetch_operator_records(body.root.clone(), body.operator)
@@ -76,27 +64,24 @@ async fn fetch_logs(
         .map(|env| env.as_ref().clone().into())
         .collect();
 
-    for LogSince { name, since } in body.packages {
+    let mut packages = IndexMap::new();
+    for (name, since) in body.packages.into_iter() {
         let records = config
             .core_service
             .fetch_package_records(body.root.clone(), name.clone(), since)
-            .await?;
-        let log_result = PackageResults {
-            name: name.clone(),
-            records: records
-                .into_iter()
-                .map(|env| env.as_ref().clone().into())
-                .collect(),
-        };
-        packages.push(log_result);
+            .await?
+            .into_iter()
+            .map(|env| env.as_ref().clone().into())
+            .collect();
+        packages.insert(name, records);
     }
-    let response = ResponseBody { operator, packages };
+    let response = FetchResponse { operator, packages };
     Ok((StatusCode::OK, Json(response)))
 }
 
-#[derive(Debug, Serialize)]
-struct CheckpointResponse {
-    checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CheckpointResponse {
+    pub checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
 }
 
 #[debug_handler]

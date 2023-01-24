@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
-use forrest::map::ProofBundle;
+use forrest::map::MapProofBundle;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use warg_crypto::hash::{Hash, Sha256};
-use warg_protocol::registry::{LogId, MapLeaf};
+use warg_protocol::registry::{LogId, LogLeaf, MapLeaf};
 
 use crate::services::transparency::VerifiableMap;
 
@@ -37,20 +37,27 @@ impl MapData {
     pub fn inclusion(
         &self,
         root: Hash<Sha256>,
-        log_ids: Vec<LogId>,
-    ) -> Result<ProofBundle<Sha256, MapLeaf>, Error> {
+        leaves: &[LogLeaf],
+    ) -> Result<MapProofBundle<Sha256, MapLeaf>, Error> {
         let map = self
             .map_index
             .get(&root)
             .ok_or(Error::msg("Unknown map root"))?;
 
         let mut proofs = Vec::new();
-        for log_id in log_ids {
+        for LogLeaf { log_id, record_id } in leaves {
             let proof = map.prove(&log_id).ok_or(Error::msg("Unable to prove"))?;
+            let leaf = MapLeaf {
+                record_id: record_id.clone(),
+            };
+            let found_root = proof.evaluate(log_id, &leaf);
+            if found_root != root {
+                return Err(Error::msg("Requested proof is incorrect"));
+            }
             proofs.push(proof);
         }
 
-        Ok(ProofBundle::bundle(proofs))
+        Ok(MapProofBundle::bundle(proofs))
     }
 }
 
