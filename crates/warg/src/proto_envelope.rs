@@ -103,16 +103,16 @@ impl<Content> AsRef<Content> for ProtoEnvelope<Content> {
 #[derive(Error, Debug)]
 pub enum ParseEnvelopeError {
     #[error("Failed to parse the outer envelope protobuf message")]
-    ProtobufEnvelopeParseError(#[from] prost::DecodeError),
+    ProtobufEnvelope(#[from] prost::DecodeError),
 
     #[error("Failed to parse envelope contents from bytes")]
-    ContentsParseError(#[from] Error),
+    Contents(#[from] Error),
 
     #[error("Failed to parse envelope key id")]
-    KeyIDParseError(#[from] DynHashParseError),
+    KeyID(#[from] DynHashParseError),
 
     #[error("Failed to parse envelope signature")]
-    SignatureParseError(#[from] signing::SignatureParseError),
+    Signature(#[from] signing::SignatureParseError),
 }
 
 #[serde_as]

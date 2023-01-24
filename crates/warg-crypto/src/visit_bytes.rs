@@ -22,9 +22,9 @@ impl<'a, VB: ?Sized + VisitBytes> VisitBytes for &'a VB {
     }
 }
 
-impl<'a> VisitBytes for u8 {
+impl VisitBytes for u8 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
-        visitor.visit_bytes(&[*self]);
+        visitor.visit_bytes([*self]);
     }
 }
 

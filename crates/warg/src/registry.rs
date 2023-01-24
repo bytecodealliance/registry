@@ -106,9 +106,9 @@ impl VisitBytes for LogId {
     }
 }
 
-impl Into<DynHash> for LogId {
-    fn into(self) -> DynHash {
-        self.0
+impl From<LogId> for DynHash {
+    fn from(id: LogId) -> Self {
+        id.0
     }
 }
 

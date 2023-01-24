@@ -3,7 +3,7 @@ use crate::ByteVisitor;
 pub trait VisitPrefixEncode {
     fn visit_pe<'a, BV: ?Sized + ByteVisitor>(&self, visitor: &mut PrefixEncodeVisitor<'a, BV>);
 
-    fn visit_bv<'a, BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit_bv<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         let mut prefix_visitor = PrefixEncodeVisitor::new(visitor);
         self.visit_pe(&mut prefix_visitor);
     }
