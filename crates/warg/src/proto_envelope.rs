@@ -1,9 +1,9 @@
+use crate::protobuf;
 use anyhow::Error;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use crate::protobuf;
 
 use warg_crypto::{signing, Decode, Signable};
 
@@ -103,16 +103,16 @@ impl<Content> AsRef<Content> for ProtoEnvelope<Content> {
 #[derive(Error, Debug)]
 pub enum ParseEnvelopeError {
     #[error("Failed to parse the outer envelope protobuf message")]
-    ProtobufEnvelopeParseError(#[from] prost::DecodeError),
+    ProtobufEnvelope(#[from] prost::DecodeError),
 
     #[error("Failed to parse envelope contents from bytes")]
-    ContentsParseError(#[from] Error),
+    Contents(#[from] Error),
 
     #[error("Failed to parse envelope key id")]
-    KeyIDParseError(#[from] DynHashParseError),
+    KeyID(#[from] DynHashParseError),
 
     #[error("Failed to parse envelope signature")]
-    SignatureParseError(#[from] signing::SignatureParseError),
+    Signature(#[from] signing::SignatureParseError),
 }
 
 #[serde_as]
@@ -128,7 +128,8 @@ pub struct ProtoEnvelopeBody {
 }
 
 impl<Content> TryFrom<ProtoEnvelopeBody> for ProtoEnvelope<Content>
-where Content: Decode
+where
+    Content: Decode,
 {
     type Error = Error;
 
@@ -138,7 +139,7 @@ where Content: Decode
             contents,
             content_bytes: value.content_bytes,
             key_id: value.key_id,
-            signature: value.signature
+            signature: value.signature,
         };
         Ok(envelope)
     }
@@ -149,7 +150,7 @@ impl<Content> From<ProtoEnvelope<Content>> for ProtoEnvelopeBody {
         ProtoEnvelopeBody {
             content_bytes: value.content_bytes,
             key_id: value.key_id,
-            signature: value.signature
+            signature: value.signature,
         }
     }
 }

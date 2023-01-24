@@ -51,7 +51,7 @@ impl State {
             validator,
             log,
             records,
-            checkpoint_indices
+            checkpoint_indices,
         };
         Self {
             checkpoints,
@@ -157,8 +157,8 @@ enum Message {
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
     },
     GetLatestCheckpoint {
-        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>
-    }
+        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>,
+    },
 }
 
 impl CoreService {
@@ -315,10 +315,10 @@ impl CoreService {
                             .send(Err(Error::msg("Checkpoint not known")))
                             .unwrap();
                     }
-                },
-                Message::GetLatestCheckpoint { response } => {
-                    response.send(state.checkpoints.last().unwrap().clone()).unwrap()
                 }
+                Message::GetLatestCheckpoint { response } => response
+                    .send(state.checkpoints.last().unwrap().clone())
+                    .unwrap(),
             }
         }
 
@@ -334,10 +334,8 @@ async fn new_record(
     transparency_tx: Sender<LogLeaf>,
 ) {
     let mut info = package_info.as_ref().blocking_lock();
-
     let record_id = RecordId::package_record::<Sha256>(&record);
-    let mut hypothetical = info.validator.clone();
-    match hypothetical.validate(&record) {
+    match info.validator.validate(&record) {
         Ok(contents) => {
             let provided_contents: HashSet<DynHash> = content_sources
                 .iter()
@@ -368,7 +366,6 @@ async fn new_record(
                 .await
                 .unwrap();
 
-            info.validator = hypothetical;
             info.log.push(record);
             info.records.insert(record_id, record_info);
 
@@ -439,8 +436,7 @@ fn fetch_package_records(
 }
 
 fn get_record_index<R>(log: &Vec<Arc<ProtoEnvelope<R>>>, hash: DynHash) -> Result<usize, Error> {
-    log
-        .iter()
+    log.iter()
         .map(|env| {
             let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
             let dyn_hash: DynHash = hash.into();
@@ -577,9 +573,7 @@ impl CoreService {
     pub async fn get_latest_checkpoint(&self) -> Arc<SerdeEnvelope<MapCheckpoint>> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(Message::GetLatestCheckpoint {
-                response: tx,
-            })
+            .send(Message::GetLatestCheckpoint { response: tx })
             .await
             .unwrap();
 

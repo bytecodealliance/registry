@@ -1,7 +1,7 @@
 use core::fmt;
+use rand_core::OsRng;
 use std::str::FromStr;
 use thiserror::Error;
-use rand_core::OsRng;
 
 use crate::hash::HashAlgorithm;
 
@@ -65,7 +65,6 @@ pub fn generate_p256_pair() -> (PublicKey, PrivateKey) {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-
 
     #[test]
     pub fn test_correct_key_passes_verify() {

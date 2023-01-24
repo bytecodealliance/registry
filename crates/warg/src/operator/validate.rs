@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -63,12 +63,12 @@ pub enum ValidationError {
 ///
 /// A root is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Root {
+pub struct Root {
     /// The digest of the last validated record.
-    digest: DynHash,
+    pub digest: DynHash,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
-    timestamp: SystemTime,
+    pub timestamp: SystemTime,
 }
 
 /// A validator for operator records.
@@ -82,8 +82,10 @@ pub struct Validator {
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
     /// The permissions of each key.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
     /// The keys known to the validator.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
@@ -93,11 +95,47 @@ impl Validator {
         Self::default()
     }
 
+    /// Gets the current root of the validator.
+    ///
+    /// Returns `None` if no records have been validated yet.
+    pub fn root(&self) -> &Option<Root> {
+        &self.root
+    }
+
     /// Validates an individual operator record.
     ///
     /// It is expected that `validate` is called in order of the
     /// records in the log.
+    ///
+    /// This operation is transactional: if any entry in the record
+    /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
+        &mut self,
+        envelope: &ProtoEnvelope<model::OperatorRecord>,
+    ) -> Result<(), ValidationError> {
+        let snapshot = self.snapshot();
+
+        let result = self.validate_envelope(envelope);
+        if result.is_err() {
+            self.rollback(snapshot);
+        }
+
+        result
+    }
+
+    /// Gets the public key of the given key id.
+    ///
+    /// Returns `None` if the key id is not recognized.
+    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
+        self.keys.get(key_id)
+    }
+
+    fn initialized(&self) -> bool {
+        // The package log is initialized if the hash algorithm is set
+        self.algorithm.is_some()
+    }
+
+    fn validate_envelope(
         &mut self,
         envelope: &ProtoEnvelope<model::OperatorRecord>,
     ) -> Result<(), ValidationError> {
@@ -121,12 +159,11 @@ impl Validator {
             .ok_or(ValidationError::InitialRecordDoesNotInit)?;
 
         // Validate the envelope key id
-        let key =
-            self.keys
-                .get(envelope.key_id())
-                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                })?;
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
 
         // Validate the envelope signature
         model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
@@ -138,18 +175,6 @@ impl Validator {
         });
 
         Ok(())
-    }
-
-    /// Gets the public key of the given key id.
-    ///
-    /// Returns `None` if the key id is not recognized.
-    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
-        self.keys.get(key_id)
-    }
-
-    fn initialized(&self) -> bool {
-        // The package log is initialized if the hash algorithm is set
-        self.algorithm.is_some()
     }
 
     fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
@@ -320,6 +345,45 @@ impl Validator {
             needed_permission: permission,
         })
     }
+
+    fn snapshot(&self) -> Snapshot {
+        let Self {
+            algorithm,
+            root,
+            permissions,
+            keys,
+        } = self;
+
+        Snapshot {
+            algorithm: *algorithm,
+            root: root.clone(),
+            permissions: permissions.len(),
+            keys: keys.len(),
+        }
+    }
+
+    fn rollback(&mut self, snapshot: Snapshot) {
+        let Snapshot {
+            algorithm,
+            root,
+            permissions,
+            keys,
+        } = snapshot;
+
+        self.algorithm = algorithm;
+        self.root = root;
+        self.permissions.truncate(permissions);
+        self.keys.truncate(keys);
+    }
+}
+
+/// Used for snapshotting a validator prior to performing
+/// validations.
+struct Snapshot {
+    algorithm: Option<HashAlgorithm>,
+    root: Option<Root>,
+    permissions: usize,
+    keys: usize,
 }
 
 #[cfg(test)]
@@ -349,7 +413,7 @@ mod tests {
         };
 
         let envelope =
-        ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
         let mut validator = Validator::default();
         validator.validate(&envelope).unwrap();
 
@@ -368,5 +432,73 @@ mod tests {
                 keys: IndexMap::from([(alice_id, alice_pub)]),
             }
         );
+    }
+
+    #[test]
+    fn test_rollback() {
+        let (alice_pub, alice_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
+        let (bob_pub, _) = generate_p256_pair();
+
+        let timestamp = SystemTime::now();
+        let record = model::OperatorRecord {
+            prev: None,
+            version: 0,
+            timestamp,
+            entries: vec![model::OperatorEntry::Init {
+                hash_algorithm: HashAlgorithm::Sha256,
+                key: alice_pub.clone(),
+            }],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+        let mut validator = Validator::default();
+        validator.validate(&envelope).unwrap();
+
+        let expected = Validator {
+            root: Some(Root {
+                digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+                timestamp,
+            }),
+            algorithm: Some(HashAlgorithm::Sha256),
+            permissions: IndexMap::from([(
+                alice_id.clone(),
+                IndexSet::from([model::Permission::Commit]),
+            )]),
+            keys: IndexMap::from([(alice_id, alice_pub)]),
+        };
+
+        assert_eq!(validator, expected);
+
+        let record = model::OperatorRecord {
+            prev: Some(HashAlgorithm::Sha256.digest(envelope.content_bytes())),
+            version: 0,
+            timestamp: SystemTime::now(),
+            entries: vec![
+                // This entry is valid
+                model::OperatorEntry::GrantFlat {
+                    key: bob_pub,
+                    permission: model::Permission::Commit,
+                },
+                // This entry is not valid
+                model::OperatorEntry::RevokeFlat {
+                    key_id: "not-valid".to_string().into(),
+                    permission: model::Permission::Commit,
+                },
+            ],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+
+        // This validation should fail and the validator state should remain unchanged
+        match validator.validate(&envelope).unwrap_err() {
+            ValidationError::PermissionNotFoundToRevoke { .. } => {}
+            _ => panic!("expected a different error"),
+        }
+
+        // The validator should not have changed
+        assert_eq!(validator, expected);
     }
 }

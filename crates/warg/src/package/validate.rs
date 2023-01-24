@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::{signing, Signable};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::{signing, Signable};
 
 use crate::ProtoEnvelope;
 
@@ -124,12 +124,12 @@ impl Release {
 ///
 /// A root is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Root {
+pub struct Root {
     /// The digest of the last validated record.
-    digest: DynHash,
+    pub digest: DynHash,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
-    timestamp: SystemTime,
+    pub timestamp: SystemTime,
 }
 
 /// A validator for package records.
@@ -143,10 +143,13 @@ pub struct Validator {
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<Root>,
     /// The permissions of each key.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
     /// The releases in the package log.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     releases: IndexMap<Version, Release>,
     /// The keys known to the validator.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
@@ -156,52 +159,32 @@ impl Validator {
         Self::default()
     }
 
+    /// Gets the current root of the validator.
+    ///
+    /// Returns `None` if no records have been validated yet.
+    pub fn root(&self) -> &Option<Root> {
+        &self.root
+    }
+
     /// Validates an individual package record.
     ///
     /// It is expected that `validate` is called in order of the
     /// records in the log.
+    ///
+    /// This operation is transactional: if any entry in the record
+    /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
-        let record = envelope.as_ref();
+        let snapshot = self.snapshot();
 
-        // Validate previous hash
-        self.validate_record_hash(record)?;
+        let result = self.validate_envelope(envelope);
+        if result.is_err() {
+            self.rollback(snapshot);
+        }
 
-        // Validate version
-        self.validate_record_version(record)?;
-
-        // Validate timestamp
-        self.validate_record_timestamp(record)?;
-
-        // Validate entries
-        let contents =
-            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
-
-        // At this point the digest algorithm must be set via an init entry
-        let algorithm = self
-            .algorithm
-            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
-
-        // Validate the envelope key id
-        let key =
-            self.keys
-                .get(envelope.key_id())
-                .ok_or_else(|| ValidationError::KeyIDNotRecognized {
-                    key_id: envelope.key_id().clone(),
-                })?;
-
-        // Validate the envelope signature
-        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
-
-        // Update the validator root
-        self.root = Some(Root {
-            digest: algorithm.digest(envelope.content_bytes()),
-            timestamp: record.timestamp,
-        });
-
-        Ok(contents)
+        result
     }
 
     /// Gets the releases known to the validator.
@@ -240,6 +223,49 @@ impl Validator {
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()
+    }
+
+    fn validate_envelope(
+        &mut self,
+        envelope: &ProtoEnvelope<model::PackageRecord>,
+    ) -> Result<Vec<DynHash>, ValidationError> {
+        let record = envelope.as_ref();
+
+        // Validate previous hash
+        self.validate_record_hash(record)?;
+
+        // Validate version
+        self.validate_record_version(record)?;
+
+        // Validate timestamp
+        self.validate_record_timestamp(record)?;
+
+        // Validate entries
+        let contents =
+            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+
+        // At this point the digest algorithm must be set via an init entry
+        let algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
+
+        // Validate the envelope signature
+        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+
+        // Update the validator root
+        self.root = Some(Root {
+            digest: algorithm.digest(envelope.content_bytes()),
+            timestamp: record.timestamp,
+        });
+
+        Ok(contents)
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
@@ -475,15 +501,59 @@ impl Validator {
             needed_permission: permission,
         })
     }
+
+    fn snapshot(&self) -> Snapshot {
+        let Self {
+            algorithm,
+            root,
+            releases,
+            permissions,
+            keys,
+        } = self;
+
+        Snapshot {
+            algorithm: *algorithm,
+            root: root.clone(),
+            releases: releases.len(),
+            permissions: permissions.len(),
+            keys: keys.len(),
+        }
+    }
+
+    fn rollback(&mut self, snapshot: Snapshot) {
+        let Snapshot {
+            algorithm,
+            root,
+            releases,
+            permissions,
+            keys,
+        } = snapshot;
+
+        self.algorithm = algorithm;
+        self.root = root;
+        self.releases.truncate(releases);
+        self.permissions.truncate(permissions);
+        self.keys.truncate(keys);
+    }
+}
+
+/// Used for snapshotting a validator prior to performing
+/// validations.
+struct Snapshot {
+    algorithm: Option<HashAlgorithm>,
+    root: Option<Root>,
+    releases: usize,
+    permissions: usize,
+    keys: usize,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use warg_crypto::signing::generate_p256_pair;
     use pretty_assertions::assert_eq;
     use std::time::{Duration, SystemTime};
     use warg_crypto::hash::HashAlgorithm;
+    use warg_crypto::signing::generate_p256_pair;
 
     #[test]
     fn test_validate_base_log() {
@@ -660,5 +730,74 @@ mod tests {
                 keys: IndexMap::from([(alice_id, alice_pub), (bob_id, bob_pub),]),
             }
         );
+    }
+
+    #[test]
+    fn test_rollback() {
+        let (alice_pub, alice_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
+        let (bob_pub, _) = generate_p256_pair();
+
+        let timestamp = SystemTime::now();
+        let record = model::PackageRecord {
+            prev: None,
+            version: 0,
+            timestamp,
+            entries: vec![model::PackageEntry::Init {
+                hash_algorithm: HashAlgorithm::Sha256,
+                key: alice_pub.clone(),
+            }],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+        let mut validator = Validator::default();
+        validator.validate(&envelope).unwrap();
+
+        let expected = Validator {
+            root: Some(Root {
+                digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+                timestamp,
+            }),
+            algorithm: Some(HashAlgorithm::Sha256),
+            releases: IndexMap::new(),
+            permissions: IndexMap::from([(
+                alice_id.clone(),
+                IndexSet::from([model::Permission::Release, model::Permission::Yank]),
+            )]),
+            keys: IndexMap::from([(alice_id, alice_pub)]),
+        };
+
+        assert_eq!(validator, expected);
+
+        let record = model::PackageRecord {
+            prev: Some(HashAlgorithm::Sha256.digest(envelope.content_bytes())),
+            version: 0,
+            timestamp: SystemTime::now(),
+            entries: vec![
+                // This entry is valid
+                model::PackageEntry::GrantFlat {
+                    key: bob_pub,
+                    permission: model::Permission::Release,
+                },
+                // This entry is not valid
+                model::PackageEntry::RevokeFlat {
+                    key_id: "not-valid".to_string().into(),
+                    permission: model::Permission::Release,
+                },
+            ],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+
+        // This validation should fail and the validator state should remain unchanged
+        match validator.validate(&envelope).unwrap_err() {
+            ValidationError::PermissionNotFoundToRevoke { .. } => {}
+            _ => panic!("expected a different error"),
+        }
+
+        // The validator should not have changed
+        assert_eq!(validator, expected);
     }
 }

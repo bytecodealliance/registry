@@ -2,8 +2,8 @@ use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
 
-use warg_crypto::{Decode, Encode, Signable};
 use warg_crypto::hash::DynHash;
+use warg_crypto::{Decode, Encode, Signable};
 
 use crate::protobuf;
 
@@ -11,7 +11,7 @@ mod model;
 mod validate;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use validate::{ValidationError, Validator};
+pub use validate::{Root, ValidationError, Validator};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;
@@ -171,9 +171,9 @@ mod tests {
 
     use std::time::SystemTime;
 
-    use warg_crypto::signing::generate_p256_pair;
     use crate::ProtoEnvelope;
     use warg_crypto::hash::HashAlgorithm;
+    use warg_crypto::signing::generate_p256_pair;
 
     #[test]
     fn test_envelope_roundtrip() {
@@ -201,14 +201,15 @@ mod tests {
         };
 
         let first_envelope =
-        ProtoEnvelope::signed_contents(&alice_priv, record).expect("Failed to sign envelope 1");
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("Failed to sign envelope 1");
 
         let bytes = first_envelope.to_protobuf();
 
-        let second_envelope: ProtoEnvelope<model::OperatorRecord> = match ProtoEnvelope::from_protobuf(bytes) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to create envelope 2: {:?}", error),
-        };
+        let second_envelope: ProtoEnvelope<model::OperatorRecord> =
+            match ProtoEnvelope::from_protobuf(bytes) {
+                Ok(value) => value,
+                Err(error) => panic!("Failed to create envelope 2: {:?}", error),
+            };
 
         assert_eq!(first_envelope, second_envelope);
     }

@@ -2,9 +2,12 @@ use std::marker::PhantomData;
 
 use alloc::vec::Vec;
 use thiserror::Error;
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
-use super::{hash_branch, node::Node, LogData, hash_leaf};
+use super::{hash_branch, hash_leaf, node::Node, LogData};
 
 /// A proof that a leaf is present for a root
 #[derive(Debug, Clone, PartialEq)]
@@ -16,7 +19,7 @@ pub struct InclusionProof<D: SupportedDigest, V: VisitBytes> {
     /// Marker for digest type
     _digest: PhantomData<D>,
     /// Marker for value type
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 /// An error occurring when attempting to validate an inclusion proof.
@@ -82,7 +85,7 @@ impl InclusionProofWalk {
 impl<D, V> InclusionProof<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     pub(crate) fn new(leaf: Node, log_length: usize) -> Self {
         Self {
@@ -155,7 +158,7 @@ where
     pub fn evaluate_value(
         &self,
         hashes: &impl LogData<D, V>,
-        value: V
+        value: V,
     ) -> Result<Hash<D>, InclusionProofError> {
         self.evaluate_hash(hashes, hash_leaf(value))
     }
@@ -167,7 +170,7 @@ where
     pub fn evaluate_hash(
         &self,
         hashes: &impl LogData<D, V>,
-        hash: Hash<D>
+        hash: Hash<D>,
     ) -> Result<Hash<D>, InclusionProofError> {
         let leaf = (self.leaf, hash);
         let walk = self.walk()?;
@@ -224,7 +227,7 @@ fn combine<D: SupportedDigest>(first: (Node, Hash<D>), second: (Node, Hash<D>)) 
 pub struct ConsistencyProof<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// The older of the two points
     pub old_length: usize,
@@ -233,7 +236,7 @@ where
     /// Marker for digest type
     _digest: PhantomData<D>,
     /// Marker for value type
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 /// Errors occurring when validating a consistency proof
@@ -250,13 +253,13 @@ pub enum ConsistencyProofError {
     InclusionError(#[from] InclusionProofError),
     /// Happens when two inclusion proofs are evaluated and produce different roots
     #[error("Constituent inclusion proofs diverge produce different roots")]
-    DivergingRoots
+    DivergingRoots,
 }
 
 impl<D, V> ConsistencyProof<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     pub(crate) fn new(old_length: usize, new_length: usize) -> Self {
         Self {
@@ -273,13 +276,15 @@ where
     /// Walks the inclusion proof, hashes each layer, returns the root hash.
     pub fn evaluate(
         &self,
-        hashes: &impl LogData<D, V>
+        hashes: &impl LogData<D, V>,
     ) -> Result<(Hash<D>, Hash<D>), ConsistencyProofError> {
         let mut old_broots = Vec::new();
         let mut new_root = None;
 
         for inc_proof in self.inclusions().unwrap() {
-            let leaf_hash = hashes.hash_for(inc_proof.leaf()).ok_or(ConsistencyProofError::HashNotKnown)?;
+            let leaf_hash = hashes
+                .hash_for(inc_proof.leaf())
+                .ok_or(ConsistencyProofError::HashNotKnown)?;
             old_broots.push(leaf_hash.clone());
             let found_root = inc_proof.evaluate_hash(hashes, leaf_hash)?;
             if let Some(previous_root) = &new_root {
@@ -291,7 +296,10 @@ where
             }
         }
 
-        let old_root = old_broots.into_iter().rev().reduce(|new, old| hash_branch(old, new));
+        let old_root = old_broots
+            .into_iter()
+            .rev()
+            .reduce(|new, old| hash_branch(old, new));
         // Unwrap is safe because the minimal consistency proof always has at least one inclusion proof
         let old_root = old_root.unwrap();
         let new_root = new_root.unwrap();
@@ -339,7 +347,10 @@ mod tests {
         };
         assert_eq!(inc_proof.walk().unwrap(), expected);
 
-        assert_eq!(inc_proof.evaluate_value(&log, 100).unwrap(), log.as_ref()[1].clone());
+        assert_eq!(
+            inc_proof.evaluate_value(&log, 100).unwrap(),
+            log.as_ref()[1].clone()
+        );
     }
 
     #[test]

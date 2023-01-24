@@ -1,11 +1,11 @@
 use digest::generic_array::GenericArray;
-use thiserror::Error;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use thiserror::Error;
 
 use std::fmt;
 
-use crate::{VisitBytes, ByteVisitor};
+use crate::{ByteVisitor, VisitBytes};
 
 use super::{Output, SupportedDigest};
 
@@ -15,12 +15,12 @@ pub struct Hash<D: SupportedDigest> {
 }
 
 struct HashVisitor<D: SupportedDigest> {
-    digest: D
+    digest: D,
 }
 
 impl<D> HashVisitor<D>
 where
-    D: SupportedDigest
+    D: SupportedDigest,
 {
     fn new() -> Self {
         HashVisitor { digest: D::new() }
@@ -28,7 +28,7 @@ where
 
     fn finalize(self) -> Hash<D> {
         Hash {
-            digest: self.digest.finalize()
+            digest: self.digest.finalize(),
         }
     }
 }
@@ -118,7 +118,7 @@ impl<D: SupportedDigest> TryFrom<Vec<u8>> for Hash<D> {
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("The provided vector was not the correct length")]
-pub struct  IncorrectLengthError;
+pub struct IncorrectLengthError;
 
 impl<D: SupportedDigest> Serialize for Hash<D> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

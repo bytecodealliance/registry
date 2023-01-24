@@ -2,7 +2,10 @@ use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
 use std::{collections::HashSet, marker::PhantomData};
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 use crate::{
     log::{
@@ -18,7 +21,7 @@ use crate::{
 pub struct ProofBundle<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     log_length: u32,
     consistent_lengths: Vec<u32>,
@@ -27,13 +30,13 @@ where
     /// Marker for value type
     _digest: PhantomData<D>,
     /// Marker for value type
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 impl<D, V> ProofBundle<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     /// Bundles inclusion proofs together
     pub fn bundle(
@@ -98,7 +101,7 @@ where
                 included_indices,
                 hashes,
                 _digest: PhantomData,
-                _value: PhantomData
+                _value: PhantomData,
             })
         } else {
             return Err(Error::msg("A bundle can not be made from no proofs"));
@@ -106,7 +109,13 @@ where
     }
 
     /// Splits a bundle into its constituent inclusion proofs
-    pub fn unbundle(self) -> (SparseLogData<D, V>, Vec<ConsistencyProof<D, V>>, Vec<InclusionProof<D, V>>) {
+    pub fn unbundle(
+        self,
+    ) -> (
+        SparseLogData<D, V>,
+        Vec<ConsistencyProof<D, V>>,
+        Vec<InclusionProof<D, V>>,
+    ) {
         let data = SparseLogData::from(self.hashes);
 
         let c_proofs = self
@@ -134,14 +143,14 @@ where
     pub fn decode(bytes: Vec<u8>) -> Result<Self, Error> {
         let proto = protobuf::LogProofBundle::decode(bytes.as_slice())?;
         let bundle = proto.try_into()?;
-        Ok(bundle) 
+        Ok(bundle)
     }
 }
 
 impl<D, V> From<ProofBundle<D, V>> for protobuf::LogProofBundle
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn from(value: ProofBundle<D, V>) -> Self {
         let included_indices = value
@@ -169,7 +178,7 @@ where
 impl<D, V> TryFrom<protobuf::LogProofBundle> for ProofBundle<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     type Error = Error;
 
@@ -189,7 +198,7 @@ where
             included_indices,
             hashes,
             _digest: PhantomData,
-            _value: PhantomData
+            _value: PhantomData,
         };
         Ok(bundle)
     }

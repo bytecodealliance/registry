@@ -1,7 +1,10 @@
 use std::marker::PhantomData;
 
 use alloc::vec::Vec;
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuilder};
 
@@ -10,18 +13,18 @@ use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuild
 pub struct StackLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     stack: Vec<(Node, Hash<D>)>,
     length: usize,
     /// Marker for value type
-    _value: PhantomData<V>
+    _value: PhantomData<V>,
 }
 
 impl<D, V> LogBuilder<D, V> for StackLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn checkpoint(&self) -> Checkpoint<D> {
         let root = self
@@ -54,7 +57,7 @@ where
 impl<D, V> StackLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn reduce(&mut self) {
         while self.stack.len() >= 2 {
@@ -77,10 +80,14 @@ where
 impl<D, V> Default for StackLog<D, V>
 where
     D: SupportedDigest,
-    V: VisitBytes
+    V: VisitBytes,
 {
     fn default() -> Self {
-        Self { stack: Default::default(), length: Default::default(), _value: Default::default() }
+        Self {
+            stack: Default::default(),
+            length: Default::default(),
+            _value: Default::default(),
+        }
     }
 }
 

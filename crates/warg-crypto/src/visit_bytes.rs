@@ -22,9 +22,9 @@ impl<'a, VB: ?Sized + VisitBytes> VisitBytes for &'a VB {
     }
 }
 
-impl<'a> VisitBytes for u8 {
+impl VisitBytes for u8 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
-        visitor.visit_bytes(&[*self]);
+        visitor.visit_bytes([*self]);
     }
 }
 
@@ -46,7 +46,7 @@ impl VisitBytes for () {
 
 impl<T1> VisitBytes for (T1,)
 where
-    T1: VisitBytes
+    T1: VisitBytes,
 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
@@ -56,7 +56,7 @@ where
 impl<T1, T2> VisitBytes for (T1, T2)
 where
     T1: VisitBytes,
-    T2: VisitBytes
+    T2: VisitBytes,
 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
@@ -68,7 +68,7 @@ impl<T1, T2, T3> VisitBytes for (T1, T2, T3)
 where
     T1: VisitBytes,
     T2: VisitBytes,
-    T3: VisitBytes
+    T3: VisitBytes,
 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
@@ -82,7 +82,7 @@ where
     T1: VisitBytes,
     T2: VisitBytes,
     T3: VisitBytes,
-    T4: VisitBytes
+    T4: VisitBytes,
 {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.0.visit(visitor);

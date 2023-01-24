@@ -3,14 +3,14 @@ use anyhow::Error;
 use prost::Message;
 use thiserror::Error;
 
-use warg_crypto::{Decode, Encode, Signable};
 use warg_crypto::hash::DynHash;
+use warg_crypto::{Decode, Encode, Signable};
 
 mod model;
 mod validate;
 
 pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Release, ReleaseState, ValidationError, Validator};
+pub use validate::{Release, ReleaseState, Root, ValidationError, Validator};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;
@@ -195,8 +195,8 @@ mod tests {
 
     use warg_crypto::hash::HashAlgorithm;
 
-    use warg_crypto::signing::generate_p256_pair;
     use crate::ProtoEnvelope;
+    use warg_crypto::signing::generate_p256_pair;
 
     #[test]
     fn test_envelope_roundtrip() {
@@ -234,10 +234,11 @@ mod tests {
 
         let bytes = first_envelope.to_protobuf();
 
-        let second_envelope: ProtoEnvelope<model::PackageRecord> = match ProtoEnvelope::from_protobuf(bytes) {
-            Ok(value) => value,
-            Err(error) => panic!("Failed to create envelope 2: {:?}", error),
-        };
+        let second_envelope: ProtoEnvelope<model::PackageRecord> =
+            match ProtoEnvelope::from_protobuf(bytes) {
+                Ok(value) => value,
+                Err(error) => panic!("Failed to create envelope 2: {:?}", error),
+            };
 
         assert_eq!(first_envelope, second_envelope);
     }

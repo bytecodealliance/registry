@@ -8,7 +8,7 @@ use super::{link::Link, map::hash_branch, path::Side};
 
 pub struct Fork<D: SupportedDigest> {
     left: Option<Arc<Link<D>>>,
-    right: Option<Arc<Link<D>>>
+    right: Option<Arc<Link<D>>>,
 }
 
 impl<D: SupportedDigest> Fork<D> {
@@ -23,7 +23,7 @@ impl<D: SupportedDigest> Clone for Fork<D> {
     fn clone(&self) -> Self {
         Self {
             left: self.left.clone(),
-            right: self.right.clone()
+            right: self.right.clone(),
         }
     }
 }
@@ -32,7 +32,7 @@ impl<D: SupportedDigest> Default for Fork<D> {
     fn default() -> Self {
         Self {
             left: None,
-            right: None
+            right: None,
         }
     }
 }
