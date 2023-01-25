@@ -14,7 +14,7 @@ serde = { version = "1.0.152", features = ["rc"] }
 tokio = { version = "1.23.1", features = ["full"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
-reqwest = { version = "0.11.14", features = ["json"] }
+reqwest = { version = "0.11.14", features = ["json", "stream"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 
 warg-crypto = { path = "../warg-crypto" }

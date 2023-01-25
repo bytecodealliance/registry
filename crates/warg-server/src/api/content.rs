@@ -52,7 +52,7 @@ async fn upload_content(
         tmp_file.write_all(&chunk).await?;
     }
 
-    let dest_name = format!("sha256:{:x}", hasher.finalize());
+    let dest_name = format!("sha256-{:x}", hasher.finalize());
     tmp_path.persist(state.content_path.join(&dest_name))?;
 
     let location = format!("{}/{}", orig_uri.path().trim_end_matches('/'), dest_name);

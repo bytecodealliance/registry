@@ -502,7 +502,7 @@ impl Validator {
         })
     }
 
-    fn snapshot(&self) -> Snapshot {
+    pub fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
             root,
@@ -520,7 +520,7 @@ impl Validator {
         }
     }
 
-    fn rollback(&mut self, snapshot: Snapshot) {
+    pub fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
             root,
@@ -539,7 +539,7 @@ impl Validator {
 
 /// Used for snapshotting a validator prior to performing
 /// validations.
-struct Snapshot {
+pub struct Snapshot {
     algorithm: Option<HashAlgorithm>,
     root: Option<Root>,
     releases: usize,

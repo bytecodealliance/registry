@@ -3,26 +3,29 @@ use std::sync::Arc;
 use anyhow::{Error, Result};
 
 use forrest::{log::LogProofBundle, map::MapProofBundle};
-use warg_crypto::hash::Sha256;
+use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
     ProtoEnvelope, SerdeEnvelope,
 };
-use warg_server::{
-    api::{
-        fetch::{CheckpointResponse, FetchRequest, FetchResponse},
-        package::{PendingRecordResponse, PublishRequest, RecordResponse},
-        proof::{InclusionRequest, InclusionResponse},
-    },
-    services::core::ContentSource,
+use warg_server::api::{
+    fetch::{CheckpointResponse, FetchRequest, FetchResponse},
+    package::{PendingRecordResponse, PublishRequest, RecordResponse},
+    proof::{InclusionRequest, InclusionResponse},
 };
+
+pub use warg_server::services::core::{ContentSource, ContentSourceKind};
 
 pub struct Client {
     server_url: String,
 }
 
 impl Client {
+    pub fn new(server_url: String) -> Self {
+        Self { server_url }
+    }
+
     fn endpoint(&self, route: &str) -> String {
         format!("{}{}", self.server_url, route)
     }
@@ -118,9 +121,21 @@ impl Client {
         Ok(())
     }
 
-    pub async fn prove_log_consistency() {}
+    pub async fn prove_log_consistency(&self, old_root: DynHash, new_root: DynHash) -> Result<()> {
+        todo!()
+    }
 
-    pub async fn upload_content() {}
+    pub async fn upload_content(&self, content: tokio::fs::File) -> Result<()> {
+        let client = reqwest::Client::new();
+        let _response = client
+            .post(self.endpoint("/content/"))
+            .body(content)
+            .send()
+            .await?;
+        Ok(())
+    }
 
-    pub async fn download_content() {}
+    pub async fn download_content(&self) {
+        todo!()
+    }
 }

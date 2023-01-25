@@ -53,7 +53,7 @@ fn pending_record_url(package_name: String, record_id: RecordId) -> String {
     format!("/package/{package_name}/pending/{record_id}")
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "state", rename = "lowercase")]
 pub enum PendingRecordResponse {
     Published { record_url: String },
