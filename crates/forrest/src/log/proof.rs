@@ -158,7 +158,7 @@ where
     pub fn evaluate_value(
         &self,
         hashes: &impl LogData<D, V>,
-        value: &V
+        value: &V,
     ) -> Result<Hash<D>, InclusionProofError> {
         self.evaluate_hash(hashes, hash_leaf(value))
     }

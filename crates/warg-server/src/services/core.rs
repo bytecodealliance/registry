@@ -219,7 +219,7 @@ impl CoreService {
                 } => {
                     if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                         tokio::spawn(async move {
-                            let info = package_info.as_ref().blocking_lock();
+                            let info = package_info.as_ref().lock().await;
                             if let Some(record_info) = info.records.get(&record_id) {
                                 response.send(record_info.state.clone()).unwrap();
                             } else {
@@ -237,7 +237,7 @@ impl CoreService {
                 } => {
                     if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                         tokio::spawn(async move {
-                            let info = package_info.as_ref().blocking_lock();
+                            let info = package_info.as_ref().lock().await;
                             if let Some(record_info) = info.records.get(&record_id) {
                                 response.send(Some(record_info.clone())).unwrap();
                             } else {
@@ -277,11 +277,10 @@ impl CoreService {
                         let operator_info = state.operator_info.clone();
                         tokio::spawn(async move {
                             response
-                                .send(fetch_operator_records(
-                                    operator_info,
-                                    since,
-                                    checkpoint_index,
-                                ))
+                                .send(
+                                    fetch_operator_records(operator_info, since, checkpoint_index)
+                                        .await,
+                                )
                                 .unwrap();
                         });
                     } else {
@@ -300,11 +299,14 @@ impl CoreService {
                         if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                             tokio::spawn(async move {
                                 response
-                                    .send(fetch_package_records(
-                                        package_info,
-                                        since,
-                                        checkpoint_index,
-                                    ))
+                                    .send(
+                                        fetch_package_records(
+                                            package_info,
+                                            since,
+                                            checkpoint_index,
+                                        )
+                                        .await,
+                                    )
                                     .unwrap();
                             });
                         } else {
@@ -333,8 +335,9 @@ async fn new_record(
     response: oneshot::Sender<RecordState>,
     transparency_tx: Sender<LogLeaf>,
 ) {
-    let mut info = package_info.as_ref().blocking_lock();
+    let mut info = package_info.as_ref().lock().await;
     let record_id = RecordId::package_record::<Sha256>(&record);
+    let snapshot = info.validator.snapshot();
     match info.validator.validate(&record) {
         Ok(contents) => {
             let provided_contents: HashSet<DynHash> = content_sources
@@ -347,6 +350,7 @@ async fn new_record(
                         reason: format!("Needed content {} but not provided", needed_content),
                     };
                     response.send(state).unwrap();
+                    info.validator.rollback(snapshot);
                     return;
                 }
             }
@@ -392,19 +396,19 @@ async fn mark_published(
     checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
     checkpoint_index: usize,
 ) {
-    let mut info = package_info.as_ref().blocking_lock();
+    let mut info = package_info.as_ref().lock().await;
 
     info.records.get_mut(&record_id).unwrap().state = RecordState::Published { checkpoint };
     // Requires publishes to be marked in order for correctness
     info.checkpoint_indices.push(checkpoint_index);
 }
 
-fn fetch_operator_records(
+async fn fetch_operator_records(
     operator_info: Arc<Mutex<OperatorInfo>>,
     since: Option<DynHash>,
     checkpoint_index: usize,
 ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
-    let info = operator_info.as_ref().blocking_lock();
+    let info = operator_info.as_ref().lock().await;
 
     let start = match since {
         Some(hash) => get_record_index(&info.log, hash)?,
@@ -417,12 +421,12 @@ fn fetch_operator_records(
     Ok(result)
 }
 
-fn fetch_package_records(
+async fn fetch_package_records(
     package_info: Arc<Mutex<PackageInfo>>,
     since: Option<DynHash>,
     checkpoint_index: usize,
 ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
-    let info = package_info.as_ref().blocking_lock();
+    let info = package_info.as_ref().lock().await;
 
     let start = match since {
         Some(hash) => get_record_index(&info.log, hash)?,

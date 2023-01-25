@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
     let demo_operator_key = std::env::var("WARG_DEMO_OPERATOR_KEY")?;
     let signing_key = demo_operator_key.parse()?;
 
-    let base_url = args.listen.to_string();
+    let base_url = format!("http://{}", args.listen.to_string());
     let mut config = Config::new(base_url, signing_key);
     if let Some(path) = args.content_dir {
         config.enable_content_service(path);

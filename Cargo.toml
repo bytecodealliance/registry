@@ -10,5 +10,6 @@ members = [
     "crates/forrest",
     "crates/warg",
     "crates/warg-server",
-    "crates/warg-client"
+    "crates/warg-client",
+    "crates/warg-cli"
 ]
