@@ -17,3 +17,7 @@ indexmap = { version = "1.9.2", features = ["serde"] }
 warg-crypto ={ path = "../warg-crypto" }
 warg-protocol = { path = "../warg" }
 warg-client = { path = "../warg-client" }
+
+# DEMO
+wasmtime = "5.0"
+wasmtime-wasi = "5.0"

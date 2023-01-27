@@ -3,6 +3,9 @@ mod install;
 mod publish;
 mod registry_info;
 
+// FIXME: delete
+mod demo;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use data::CliData;
@@ -31,14 +34,14 @@ enum Commands {
         #[command(subcommand)]
         subcommand: PublishCommand,
     },
+    Run {
+        name: String,
+    },
 }
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
     let args = Args::parse();
-
-    let demo_user_key = std::env::var("WARG_DEMO_USER_KEY")?;
-    let demo_user_key: signing::PrivateKey = demo_user_key.parse()?;
 
     let data = CliData::new();
 
@@ -48,7 +51,17 @@ pub async fn main() -> Result<()> {
         Commands::Update => {
             todo!()
         }
-        Commands::Publish { subcommand } => publish_command(data, demo_user_key, subcommand).await,
+        Commands::Publish { subcommand } => {
+            let demo_user_key = std::env::var("WARG_DEMO_USER_KEY")?;
+            let demo_user_key: signing::PrivateKey = demo_user_key.parse()?;
+
+            publish_command(data, demo_user_key, subcommand).await
+        }
+        Commands::Run { name } => {
+            // TODO: build path to "pull" destination
+            let path = format!("{name}.wasm");
+            demo::run_wasm(path)
+        }
     }
 }
 
