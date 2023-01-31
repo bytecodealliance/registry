@@ -36,6 +36,7 @@ enum Commands {
     },
     Run {
         name: String,
+        args: Vec<String>,
     },
 }
 
@@ -57,10 +58,10 @@ pub async fn main() -> Result<()> {
 
             publish_command(data, demo_user_key, subcommand).await
         }
-        Commands::Run { name } => {
+        Commands::Run { name, args } => {
             // TODO: build path to "pull" destination
             let path = format!("{name}.wasm");
-            demo::run_wasm(path)
+            demo::run_wasm(path, &args)
         }
     }
 }
