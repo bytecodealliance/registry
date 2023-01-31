@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{operator::OperatorRecord, package::PackageRecord, ProtoEnvelope};
 use serde::{Deserialize, Serialize};
-use warg_crypto::hash::{DynHash, Hash, SupportedDigest};
+use warg_crypto::hash::{DynHash, Hash, SupportedDigest, HashAlgorithm};
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 
 use warg_crypto::prefix::VisitPrefixEncode;
@@ -124,6 +124,10 @@ impl AsRef<[u8]> for LogId {
 pub struct RecordId(DynHash);
 
 impl RecordId {
+    pub fn algorithm(&self) -> HashAlgorithm {
+        self.0.algorithm()
+    }
+
     pub fn operator_record<D: SupportedDigest>(record: &ProtoEnvelope<OperatorRecord>) -> Self {
         let prefix: &[u8] = b"WARG-OPERATOR-LOG-RECORD-V0:".as_slice();
         let hash: Hash<D> = Hash::of(&(prefix, record.content_bytes()));

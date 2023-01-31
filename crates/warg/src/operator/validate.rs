@@ -1,11 +1,12 @@
 use super::{model, OPERATOR_RECORD_VERSION};
 use crate::ProtoEnvelope;
+use crate::registry::RecordId;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
@@ -59,13 +60,13 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
-/// Information about the current validation root of the operator log.
+/// Information about the current validation head of the operator log.
 ///
-/// A root is the last validated record digest and timestamp.
+/// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Root {
+pub struct Head {
     /// The digest of the last validated record.
-    pub digest: DynHash,
+    pub digest: RecordId,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
     pub timestamp: SystemTime,
@@ -78,9 +79,9 @@ pub struct Validator {
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
     algorithm: Option<HashAlgorithm>,
-    /// The current root of the validator.
+    /// The current head of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    root: Option<Root>,
+    head: Option<Head>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
@@ -95,11 +96,11 @@ impl Validator {
         Self::default()
     }
 
-    /// Gets the current root of the validator.
+    /// Gets the current head of the validator.
     ///
     /// Returns `None` if no records have been validated yet.
-    pub fn root(&self) -> &Option<Root> {
-        &self.root
+    pub fn head(&self) -> &Option<Head> {
+        &self.head
     }
 
     /// Validates an individual operator record.
@@ -168,9 +169,9 @@ impl Validator {
         // Validate the envelope signature
         model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
-        // Update the validator root
-        self.root = Some(Root {
-            digest: algorithm.digest(envelope.content_bytes()),
+        // Update the validator head
+        self.head = Some(Head {
+            digest: RecordId::operator_record::<Sha256>(&envelope),
             timestamp: record.timestamp,
         });
 
@@ -178,7 +179,7 @@ impl Validator {
     }
 
     fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
-        match (&self.root, &record.prev) {
+        match (&self.head, &record.prev) {
             (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
             (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
             (None, None) => Ok(()),
@@ -216,8 +217,8 @@ impl Validator {
         &self,
         record: &model::OperatorRecord,
     ) -> Result<(), ValidationError> {
-        if let Some(root) = &self.root {
-            if record.timestamp < root.timestamp {
+        if let Some(head) = &self.head {
+            if record.timestamp < head.timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
             }
         }
@@ -349,14 +350,14 @@ impl Validator {
     fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
-            root,
+            head,
             permissions,
             keys,
         } = self;
 
         Snapshot {
             algorithm: *algorithm,
-            root: root.clone(),
+            head: head.clone(),
             permissions: permissions.len(),
             keys: keys.len(),
         }
@@ -365,13 +366,13 @@ impl Validator {
     fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
-            root,
+            head,
             permissions,
             keys,
         } = snapshot;
 
         self.algorithm = algorithm;
-        self.root = root;
+        self.head = head;
         self.permissions.truncate(permissions);
         self.keys.truncate(keys);
     }
@@ -381,7 +382,7 @@ impl Validator {
 /// validations.
 struct Snapshot {
     algorithm: Option<HashAlgorithm>,
-    root: Option<Root>,
+    head: Option<Head>,
     permissions: usize,
     keys: usize,
 }
@@ -420,8 +421,8 @@ mod tests {
         assert_eq!(
             validator,
             Validator {
-                root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+                head: Some(Head {
+                    digest: RecordId::operator_record::<Sha256>(&envelope),
                     timestamp,
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),
@@ -457,8 +458,8 @@ mod tests {
         validator.validate(&envelope).unwrap();
 
         let expected = Validator {
-            root: Some(Root {
-                digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+            head: Some(Head {
+                digest: RecordId::operator_record::<Sha256>(&envelope),
                 timestamp,
             }),
             algorithm: Some(HashAlgorithm::Sha256),
@@ -472,7 +473,7 @@ mod tests {
         assert_eq!(validator, expected);
 
         let record = model::OperatorRecord {
-            prev: Some(HashAlgorithm::Sha256.digest(envelope.content_bytes())),
+            prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
             version: 0,
             timestamp: SystemTime::now(),
             entries: vec![

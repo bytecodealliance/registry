@@ -6,12 +6,13 @@ use warg_crypto::hash::DynHash;
 use warg_crypto::{Decode, Encode, Signable};
 
 use crate::protobuf;
+use crate::registry::RecordId;
 
 mod model;
 mod validate;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use validate::{Root, ValidationError, Validator};
+pub use validate::{Head, ValidationError, Validator};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;
@@ -26,8 +27,11 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::OperatorRecord) -> Result<Self, Self::Error> {
-        let prev: Option<DynHash> = match record.prev {
-            Some(hash_string) => Some(hash_string.parse()?),
+        let prev: Option<RecordId> = match record.prev {
+            Some(hash_string) => {
+                let digest: DynHash = hash_string.parse()?;
+                Some(digest.into())
+            },
             None => None,
         };
         let version = record.version;

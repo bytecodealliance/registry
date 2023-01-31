@@ -2,14 +2,16 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::SystemTime};
 
-use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::hash::HashAlgorithm;
 use warg_crypto::signing;
+
+use crate::registry::RecordId;
 
 /// A operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorRecord {
     /// The hash of the previous operator record envelope
-    pub prev: Option<DynHash>,
+    pub prev: Option<RecordId>,
     /// The version of the registry protocol used
     pub version: u32,
     /// When this record was published

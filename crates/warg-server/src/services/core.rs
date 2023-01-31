@@ -147,13 +147,13 @@ enum Message {
     },
     FetchOperatorRecords {
         root: Hash<Sha256>,
-        since: Option<DynHash>,
+        since: Option<RecordId>,
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error>>,
     },
     FetchPackageRecords {
         root: Hash<Sha256>,
         package_id: LogId,
-        since: Option<DynHash>,
+        since: Option<RecordId>,
         response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
     },
     GetLatestCheckpoint {
@@ -405,13 +405,13 @@ async fn mark_published(
 
 async fn fetch_operator_records(
     operator_info: Arc<Mutex<OperatorInfo>>,
-    since: Option<DynHash>,
+    since: Option<RecordId>,
     checkpoint_index: usize,
 ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
     let info = operator_info.as_ref().lock().await;
 
     let start = match since {
-        Some(hash) => get_record_index(&info.log, hash)?,
+        Some(hash) => get_operator_record_index(&info.log, hash)?,
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
@@ -423,13 +423,13 @@ async fn fetch_operator_records(
 
 async fn fetch_package_records(
     package_info: Arc<Mutex<PackageInfo>>,
-    since: Option<DynHash>,
+    since: Option<RecordId>,
     checkpoint_index: usize,
 ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
     let info = package_info.as_ref().lock().await;
 
     let start = match since {
-        Some(hash) => get_record_index(&info.log, hash)?,
+        Some(hash) => get_package_record_index(&info.log, hash)?,
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
@@ -439,13 +439,16 @@ async fn fetch_package_records(
     Ok(result)
 }
 
-fn get_record_index<R>(log: &Vec<Arc<ProtoEnvelope<R>>>, hash: DynHash) -> Result<usize, Error> {
+fn get_package_record_index(log: &Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, hash: RecordId) -> Result<usize, Error> {
     log.iter()
-        .map(|env| {
-            let hash: Hash<Sha256> = Hash::of(&env.content_bytes());
-            let dyn_hash: DynHash = hash.into();
-            dyn_hash
-        })
+        .map(|env| RecordId::package_record::<Sha256>(env.as_ref()))
+        .position(|found| found == hash)
+        .ok_or_else(|| Error::msg("Hash value not found"))
+}
+
+fn get_operator_record_index(log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, hash: RecordId) -> Result<usize, Error> {
+    log.iter()
+        .map(|env| RecordId::operator_record::<Sha256>(env.as_ref()))
         .position(|found| found == hash)
         .ok_or_else(|| Error::msg("Hash value not found"))
 }
@@ -536,7 +539,7 @@ impl CoreService {
     pub async fn fetch_operator_records(
         &self,
         root: DynHash,
-        since: Option<DynHash>,
+        since: Option<RecordId>,
     ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
         let root = root.try_into()?;
         let (tx, rx) = oneshot::channel();
@@ -556,7 +559,7 @@ impl CoreService {
         &self,
         root: DynHash,
         package_name: String,
-        since: Option<DynHash>,
+        since: Option<RecordId>,
     ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
         let root = root.try_into()?;
         let package_id = LogId::package_log::<Sha256>(&package_name);

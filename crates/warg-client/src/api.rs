@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Error, Result};
 
 use forrest::{log::LogProofBundle, map::MapProofBundle};
+use tokio::io::AsyncWriteExt;
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
     package,
@@ -10,10 +11,12 @@ use warg_protocol::{
     ProtoEnvelope, SerdeEnvelope,
 };
 use warg_server::api::{
-    fetch::{CheckpointResponse, FetchRequest, FetchResponse},
+    fetch::CheckpointResponse,
     package::{PendingRecordResponse, PublishRequest, RecordResponse},
     proof::{InclusionRequest, InclusionResponse},
 };
+
+pub use warg_server::api::fetch::{FetchRequest, FetchResponse};
 
 pub use warg_server::services::core::{ContentSource, ContentSourceKind};
 
@@ -30,7 +33,7 @@ impl Client {
         format!("{}{}", self.server_url, route)
     }
 
-    pub async fn latest_checkpoint(&self) -> Result<Arc<SerdeEnvelope<MapCheckpoint>>> {
+    pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>> {
         let response = reqwest::get(self.endpoint("/fetch/checkpoint")).await?;
         let response = response.json::<CheckpointResponse>().await?;
         Ok(response.checkpoint)
@@ -135,7 +138,14 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_content(&self) {
-        todo!()
+    pub async fn download_content(&self, digest: DynHash, path: &Path) -> Result<()> {
+        let url_safe = digest.to_string().replace(":", "-");
+        let url = self.endpoint(&format!("/content/{}", url_safe));
+        let stream = reqwest::get(url).await?.bytes().await?;
+        tokio::fs::File::create(path)
+            .await?
+            .write(stream.as_ref())
+            .await?;
+        Ok(())
     }
 }

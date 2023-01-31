@@ -70,7 +70,7 @@ pub fn process(input: Input) -> Output {
         let data = processor_data;
 
         while let Some(map) = map_rx.recv().await {
-            let mut data = data.as_ref().blocking_write();
+            let mut data = data.as_ref().write().await;
             data.map_index.insert(map.root().clone(), map);
             drop(data);
         }

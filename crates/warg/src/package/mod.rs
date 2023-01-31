@@ -1,4 +1,5 @@
 use crate::protobuf;
+use crate::registry::RecordId;
 use anyhow::Error;
 use prost::Message;
 use thiserror::Error;
@@ -10,7 +11,7 @@ mod model;
 mod validate;
 
 pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Release, ReleaseState, Root, ValidationError, Validator};
+pub use validate::{Head, Release, ReleaseState, ValidationError, Validator};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;
@@ -25,8 +26,11 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
-        let prev: Option<DynHash> = match record.prev {
-            Some(hash_string) => Some(hash_string.parse()?),
+        let prev: Option<RecordId> = match record.prev {
+            Some(hash_string) => {
+                let hash: DynHash = hash_string.parse()?;
+                Some(hash.into())
+            },
             None => None,
         };
         let version = record.version;

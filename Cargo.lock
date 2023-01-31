@@ -2492,6 +2492,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap 4.0.32",
+ "indexmap",
  "serde",
  "serde_json",
  "thiserror",

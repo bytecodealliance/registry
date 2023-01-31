@@ -6,11 +6,13 @@ use std::{str::FromStr, time::SystemTime};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 use warg_crypto::signing;
 
+use crate::registry::RecordId;
+
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageRecord {
     /// The hash of the previous package record envelope
-    pub prev: Option<DynHash>,
+    pub prev: Option<RecordId>,
     /// The version of the registry protocol used
     pub version: u32,
     /// When this record was published
