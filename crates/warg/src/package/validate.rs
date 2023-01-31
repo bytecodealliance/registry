@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 use crate::ProtoEnvelope;
+use crate::registry::RecordId;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -120,13 +121,13 @@ impl Release {
     }
 }
 
-/// Information about the current validation root of the package log.
+/// Information about the current validation head of the package log.
 ///
-/// A root is the last validated record digest and timestamp.
+/// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Root {
+pub struct Head {
     /// The digest of the last validated record.
-    pub digest: DynHash,
+    pub digest: RecordId,
     /// The timestamp of the last validated record.
     #[serde(with = "crate::timestamp")]
     pub timestamp: SystemTime,
@@ -139,9 +140,9 @@ pub struct Validator {
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
     algorithm: Option<HashAlgorithm>,
-    /// The current root of the validator.
+    /// The current head of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    root: Option<Root>,
+    head: Option<Head>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
@@ -159,11 +160,11 @@ impl Validator {
         Self::default()
     }
 
-    /// Gets the current root of the validator.
+    /// Gets the current head of the validator.
     ///
     /// Returns `None` if no records have been validated yet.
-    pub fn root(&self) -> &Option<Root> {
-        &self.root
+    pub fn head(&self) -> &Option<Head> {
+        &self.head
     }
 
     /// Validates an individual package record.
@@ -259,9 +260,9 @@ impl Validator {
         // Validate the envelope signature
         model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
-        // Update the validator root
-        self.root = Some(Root {
-            digest: algorithm.digest(envelope.content_bytes()),
+        // Update the validator head
+        self.head = Some(Head {
+            digest: RecordId::package_record::<Sha256>(&envelope),
             timestamp: record.timestamp,
         });
 
@@ -269,7 +270,7 @@ impl Validator {
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
-        match (&self.root, &record.prev) {
+        match (&self.head, &record.prev) {
             (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
             (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
             (None, None) => Ok(()),
@@ -307,8 +308,8 @@ impl Validator {
         &self,
         record: &model::PackageRecord,
     ) -> Result<(), ValidationError> {
-        if let Some(root) = &self.root {
-            if record.timestamp < root.timestamp {
+        if let Some(head) = &self.head {
+            if record.timestamp < head.timestamp {
                 return Err(ValidationError::TimestampLowerThanPrevious);
             }
         }
@@ -505,7 +506,7 @@ impl Validator {
     pub fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
-            root,
+            head,
             releases,
             permissions,
             keys,
@@ -513,7 +514,7 @@ impl Validator {
 
         Snapshot {
             algorithm: *algorithm,
-            root: root.clone(),
+            head: head.clone(),
             releases: releases.len(),
             permissions: permissions.len(),
             keys: keys.len(),
@@ -523,14 +524,14 @@ impl Validator {
     pub fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
-            root,
+            head,
             releases,
             permissions,
             keys,
         } = snapshot;
 
         self.algorithm = algorithm;
-        self.root = root;
+        self.head = head;
         self.releases.truncate(releases);
         self.permissions.truncate(permissions);
         self.keys.truncate(keys);
@@ -541,7 +542,7 @@ impl Validator {
 /// validations.
 pub struct Snapshot {
     algorithm: Option<HashAlgorithm>,
-    root: Option<Root>,
+    head: Option<Head>,
     releases: usize,
     permissions: usize,
     keys: usize,
@@ -578,8 +579,8 @@ mod tests {
         assert_eq!(
             validator,
             Validator {
-                root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+                head: Some(Head {
+                    digest: RecordId::package_record::<Sha256>(&envelope),
                     timestamp,
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),
@@ -627,7 +628,7 @@ mod tests {
         let timestamp1 = timestamp0 + Duration::from_secs(1);
         let content = hash_algo.digest(&[0, 1, 2, 3]);
         let record1 = model::PackageRecord {
-            prev: Some(hash_algo.digest(envelope0.content_bytes())),
+            prev: Some(RecordId::package_record::<Sha256>(&envelope0)),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp1,
             entries: vec![model::PackageEntry::Release {
@@ -667,7 +668,7 @@ mod tests {
         // In envelope 2: alice revokes bobs access and yanks 1.1.0
         let timestamp2 = timestamp1 + Duration::from_secs(1);
         let record2 = model::PackageRecord {
-            prev: Some(hash_algo.digest(envelope1.content_bytes())),
+            prev: Some(RecordId::package_record::<Sha256>(&envelope1)),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp2,
             entries: vec![
@@ -704,8 +705,8 @@ mod tests {
             validator,
             Validator {
                 algorithm: Some(HashAlgorithm::Sha256),
-                root: Some(Root {
-                    digest: HashAlgorithm::Sha256.digest(envelope2.content_bytes()),
+                head: Some(Head {
+                    digest: RecordId::package_record::<Sha256>(&envelope2),
                     timestamp: timestamp2,
                 }),
                 permissions: IndexMap::from([
@@ -755,8 +756,8 @@ mod tests {
         validator.validate(&envelope).unwrap();
 
         let expected = Validator {
-            root: Some(Root {
-                digest: HashAlgorithm::Sha256.digest(envelope.content_bytes()),
+            head: Some(Head {
+                digest: RecordId::package_record::<Sha256>(&envelope),
                 timestamp,
             }),
             algorithm: Some(HashAlgorithm::Sha256),
@@ -771,7 +772,7 @@ mod tests {
         assert_eq!(validator, expected);
 
         let record = model::PackageRecord {
-            prev: Some(HashAlgorithm::Sha256.digest(envelope.content_bytes())),
+            prev: Some(RecordId::package_record::<Sha256>(&envelope)),
             version: 0,
             timestamp: SystemTime::now(),
             entries: vec![

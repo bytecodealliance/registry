@@ -12,6 +12,7 @@ anyhow = "1.0"
 serde = "1.0"
 serde_json = "1.0"
 tokio = { version = "1.23.1", features = ["full"] }
+indexmap = { version = "1.9.2", features = ["serde"] }
 
 warg-crypto ={ path = "../warg-crypto" }
 warg-protocol = { path = "../warg" }

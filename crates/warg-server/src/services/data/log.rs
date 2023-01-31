@@ -103,7 +103,7 @@ pub fn process(input: Input) -> Output {
         let data = processor_data;
 
         while let Some(leaf) = log_rx.recv().await {
-            let mut data = data.as_ref().blocking_write();
+            let mut data = data.as_ref().write().await;
             let node = data.log.push(&leaf);
 
             let checkpoint = data.log.checkpoint();

@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use warg_crypto::hash::DynHash;
-use warg_protocol::registry::MapCheckpoint;
+use warg_protocol::registry::{MapCheckpoint, RecordId};
 use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
 
 use crate::services::core::CoreService;
@@ -40,8 +40,8 @@ impl Config {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FetchRequest {
     pub root: DynHash,
-    pub operator: Option<DynHash>,
-    pub packages: IndexMap<String, Option<DynHash>>,
+    pub operator: Option<RecordId>,
+    pub packages: IndexMap<String, Option<RecordId>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,12 +81,17 @@ async fn fetch_logs(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CheckpointResponse {
-    pub checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
+    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
 }
 
 #[debug_handler]
 async fn fetch_checkpoint(State(config): State<Config>) -> Result<impl IntoResponse, AnyError> {
-    let checkpoint = config.core_service.get_latest_checkpoint().await;
+    let checkpoint = config
+        .core_service
+        .get_latest_checkpoint()
+        .await
+        .as_ref()
+        .to_owned();
     let response = CheckpointResponse { checkpoint };
     Ok((StatusCode::OK, Json(response)))
 }
