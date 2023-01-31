@@ -2,9 +2,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use wasmtime::{Engine, Linker, Module, Store};
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+use wasmtime_wasi::{I32Exit, WasiCtx, WasiCtxBuilder};
 
-pub(crate) fn run_wasm(path: impl AsRef<Path>) -> Result<()> {
+pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<()> {
     let engine = Engine::default();
 
     let path = path.as_ref();
@@ -12,8 +12,9 @@ pub(crate) fn run_wasm(path: impl AsRef<Path>) -> Result<()> {
         .with_context(|| format!("Failed to load Wasm from {path:?}"))?;
 
     let wasi_ctx = WasiCtxBuilder::new()
-        .inherit_stdout()
-        .args(&[])?
+        .inherit_stdio()
+        .arg(&path.file_name().unwrap().to_string_lossy())?
+        .args(args)?
         .envs(&[])?
         .build();
     let mut store = Store::new(&engine, wasi_ctx);
@@ -23,7 +24,17 @@ pub(crate) fn run_wasm(path: impl AsRef<Path>) -> Result<()> {
     linker.module(&mut store, "", &module)?;
 
     let func = linker.get_default(&mut store, "")?;
-    func.call(&mut store, &[], &mut [])?;
+    let res = func.call(&mut store, &[], &mut []);
+
+    // Handle exit()
+    res.or_else(|err| {
+        if let Some(I32Exit(status)) = err.downcast_ref() {
+            eprintln!("module exited with status {status}");
+            Ok(())
+        } else {
+            Err(err)
+        }
+    })?;
 
     Ok(())
 }
