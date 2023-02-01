@@ -40,8 +40,8 @@ impl CliData {
     }
 
     pub fn add_content(&self, path: &Path) -> Result<DynHash> {
-        let contents = fs::read_to_string(path)?;
-        let digest: Hash<Sha256> = Hash::of(&contents.as_str());
+        let contents = fs::read(path)?;
+        let digest: Hash<Sha256> = Hash::of(contents.as_slice());
         let digest: DynHash = digest.into();
         let content_path = self.content_path(&digest);
         dump(&content_path, &contents)?;
@@ -105,12 +105,12 @@ fn load_or_default<T: Default + for<'a> Deserialize<'a>>(path: &Path) -> Result<
 }
 
 fn store<T: Serialize>(path: &Path, value: &T) -> Result<()> {
-    let contents = serde_json::to_string_pretty(value)?;
+    let contents = serde_json::to_vec_pretty(value)?;
     dump(path, &contents)?;
     Ok(())
 }
 
-fn dump(path: &Path, contents: &str) -> Result<()> {
+fn dump(path: &Path, contents: &[u8]) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(&path)?;
     }
