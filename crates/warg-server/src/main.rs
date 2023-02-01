@@ -9,8 +9,8 @@ use warg_server::Config;
 #[derive(Parser, Debug)]
 struct Args {
     /// Use verbose output
-    #[arg(short, long)]
-    verbose: bool,
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
 
     /// Address to listen to
     #[arg(short, long, default_value = "127.0.0.1:8090")]
@@ -23,10 +23,10 @@ struct Args {
 
 impl Args {
     fn init_tracing(&self) {
-        let level_filter = if self.verbose {
-            LevelFilter::DEBUG
-        } else {
-            LevelFilter::INFO
+        let level_filter = match self.verbose {
+            0 => LevelFilter::INFO,
+            1 => LevelFilter::DEBUG,
+            _ => LevelFilter::TRACE,
         };
         tracing_subscriber::fmt()
             .with_max_level(level_filter)

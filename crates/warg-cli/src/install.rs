@@ -50,5 +50,7 @@ pub async fn install(data: CliData, name: String) -> Result<()> {
         return Err(Error::msg("Cannot validate empty package logs currently"));
     }
 
+    data.set_package_state(&name, &state)?;
+
     Ok(())
 }
