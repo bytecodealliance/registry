@@ -6,7 +6,7 @@ mod registry_info;
 // FIXME: delete
 mod demo;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use data::CliData;
 use install::install;
@@ -59,8 +59,14 @@ pub async fn main() -> Result<()> {
             publish_command(data, demo_user_key, subcommand).await
         }
         Commands::Run { name, args } => {
-            // TODO: build path to "pull" destination
-            let path = format!("{name}.wasm");
+            let state = data.get_package_state(&name)?;
+            let release = state
+                .find_latest_release(&Default::default())
+                .with_context(|| format!("No release found for package {name}"))?;
+            let content_digest = release
+                .content()
+                .with_context(|| format!("No content for release {name} {}", release.version))?;
+            let path = data.content_path(content_digest);
             demo::run_wasm(path, &args)
         }
     }
