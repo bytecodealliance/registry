@@ -40,7 +40,7 @@ impl<D: SupportedDigest> ByteVisitor for HashVisitor<D> {
 }
 
 impl<D: SupportedDigest> Hash<D> {
-    pub fn of<Content: ?Sized + VisitBytes>(content: &Content) -> Self {
+    pub fn of(content: impl VisitBytes) -> Self {
         let mut visitor = HashVisitor::new();
         content.visit(&mut visitor);
         visitor.finalize()
