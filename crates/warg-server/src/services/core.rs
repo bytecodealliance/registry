@@ -178,6 +178,7 @@ impl CoreService {
         let mut state = initial_state;
 
         while let Some(request) = rx.recv().await {
+            tracing::trace!(?request, "CoreService processing request");
             match request {
                 Message::SubmitPackageRecord {
                     package_name,
@@ -322,6 +323,7 @@ impl CoreService {
                     .send(state.checkpoints.last().unwrap().clone())
                     .unwrap(),
             }
+            tracing::trace!(?state, "Processing complete");
         }
 
         state
