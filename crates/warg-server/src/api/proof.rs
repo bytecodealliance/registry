@@ -102,7 +102,6 @@ pub(crate) async fn prove_inclusion(
         log: log_bundle.encode(),
         map: map_bundle.encode(),
     };
-    dbg!(&response);
 
     Ok((StatusCode::OK, Json(response)))
 }

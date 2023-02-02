@@ -17,8 +17,10 @@ pub struct CliData {
 
 impl CliData {
     pub fn new() -> Self {
-        let mut base = PathBuf::from(".");
+        let mut base = std::env::current_dir().unwrap();
         base.push(".warg");
+        Self::ensure_dir(&base);
+        
         let mut publish_info = base.clone();
         publish_info.push("publish-info.json");
         let mut registry_info = base.clone();
@@ -30,11 +32,30 @@ impl CliData {
         }
     }
 
+    fn ensure_dir(dir: &Path) {
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).unwrap();
+        }
+    }
+
+    pub fn temp_dir(&self) -> PathBuf {
+        let mut path = self.base.to_owned();
+        path.push("temp");
+        Self::ensure_dir(&path);
+        path
+    }
+
+    fn content_dir(&self) -> PathBuf {
+        let mut path = self.base.to_owned();
+        path.push("content");
+        Self::ensure_dir(&path);
+        path
+    }
+
     pub fn content_path(&self, digest: &DynHash) -> PathBuf {
         let sanitized = digest.to_string().replace(":", "-");
 
-        let mut path = self.base.to_owned();
-        path.push("content");
+        let mut path = self.content_dir();
         path.push(sanitized);
         path
     }
@@ -68,11 +89,27 @@ impl CliData {
         store(&self.registry_info, registry_info)
     }
 
-    fn package_path(&self, name: &str) -> PathBuf {
+    fn package_dir(&self) -> PathBuf {
         let mut path = self.base.to_owned();
         path.push("package");
+        Self::ensure_dir(&path);
+        path
+    }
+
+    fn package_path(&self, name: &str) -> PathBuf {
+        let mut path = self.package_dir();
         path.push(name);
         path
+    }
+
+    pub fn get_all_packages(&self) -> Result<Vec<(String, package::Validator)>> {
+        let mut packages = Vec::new();
+        for entry in self.package_dir().read_dir()?.into_iter() {
+            let entry = entry?;
+            let name = entry.file_name().to_str().unwrap().to_owned();
+            packages.push((name, load(&entry.path())?.unwrap()))
+        }
+        Ok(packages)
     }
 
     pub fn get_package_state(&self, name: &str) -> Result<package::Validator> {

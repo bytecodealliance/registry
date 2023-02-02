@@ -10,3 +10,9 @@ warg publish submit
 
 warg install grep
 cat dummy-log.txt | warg run grep WARNING
+
+read -p "Press [Enter] to proceed"
+
+warg update
+cat dummy-log.txt | warg run grep WARNING
+
