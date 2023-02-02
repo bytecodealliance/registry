@@ -49,16 +49,16 @@ pub async fn main() -> Result<()> {
     let data = CliData::new();
 
     match args.command {
-        Commands::SetRegistry { registry } => set_registry(data, registry).await,
-        Commands::Install { package } => install(data, package).await,
+        Commands::SetRegistry { registry } => set_registry(data, registry).await?,
+        Commands::Install { package } => install(data, package).await?,
         Commands::Update => {
-            update(data).await
+            update(data).await?;
         }
         Commands::Publish { subcommand } => {
             let demo_user_key = std::env::var("WARG_DEMO_USER_KEY")?;
             let demo_user_key: signing::PrivateKey = demo_user_key.parse()?;
 
-            publish_command(data, demo_user_key, subcommand).await
+            publish_command(data, demo_user_key, subcommand).await?;
         }
         Commands::Run { name, args } => {
             let state = data.get_package_state(&name)?;
@@ -69,9 +69,11 @@ pub async fn main() -> Result<()> {
                 .content()
                 .with_context(|| format!("No content for release {name} {}", release.version))?;
             let path = data.content_path(content_digest);
-            demo::run_wasm(path, &args)
+            demo::run_wasm(path, &args)?;
         }
     }
+    println!("Done");
+    Ok(())
 }
 
 async fn set_registry(data: CliData, url: String) -> Result<()> {

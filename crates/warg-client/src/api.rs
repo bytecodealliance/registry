@@ -35,14 +35,12 @@ impl Client {
     }
 
     pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>> {
-        println!("Fetching checkpoint");
         let response = reqwest::get(self.endpoint("/fetch/checkpoint")).await?;
         let response = response.json::<CheckpointResponse>().await?;
         Ok(response.checkpoint)
     }
 
     pub async fn fetch_logs(&self, request: FetchRequest) -> Result<FetchResponse> {
-        println!("Fetching logs");
         let client = reqwest::Client::new();
         let response = client
             .post(self.endpoint("/fetch/logs"))
@@ -107,7 +105,6 @@ impl Client {
         checkpoint: &MapCheckpoint,
         heads: Vec<LogLeaf>,
     ) -> Result<()> {
-        println!("Proving Inclusion");
         let client = reqwest::Client::new();
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
@@ -154,7 +151,6 @@ impl Client {
     }
 
     pub async fn upload_content(&self, content: tokio::fs::File) -> Result<()> {
-        println!("Uploading something");
         let client = reqwest::Client::new();
         let _response = client
             .post(self.endpoint("/content/"))
