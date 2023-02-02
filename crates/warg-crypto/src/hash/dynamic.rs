@@ -22,7 +22,7 @@ impl HashAlgorithm {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DynHash {
     pub(crate) algo: HashAlgorithm,
     pub(crate) bytes: Vec<u8>,
@@ -39,6 +39,12 @@ impl DynHash {
 }
 
 impl fmt::Display for DynHash {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}:{}", self.algo, hex::encode(self.bytes.as_slice()))
+    }
+}
+
+impl fmt::Debug for DynHash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}:{}", self.algo, hex::encode(self.bytes.as_slice()))
     }

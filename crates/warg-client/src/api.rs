@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::{Error, Result};
 
@@ -34,12 +34,14 @@ impl Client {
     }
 
     pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>> {
+        println!("Fetching checkpoint");
         let response = reqwest::get(self.endpoint("/fetch/checkpoint")).await?;
         let response = response.json::<CheckpointResponse>().await?;
         Ok(response.checkpoint)
     }
 
     pub async fn fetch_logs(&self, request: FetchRequest) -> Result<FetchResponse> {
+        println!("Fetching logs");
         let client = reqwest::Client::new();
         let response = client
             .post(self.endpoint("/fetch/logs"))
@@ -55,7 +57,8 @@ impl Client {
         package_name: &str,
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
-    ) -> Result<PendingRecordResponse> {
+    ) -> Result<RecordResponse> {
+        println!("Publishing {}", package_name);
         let client = reqwest::Client::new();
         let request = PublishRequest {
             record: record.as_ref().clone().into(),
@@ -64,7 +67,26 @@ impl Client {
         let url = format!("{}/package/{}", self.server_url, package_name);
         let response = client.post(url).json(&request).send().await?;
         let response = response.json::<PendingRecordResponse>().await?;
-        Ok(response)
+
+        let record_url = match response {
+            PendingRecordResponse::Published { record_url } => record_url,
+            PendingRecordResponse::Rejected { reason } => return Err(Error::msg(format!("Record rejected for {}", reason))),
+            PendingRecordResponse::Processing { status_url } => {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let response = self.get_pending_package_record(&status_url).await?;
+                    match response {
+                        PendingRecordResponse::Published { record_url } => break record_url,
+                        PendingRecordResponse::Rejected { reason } => return Err(Error::msg(format!("Record rejected for {}", reason))),
+                        PendingRecordResponse::Processing { .. } => {},
+                    }
+                }
+            },
+        };
+
+        let record_info = self.get_package_record(&record_url).await?;
+
+        Ok(record_info)
     }
 
     pub async fn get_pending_package_record(&self, route: &str) -> Result<PendingRecordResponse> {
@@ -84,6 +106,9 @@ impl Client {
         checkpoint: &MapCheckpoint,
         heads: Vec<LogLeaf>,
     ) -> Result<()> {
+        println!("Proving Inclusion");
+        dbg!(checkpoint);
+        dbg!(&heads);
         let client = reqwest::Client::new();
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
@@ -129,6 +154,7 @@ impl Client {
     }
 
     pub async fn upload_content(&self, content: tokio::fs::File) -> Result<()> {
+        println!("Uploading something");
         let client = reqwest::Client::new();
         let _response = client
             .post(self.endpoint("/content/"))
@@ -139,6 +165,7 @@ impl Client {
     }
 
     pub async fn download_content(&self, digest: DynHash, path: &Path) -> Result<()> {
+        println!("Downloading {} to {:?}", digest, path);
         let url_safe = digest.to_string().replace(":", "-");
         let url = self.endpoint(&format!("/content/{}", url_safe));
         let stream = reqwest::get(url).await?.bytes().await?;

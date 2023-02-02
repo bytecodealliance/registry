@@ -104,14 +104,14 @@ pub async fn publish_command(
                             reg_info.url(),
                             content.to_string().replace(":", "-")
                         );
-                        println!("Expected url: {}", url);
+                        println!("Uploaded content to {}", url);
                         content_sources.push(ContentSource {
                             content_digest: content,
                             kind: ContentSourceKind::HttpAnonymous { url },
                         })
                     }
                 }
-                print!("Submitting");
+                println!("Submitting");
                 let response = client
                     .publish(&name, Arc::new(record), content_sources)
                     .await?;
