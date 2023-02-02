@@ -38,7 +38,7 @@ pub async fn publish_command(
     signing_key: signing::PrivateKey,
     command: PublishCommand,
 ) -> Result<()> {
-    let reg_info = match data.get_registry_info()? {
+    let mut reg_info = match data.get_registry_info()? {
         Some(info) => info,
         None => {
             println!("Must have a registry set to publish.");
@@ -112,10 +112,13 @@ pub async fn publish_command(
                     }
                 }
                 println!("Submitting");
-                let response = client
+                client
                     .publish(&name, Arc::new(record), content_sources)
                     .await?;
-                println!("Response: {:#?}", response);
+
+                reg_info.set_checkpoint(client.latest_checkpoint().await?);
+                data.set_registry_info(&reg_info)?;
+                println!("Done");
             } else {
                 eprintln!("No publish to submit.");
                 advise_start_publish();

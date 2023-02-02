@@ -3,8 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::extract::State;
 use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use serde_with::base64::Base64;
 use tokio::sync::RwLock;
 
 use warg_crypto::hash::{DynHash, Hash, Sha256};
@@ -50,7 +51,7 @@ pub(crate) async fn prove_consistency(
     State(config): State<Config>,
     Json(body): Json<ConsistencyRequest>,
 ) -> Result<impl IntoResponse, AnyError> {
-    let log = config.log.as_ref().blocking_read();
+    let log = config.log.as_ref().read().await;
 
     let old_root: Hash<Sha256> = body.old_root.try_into()?;
     let new_root: Hash<Sha256> = body.new_root.try_into()?;
@@ -70,9 +71,12 @@ pub struct InclusionRequest {
     pub heads: Vec<LogLeaf>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct InclusionResponse {
+    #[serde_as(as = "Base64")]
     pub log: Vec<u8>,
+    #[serde_as(as = "Base64")]
     pub map: Vec<u8>,
 }
 
@@ -85,12 +89,12 @@ pub(crate) async fn prove_inclusion(
     let map_root = body.checkpoint.map_root.try_into()?;
 
     let log_bundle = {
-        let log = config.log.as_ref().blocking_read();
+        let log = config.log.as_ref().read().await;
         log.inclusion(log_root, body.heads.as_slice())?
     };
 
     let map_bundle = {
-        let map = config.map.as_ref().blocking_read();
+        let map = config.map.as_ref().read().await;
         map.inclusion(map_root, body.heads.as_slice())?
     };
 
@@ -98,6 +102,7 @@ pub(crate) async fn prove_inclusion(
         log: log_bundle.encode(),
         map: map_bundle.encode(),
     };
+    dbg!(&response);
 
     Ok((StatusCode::OK, Json(response)))
 }
