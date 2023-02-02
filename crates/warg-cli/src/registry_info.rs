@@ -19,4 +19,8 @@ impl RegistryInfo {
     pub fn checkpoint(&self) -> &SerdeEnvelope<MapCheckpoint> {
         &self.checkpoint
     }
+
+    pub fn set_checkpoint(&mut self, checkpoint: SerdeEnvelope<MapCheckpoint>) {
+        self.checkpoint = checkpoint;
+    }
 }

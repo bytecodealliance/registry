@@ -107,19 +107,19 @@ impl Client {
         heads: Vec<LogLeaf>,
     ) -> Result<()> {
         println!("Proving Inclusion");
-        dbg!(checkpoint);
-        dbg!(&heads);
         let client = reqwest::Client::new();
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
             heads: heads.clone(),
         };
         let response = client
-            .post(self.endpoint("/prove/inclusion"))
+            .post(self.endpoint("/proof/inclusion"))
             .json(&request)
             .send()
             .await?;
+
         let response = response.json::<InclusionResponse>().await?;
+        println!("Proofs arrived");
 
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(response.log.as_slice())?;

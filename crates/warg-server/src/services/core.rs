@@ -55,7 +55,7 @@ impl State {
         };
         Self {
             checkpoints,
-            checkpoint_index: HashMap::from([(checkpoint_hash, 1)]),
+            checkpoint_index: HashMap::from([(checkpoint_hash, 0)]),
             operator_info: Arc::new(Mutex::new(operator_info)),
             package_states: Default::default(),
         }
@@ -250,8 +250,8 @@ impl CoreService {
                     }
                 }
                 Message::NewCheckpoint { checkpoint, leaves } => {
-                    state.checkpoints.push(checkpoint.clone());
                     let checkpoint_index = state.checkpoints.len();
+                    state.checkpoints.push(checkpoint.clone());
                     state
                         .checkpoint_index
                         .insert(Hash::of(checkpoint.as_ref().as_ref()), checkpoint_index);
@@ -417,9 +417,7 @@ async fn fetch_operator_records(
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let mut result = Vec::new();
-    let slice = &info.log[start..end];
-    slice.clone_into(&mut result);
+    let result = info.log[start..end].iter().cloned().collect();
     Ok(result)
 }
 
@@ -435,9 +433,7 @@ async fn fetch_package_records(
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let mut result = Vec::new();
-    let slice = &info.log[start..end];
-    slice.clone_into(&mut result);
+    let result = info.log[start..end].iter().cloned().collect();
     Ok(result)
 }
 
@@ -456,13 +452,7 @@ fn get_operator_record_index(log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecor
 }
 
 fn get_records_before_checkpoint(indices: &Vec<usize>, checkpoint_index: usize) -> usize {
-    indices.iter().fold(0, |count, index| {
-        if *index < checkpoint_index {
-            count + 1
-        } else {
-            count
-        }
-    })
+    indices.iter().filter(|index| **index <= checkpoint_index).count()
 }
 
 impl CoreService {
