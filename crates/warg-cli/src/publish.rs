@@ -125,14 +125,12 @@ pub async fn publish_command(
                         })
                     }
                 }
-                println!("Submitting");
                 client
                     .publish(&name, Arc::new(record), content_sources)
                     .await?;
 
                 reg_info.set_checkpoint(client.latest_checkpoint().await?);
                 data.set_registry_info(&reg_info)?;
-                println!("Done");
             } else {
                 eprintln!("No publish to submit.");
                 advise_start_publish();

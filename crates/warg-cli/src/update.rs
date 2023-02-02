@@ -7,15 +7,19 @@ use warg_protocol::{ProtoEnvelope, package, registry::{LogLeaf, LogId, MapCheckp
 use crate::data::CliData;
 
 pub async fn update(data: CliData) -> Result<()> {
-    let reg_info = match data.get_registry_info()? {
+    let mut reg_info = match data.get_registry_info()? {
         Some(reg_info) => reg_info,
         None => return Err(Error::msg("Must have a registry set to install.")),
     };
     let client = api::Client::new(reg_info.url().to_owned());
-    update_with_client(data, client, reg_info.checkpoint()).await
+    let checkpoint = client.latest_checkpoint().await?;
+    update_with_client(&data, client, &checkpoint).await?;
+    reg_info.set_checkpoint(checkpoint);
+    data.set_registry_info(&reg_info)?;
+    Ok(())
 }
 
-pub async fn update_to(data: CliData, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+pub async fn update_to(data: &CliData, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()> {
     let reg_info = match data.get_registry_info()? {
         Some(reg_info) => reg_info,
         None => return Err(Error::msg("Must have a registry set to install.")),
@@ -24,7 +28,7 @@ pub async fn update_to(data: CliData, checkpoint: &SerdeEnvelope<MapCheckpoint>)
     update_with_client(data, client, checkpoint).await
 }
 
-async fn update_with_client(data: CliData, client: api::Client, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+async fn update_with_client(data: &CliData, client: api::Client, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()> {
     let root: Hash<Sha256> = Hash::of(checkpoint.as_ref());
     let root: DynHash = root.into();
 

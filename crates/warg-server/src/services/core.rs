@@ -413,7 +413,7 @@ async fn fetch_operator_records(
     let info = operator_info.as_ref().lock().await;
 
     let start = match since {
-        Some(hash) => get_operator_record_index(&info.log, hash)?,
+        Some(hash) => get_operator_record_index(&info.log, hash)? + 1,
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
@@ -429,7 +429,7 @@ async fn fetch_package_records(
     let info = package_info.as_ref().lock().await;
 
     let start = match since {
-        Some(hash) => get_package_record_index(&info.log, hash)?,
+        Some(hash) => get_package_record_index(&info.log, hash)? + 1,
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
