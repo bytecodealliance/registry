@@ -54,12 +54,26 @@ pub async fn publish_command(
                 eprintln!("Can't start a new publish.");
                 advise_end_publish();
             } else {
-                let prev = match init {
-                    true => None,
-                    false => Some(todo!()),
+                let package_state = data.get_package_state(&name)?;
+                let package_head = package_state.head().as_ref().map(|h| h.digest.clone());
+
+                let info = match (init, package_head) {
+                    (true, None) => {
+                        let mut info = PublishInfo::new(name, None);
+                        info.push_init(HashAlgorithm::Sha256, signing_key.public_key());
+                        info
+                    },
+                    (true, Some(_)) => {
+                        return Err(Error::msg("Can't init package that already exists"));
+                    }
+                    (false, None) => {
+                        return Err(Error::msg("Can't add to a non-existing package"));
+                    },
+                    (false, Some(head)) => {
+                        PublishInfo::new(name, Some(head))
+                    }
                 };
-                let mut info = PublishInfo::new(name, prev);
-                info.push_init(HashAlgorithm::Sha256, signing_key.public_key());
+                
                 data.set_publish_info(&info)?;
             }
         }

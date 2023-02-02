@@ -1,10 +1,11 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::{Error, Result};
-
+use futures_util::stream::StreamExt;
 use forrest::{log::LogProofBundle, map::MapProofBundle};
+use tempfile::{NamedTempFile, TempPath};
 use tokio::io::AsyncWriteExt;
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{DynHash, Sha256, Hash, Digest};
 use warg_protocol::{
     package,
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
@@ -119,7 +120,6 @@ impl Client {
             .await?;
 
         let response = response.json::<InclusionResponse>().await?;
-        println!("Proofs arrived");
 
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(response.log.as_slice())?;
@@ -164,15 +164,24 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_content(&self, digest: DynHash, path: &Path) -> Result<()> {
-        println!("Downloading {} to {:?}", digest, path);
+    pub async fn download_content(&self, digest: DynHash, dir: &Path) -> Result<TempPath> {
+        let tmp_path = NamedTempFile::new_in(&dir)?.into_temp_path();
+        println!("Downloading {} to {:?}", digest, tmp_path);
         let url_safe = digest.to_string().replace(":", "-");
         let url = self.endpoint(&format!("/content/{}", url_safe));
-        let stream = reqwest::get(url).await?.bytes().await?;
-        tokio::fs::File::create(path)
-            .await?
-            .write(stream.as_ref())
-            .await?;
-        Ok(())
+        let mut stream = reqwest::get(url).await?.bytes_stream();
+        let mut file = tokio::fs::File::create(&tmp_path).await?;
+        let mut hasher = Sha256::new();
+        while let Some(bytes) = stream.next().await.transpose()? {
+            hasher.update(bytes.as_ref());
+            file.write_all(bytes.as_ref()).await?;
+        }
+        let hash = hasher.finalize();
+        let hash: Hash<Sha256> = hash.into();
+        let hash: DynHash = hash.into();
+        if hash != digest {
+            return Err(Error::msg("Downloaded content digest did not match"));
+        }
+        Ok(tmp_path)
     }
 }

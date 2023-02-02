@@ -2,6 +2,7 @@ mod data;
 mod install;
 mod publish;
 mod registry_info;
+mod update;
 
 // FIXME: delete
 mod demo;
@@ -12,6 +13,7 @@ use data::CliData;
 use install::install;
 use publish::{publish_command, PublishCommand};
 use registry_info::RegistryInfo;
+use update::update;
 use warg_client::api;
 use warg_crypto::signing;
 
@@ -50,7 +52,7 @@ pub async fn main() -> Result<()> {
         Commands::SetRegistry { registry } => set_registry(data, registry).await,
         Commands::Install { package } => install(data, package).await,
         Commands::Update => {
-            todo!()
+            update(data).await
         }
         Commands::Publish { subcommand } => {
             let demo_user_key = std::env::var("WARG_DEMO_USER_KEY")?;

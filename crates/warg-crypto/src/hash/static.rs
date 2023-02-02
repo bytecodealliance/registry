@@ -105,6 +105,12 @@ impl<D: SupportedDigest> fmt::Debug for Hash<D> {
     }
 }
 
+impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
+    fn from(value: Output<D>) -> Self {
+        Hash { digest: value }
+    }
+}
+
 impl<D: SupportedDigest> TryFrom<Vec<u8>> for Hash<D> {
     type Error = IncorrectLengthError;
 

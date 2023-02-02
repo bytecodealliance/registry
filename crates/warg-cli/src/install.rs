@@ -37,7 +37,10 @@ pub async fn install(data: CliData, name: String) -> Result<()> {
         let needed_content = state.validate(&envelope)?;
         for digest in needed_content {
             let content_destination = data.content_path(&digest);
-            client.download_content(digest, &content_destination).await?;
+            let tmp_path = client.download_content(digest, &data.temp_dir()).await?;
+            if !content_destination.exists() {
+                tmp_path.persist(&content_destination)?;
+            }
         }
     }
 

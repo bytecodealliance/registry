@@ -1,8 +1,8 @@
-pushd ../crates/warg-cli
+pushd ../crates/warg-server
 cargo build
 popd
 
-pushd ../crates/warg-server
+pushd ../crates/warg-cli
 cargo build
 popd
 
