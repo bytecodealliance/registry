@@ -100,6 +100,7 @@ pub(crate) async fn publish(
     for source in body.content_sources.iter() {
         match &source.kind {
             ContentSourceKind::HttpAnonymous { url } => {
+                println!("Content {} - HttpAnonymous at {}", source.content_digest, url);
                 if url.starts_with(&config.base_url) {
                     let response = Client::builder().build()?.head(url).send().await?;
                     if !response.status().is_success() {
@@ -121,7 +122,7 @@ pub(crate) async fn publish(
     Ok((StatusCode::OK, Json(response)))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RecordResponse {
     record: ProtoEnvelopeBody,
     content_sources: Arc<Vec<ContentSource>>,

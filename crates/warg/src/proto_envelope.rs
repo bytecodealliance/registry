@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::protobuf;
 use anyhow::Error;
 use prost::Message;
@@ -116,7 +118,7 @@ pub enum ParseEnvelopeError {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ProtoEnvelopeBody {
     /// The serialized representation of the content
     #[serde_as(as = "Base64")]
@@ -152,5 +154,15 @@ impl<Content> From<ProtoEnvelope<Content>> for ProtoEnvelopeBody {
             key_id: value.key_id,
             signature: value.signature,
         }
+    }
+}
+
+impl fmt::Debug for ProtoEnvelopeBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProtoEnvelopeBody")
+            .field("content_bytes", &base64::encode(&self.content_bytes))
+            .field("key_id", &self.key_id)
+            .field("signature", &self.signature)
+            .finish()
     }
 }
