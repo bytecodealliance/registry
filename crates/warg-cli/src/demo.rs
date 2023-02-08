@@ -1,10 +1,11 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use warg_client::ClientError;
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::{I32Exit, WasiCtx, WasiCtxBuilder};
 
-pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<()> {
+pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<(), ClientError> {
     let engine = Engine::default();
 
     let path = path.as_ref();
@@ -13,9 +14,12 @@ pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<()> {
 
     let wasi_ctx = WasiCtxBuilder::new()
         .inherit_stdio()
-        .arg(&path.file_name().unwrap().to_string_lossy())?
-        .args(args)?
-        .envs(&[])?
+        .arg(&path.file_name().unwrap().to_string_lossy())
+        .with_context(|| "Package name error.")?
+        .args(args)
+        .with_context(|| "Argument passing error.")?
+        .envs(&[])
+        .with_context(|| "Environment variable error.")?
         .build();
     let mut store = Store::new(&engine, wasi_ctx);
 

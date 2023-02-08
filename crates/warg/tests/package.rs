@@ -5,11 +5,13 @@ use std::{
     fs::{self, DirEntry},
     path::Path,
 };
-use warg_crypto::hash::{HashAlgorithm, Sha256};
+use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
 use warg_protocol::{
     package::{self, Validator},
-    protobuf, ProtoEnvelope, registry::RecordId,
+    protobuf,
+    registry::RecordId,
+    ProtoEnvelope,
 };
 
 #[test]

@@ -30,7 +30,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
             Some(hash_string) => {
                 let hash: DynHash = hash_string.parse()?;
                 Some(hash.into())
-            },
+            }
             None => None,
         };
         let version = record.version;

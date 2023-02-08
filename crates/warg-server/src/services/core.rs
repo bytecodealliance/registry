@@ -437,14 +437,20 @@ async fn fetch_package_records(
     Ok(result)
 }
 
-fn get_package_record_index(log: &Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, hash: RecordId) -> Result<usize, Error> {
+fn get_package_record_index(
+    log: &Vec<Arc<ProtoEnvelope<package::PackageRecord>>>,
+    hash: RecordId,
+) -> Result<usize, Error> {
     log.iter()
         .map(|env| RecordId::package_record::<Sha256>(env.as_ref()))
         .position(|found| found == hash)
         .ok_or_else(|| Error::msg("Hash value not found"))
 }
 
-fn get_operator_record_index(log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, hash: RecordId) -> Result<usize, Error> {
+fn get_operator_record_index(
+    log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>,
+    hash: RecordId,
+) -> Result<usize, Error> {
     log.iter()
         .map(|env| RecordId::operator_record::<Sha256>(env.as_ref()))
         .position(|found| found == hash)
@@ -452,7 +458,10 @@ fn get_operator_record_index(log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecor
 }
 
 fn get_records_before_checkpoint(indices: &Vec<usize>, checkpoint_index: usize) -> usize {
-    indices.iter().filter(|index| **index <= checkpoint_index).count()
+    indices
+        .iter()
+        .filter(|index| **index <= checkpoint_index)
+        .count()
 }
 
 impl CoreService {

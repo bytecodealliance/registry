@@ -9,7 +9,9 @@ use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
 use warg_protocol::{
     operator::{self, Validator},
-    protobuf, ProtoEnvelope, registry::RecordId,
+    protobuf,
+    registry::RecordId,
+    ProtoEnvelope,
 };
 
 #[test]

@@ -31,7 +31,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
             Some(hash_string) => {
                 let digest: DynHash = hash_string.parse()?;
                 Some(digest.into())
-            },
+            }
             None => None,
         };
         let version = record.version;

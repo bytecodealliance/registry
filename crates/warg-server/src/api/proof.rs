@@ -4,8 +4,8 @@ use anyhow::Result;
 use axum::extract::State;
 use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use serde_with::base64::Base64;
+use serde_with::serde_as;
 use tokio::sync::RwLock;
 
 use warg_crypto::hash::{DynHash, Hash, Sha256};
