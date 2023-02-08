@@ -1,11 +1,10 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use anyhow::{Error, Result};
-use futures_util::stream::StreamExt;
+use bytes::Bytes;
 use forrest::{log::LogProofBundle, map::MapProofBundle};
-use tempfile::{NamedTempFile, TempPath};
-use tokio::io::AsyncWriteExt;
-use warg_crypto::hash::{DynHash, Sha256, Hash, Digest};
+use futures_util::Stream;
+use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
@@ -69,16 +68,18 @@ impl Client {
 
         let record_url = match response {
             PendingRecordResponse::Published { record_url } => record_url,
-            PendingRecordResponse::Rejected { reason } => return Err(Error::msg(format!("Record rejected for {}", reason))),
-            PendingRecordResponse::Processing { status_url } => {
-                loop {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    let response = self.get_pending_package_record(&status_url).await?;
-                    match response {
-                        PendingRecordResponse::Published { record_url } => break record_url,
-                        PendingRecordResponse::Rejected { reason } => return Err(Error::msg(format!("Record rejected for {}", reason))),
-                        PendingRecordResponse::Processing { .. } => {},
+            PendingRecordResponse::Rejected { reason } => {
+                return Err(Error::msg(format!("Record rejected for {}", reason)))
+            }
+            PendingRecordResponse::Processing { status_url } => loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let response = self.get_pending_package_record(&status_url).await?;
+                match response {
+                    PendingRecordResponse::Published { record_url } => break record_url,
+                    PendingRecordResponse::Rejected { reason } => {
+                        return Err(Error::msg(format!("Record rejected for {}", reason)))
                     }
+                    PendingRecordResponse::Processing { .. } => {}
                 }
             },
         };
@@ -147,37 +148,33 @@ impl Client {
     }
 
     pub async fn prove_log_consistency(&self, old_root: DynHash, new_root: DynHash) -> Result<()> {
+        dbg!(old_root);
+        dbg!(new_root);
         todo!()
     }
 
-    pub async fn upload_content(&self, content: tokio::fs::File) -> Result<()> {
+    pub async fn upload_content(&self, content: Vec<u8>) -> Result<String> {
         let client = reqwest::Client::new();
-        let _response = client
+        let response = client
             .post(self.endpoint("/content/"))
             .body(content)
             .send()
             .await?;
-        Ok(())
+
+        let location = response
+            .headers()
+            .get("location")
+            .ok_or(Error::msg("Uploaded URL not known"))?
+            .to_str()?;
+        Ok(location.to_string())
     }
 
-    pub async fn download_content(&self, digest: DynHash, dir: &Path) -> Result<TempPath> {
-        let tmp_path = NamedTempFile::new_in(&dir)?.into_temp_path();
-        println!("Downloading {} to {:?}", digest, tmp_path);
+    pub async fn download_content(
+        &self,
+        digest: &DynHash,
+    ) -> Result<impl Stream<Item = Result<Bytes, reqwest::Error>>> {
         let url_safe = digest.to_string().replace(":", "-");
         let url = self.endpoint(&format!("/content/{}", url_safe));
-        let mut stream = reqwest::get(url).await?.bytes_stream();
-        let mut file = tokio::fs::File::create(&tmp_path).await?;
-        let mut hasher = Sha256::new();
-        while let Some(bytes) = stream.next().await.transpose()? {
-            hasher.update(bytes.as_ref());
-            file.write_all(bytes.as_ref()).await?;
-        }
-        let hash = hasher.finalize();
-        let hash: Hash<Sha256> = hash.into();
-        let hash: DynHash = hash.into();
-        if hash != digest {
-            return Err(Error::msg("Downloaded content digest did not match"));
-        }
-        Ok(tmp_path)
+        Ok(reqwest::get(url).await?.bytes_stream())
     }
 }

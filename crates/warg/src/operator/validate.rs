@@ -1,12 +1,12 @@
 use super::{model, OPERATOR_RECORD_VERSION};
-use crate::ProtoEnvelope;
 use crate::registry::RecordId;
+use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
 
-use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
+use warg_crypto::hash::{HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
@@ -155,7 +155,7 @@ impl Validator {
         self.validate_record_entries(envelope.key_id(), &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
-        let algorithm = self
+        let _algorithm = self
             .algorithm
             .ok_or(ValidationError::InitialRecordDoesNotInit)?;
 

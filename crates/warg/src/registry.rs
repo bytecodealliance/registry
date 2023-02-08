@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{operator::OperatorRecord, package::PackageRecord, ProtoEnvelope};
 use serde::{Deserialize, Serialize};
-use warg_crypto::hash::{DynHash, Hash, SupportedDigest, HashAlgorithm};
+use warg_crypto::hash::{DynHash, Hash, HashAlgorithm, SupportedDigest};
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 
 use warg_crypto::prefix::VisitPrefixEncode;
