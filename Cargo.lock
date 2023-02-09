@@ -3055,7 +3055,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "warg"
+name = "warg-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
