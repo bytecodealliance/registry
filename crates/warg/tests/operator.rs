@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,7 +16,8 @@ use warg_protocol::{
 
 #[test]
 fn test_operator_logs() {
-    let mut entries: Vec<DirEntry> = fs::read_dir("./tests/operator-logs")
+    let operator_log_dir = Path::new(".").join("tests").join("operator-logs");
+    let mut entries: Vec<DirEntry> = fs::read_dir(operator_log_dir)
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
@@ -53,11 +54,14 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
 }
 
 fn execute_test(input_path: &Path) {
-    let output_path = Path::new("./tests/operator-logs/output").join(
-        input_path
-            .file_name()
-            .expect("expected a file name for test input"),
-    );
+    let file_name = input_path
+        .file_name()
+        .expect("expected a file name for test input");
+    let output_path = Path::new(".")
+        .join("tests")
+        .join("operator-logs")
+        .join("output")
+        .join(file_name);
     let input: Vec<EnvelopeData> = serde_json::from_str(
         &fs::read_to_string(input_path)
             .map_err(|e| {
@@ -84,32 +88,31 @@ fn execute_test(input_path: &Path) {
     if std::env::var_os("BLESS").is_some() {
         // Update the test baseline
         fs::write(&output_path, serde_json::to_string_pretty(&output).unwrap())
-            .map_err(|e| {
+            .with_context(|| {
                 format!(
-                    "failed to write output file `{path}`: {e}",
+                    "failed to write output file `{path}`",
                     path = output_path.display()
                 )
             })
             .unwrap();
     } else {
-        assert_eq!(
-            serde_json::from_str::<Output>(
-                &fs::read_to_string(&output_path)
-                    .map_err(|e| {
-                        format!(
-                            "failed to read output file `{path}`: {e}",
-                            path = output_path.display()
-                        )
-                    })
-                    .unwrap()
-            )
-            .map_err(|e| format!(
-                "failed to deserialize output file `{path}`: {e}",
-                path = output_path.display()
-            ))
-            .unwrap(),
-            output
-        );
+        let output_string = fs::read_to_string(&output_path)
+            .with_context(|| {
+                format!(
+                    "failed to read output file `{path}`",
+                    path = output_path.display()
+                )
+            })
+            .unwrap();
+        let expected = serde_json::from_str::<Output>(&output_string)
+            .with_context(|| {
+                format!(
+                    "failed to deserialize output file `{path}`",
+                    path = output_path.display()
+                )
+            })
+            .unwrap();
+        assert_eq!(expected, output, "Validating test {:?}", input_path);
     }
 }
 

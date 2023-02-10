@@ -1,8 +1,8 @@
 {
   "Valid": {
     "algorithm": "sha256",
-    "root": {
-      "digest": "sha256:7dfc6913ea68a8a1d331433044b9d2303feae5f3f4d96483c055788c07a57a7f",
+    "head": {
+      "digest": "sha256:8ddc765163415d17f9d174296703ced99fa9256c7a19a7f58409e2bc06636031",
       "timestamp": "1671221120.153436500"
     },
     "permissions": {
