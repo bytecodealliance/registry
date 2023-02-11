@@ -44,7 +44,7 @@ mod test {
         assert_ne!(second.root(), third.root());
 
         // Ensure the empty tree has the known root.
-        assert_eq!(first.root().clone(), Hash::of(&0u8));
+        assert_eq!(first.root().clone(), Hash::of(0u8));
     }
 
     #[test]
@@ -114,7 +114,7 @@ mod test {
             value: V,
             peers: usize,
         ) {
-            let proof = tree.prove(&key.clone()).unwrap();
+            let proof = tree.prove(&key).unwrap();
             assert_eq!(proof.len(), peers);
             assert_eq!(tree.root().clone(), proof.evaluate(&key, &value));
         }

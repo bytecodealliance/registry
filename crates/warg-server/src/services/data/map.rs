@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use forrest::map::MapProofBundle;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
@@ -39,14 +39,11 @@ impl MapData {
         root: Hash<Sha256>,
         leaves: &[LogLeaf],
     ) -> Result<MapProofBundle<Sha256, MapLeaf>, Error> {
-        let map = self
-            .map_index
-            .get(&root)
-            .ok_or(Error::msg("Unknown map root"))?;
+        let map = self.map_index.get(&root).context("Unknown map root")?;
 
         let mut proofs = Vec::new();
         for LogLeaf { log_id, record_id } in leaves {
-            let proof = map.prove(&log_id).ok_or(Error::msg("Unable to prove"))?;
+            let proof = map.prove(log_id).context("Unable to prove")?;
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };

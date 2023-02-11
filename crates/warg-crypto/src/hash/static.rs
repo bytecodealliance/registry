@@ -50,6 +50,7 @@ impl<D: SupportedDigest> Hash<D> {
         self.digest.as_slice()
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.bytes().len()
     }
@@ -186,14 +187,14 @@ mod tests {
     fn test_hash_empties_have_no_impact() {
         let empty: &[u8] = &[];
 
-        let h0: Hash<Sha256> = Hash::of(&(0u8, 1u8));
-        let h1: Hash<Sha256> = Hash::of(&(0u8, 1u8, empty));
-        let h2: Hash<Sha256> = Hash::of(&(0u8, empty, 1u8));
-        let h3: Hash<Sha256> = Hash::of(&(0u8, empty, 1u8, empty));
-        let h4: Hash<Sha256> = Hash::of(&(empty, 0u8, 1u8));
-        let h5: Hash<Sha256> = Hash::of(&(empty, 0u8, 1u8, empty));
-        let h6: Hash<Sha256> = Hash::of(&(empty, 0u8, empty, 1u8));
-        let h7: Hash<Sha256> = Hash::of(&(empty, 0u8, empty, 1u8, empty));
+        let h0: Hash<Sha256> = Hash::of((0u8, 1u8));
+        let h1: Hash<Sha256> = Hash::of((0u8, 1u8, empty));
+        let h2: Hash<Sha256> = Hash::of((0u8, empty, 1u8));
+        let h3: Hash<Sha256> = Hash::of((0u8, empty, 1u8, empty));
+        let h4: Hash<Sha256> = Hash::of((empty, 0u8, 1u8));
+        let h5: Hash<Sha256> = Hash::of((empty, 0u8, 1u8, empty));
+        let h6: Hash<Sha256> = Hash::of((empty, 0u8, empty, 1u8));
+        let h7: Hash<Sha256> = Hash::of((empty, 0u8, empty, 1u8, empty));
 
         assert_eq!(h0, h1);
         assert_eq!(h0, h2);

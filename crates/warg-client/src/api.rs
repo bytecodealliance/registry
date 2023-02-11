@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use bytes::Bytes;
 use forrest::{log::LogProofBundle, map::MapProofBundle};
 use futures_util::Stream;
@@ -164,7 +164,7 @@ impl Client {
         let location = response
             .headers()
             .get("location")
-            .ok_or(Error::msg("Uploaded URL not known"))?
+            .context("Uploaded URL not known")?
             .to_str()?;
         Ok(location.to_string())
     }
@@ -173,7 +173,7 @@ impl Client {
         &self,
         digest: &DynHash,
     ) -> Result<impl Stream<Item = Result<Bytes, reqwest::Error>>> {
-        let url_safe = digest.to_string().replace(":", "-");
+        let url_safe = digest.to_string().replace(':', "-");
         let url = self.endpoint(&format!("/content/{}", url_safe));
         Ok(reqwest::get(url).await?.bytes_stream())
     }

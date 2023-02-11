@@ -146,7 +146,7 @@ impl Node {
                 broot_heights.push(i);
             }
 
-            value = value >> 1;
+            value >>= 1;
         }
 
         let mut broots = Vec::new();

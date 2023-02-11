@@ -47,7 +47,7 @@ impl Config {
 
         let (core, data) = services::init(self.signing_key);
         let package_config = api::package::Config::new(core.clone(), self.base_url.clone());
-        let fetch_config = api::fetch::Config::new(core.clone());
+        let fetch_config = api::fetch::Config::new(core);
         let proof_config = api::proof::Config::new(data.log_data, data.map_data);
 
         Ok(router

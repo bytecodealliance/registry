@@ -33,7 +33,7 @@ where
             .rev()
             .map(|(_n, hash)| hash.clone())
             .reduce(|new, old| hash_branch::<D>(old, new))
-            .unwrap_or(hash_empty::<D>());
+            .unwrap_or_else(hash_empty::<D>);
 
         Checkpoint {
             root,

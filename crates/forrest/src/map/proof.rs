@@ -112,7 +112,7 @@ mod tests {
 
         let p = c.prove(&"baz").unwrap();
 
-        assert_eq!(root.clone(), p.evaluate(&"baz", &b"bat".as_slice()));
-        assert_ne!(root.clone(), p.evaluate(&"other", &b"bar".as_slice()));
+        assert_eq!(root, p.evaluate(&"baz", &b"bat".as_slice()));
+        assert_ne!(root, p.evaluate(&"other", &b"bar".as_slice()));
     }
 }

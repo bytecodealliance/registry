@@ -104,11 +104,12 @@ where
                 _value: PhantomData,
             })
         } else {
-            return Err(Error::msg("A bundle can not be made from no proofs"));
+            Err(Error::msg("A bundle can not be made from no proofs"))
         }
     }
 
     /// Splits a bundle into its constituent inclusion proofs
+    #[allow(clippy::type_complexity)]
     pub fn unbundle(
         self,
     ) -> (

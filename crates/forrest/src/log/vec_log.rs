@@ -58,7 +58,7 @@ where
                 // Ordering due to reversal of iterator
                 hash_branch::<D>(new, old)
             })
-            .unwrap_or(hash_empty::<D>());
+            .unwrap_or_else(hash_empty::<D>);
 
         Some(result)
     }
@@ -105,7 +105,7 @@ where
         self.tree.push(leaf_digest.clone());
 
         // Fill in newly known hashes
-        let mut current_digest = leaf_digest.clone();
+        let mut current_digest = leaf_digest;
         let mut current_node = leaf_node;
         while current_node.side() == Side::Right {
             let sibling = current_node.left_sibling();
@@ -140,7 +140,7 @@ where
     V: VisitBytes,
 {
     fn hash_for(&self, node: Node) -> Option<Hash<D>> {
-        self.tree.get(node.index()).map(|h| h.clone())
+        self.tree.get(node.index()).cloned()
     }
 
     fn has_hash(&self, node: Node) -> bool {
@@ -157,7 +157,7 @@ mod tests {
     use super::*;
 
     fn naive_merkle<D: SupportedDigest, E: VisitBytes>(elements: &[E]) -> Hash<D> {
-        let res = match elements.len() {
+        match elements.len() {
             0 => hash_empty::<D>(),
             1 => hash_leaf::<D>(&elements[0]),
             _ => {
@@ -166,8 +166,7 @@ mod tests {
                 let right = naive_merkle::<D, E>(&elements[k..]);
                 hash_branch::<D>(left, right)
             }
-        };
-        res
+        }
     }
 
     #[test]
