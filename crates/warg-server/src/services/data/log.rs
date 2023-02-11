@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -57,11 +57,11 @@ impl ProofData {
         let old_len = self
             .root_index
             .get(&old_root)
-            .ok_or(Error::msg("Old root not found"))?;
+            .context("Old root not found")?;
         let new_len = self
             .root_index
             .get(&new_root)
-            .ok_or(Error::msg("New root not found"))?;
+            .context("New root not found")?;
 
         let proof = self.log.prove_consistency(*old_len, *new_len);
         let bundle = LogProofBundle::bundle(vec![proof], vec![], &self.log)?;
@@ -74,18 +74,13 @@ impl ProofData {
         root: Hash<Sha256>,
         leaves: &[LogLeaf],
     ) -> Result<LogProofBundle<Sha256, LogLeaf>, Error> {
-        let log_length = self
-            .root_index
-            .get(&root)
-            .ok_or(Error::msg("Root not found"))?
-            .clone();
+        let log_length = *self.root_index.get(&root).context("Root not found")?;
         let mut proofs = Vec::new();
         for leaf in leaves {
-            let node = self
+            let node = *self
                 .leaf_index
-                .get(&leaf)
-                .ok_or(Error::msg("Leaf not found with provided root"))?
-                .clone();
+                .get(leaf)
+                .context("Leaf not found with provided root")?;
             let proof = self.log.prove_inclusion(node, log_length);
             proofs.push(proof);
         }

@@ -49,40 +49,34 @@ impl Client {
         package: String,
         author: signing::PublicKey,
     ) -> Result<(), ClientError> {
-        if let Some(_) = self.storage.load_publish_info().await? {
-            Err(ClientError::AlreadyPublishing)
-        } else {
-            let package_state = self.storage.load_package_state(&package).await?;
-            let package_head = package_state.head().as_ref().map(|h| h.digest.clone());
-
-            match package_head {
-                Some(_) => Err(ClientError::InitAlreadyExistingPackage),
-                None => {
-                    let mut info = PublishInfo::new(package, None);
-                    info.push_init(HashAlgorithm::Sha256, author);
-                    self.storage.store_publish_info(&info).await?;
-                    Ok(())
-                }
-            }
+        if self.storage.load_publish_info().await?.is_some() {
+            return Err(ClientError::AlreadyPublishing);
         }
+
+        let package_state = self.storage.load_package_state(&package).await?;
+        if package_state.head().is_some() {
+            return Err(ClientError::InitAlreadyExistingPackage);
+        }
+
+        let mut info = PublishInfo::new(package, None);
+        info.push_init(HashAlgorithm::Sha256, author);
+        self.storage.store_publish_info(&info).await?;
+        Ok(())
     }
 
     pub async fn start_publish(&mut self, package: String) -> Result<(), ClientError> {
-        if let Some(_) = self.storage.load_publish_info().await? {
-            Err(ClientError::AlreadyPublishing)
-        } else {
-            let package_state = self.storage.load_package_state(&package).await?;
-            let package_head = package_state.head().as_ref().map(|h| h.digest.clone());
-
-            match package_head {
-                Some(head) => {
-                    let info = PublishInfo::new(package, Some(head));
-                    self.storage.store_publish_info(&info).await?;
-                    Ok(())
-                }
-                None => Err(ClientError::PublishToNonExistingPackage),
-            }
+        if self.storage.load_publish_info().await?.is_some() {
+            return Err(ClientError::AlreadyPublishing);
         }
+
+        let package_state = self.storage.load_package_state(&package).await?;
+        let Some(package_head) = package_state.head().as_ref().map(|h| h.digest.clone()) else {
+            return Err(ClientError::PublishToNonExistingPackage);
+        };
+
+        let info = PublishInfo::new(package, Some(package_head));
+        self.storage.store_publish_info(&info).await?;
+        Ok(())
     }
 
     pub async fn cancel_publish(&mut self) -> Result<(), ClientError> {
@@ -117,7 +111,7 @@ impl Client {
         if let Some(pub_info) = self.storage.load_publish_info().await? {
             let (name, contents, record) = pub_info.finalize();
             let record =
-                ProtoEnvelope::signed_contents(&signing_key, record).map_err(anyhow::Error::new)?;
+                ProtoEnvelope::signed_contents(signing_key, record).map_err(anyhow::Error::new)?;
 
             let mut content_sources = Vec::new();
             if !contents.is_empty() {
@@ -232,7 +226,7 @@ impl Client {
             }
 
             if let Some(head) = state.head() {
-                let log_id = LogId::package_log::<Sha256>(&name);
+                let log_id = LogId::package_log::<Sha256>(name);
                 let record_id = head.digest.clone();
                 let leaf = LogLeaf { log_id, record_id };
                 heads.push(leaf);
@@ -244,7 +238,7 @@ impl Client {
         client.prove_inclusion(checkpoint.as_ref(), heads).await?;
 
         for (name, state) in validators.iter() {
-            self.storage.store_package_state(&name, &state).await?;
+            self.storage.store_package_state(name, state).await?;
         }
 
         Ok(())

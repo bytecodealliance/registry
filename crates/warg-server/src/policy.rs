@@ -6,6 +6,8 @@ pub trait Policy {
     fn check_package_record(&self, record: &package::PackageRecord) -> PolicyDecision;
 }
 
+// FIXME(kyleb): Describe planned use or remove
+#[allow(dead_code)]
 pub enum PolicyDecision {
     Accept,
     Reject,

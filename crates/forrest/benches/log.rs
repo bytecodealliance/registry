@@ -35,6 +35,7 @@ fn log_bench(c: &mut Criterion) {
     grp.sampling_mode(SamplingMode::Flat);
     grp.warm_up_time(Duration::from_secs(30));
 
+    #[allow(clippy::single_element_loop)]
     for size in [1_048_576] {
         grp.throughput(criterion::Throughput::Elements(size as u64));
         grp.bench_with_input(BenchmarkId::new("push", size), &size, |b, i| {

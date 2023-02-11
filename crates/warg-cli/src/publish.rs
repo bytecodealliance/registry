@@ -55,7 +55,7 @@ fn print_publish_info(info: &PublishInfo) {
     }
     for (i, entry) in info.entries.iter().enumerate() {
         print!("{}", i);
-        print_package_entry_info(&entry)
+        print_package_entry_info(entry)
     }
 }
 

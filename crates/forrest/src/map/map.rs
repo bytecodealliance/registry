@@ -113,7 +113,7 @@ where
     fn clone(&self) -> Self {
         Self {
             link: self.link.clone(),
-            unknown_field: self.unknown_field.clone(),
+            unknown_field: self.unknown_field,
             _key: PhantomData,
             _value: PhantomData,
         }
@@ -206,7 +206,7 @@ where
         K: Borrow<Q>,
         Q: VisitBytes,
     {
-        self.link.node().prove(Path::new(&key))
+        self.link.node().prove(Path::new(key))
     }
 
     /// Insert a value into the map, creating a new map.
@@ -269,6 +269,6 @@ where
         (Some(left), Some(right)) => Hash::of(&(0b11, left, right)),
         (Some(left), None) => Hash::of(&(0b10, left)),
         (None, Some(right)) => Hash::of(&(0b01, right)),
-        (None, None) => Hash::of(&0b00u8),
+        (None, None) => Hash::of(0b00u8),
     }
 }

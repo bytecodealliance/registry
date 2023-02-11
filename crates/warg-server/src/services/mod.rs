@@ -58,7 +58,7 @@ pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let transparency = transparency::process(input);
 
     let log_data = log::ProofData::new(log_leaf.clone());
-    let map_data = map::MapData::new(map_leaf.clone());
+    let map_data = map::MapData::new(map_leaf);
 
     let input = data::Input {
         log_data,
@@ -96,5 +96,5 @@ fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRe
             key: signing_key.public_key(),
         }],
     };
-    ProtoEnvelope::signed_contents(&signing_key, init_record).unwrap()
+    ProtoEnvelope::signed_contents(signing_key, init_record).unwrap()
 }

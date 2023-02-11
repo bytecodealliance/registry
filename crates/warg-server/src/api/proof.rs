@@ -9,7 +9,7 @@ use serde_with::serde_as;
 use tokio::sync::RwLock;
 
 use warg_crypto::hash::{DynHash, Hash, Sha256};
-use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, RecordId};
+use warg_protocol::registry::{LogLeaf, MapCheckpoint};
 
 use crate::{services::data, AnyError};
 

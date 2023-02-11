@@ -171,7 +171,7 @@ impl Validator {
 
         // Update the validator head
         self.head = Some(Head {
-            digest: RecordId::operator_record::<Sha256>(&envelope),
+            digest: RecordId::operator_record::<Sha256>(envelope),
             timestamp: record.timestamp,
         });
 

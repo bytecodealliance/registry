@@ -97,7 +97,7 @@ async fn run_command(command: Commands) -> Result<(), ClientError> {
 
 async fn set_registry(mut client: Client, url: String) -> Result<(), ClientError> {
     let reg_info = client.storage().load_registry_info().await?;
-    if let Some(_) = reg_info {
+    if reg_info.is_some() {
         todo!("Switching between registries not supported. Reset client to continue.");
     } else {
         client

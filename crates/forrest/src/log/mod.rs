@@ -140,7 +140,7 @@ where
 
 /// Compute the hash for an empty tree using a given Digest algorithm.
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-    Hash::of(&())
+    Hash::of(())
 }
 
 /// Compute the hash for a leaf in a tree using a given Digest algorithm.

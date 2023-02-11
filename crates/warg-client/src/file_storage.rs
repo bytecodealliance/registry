@@ -17,6 +17,7 @@ pub struct FileSystemStorage {
 }
 
 impl FileSystemStorage {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut base = std::env::current_dir().unwrap();
         base.push(".warg");
@@ -35,7 +36,7 @@ impl FileSystemStorage {
 
     fn ensure_dir(dir: &Path) {
         if !dir.exists() {
-            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::create_dir_all(dir).unwrap();
         }
     }
 
@@ -54,7 +55,7 @@ impl FileSystemStorage {
     }
 
     pub fn content_path(&self, digest: &DynHash) -> PathBuf {
-        let sanitized = digest.to_string().replace(":", "-");
+        let sanitized = digest.to_string().replace(':', "-");
 
         let mut path = self.content_dir();
         path.push(sanitized);
@@ -99,7 +100,7 @@ impl ClientStorage for FileSystemStorage {
 
     async fn list_all_packages(&self) -> Result<Vec<String>> {
         let mut packages = Vec::new();
-        for entry in self.package_dir().read_dir()?.into_iter() {
+        for entry in self.package_dir().read_dir()? {
             let entry = entry?;
             let name = entry.file_name().to_str().unwrap().to_owned();
             packages.push(name);
@@ -107,13 +108,13 @@ impl ClientStorage for FileSystemStorage {
         Ok(packages)
     }
 
-    async fn load_package_state(&self, package: &String) -> Result<package::Validator> {
+    async fn load_package_state(&self, package: &str) -> Result<package::Validator> {
         load_or_default(&self.package_path(package)).await
     }
 
     async fn store_package_state(
         &mut self,
-        package: &String,
+        package: &str,
         state: &package::Validator,
     ) -> Result<()> {
         store(&self.package_path(package), state).await
@@ -246,7 +247,7 @@ async fn store<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 
 async fn dump(path: &Path, contents: &[u8]) -> Result<()> {
     if path.exists() {
-        std::fs::remove_file(&path)?;
+        std::fs::remove_file(path)?;
     }
     if let Some(parent) = path.parent() {
         if parent.is_file() {
@@ -261,6 +262,6 @@ async fn dump(path: &Path, contents: &[u8]) -> Result<()> {
 }
 
 async fn delete(path: &Path) -> Result<()> {
-    std::fs::remove_file(&path)?;
+    std::fs::remove_file(path)?;
     Ok(())
 }

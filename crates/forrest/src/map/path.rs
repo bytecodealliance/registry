@@ -35,7 +35,7 @@ impl<D: SupportedDigest> Path<D> {
         Self {
             lhs: 0,
             rhs: all.len() * 8,
-            all: all.into(),
+            all,
         }
     }
 
@@ -88,6 +88,7 @@ impl<D: SupportedDigest> Iterator for Path<D> {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use warg_crypto::hash::Sha256;
@@ -104,7 +105,7 @@ mod tests {
     #[allow(clippy::identity_op)]
     fn test_forwards() {
         let mut path = Path::<Sha256>::new("foo");
-        let hash: Hash<Sha256> = Hash::of(&"foo");
+        let hash: Hash<Sha256> = Hash::of("foo");
         let mut bytes = hash.bytes().iter();
 
         for _ in 0..hash.len() {
@@ -127,7 +128,7 @@ mod tests {
     #[allow(clippy::identity_op)]
     fn test_backwards() {
         let mut path = Path::<Sha256>::new("foo");
-        let hash: Hash<Sha256> = Hash::of(&"foo");
+        let hash: Hash<Sha256> = Hash::of("foo");
         let mut bytes = hash.bytes().iter();
 
         for _ in 0..hash.len() {

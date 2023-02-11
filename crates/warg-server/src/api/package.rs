@@ -153,7 +153,7 @@ pub(crate) async fn get_record(
             let response = RecordResponse {
                 record: record.as_ref().clone().into(),
                 content_sources,
-                checkpoint: checkpoint,
+                checkpoint,
             };
             Ok((StatusCode::OK, Json(response)))
         }

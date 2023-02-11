@@ -274,7 +274,7 @@ impl CoreService {
                     since,
                     response,
                 } => {
-                    if let Some(checkpoint_index) = state.checkpoint_index.get(&root).map(|i| *i) {
+                    if let Some(&checkpoint_index) = state.checkpoint_index.get(&root) {
                         let operator_info = state.operator_info.clone();
                         tokio::spawn(async move {
                             response
@@ -296,7 +296,7 @@ impl CoreService {
                     since,
                     response,
                 } => {
-                    if let Some(checkpoint_index) = state.checkpoint_index.get(&root).map(|i| *i) {
+                    if let Some(&checkpoint_index) = state.checkpoint_index.get(&root) {
                         if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                             tokio::spawn(async move {
                                 response
@@ -417,7 +417,7 @@ async fn fetch_operator_records(
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let result = info.log[start..end].iter().cloned().collect();
+    let result = info.log[start..end].to_vec();
     Ok(result)
 }
 
@@ -433,12 +433,12 @@ async fn fetch_package_records(
         None => 0,
     };
     let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let result = info.log[start..end].iter().cloned().collect();
+    let result = info.log[start..end].to_vec();
     Ok(result)
 }
 
 fn get_package_record_index(
-    log: &Vec<Arc<ProtoEnvelope<package::PackageRecord>>>,
+    log: &[Arc<ProtoEnvelope<package::PackageRecord>>],
     hash: RecordId,
 ) -> Result<usize, Error> {
     log.iter()
@@ -448,7 +448,7 @@ fn get_package_record_index(
 }
 
 fn get_operator_record_index(
-    log: &Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>,
+    log: &[Arc<ProtoEnvelope<operator::OperatorRecord>>],
     hash: RecordId,
 ) -> Result<usize, Error> {
     log.iter()
@@ -457,7 +457,7 @@ fn get_operator_record_index(
         .ok_or_else(|| Error::msg("Hash value not found"))
 }
 
-fn get_records_before_checkpoint(indices: &Vec<usize>, checkpoint_index: usize) -> usize {
+fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> usize {
     indices
         .iter()
         .filter(|index| **index <= checkpoint_index)
@@ -490,7 +490,7 @@ impl CoreService {
         package_name: &str,
         record_id: RecordId,
     ) -> RecordState {
-        let package_id = LogId::package_log::<Sha256>(&package_name);
+        let package_id = LogId::package_log::<Sha256>(package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordStatus {

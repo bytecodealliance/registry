@@ -27,11 +27,11 @@ pub trait ClientStorage {
 
     async fn list_all_packages(&self) -> Result<Vec<String>>;
 
-    async fn load_package_state(&self, package: &String) -> Result<package::Validator>;
+    async fn load_package_state(&self, package: &str) -> Result<package::Validator>;
 
     async fn store_package_state(
         &mut self,
-        package: &String,
+        package: &str,
         state: &package::Validator,
     ) -> Result<()>;
 
