@@ -9,7 +9,6 @@ use self::{
     data::{log, map},
     transparency::{VerifiableLog, VerifiableMap},
 };
-use forrest::log::LogBuilder;
 use tokio::sync::mpsc;
 use warg_crypto::{
     hash::{HashAlgorithm, Sha256},
@@ -20,6 +19,7 @@ use warg_protocol::{
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
+use warg_transparency::log::LogBuilder;
 
 pub fn init(signing_key: PrivateKey) -> (Arc<CoreService>, data::Output) {
     let (transparency_tx, transparency_rx) = mpsc::channel(4);

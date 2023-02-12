@@ -6,9 +6,9 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use forrest::log::{LogBuilder, LogData, LogProofBundle, Node, VecLog};
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
+use warg_transparency::log::{LogBuilder, LogData, LogProofBundle, Node, VecLog};
 
 pub type ProofLog = VecLog<Sha256, LogLeaf>;
 

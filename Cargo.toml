@@ -7,9 +7,9 @@ resolver = "2"
 [workspace]
 members = [
     "crates/warg-crypto",
-    "crates/forrest",
     "crates/warg",
     "crates/warg-server",
     "crates/warg-client",
-    "crates/warg-cli"
+    "crates/warg-cli",
+    "crates/warg-transparency",
 ]

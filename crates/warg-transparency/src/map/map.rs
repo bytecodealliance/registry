@@ -20,7 +20,7 @@ use super::proof::Proof;
 /// presence of a key/value in a tree.
 ///
 /// ```rust
-/// use forrest::map::Map;
+/// use warg_transparency::map::Map;
 /// use sha2::Sha256;
 ///
 /// let a = Map::<Sha256, &str, &str>::default();

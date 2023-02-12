@@ -1,9 +1,9 @@
 use std::{iter::repeat_with, time::Duration};
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode};
-use forrest::log::{LogBuilder, VecLog};
 use rand::Rng;
 use warg_crypto::hash::Sha256;
+use warg_transparency::log::{LogBuilder, VecLog};
 
 fn run(items: impl Iterator<Item = [u8; 32]>) -> VecLog<Sha256, [u8; 32]> {
     let mut log: VecLog<Sha256, [u8; 32]> = VecLog::default();

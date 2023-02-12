@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{Context, Error};
-use forrest::map::MapProofBundle;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf, MapLeaf};
+use warg_transparency::map::MapProofBundle;
 
 use crate::services::transparency::VerifiableMap;
 
