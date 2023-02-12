@@ -1,4 +1,5 @@
-//! This crate contains forrest data structures.
+//! This crate contains verifiable data structures used by Warg's
+//! Package Transparency protocol.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(rust_2018_idioms, unused_lifetimes)]

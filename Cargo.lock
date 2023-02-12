@@ -1003,27 +1003,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "forrest"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ciborium",
- "criterion",
- "pbjson",
- "pbjson-build",
- "pbjson-types",
- "prost",
- "prost-build",
- "prost-types",
- "rand",
- "serde",
- "serde_bytes",
- "sha2",
- "thiserror",
- "warg-crypto",
-]
-
-[[package]]
 name = "fs-set-times"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3081,7 +3060,6 @@ dependencies = [
  "axum",
  "bytes",
  "clap 4.0.32",
- "forrest",
  "futures-util",
  "indexmap",
  "reqwest",
@@ -3095,6 +3073,7 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-server",
+ "warg-transparency",
 ]
 
 [[package]]
@@ -3122,7 +3101,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
- "forrest",
  "hex",
  "indexmap",
  "pbjson",
@@ -3138,6 +3116,7 @@ dependencies = [
  "serde_with",
  "thiserror",
  "warg-crypto",
+ "warg-transparency",
 ]
 
 [[package]]
@@ -3147,7 +3126,6 @@ dependencies = [
  "anyhow",
  "axum",
  "clap 4.0.32",
- "forrest",
  "futures",
  "indexmap",
  "reqwest",
@@ -3160,6 +3138,28 @@ dependencies = [
  "tracing-subscriber",
  "warg-crypto",
  "warg-protocol",
+ "warg-transparency",
+]
+
+[[package]]
+name = "warg-transparency"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ciborium",
+ "criterion",
+ "pbjson",
+ "pbjson-build",
+ "pbjson-types",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "rand",
+ "serde",
+ "serde_bytes",
+ "sha2",
+ "thiserror",
+ "warg-crypto",
 ]
 
 [[package]]

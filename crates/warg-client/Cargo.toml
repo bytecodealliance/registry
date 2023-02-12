@@ -20,9 +20,9 @@ reqwest = { version = "0.11.14", features = ["json", "stream"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 
 warg-crypto = { path = "../warg-crypto" }
-forrest = { path = "../forrest" }
 warg-protocol = { path = "../warg" }
 warg-server ={ path = "../warg-server" }
+warg-transparency = { path = "../warg-transparency" }
 futures-util = "0.3.26"
 async-trait = "0.1.64"
 bytes = "1.4.0"

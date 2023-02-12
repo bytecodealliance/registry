@@ -1,12 +1,11 @@
 use std::time::Duration;
 
-use forrest::map::Map;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
-
 use tokio::time;
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
+use warg_transparency::map::Map;
 
 use super::log;
 

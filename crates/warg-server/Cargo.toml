@@ -8,6 +8,7 @@ anyhow = "1.0.68"
 axum = { version = "0.6.1", features = ["http2", "headers", "macros"] }
 clap = { version = "4.0.32", features = ["derive"] }
 futures = "0.3.25"
+reqwest = "0.11.14"
 serde = { version = "1.0.152", features = ["rc"] }
 serde_with = { version = "2.2.0", features = ["base64"] }
 tempfile = "3.3.0"
@@ -19,5 +20,4 @@ indexmap = { version = "1.9.2", features = ["serde"] }
 
 warg-crypto ={ path = "../warg-crypto" }
 warg-protocol = { path = "../warg" }
-forrest ={ path = "../forrest" }
-reqwest = "0.11.14"
+warg-transparency = { path = "../warg-transparency" }

@@ -1,9 +1,8 @@
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
-
-use forrest::log::{LogBuilder, StackLog};
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::registry::LogLeaf;
+use warg_transparency::log::{LogBuilder, StackLog};
 
 pub type VerifiableLog = StackLog<Sha256, LogLeaf>;
 

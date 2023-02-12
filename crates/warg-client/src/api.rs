@@ -2,7 +2,6 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context, Error, Result};
 use bytes::Bytes;
-use forrest::{log::LogProofBundle, map::MapProofBundle};
 use futures_util::Stream;
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
@@ -15,6 +14,7 @@ use warg_server::api::{
     package::{PendingRecordResponse, PublishRequest, RecordResponse},
     proof::{InclusionRequest, InclusionResponse},
 };
+use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
 
 pub use warg_server::api::fetch::{FetchRequest, FetchResponse};
 
