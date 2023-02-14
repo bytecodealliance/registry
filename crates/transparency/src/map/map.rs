@@ -83,7 +83,7 @@ where
     V: VisitBytes,
 {
     link: Link<D>,
-    unknown_field: usize,
+    len: usize,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
@@ -97,7 +97,7 @@ where
     pub(crate) fn new(link: Link<D>, len: usize) -> Self {
         Self {
             link,
-            unknown_field: len,
+            len,
             _key: PhantomData,
             _value: PhantomData,
         }
@@ -113,7 +113,7 @@ where
     fn clone(&self) -> Self {
         Self {
             link: self.link.clone(),
-            unknown_field: self.unknown_field,
+            len: self.len,
             _key: PhantomData,
             _value: PhantomData,
         }
@@ -129,7 +129,7 @@ where
     fn default() -> Self {
         Self {
             link: Link::default(),
-            unknown_field: 0,
+            len: 0,
             _key: PhantomData,
             _value: PhantomData,
         }
@@ -192,12 +192,12 @@ where
 
     /// The number of items in the map.
     pub fn len(&self) -> usize {
-        self.unknown_field
+        self.len
     }
 
     /// Whether or not the map is empty.
     pub fn is_empty(&self) -> bool {
-        self.unknown_field == 0
+        self.len == 0
     }
 
     /// Gets the value for a given key and a proof of its presence in this map.
@@ -216,7 +216,7 @@ where
         let mut path = Path::new(&key);
         let leaf = hash_leaf(key, val);
         let (node, new) = self.link.node().insert(&mut path, leaf);
-        Self::new(Link::new(node), self.unknown_field + usize::from(new))
+        Self::new(Link::new(node), self.len + usize::from(new))
     }
 
     /// Inserts all key/value pairs into the map, creating a new map.
@@ -227,7 +227,7 @@ where
             let mut path = Path::new(&key);
             let leaf = hash_leaf(key, val);
             let (node, new) = here.link.node().insert(&mut path, leaf);
-            here = Self::new(Link::new(node), here.unknown_field + usize::from(new));
+            here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
         here
