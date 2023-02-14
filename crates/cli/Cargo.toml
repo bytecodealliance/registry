@@ -14,9 +14,9 @@ serde_json = "1.0"
 tokio = { version = "1.23.1", features = ["full"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 
-warg-crypto ={ path = "../warg-crypto" }
-warg-protocol = { path = "../warg" }
-warg-client = { path = "../warg-client" }
+warg-crypto ={ path = "../crypto" }
+warg-protocol = { path = "../protocol" }
+warg-client = { path = "../client" }
 
 # DEMO
 wasmtime = "5.0"
