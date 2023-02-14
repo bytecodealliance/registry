@@ -3287,10 +3287,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-registry"
-version = "0.1.0"
-
-[[package]]
 name = "wasm-streams"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

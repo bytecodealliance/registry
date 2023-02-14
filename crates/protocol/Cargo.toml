@@ -16,8 +16,8 @@ base64 = "0.13.0"
 serde_with = { version = "2.2.0", features = ["base64"] }
 semver = { version = "1.0", features = ["serde"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
-warg-crypto = { path = "../warg-crypto" }
-warg-transparency = { path = "../warg-transparency" }
+warg-crypto = { path = "../crypto" }
+warg-transparency = { path = "../transparency" }
 
 [dev-dependencies]
 pretty_assertions = "1.1.0"

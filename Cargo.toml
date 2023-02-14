@@ -1,15 +1,9 @@
-[package]
-name = "wasm-registry"
-version = "0.1.0"
-edition = "2021"
-resolver = "2"
-
 [workspace]
 members = [
-    "crates/warg-crypto",
-    "crates/warg",
-    "crates/warg-server",
-    "crates/warg-client",
-    "crates/warg-cli",
-    "crates/warg-transparency",
+    "crates/cli",
+    "crates/client",
+    "crates/crypto",
+    "crates/protocol",
+    "crates/server",
+    "crates/transparency",
 ]
