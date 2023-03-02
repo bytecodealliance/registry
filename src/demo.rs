@@ -1,11 +1,9 @@
-use std::path::Path;
-
 use anyhow::{Context, Result};
-use warg_client::ClientError;
+use std::path::Path;
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::{I32Exit, WasiCtx, WasiCtxBuilder};
 
-pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<(), ClientError> {
+pub(crate) fn run_wasm(path: impl AsRef<Path>, args: &[String]) -> Result<()> {
     let engine = Engine::default();
 
     let path = path.as_ref();

@@ -1,6 +1,26 @@
+[package]
+name = "warg-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+warg-crypto ={ path = "crates/crypto" }
+warg-protocol = { path = "crates/protocol" }
+warg-client = { path = "crates/client" }
+clap = { version = "4.0.32", features = ["derive"] }
+thiserror = "1.0"
+anyhow = "1.0"
+serde = "1.0"
+serde_json = "1.0"
+tokio = { version = "1.23.1", features = ["full"] }
+indexmap = { version = "1.9.2", features = ["serde"] }
+
+# DEMO
+wasmtime = "5.0"
+wasmtime-wasi = "5.0"
+
 [workspace]
 members = [
-    "crates/cli",
     "crates/client",
     "crates/crypto",
     "crates/protocol",
