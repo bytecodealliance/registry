@@ -83,6 +83,7 @@ impl PublishStartCommand {
 
 /// Release a package version.
 #[derive(Args)]
+#[clap(disable_version_flag = true)]
 pub struct PublishReleaseCommand {
     /// The common command options.
     #[clap(flatten)]
