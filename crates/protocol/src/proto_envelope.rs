@@ -1,16 +1,12 @@
-use std::fmt;
-
 use crate::protobuf;
 use anyhow::Error;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use serde_with::base64::Base64;
-use serde_with::serde_as;
-
-use warg_crypto::{signing, Decode, Signable};
-
+use serde_with::{base64::Base64, serde_as};
+use std::fmt;
 use thiserror::Error;
-use warg_crypto::hash::DynHashParseError;
+use warg_crypto::{hash::DynHashParseError, signing, Decode, Signable};
 
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
@@ -160,7 +156,7 @@ impl<Content> From<ProtoEnvelope<Content>> for ProtoEnvelopeBody {
 impl fmt::Debug for ProtoEnvelopeBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProtoEnvelopeBody")
-            .field("content_bytes", &base64::encode(&self.content_bytes))
+            .field("content_bytes", &STANDARD.encode(&self.content_bytes))
             .field("key_id", &self.key_id)
             .field("signature", &self.signature)
             .finish()

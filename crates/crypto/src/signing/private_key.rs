@@ -1,5 +1,5 @@
 use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
-use base64;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use core::fmt;
 use p256;
 use secrecy::{ExposeSecret, Secret, Zeroize};
@@ -53,7 +53,7 @@ impl fmt::Display for PrivateKey {
             f,
             "{}:{}",
             self.signature_algorithm(),
-            base64::encode(self.bytes())
+            STANDARD.encode(self.bytes()),
         )
     }
 }
@@ -67,12 +67,12 @@ impl FromStr for PrivateKey {
             return Err(PrivateKeyParseError::IncorrectStructure(parts.len()));
         }
         let algo = parts[0].parse::<SignatureAlgorithm>()?;
-        let bytes = base64::decode(parts[1])?;
+        let bytes = STANDARD.decode(parts[1])?;
 
         let key = match algo {
-            SignatureAlgorithm::EcdsaP256 => {
-                PrivateKeyInner::EcdsaP256(p256::ecdsa::SigningKey::from_bytes(&bytes)?)
-            }
+            SignatureAlgorithm::EcdsaP256 => PrivateKeyInner::EcdsaP256(
+                p256::ecdsa::SigningKey::from_bytes(bytes.as_slice().into())?,
+            ),
         };
 
         Ok(PrivateKey(Secret::from(key)))

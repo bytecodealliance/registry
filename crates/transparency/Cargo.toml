@@ -1,29 +1,30 @@
 [package]
 name = "warg-transparency"
-version = "0.1.0"
-edition = "2021"
-authors = ["Kyle Brown", "Nathaniel McCallum"]
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+rust-version = { workspace = true }
 
 [dependencies]
-thiserror = "1.0"
-anyhow = "1.0"
-warg-crypto = { path = "../crypto" }
-serde = { version = "1.0.144", default-features = false, features = ["derive"] }
-serde_bytes = "0.11.7"
-prost = "0.11"
-prost-types = "0.11"
-pbjson = "0.5"
-pbjson-types = "0.5"
+warg-crypto = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_bytes = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+pbjson = { workspace = true }
+pbjson-types = { workspace = true }
 
 [build-dependencies]
-prost-build = { version = "0.11" }
-pbjson-build = "0.5"
+prost-build = { workspace = true }
+pbjson-build = { workspace = true }
 
 [dev-dependencies]
-ciborium = "0.2.0"
-criterion = "0.3"
-rand = "0.8.5"
-sha2 = "0.10"
+ciborium = { workspace = true }
+criterion = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
 
 [[bench]]
 name = "map"
