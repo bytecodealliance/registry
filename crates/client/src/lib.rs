@@ -131,6 +131,8 @@ impl Client {
                 .publish(&name, Arc::new(record), content_sources)
                 .await?;
 
+            self.install(name).await?;
+
             self.update_to(response.checkpoint.as_ref()).await?;
             Ok(())
         } else {
