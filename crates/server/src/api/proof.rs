@@ -1,17 +1,15 @@
-use std::sync::Arc;
-
-use anyhow::Result;
-use axum::extract::State;
-use axum::{debug_handler, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
-use serde::{Deserialize, Serialize};
-use serde_with::base64::Base64;
-use serde_with::serde_as;
-use tokio::sync::RwLock;
-
-use warg_crypto::hash::{DynHash, Hash, Sha256};
-use warg_protocol::registry::{LogLeaf, MapCheckpoint};
-
 use crate::{services::data, AnyError};
+use anyhow::Result;
+use axum::{
+    debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Json,
+    Router,
+};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use warg_api::proof::{
+    ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse,
+};
+use warg_crypto::hash::{Hash, Sha256};
 
 #[derive(Clone)]
 pub struct Config {
@@ -35,17 +33,6 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ConsistencyRequest {
-    old_root: DynHash,
-    new_root: DynHash,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ConsistencyResponse {
-    proof: Vec<u8>,
-}
-
 #[debug_handler]
 pub(crate) async fn prove_consistency(
     State(config): State<Config>,
@@ -63,21 +50,6 @@ pub(crate) async fn prove_consistency(
     };
 
     Ok((StatusCode::OK, Json(response)))
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InclusionRequest {
-    pub checkpoint: MapCheckpoint,
-    pub heads: Vec<LogLeaf>,
-}
-
-#[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
-pub struct InclusionResponse {
-    #[serde_as(as = "Base64")]
-    pub log: Vec<u8>,
-    #[serde_as(as = "Base64")]
-    pub map: Vec<u8>,
 }
 
 #[debug_handler]

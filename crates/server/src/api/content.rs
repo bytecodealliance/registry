@@ -1,5 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
-
+use crate::AnyError;
 use anyhow::Result;
 use axum::{
     debug_handler,
@@ -10,12 +9,11 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
+use std::{path::PathBuf, sync::Arc};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tower_http::services::ServeDir;
 use warg_crypto::hash::{Digest, Sha256};
-
-use crate::AnyError;
 
 #[derive(Debug)]
 pub struct ContentConfig {
@@ -56,5 +54,5 @@ async fn upload_content(
     tmp_path.persist(state.content_path.join(&dest_name))?;
 
     let location = format!("{}/{}", orig_uri.path().trim_end_matches('/'), dest_name);
-    Ok((StatusCode::OK, [(LOCATION, location)]))
+    Ok((StatusCode::CREATED, [(LOCATION, location)]))
 }

@@ -1,24 +1,20 @@
-use std::{sync::Arc, time::Duration};
-
 use anyhow::{Context, Error, Result};
 use bytes::Bytes;
 use futures_util::Stream;
+use std::{sync::Arc, time::Duration};
+use warg_api::{
+    content::ContentSource,
+    fetch::{CheckpointResponse, FetchRequest, FetchResponse},
+    package::{PendingRecordResponse, PublishRequest, RecordResponse},
+    proof::{InclusionRequest, InclusionResponse},
+};
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
     ProtoEnvelope, SerdeEnvelope,
 };
-use warg_server::api::{
-    fetch::CheckpointResponse,
-    package::{PendingRecordResponse, PublishRequest, RecordResponse},
-    proof::{InclusionRequest, InclusionResponse},
-};
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
-
-pub use warg_server::api::fetch::{FetchRequest, FetchResponse};
-
-pub use warg_server::services::core::{ContentSource, ContentSourceKind};
 
 pub struct Client {
     server_url: String,
