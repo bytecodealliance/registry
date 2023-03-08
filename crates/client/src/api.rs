@@ -56,7 +56,6 @@ impl Client {
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
     ) -> Result<RecordResponse> {
-        println!("Publishing {}", package_name);
         let client = reqwest::Client::new();
         let request = PublishRequest {
             record: record.as_ref().clone().into(),
@@ -166,7 +165,7 @@ impl Client {
             .get("location")
             .context("Uploaded URL not known")?
             .to_str()?;
-        Ok(location.to_string())
+        Ok(self.endpoint(location))
     }
 
     pub async fn download_content(

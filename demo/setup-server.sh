@@ -1,8 +1,5 @@
-rm -r .server-content
+rm -rf .server-content
 mkdir .server-content
 
-alias demo_server=../target/debug/warg-server
-
-export WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
-
-demo_server --content-dir .server-content
+alias warg-server=../target/debug/warg-server
+WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" warg-server --content-dir .server-content
