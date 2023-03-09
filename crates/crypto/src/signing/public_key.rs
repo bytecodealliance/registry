@@ -1,5 +1,5 @@
 use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
-use base64;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use core::fmt;
 use p256;
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,7 @@ impl fmt::Display for PublicKey {
             f,
             "{}:{}",
             self.signature_algorithm(),
-            base64::encode(self.bytes())
+            STANDARD.encode(self.bytes())
         )
     }
 }
@@ -65,7 +65,7 @@ impl FromStr for PublicKey {
             return Err(PublicKeyParseError::IncorrectStructure(parts.len()));
         }
         let algo = parts[0].parse::<SignatureAlgorithm>()?;
-        let bytes = base64::decode(parts[1])?;
+        let bytes = STANDARD.decode(parts[1])?;
 
         let key = match algo {
             SignatureAlgorithm::EcdsaP256 => {
