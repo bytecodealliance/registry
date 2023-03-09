@@ -1,5 +1,5 @@
-use std::sync::Arc;
-
+use crate::services::core::CoreService;
+use crate::AnyError;
 use anyhow::Result;
 use axum::extract::State;
 use axum::{
@@ -10,14 +10,8 @@ use axum::{
     Json, Router,
 };
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
-
-use warg_crypto::hash::DynHash;
-use warg_protocol::registry::{MapCheckpoint, RecordId};
-use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
-
-use crate::services::core::CoreService;
-use crate::AnyError;
+use std::sync::Arc;
+use warg_api::fetch::{CheckpointResponse, FetchRequest, FetchResponse};
 
 #[derive(Clone)]
 pub struct Config {
@@ -35,19 +29,6 @@ impl Config {
             .route("/checkpoint", get(fetch_checkpoint))
             .with_state(self)
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FetchRequest {
-    pub root: DynHash,
-    pub operator: Option<RecordId>,
-    pub packages: IndexMap<String, Option<RecordId>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FetchResponse {
-    pub operator: Vec<ProtoEnvelopeBody>,
-    pub packages: IndexMap<String, Vec<ProtoEnvelopeBody>>,
 }
 
 #[debug_handler]
@@ -77,11 +58,6 @@ async fn fetch_logs(
     }
     let response = FetchResponse { operator, packages };
     Ok((StatusCode::OK, Json(response)))
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CheckpointResponse {
-    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
 }
 
 #[debug_handler]

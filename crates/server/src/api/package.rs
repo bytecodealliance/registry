@@ -1,26 +1,22 @@
-use std::sync::Arc;
-
+use crate::services::core::{CoreService, PackageRecordInfo, RecordState};
+use crate::AnyError;
 use anyhow::{Error, Result};
-use axum::extract::State;
 use axum::{
     debug_handler,
-    extract::Path,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-
+use std::sync::Arc;
+use warg_api::{
+    content::ContentSourceKind,
+    package::{PendingRecordResponse, PublishRequest, RecordResponse},
+};
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::registry::RecordId;
-use warg_protocol::ProtoEnvelopeBody;
-use warg_protocol::{registry::MapCheckpoint, SerdeEnvelope};
-
-use crate::services::core::PackageRecordInfo;
-use crate::services::core::{ContentSource, ContentSourceKind, CoreService, RecordState};
-use crate::AnyError;
 
 #[derive(Clone)]
 pub struct Config {
@@ -53,38 +49,22 @@ fn pending_record_url(package_name: String, record_id: RecordId) -> String {
     format!("/package/{package_name}/pending/{record_id}")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "state", rename = "lowercase")]
-pub enum PendingRecordResponse {
-    Published { record_url: String },
-    Rejected { reason: String },
-    Processing { status_url: String },
-}
-
-impl PendingRecordResponse {
-    pub(crate) fn new(
-        package_name: String,
-        record_id: RecordId,
-        state: RecordState,
-    ) -> Result<Self, AnyError> {
-        let response = match state {
-            RecordState::Unknown => return Err(Error::msg("Internal error").into()),
-            RecordState::Processing => PendingRecordResponse::Processing {
-                status_url: pending_record_url(package_name, record_id),
-            },
-            RecordState::Published { .. } => PendingRecordResponse::Published {
-                record_url: record_url(package_name, record_id),
-            },
-            RecordState::Rejected { reason } => PendingRecordResponse::Rejected { reason },
-        };
-        Ok(response)
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PublishRequest {
-    pub record: ProtoEnvelopeBody,
-    pub content_sources: Vec<ContentSource>,
+fn create_pending_response(
+    package_name: String,
+    record_id: RecordId,
+    state: RecordState,
+) -> Result<PendingRecordResponse, AnyError> {
+    let response = match state {
+        RecordState::Unknown => return Err(Error::msg("Internal error").into()),
+        RecordState::Processing => PendingRecordResponse::Processing {
+            status_url: pending_record_url(package_name, record_id),
+        },
+        RecordState::Published { .. } => PendingRecordResponse::Published {
+            record_url: record_url(package_name, record_id),
+        },
+        RecordState::Rejected { reason } => PendingRecordResponse::Rejected { reason },
+    };
+    Ok(response)
 }
 
 #[debug_handler]
@@ -94,16 +74,12 @@ pub(crate) async fn publish(
     Json(body): Json<PublishRequest>,
 ) -> Result<impl IntoResponse, AnyError> {
     let record = Arc::new(body.record.try_into()?);
-
     let record_id = RecordId::package_record::<Sha256>(&record);
 
     for source in body.content_sources.iter() {
         match &source.kind {
-            ContentSourceKind::HttpAnonymous { url } => {
-                println!(
-                    "Content {} - HttpAnonymous at {}",
-                    source.content_digest, url
-                );
+            ContentSourceKind::HttpAnonymous(url) => {
+                println!("Content {} - HttpAnonymous at {}", source.digest, url);
                 if url.starts_with(&config.base_url) {
                     let response = Client::builder().build()?.head(url).send().await?;
                     if !response.status().is_success() {
@@ -120,16 +96,9 @@ pub(crate) async fn publish(
         .core_service
         .submit_package_record(package_name.clone(), record, body.content_sources)
         .await;
-    let response = PendingRecordResponse::new(package_name.clone(), record_id, state)?;
+    let response = create_pending_response(package_name.clone(), record_id, state)?;
 
     Ok((StatusCode::OK, Json(response)))
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RecordResponse {
-    pub record: ProtoEnvelopeBody,
-    pub content_sources: Arc<Vec<ContentSource>>,
-    pub checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
 }
 
 #[debug_handler]
@@ -174,7 +143,7 @@ pub(crate) async fn get_pending_record(
         .get_package_record_status(&package_name, record_id.clone())
         .await;
 
-    let response = PendingRecordResponse::new(package_name, record_id, status)?;
+    let response = create_pending_response(package_name, record_id, status)?;
 
     Ok((StatusCode::OK, Json(response)))
 }

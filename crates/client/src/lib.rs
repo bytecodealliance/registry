@@ -2,12 +2,15 @@ pub mod api;
 pub mod file_storage;
 pub mod storage;
 
-use std::sync::Arc;
-
 use anyhow::Context;
 use futures_util::StreamExt;
 use indexmap::IndexMap;
+use std::sync::Arc;
 use thiserror::Error;
+use warg_api::{
+    content::{ContentSource, ContentSourceKind},
+    fetch::{FetchRequest, FetchResponse},
+};
 use warg_crypto::{
     hash::{DynHash, Hash, HashAlgorithm, Sha256},
     signing,
@@ -22,7 +25,6 @@ pub use file_storage::FileSystemStorage;
 pub use storage::{
     ClientStorage, ExpectedContent, NewContent, PackageEntryInfo, PublishInfo, RegistryInfo,
 };
-use warg_server::services::core::{ContentSource, ContentSourceKind};
 
 pub struct Client {
     storage: Box<dyn storage::ClientStorage>,
@@ -122,8 +124,8 @@ impl Client {
                     })?;
                     let url = client.upload_content(content).await?;
                     content_sources.push(ContentSource {
-                        content_digest: digest,
-                        kind: ContentSourceKind::HttpAnonymous { url },
+                        digest,
+                        kind: ContentSourceKind::HttpAnonymous(url),
                     })
                 }
             }
@@ -198,8 +200,8 @@ impl Client {
         }
 
         let packages = IndexMap::from_iter(heads.into_iter());
-        let mut response = client
-            .fetch_logs(api::FetchRequest {
+        let mut response: FetchResponse = client
+            .fetch_logs(FetchRequest {
                 root,
                 operator: None,
                 packages,

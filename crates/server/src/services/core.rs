@@ -1,12 +1,11 @@
 use anyhow::Error;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use warg_api::content::ContentSource;
 use warg_crypto::hash::{DynHash, Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
@@ -93,19 +92,7 @@ pub struct PackageRecordInfo {
     pub state: RecordState,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContentSource {
-    pub content_digest: DynHash,
-    pub kind: ContentSourceKind,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ContentSourceKind {
-    HttpAnonymous { url: String },
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum RecordState {
     #[default]
     Unknown,
@@ -344,7 +331,7 @@ async fn new_record(
         Ok(contents) => {
             let provided_contents: HashSet<DynHash> = content_sources
                 .iter()
-                .map(|source| source.content_digest.clone())
+                .map(|source| source.digest.clone())
                 .collect();
             for needed_content in contents {
                 if !provided_contents.contains(&needed_content) {

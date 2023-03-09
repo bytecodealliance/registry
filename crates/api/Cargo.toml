@@ -1,0 +1,11 @@
+[package]
+name = "warg-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+warg-protocol = { path = "../protocol" }
+warg-crypto = { path = "../crypto" }
+serde = { version = "1.0.154", features = ["derive"] }
+serde_with = { version = "2.2.0", features = ["base64"] }
+indexmap = { version = "1.9.2", features = ["serde"] }
