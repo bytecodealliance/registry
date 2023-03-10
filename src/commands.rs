@@ -6,12 +6,14 @@ use std::path::PathBuf;
 use warg_client::Client;
 use warg_client::FileSystemStorage;
 
+mod info;
 mod init;
 mod install;
 mod publish;
 mod run;
 mod update;
 
+pub use self::info::*;
 pub use self::init::*;
 pub use self::install::*;
 pub use self::publish::*;

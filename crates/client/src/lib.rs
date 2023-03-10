@@ -35,6 +35,18 @@ impl Client {
         Self { storage }
     }
 
+    pub async fn inform(&self, package: String) -> Result<(), ClientError> {
+        let state = self.storage.load_package_state(&package).await?;
+        println!("Versions");
+        state.releases().for_each(|r| {
+            println!(
+                "{}.{}.{}",
+                r.version.major, r.version.minor, r.version.patch
+            )
+        });
+        Ok(())
+    }
+
     async fn registry_info(&self) -> Result<RegistryInfo, ClientError> {
         match self.storage.load_registry_info().await? {
             Some(reg_info) => Ok(reg_info),

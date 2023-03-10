@@ -15,7 +15,7 @@ pub struct ContentSource {
 
 /// Represents the supported kinds of content sources.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", content = "c")]
 pub enum ContentSourceKind {
     /// The content is located at an anonymous HTTP URL.
     HttpAnonymous(String),
