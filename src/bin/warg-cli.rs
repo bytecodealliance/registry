@@ -1,7 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use std::process::exit;
-use warg_cli::commands::{InitCommand, InstallCommand, PublishCommand, RunCommand, UpdateCommand};
+use warg_cli::commands::{
+    InfoCommand, InitCommand, InstallCommand, PublishCommand, RunCommand, UpdateCommand,
+};
 use warg_client::ClientError;
 
 fn version() -> &'static str {
@@ -18,6 +20,7 @@ fn version() -> &'static str {
 )]
 #[command(version = version())]
 enum WargCli {
+    Info(InfoCommand),
     Init(InitCommand),
     Install(InstallCommand),
     Update(UpdateCommand),
@@ -29,6 +32,7 @@ enum WargCli {
 #[tokio::main]
 async fn main() -> Result<()> {
     if let Err(e) = match WargCli::parse() {
+        WargCli::Info(cmd) => cmd.exec().await,
         WargCli::Init(cmd) => cmd.exec().await,
         WargCli::Install(cmd) => cmd.exec().await,
         WargCli::Update(cmd) => cmd.exec().await,
