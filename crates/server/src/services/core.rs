@@ -113,6 +113,7 @@ pub struct CoreService {
 #[derive(Debug)]
 enum Message {
     SubmitPackageRecord {
+        package_id: LogId,
         package_name: String,
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
@@ -168,12 +169,12 @@ impl CoreService {
             tracing::trace!(?request, "CoreService processing request");
             match request {
                 Message::SubmitPackageRecord {
+                    package_id,
                     package_name,
                     record,
                     content_sources,
                     response,
                 } => {
-                    let package_id = LogId::package_log::<Sha256>(&package_name);
                     let package_info = state
                         .package_states
                         .entry(package_id.clone())
@@ -454,6 +455,7 @@ fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> 
 impl CoreService {
     pub async fn submit_package_record(
         &self,
+        package_id: LogId,
         package_name: String,
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
@@ -461,6 +463,7 @@ impl CoreService {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::SubmitPackageRecord {
+                package_id,
                 package_name,
                 record,
                 content_sources,
@@ -474,10 +477,9 @@ impl CoreService {
 
     pub async fn get_package_record_status(
         &self,
-        package_name: &str,
+        package_id: LogId,
         record_id: RecordId,
     ) -> RecordState {
-        let package_id = LogId::package_log::<Sha256>(package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordStatus {
@@ -493,10 +495,9 @@ impl CoreService {
 
     pub async fn get_package_record_info(
         &self,
-        package_name: String,
+        package_id: LogId,
         record_id: RecordId,
     ) -> Option<PackageRecordInfo> {
-        let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordInfo {

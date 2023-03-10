@@ -4,7 +4,7 @@ mod proto_envelope;
 pub mod registry;
 mod serde_envelope;
 
-pub use semver::Version;
+pub use semver::{Version, VersionReq};
 
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
 pub use serde_envelope::SerdeEnvelope;
