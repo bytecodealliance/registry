@@ -78,7 +78,7 @@ pub(crate) async fn publish(
 
     for source in body.content_sources.iter() {
         match &source.kind {
-            ContentSourceKind::HttpAnonymous(url) => {
+            ContentSourceKind::HttpAnonymous{ url } => {
                 println!("Content {} - HttpAnonymous at {}", source.digest, url);
                 if url.starts_with(&config.base_url) {
                     let response = Client::builder().build()?.head(url).send().await?;

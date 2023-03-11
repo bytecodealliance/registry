@@ -137,7 +137,7 @@ impl Client {
                     let url = client.upload_content(content).await?;
                     content_sources.push(ContentSource {
                         digest,
-                        kind: ContentSourceKind::HttpAnonymous(url),
+                        kind: ContentSourceKind::HttpAnonymous { url },
                     })
                 }
             }
