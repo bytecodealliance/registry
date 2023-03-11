@@ -18,8 +18,8 @@ pub struct ContentSource {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentSourceKind {
     /// The content is located at an anonymous HTTP URL.
-    HttpAnonymous { 
-      /// The URL for the content
-      url: String 
+    HttpAnonymous {
+        /// The URL for the content
+        url: String,
     },
 }
