@@ -2,7 +2,7 @@ use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
 
-/// Update all local packages in the registry.
+/// Display information about registry packages.
 #[derive(Args)]
 pub struct InfoCommand {
     /// The common command options.
