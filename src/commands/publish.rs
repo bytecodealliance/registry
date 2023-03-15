@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use clap::{Args, Subcommand};
 use futures::{Stream, TryStreamExt};
-use std::{env, future::Future, path::PathBuf, pin::Pin};
+use std::{future::Future, path::PathBuf, pin::Pin};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
@@ -13,16 +13,8 @@ use warg_client::{
     },
     Client,
 };
-use warg_crypto::{hash::DynHash, signing};
+use warg_crypto::hash::DynHash;
 use warg_protocol::Version;
-
-// TODO: convert this to proper CLI options.
-fn demo_signing_key() -> Result<signing::PrivateKey> {
-    env::var("WARG_DEMO_USER_KEY")
-        .context("WARG_DEMO_USER_KEY environment variable not set")?
-        .parse()
-        .context("failed to parse signing key")
-}
 
 /// Used to enqueue a publish entry if there is a pending publish.
 /// Returns `Ok(None)` if the entry was enqueued or `Ok(Some(entry))` if there
@@ -63,7 +55,7 @@ where
 
 /// Submits a publish to the registry.
 async fn submit(storage: &FileSystemStorage, info: &PublishInfo) -> Result<()> {
-    let signing_key = demo_signing_key()?;
+    let signing_key = super::get_signing_key()?;
     let mut client = Client::new(InMemoryPublishStorage { storage, info }).await?;
     client.publish(&signing_key).await?;
     Ok(())

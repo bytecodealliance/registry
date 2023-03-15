@@ -18,7 +18,7 @@ futures = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
-
+keyring = { workspace = true }
 # TODO: remove these demo-related dependencies
 wasmtime = "6.0"
 wasmtime-wasi = "6.0"
@@ -81,3 +81,4 @@ rand = "0.8.5"
 url = "2.3.1"
 libc = "0.2.140"
 itertools = "0.10.5"
+keyring = "2.0.1"
