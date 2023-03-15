@@ -9,7 +9,7 @@ pub struct InfoCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
-    /// The name of the package to install.
+    /// The name of the package to inspect.
     #[clap(value_name = "PACKAGE")]
     pub package: String,
 }
