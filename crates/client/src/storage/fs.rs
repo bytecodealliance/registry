@@ -325,7 +325,11 @@ async fn store(path: &Path, value: impl Serialize) -> Result<()> {
 }
 
 async fn delete(path: &Path) -> Result<()> {
-    tokio::fs::remove_file(path)
-        .await
-        .with_context(|| format!("failed to delete file `{path}`", path = path.display()))
+    if path.is_file() {
+        tokio::fs::remove_file(path)
+            .await
+            .with_context(|| format!("failed to delete file `{path}`", path = path.display()))?;
+    }
+
+    Ok(())
 }

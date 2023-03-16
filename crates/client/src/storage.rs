@@ -160,6 +160,8 @@ impl PackageInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PublishEntry {
+    /// The package is being initialized.
+    Init,
     /// A new release entry is being published.
     Release {
         /// The version of the release.
@@ -175,29 +177,31 @@ pub enum PublishEntry {
 pub struct PublishInfo {
     /// The name of the package being published.
     pub package: String,
-    /// Whether to initialize the package on publish.
-    pub init: bool,
     /// The new record entries to publish.
     pub entries: Vec<PublishEntry>,
 }
 
 impl PublishInfo {
+    /// Determines if the publish information is initializing the package.
+    pub fn initializing(&self) -> bool {
+        self.entries.iter().any(|e| matches!(e, PublishEntry::Init))
+    }
+
     pub(crate) fn finalize(
         self,
         signing_key: &signing::PrivateKey,
         head: Option<RecordId>,
     ) -> Result<(ProtoEnvelope<PackageRecord>, Vec<DynHash>)> {
-        let mut entries = Vec::with_capacity(self.entries.len() + if self.init { 1 } else { 0 });
-        if self.init {
-            entries.push(package::PackageEntry::Init {
-                hash_algorithm: HashAlgorithm::Sha256,
-                key: signing_key.public_key(),
-            });
-        }
-
         let mut contents = Vec::new();
+        let mut entries = Vec::with_capacity(self.entries.len());
         for entry in self.entries {
             match entry {
+                PublishEntry::Init => {
+                    entries.push(package::PackageEntry::Init {
+                        hash_algorithm: HashAlgorithm::Sha256,
+                        key: signing_key.public_key(),
+                    });
+                }
                 PublishEntry::Release { version, content } => {
                     contents.push(content.clone());
                     entries.push(package::PackageEntry::Release { version, content });

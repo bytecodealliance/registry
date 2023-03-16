@@ -70,7 +70,20 @@ impl<T: ClientStorage> Client<T> {
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
-        tracing::info!("publishing package `{package}`", package = info.package);
+        if info.entries.is_empty() {
+            return Err(ClientError::NothingToPublish {
+                package: info.package.clone(),
+            });
+        }
+
+        let initializing = info.initializing();
+
+        tracing::info!(
+            "publishing {new}package `{package}`",
+            package = info.package,
+            new = if initializing { "new " } else { "" }
+        );
+
         let mut package = self
             .storage
             .load_package_info(&info.package)
@@ -78,12 +91,12 @@ impl<T: ClientStorage> Client<T> {
             .unwrap_or_else(|| PackageInfo::new(info.package.clone()));
 
         // If we're not initializing the package, update it to the latest checkpoint to get the current head
-        if !info.init {
+        if !initializing {
             self.update_checkpoint(&api.latest_checkpoint().await?, [&mut package])
                 .await?;
         }
 
-        match (info.init, package.state.head().is_some()) {
+        match (initializing, package.state.head().is_some()) {
             (true, true) => {
                 return Err(ClientError::CannotInitializePackage {
                     package: package.name,
@@ -101,12 +114,6 @@ impl<T: ClientStorage> Client<T> {
             signing_key,
             package.state.head().as_ref().map(|h| h.digest.clone()),
         )?;
-
-        if record.as_ref().entries.is_empty() {
-            return Err(ClientError::NothingToPublish {
-                package: package.name.clone(),
-            });
-        }
 
         let mut sources = Vec::with_capacity(contents.len());
         for content in contents {
