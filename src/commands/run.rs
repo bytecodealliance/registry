@@ -49,12 +49,15 @@ impl RunCommand {
             digest = res.digest
         );
 
-        let path = client.storage().content_path(&res.digest).ok_or_else(|| {
-            anyhow::anyhow!(
-                "content digest `{digest}` is not present in the local storage",
-                digest = res.digest
-            )
-        })?;
+        let path = client
+            .storage()
+            .content_location(&res.digest)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "content digest `{digest}` is not present in the local storage",
+                    digest = res.digest
+                )
+            })?;
 
         demo::run_wasm(path, &self.args)
     }

@@ -274,8 +274,8 @@ impl<'a> ClientStorage for ImmediatePublishStorage<'a> {
         Ok(())
     }
 
-    fn content_path(&self, digest: &DynHash) -> Option<PathBuf> {
-        ClientStorage::content_path(self.storage, digest)
+    fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
+        self.storage.content_location(digest)
     }
 
     async fn load_content(

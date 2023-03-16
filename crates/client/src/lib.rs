@@ -360,7 +360,7 @@ impl<T: ClientStorage> Client<T> {
     }
 
     async fn download_content(&self, digest: &DynHash) -> Result<PathBuf, ClientError> {
-        match self.storage.content_path(digest) {
+        match self.storage.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
                 Ok(path)
@@ -379,7 +379,7 @@ impl<T: ClientStorage> Client<T> {
                     .await?;
 
                 self.storage
-                    .content_path(digest)
+                    .content_location(digest)
                     .ok_or_else(|| ClientError::ContentNotFound {
                         digest: digest.clone(),
                     })

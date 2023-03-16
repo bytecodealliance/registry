@@ -58,11 +58,11 @@ pub trait ClientStorage: Send + Sync {
     /// If the info is `None`, the publish information is deleted.
     async fn store_publish_info(&self, info: Option<&PublishInfo>) -> Result<()>;
 
-    /// Determines if the client storage has the content associated with the given digest
-    /// as a file on disk.
+    /// Gets the location of the content associated with the given digest if it
+    /// exists as a file on disk.
     ///
     /// Returns `None` if the content is not present on disk.
-    fn content_path(&self, digest: &DynHash) -> Option<PathBuf>;
+    fn content_location(&self, digest: &DynHash) -> Option<PathBuf>;
 
     /// Loads the content associated with the given digest as a stream.
     ///

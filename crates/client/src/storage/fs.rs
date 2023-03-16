@@ -192,7 +192,7 @@ impl ClientStorage for FileSystemStorage {
         }
     }
 
-    fn content_path(&self, digest: &DynHash) -> Option<PathBuf> {
+    fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
         let path = self.content_path(digest);
         if path.is_file() {
             Some(path)
