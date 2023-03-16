@@ -33,10 +33,16 @@ pub struct CommonOptions {
 impl CommonOptions {
     /// Locks the client storage.
     pub fn lock_storage(&self) -> Result<FileSystemStorage> {
-        FileSystemStorage::lock(&self.storage, |path| {
-            println!("Blocking on registry lock file `{}`", path.display());
-            Ok(())
-        })
+        match FileSystemStorage::try_lock(&self.storage)? {
+            Some(storage) => Ok(storage),
+            None => {
+                println!(
+                    "blocking on lock for registry `{path}`...",
+                    path = self.storage.display()
+                );
+                Ok(FileSystemStorage::lock(&self.storage)?)
+            }
+        }
     }
 
     /// Creates the warg client to use.

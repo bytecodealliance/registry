@@ -36,38 +36,46 @@ pub struct FileSystemStorage {
 }
 
 impl FileSystemStorage {
+    /// Attempts to lock the file system storage.
+    ///
+    /// The base directory will be created if it does not exist.
+    ///
+    /// If the lock cannot be acquired, `Ok(None)` is returned.
+    pub fn try_lock(base_dir: impl Into<PathBuf>) -> Result<Option<Self>> {
+        let base_dir = base_dir.into();
+        match FileLock::try_open_rw(base_dir.join(REGISTRY_LOCK_FILE))? {
+            Some(lock) => Ok(Some(Self::new(base_dir, lock))),
+            None => Ok(None),
+        }
+    }
+
     /// Locks a new file system storage at the given base directory.
     ///
     /// The base directory will be created if it does not exist.
     ///
-    /// If a storage's lock file cannot be acquired, the `blocking` callback
-    /// is invoked with the path to the lock file prior to blocking.
-    pub fn lock(
-        base_dir: impl Into<PathBuf>,
-        blocking: impl FnOnce(&Path) -> Result<()>,
-    ) -> Result<Self> {
+    /// If the lock cannot be immediately acquired, this function
+    /// will block.
+    pub fn lock(base_dir: impl Into<PathBuf>) -> Result<Self> {
         let base_dir = base_dir.into();
-        fs::create_dir_all(&base_dir).with_context(|| {
-            format!(
-                "failed to create directory `{path}`",
-                path = base_dir.display()
-            )
-        })?;
+        let lock = FileLock::open_rw(base_dir.join(REGISTRY_LOCK_FILE))?;
+        Ok(Self::new(base_dir, lock))
+    }
 
+    fn new(base_dir: PathBuf, lock: FileLock) -> Self {
         let temp_dir = base_dir.join(TEMP_DIRECTORY);
         let contents_dir = base_dir.join(CONTENTS_DIRECTORY);
         let packages_dir = base_dir.join(PACKAGES_DIRECTORY);
         let registry_info_path = base_dir.join(REGISTRY_INFO_FILE);
         let publish_queue_path = base_dir.join(PUBLISH_QUEUE_FILE);
 
-        Ok(Self {
-            _lock: FileLock::open_rw(base_dir.join(REGISTRY_LOCK_FILE), blocking)?,
+        Self {
+            _lock: lock,
             temp_dir,
             contents_dir,
             packages_dir,
             registry_info_path,
             publish_queue_path,
-        })
+        }
     }
 
     /// Creates a temporary file in the client storage.
