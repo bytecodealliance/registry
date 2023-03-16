@@ -1,7 +1,7 @@
 use super::CommonOptions;
 use anyhow::{anyhow, Result};
 use clap::Args;
-use warg_client::storage::{ClientStorage, PackageInfo, RegistryInfo};
+use warg_client::storage::{ClientStorage, PackageInfo};
 use warg_crypto::hash::DynHash;
 use warg_protocol::Version;
 
@@ -27,10 +27,7 @@ impl InfoCommand {
             .await?
             .ok_or_else(|| anyhow!("the registry is not initialized"))?;
 
-        if let Some(url) = registry_info.url() {
-            println!("registry: {url}", url = url);
-        }
-
+        println!("registry: {url}", url = registry_info.url);
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
@@ -44,20 +41,6 @@ impl InfoCommand {
                     .await?
                     .iter()
                     .for_each(Self::print_package_info);
-            }
-        }
-
-        if let RegistryInfo::Local { packages, origins } = &registry_info {
-            println!("\nlocal packages in client storage:");
-            for (name, versions) in packages {
-                println!("  name: {name}", name = name);
-                if let Some(origin) = origins.get(name) {
-                    println!("  origin: {origin}");
-                }
-                println!("  versions:");
-                for (version, content) in versions {
-                    Self::print_release(version, content);
-                }
             }
         }
 

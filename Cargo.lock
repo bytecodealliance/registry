@@ -3056,7 +3056,6 @@ dependencies = [
  "bytes",
  "clap 4.1.8",
  "futures-util",
- "indexmap",
  "itertools",
  "libc",
  "reqwest",

@@ -4,7 +4,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, pin::Pin, time::SystemTime};
 use warg_crypto::{
@@ -88,46 +87,16 @@ pub trait ClientStorage: Send + Sync {
 
 /// Represents information about a registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum RegistryInfo {
-    /// The registry is a remote registry.
-    Remote {
-        /// The URL of the remote registry.
-        url: String,
-    },
-    /// The registry is a local registry.
-    Local {
-        /// The local packages in the registry.
-        #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-        packages: IndexMap<String, IndexMap<Version, DynHash>>,
-        /// The origin URLs of vendored packages in the registry.
-        #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-        origins: IndexMap<String, String>,
-    },
+#[serde(rename_all = "camelCase")]
+pub struct RegistryInfo {
+    /// The URL of the remote registry.
+    pub url: String,
 }
 
 impl RegistryInfo {
-    /// Creates a new registry information for a remote registry.
-    pub fn new_remote(url: String) -> Self {
-        Self::Remote { url }
-    }
-
-    /// Creates a new registry information for a local registry.
-    pub fn new_local() -> Self {
-        Self::Local {
-            packages: IndexMap::new(),
-            origins: IndexMap::new(),
-        }
-    }
-
-    /// Gets the registry URL.
-    ///
-    /// If the registry is local, `None` is returned.
-    pub fn url(&self) -> Option<&str> {
-        match self {
-            Self::Remote { url } => Some(url.as_str()),
-            Self::Local { .. } => None,
-        }
+    /// Creates a new registry information for the registry of the given URL.
+    pub fn new(url: String) -> Self {
+        Self { url }
     }
 }
 

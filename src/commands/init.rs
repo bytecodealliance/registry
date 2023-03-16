@@ -32,7 +32,7 @@ impl InitCommand {
             ),
             None => {
                 storage
-                    .store_registry_info(&RegistryInfo::Remote { url: self.registry })
+                    .store_registry_info(&RegistryInfo::new(self.registry))
                     .await
             }
         }

@@ -4,10 +4,9 @@
 
 use crate::storage::PackageInfo;
 use anyhow::Result;
-use indexmap::IndexMap;
 use reqwest::Body;
-use std::path::PathBuf;
-use storage::{ClientStorage, RegistryInfo};
+use std::{collections::HashMap, path::PathBuf};
+use storage::ClientStorage;
 use thiserror::Error;
 use warg_api::{
     content::{ContentSource, ContentSourceKind},
@@ -30,22 +29,20 @@ pub mod storage;
 /// A client for a Warg registry.
 pub struct Client<T> {
     storage: T,
-    info: RegistryInfo,
-    api: Option<api::Client>,
+    api: api::Client,
 }
 
 impl<T: ClientStorage> Client<T> {
     /// Creates a new client with the given client storage.
     pub async fn new(storage: T) -> Result<Self, ClientError> {
-        let (info, api) = match storage.load_registry_info().await? {
-            Some(info) => {
-                let api = info.url().map(api::Client::new).transpose()?;
-                (info, api)
-            }
-            None => return Err(ClientError::StorageNotInitialized),
-        };
+        let api = storage
+            .load_registry_info()
+            .await?
+            .map(|info| api::Client::new(info.url))
+            .transpose()?
+            .ok_or(ClientError::StorageNotInitialized)?;
 
-        Ok(Self { storage, info, api })
+        Ok(Self { storage, api })
     }
 
     /// Gets the storage used by the client.
@@ -56,14 +53,7 @@ impl<T: ClientStorage> Client<T> {
     /// Submits the publish information in client storage.
     ///
     /// If there's no publishing information in client storage, an error is returned.
-    ///
-    /// Publishing to local registries is not supported.
     pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> Result<(), ClientError> {
-        let api = self
-            .api
-            .as_ref()
-            .ok_or(ClientError::OperationNotSupported)?;
-
         let info = self
             .storage
             .load_publish_info()
@@ -92,7 +82,7 @@ impl<T: ClientStorage> Client<T> {
 
         // If we're not initializing the package, update it to the latest checkpoint to get the current head
         if !initializing {
-            self.update_checkpoint(&api.latest_checkpoint().await?, [&mut package])
+            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
                 .await?;
         }
 
@@ -118,7 +108,8 @@ impl<T: ClientStorage> Client<T> {
         let mut sources = Vec::with_capacity(contents.len());
         for content in contents {
             // Upload the content
-            let url = api
+            let url = self
+                .api
                 .upload_content(
                     &content,
                     Body::wrap_stream(self.storage.load_content(&content).await?.ok_or_else(
@@ -135,8 +126,10 @@ impl<T: ClientStorage> Client<T> {
             });
         }
 
-        let response = api.publish(&package.name, record.into(), sources).await?;
-
+        let response = self
+            .api
+            .publish(&package.name, record.into(), sources)
+            .await?;
         self.storage.store_publish_info(None).await?;
 
         // Finally, update the checkpoint again post-publish
@@ -147,41 +140,33 @@ impl<T: ClientStorage> Client<T> {
     }
 
     /// Updates every package log in client storage to the latest registry checkpoint.
-    ///
-    /// This is a no-op for local registries.
     pub async fn update(&mut self) -> Result<(), ClientError> {
         tracing::info!("updating all packages to latest checkpoint");
 
-        if let Some(api) = &self.api {
-            let mut updating = self.storage.load_packages().await?;
-            self.update_checkpoint(&api.latest_checkpoint().await?, &mut updating)
-                .await?;
-        }
+        let mut updating = self.storage.load_packages().await?;
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
 
     /// Inserts or updates the logs of the specified packages in client storage to
     /// the latest registry checkpoint.
-    ///
-    /// This is a no-op for local registries.
     pub async fn upsert(&mut self, packages: &[&str]) -> Result<(), ClientError> {
         tracing::info!("updating specific packages to latest checkpoint");
 
-        if let Some(api) = &self.api {
-            let mut updating = Vec::with_capacity(packages.len());
-            for package in packages {
-                updating.push(
-                    self.storage
-                        .load_package_info(package)
-                        .await?
-                        .unwrap_or_else(|| PackageInfo::new(*package)),
-                );
-            }
-
-            self.update_checkpoint(&api.latest_checkpoint().await?, &mut updating)
-                .await?;
+        let mut updating = Vec::with_capacity(packages.len());
+        for package in packages {
+            updating.push(
+                self.storage
+                    .load_package_info(package)
+                    .await?
+                    .unwrap_or_else(|| PackageInfo::new(*package)),
+            );
         }
+
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
@@ -205,16 +190,17 @@ impl<T: ClientStorage> Client<T> {
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
         tracing::info!("downloading package `{package}` with requirement `{requirement}`");
-        let versions = self.versions(package).await?;
+        let info = self.fetch_package(package).await?;
 
-        match versions
-            .iter()
-            .filter_map(|(version, digest)| {
-                if !requirement.matches(version) {
+        match info
+            .state
+            .releases()
+            .filter_map(|r| {
+                if !requirement.matches(&r.version) {
                     return None;
                 }
 
-                Some((version, digest))
+                Some((&r.version, r.content()?))
             })
             .max_by(|(a, ..), (b, ..)| a.cmp(b))
         {
@@ -243,15 +229,22 @@ impl<T: ClientStorage> Client<T> {
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
         tracing::info!("downloading version {version} of package `{package}`");
-        let versions = self.versions(package).await?;
+        let info = self.fetch_package(package).await?;
 
-        let digest =
-            versions
-                .get(version)
+        let release =
+            info.state
+                .release(version)
                 .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
                     version: version.clone(),
                     package: package.to_string(),
                 })?;
+
+        let digest = release
+            .content()
+            .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
+                version: version.clone(),
+                package: package.to_string(),
+            })?;
 
         Ok(PackageDownload {
             url: Self::warg_url(package),
@@ -266,11 +259,6 @@ impl<T: ClientStorage> Client<T> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        let api = self
-            .api
-            .as_ref()
-            .ok_or(ClientError::OperationNotSupported)?;
-
         tracing::info!(
             "updating to checkpoint `{log_root}|{map_root}`",
             log_root = checkpoint.as_ref().log_root,
@@ -284,13 +272,14 @@ impl<T: ClientStorage> Client<T> {
                 _ => Some((p.name.clone(), p)),
             })
             .inspect(|(n, _)| tracing::info!("log of package `{n}` will be updated"))
-            .collect::<IndexMap<_, _>>();
+            .collect::<HashMap<_, _>>();
 
         if packages.is_empty() {
             return Ok(());
         }
 
-        let response: FetchResponse = api
+        let response: FetchResponse = self
+            .api
             .fetch_logs(FetchRequest {
                 root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
                 operator: None,
@@ -335,7 +324,7 @@ impl<T: ClientStorage> Client<T> {
             }
         }
 
-        api.prove_inclusion(checkpoint.as_ref(), heads).await?;
+        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
@@ -352,13 +341,8 @@ impl<T: ClientStorage> Client<T> {
                 Ok(info)
             }
             None => {
-                let api = self
-                    .api
-                    .as_ref()
-                    .ok_or(ClientError::OperationNotSupported)?;
-
                 let mut info = PackageInfo::new(name);
-                self.update_checkpoint(&api.latest_checkpoint().await?, [&mut info])
+                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
                     .await?;
 
                 Ok(info)
@@ -374,15 +358,11 @@ impl<T: ClientStorage> Client<T> {
             }
             None => {
                 tracing::info!("downloading content for digest `{digest}`");
-                let api = self
-                    .api
-                    .as_ref()
-                    .ok_or_else(|| ClientError::ContentNotFound {
-                        digest: digest.clone(),
-                    })?;
-
                 self.storage
-                    .store_content(Box::pin(api.download_content(digest).await?), Some(digest))
+                    .store_content(
+                        Box::pin(self.api.download_content(digest).await?),
+                        Some(digest),
+                    )
                     .await?;
 
                 self.storage
@@ -394,49 +374,11 @@ impl<T: ClientStorage> Client<T> {
         }
     }
 
-    async fn versions(&self, package: &str) -> Result<Versions, ClientError> {
-        match &self.info {
-            RegistryInfo::Remote { .. } => Ok(Versions::Remote(self.fetch_package(package).await?)),
-            RegistryInfo::Local { packages, .. } => packages
-                .get(package)
-                .map(Versions::Local)
-                .ok_or_else(|| ClientError::PackageDoesNotExist {
-                    package: package.to_string(),
-                }),
-        }
-    }
-
     fn warg_url(package: &str) -> String {
         // TODO: currently this is required for parsing WIT packages
         // When the component model figures out what to store in extern descriptors, this
         // will likely be removed.
         format!("warg:///{id}", id = LogId::package_log::<Sha256>(package))
-    }
-}
-
-#[allow(clippy::large_enum_variant)]
-enum Versions<'a> {
-    Local(&'a IndexMap<Version, DynHash>),
-    Remote(PackageInfo),
-}
-
-impl Versions<'_> {
-    fn iter(&self) -> impl Iterator<Item = (&Version, &DynHash)> {
-        match self {
-            Self::Local(versions) => itertools::Either::Left(versions.iter()),
-            Self::Remote(info) => itertools::Either::Right(
-                info.state
-                    .releases()
-                    .filter_map(|r| Some((&r.version, r.content()?))),
-            ),
-        }
-    }
-
-    fn get(&self, version: &Version) -> Option<&DynHash> {
-        match self {
-            Self::Local(versions) => versions.get(version),
-            Self::Remote(info) => info.state.release(version)?.content(),
-        }
     }
 }
 
@@ -464,10 +406,6 @@ pub enum ClientError {
     /// The storage provided to the client has not been initialized.
     #[error("the storage provided to the client has not been initialized")]
     StorageNotInitialized,
-
-    /// The requested operation is not supported for this registry.
-    #[error("the requested operation is not supported for this registry")]
-    OperationNotSupported,
 
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
