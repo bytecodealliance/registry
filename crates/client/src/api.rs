@@ -242,7 +242,7 @@ impl Client {
         Ok(())
     }
 
-    /// Proves the consistency of the given package log roots in the registry.
+    /// Proves consistency of a new checkpoint with a previously known checkpoint.
     pub async fn prove_log_consistency(&self, old_root: DynHash, new_root: DynHash) -> Result<()> {
         dbg!(old_root);
         dbg!(new_root);
