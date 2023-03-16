@@ -1,21 +1,19 @@
 use crate::AnyError;
 use anyhow::Result;
 use axum::{
-    body::Body,
     debug_handler,
-    extract::{BodyStream, OriginalUri, Path, State},
-    http::{header::LOCATION, Request, StatusCode},
+    extract::{BodyStream, OriginalUri, State},
+    http::{header::LOCATION, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get_service, post},
     Router,
 };
 use futures::StreamExt;
-use std::{path::PathBuf, str::FromStr, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use tower::ServiceExt;
 use tower_http::services::ServeDir;
-use warg_crypto::hash::{Digest, DynHash, Sha256};
+use warg_crypto::hash::{Digest, Sha256};
 
 #[derive(Debug)]
 pub struct ContentConfig {
@@ -25,21 +23,15 @@ pub struct ContentConfig {
 impl ContentConfig {
     pub fn build_router(self) -> Result<Router> {
         Ok(Router::new()
-            .route("/:content_id", get(get_content))
             .route("/", post(upload_content))
+            .fallback_service(get_service(ServeDir::new(&self.content_path)).handle_error(
+                |err| async move {
+                    tracing::error!("ServeDir error: {err}");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
+            ))
             .with_state(Arc::new(self)))
     }
-}
-
-#[debug_handler]
-async fn get_content(
-    State(state): State<Arc<ContentConfig>>,
-    Path(content_id): Path<String>,
-    mut req: Request<Body>,
-) -> Result<impl IntoResponse, AnyError> {
-    let content_id = DynHash::from_str(&content_id)?;
-    *req.uri_mut() = format!("/{content_id}").replace(':', "-").parse().unwrap();
-    Ok(ServeDir::new(&state.content_path).oneshot(req).await?)
 }
 
 #[debug_handler]
@@ -49,7 +41,7 @@ async fn upload_content(
     mut stream: BodyStream,
 ) -> Result<impl IntoResponse, AnyError> {
     let tmp_path = NamedTempFile::new_in(&state.content_path)?.into_temp_path();
-    tracing::debug!("uploading content to `{path}`", path = tmp_path.display());
+    tracing::debug!("Uploading to {tmp_path:?}");
 
     let mut hasher = Sha256::new();
     let mut tmp_file = tokio::fs::File::create(&tmp_path).await?;
@@ -58,11 +50,9 @@ async fn upload_content(
         tmp_file.write_all(&chunk).await?;
     }
 
-    let digest = hasher.finalize();
-    tmp_path.persist(state.content_path.join(format!("sha256-{digest:x}")))?;
+    let dest_name = format!("sha256-{:x}", hasher.finalize());
+    tmp_path.persist(state.content_path.join(&dest_name))?;
 
-    Ok((
-        StatusCode::CREATED,
-        [(LOCATION, format!("{orig_uri}/sha256:{digest:x}"))],
-    ))
+    let location = format!("{}/{}", orig_uri.path().trim_end_matches('/'), dest_name);
+    Ok((StatusCode::CREATED, [(LOCATION, location)]))
 }

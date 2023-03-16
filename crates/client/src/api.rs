@@ -316,6 +316,10 @@ impl Client {
     }
 
     fn content_url(&self, digest: &DynHash) -> String {
-        format!("{base}/{digest}", base = self.0.join("content").unwrap())
+        format!(
+            "{base}/{digest}",
+            base = self.0.join("content").unwrap(),
+            digest = digest.to_string().replace(':', "-")
+        )
     }
 }
