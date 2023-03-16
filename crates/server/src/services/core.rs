@@ -113,7 +113,6 @@ pub struct CoreService {
 #[derive(Debug)]
 enum Message {
     SubmitPackageRecord {
-        package_id: LogId,
         package_name: String,
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
@@ -169,12 +168,12 @@ impl CoreService {
             tracing::trace!(?request, "CoreService processing request");
             match request {
                 Message::SubmitPackageRecord {
-                    package_id,
                     package_name,
                     record,
                     content_sources,
                     response,
                 } => {
+                    let package_id = LogId::package_log::<Sha256>(&package_name);
                     let package_info = state
                         .package_states
                         .entry(package_id.clone())
@@ -455,7 +454,6 @@ fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> 
 impl CoreService {
     pub async fn submit_package_record(
         &self,
-        package_id: LogId,
         package_name: String,
         record: Arc<ProtoEnvelope<package::PackageRecord>>,
         content_sources: Vec<ContentSource>,
@@ -463,7 +461,6 @@ impl CoreService {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::SubmitPackageRecord {
-                package_id,
                 package_name,
                 record,
                 content_sources,

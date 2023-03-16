@@ -15,7 +15,7 @@ use warg_api::{
 };
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
-    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf},
+    registry::{LogLeaf, MapCheckpoint, MapLeaf},
     ProtoEnvelopeBody, SerdeEnvelope,
 };
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
@@ -111,7 +111,7 @@ impl Client {
             content_sources,
         };
 
-        let url = self.package_url(package_name);
+        let url = self.0.join("package").unwrap();
 
         tracing::debug!("publishing package `{package_name}` to `{url}`");
         let response = client.post(url).json(&request).send().await?;
@@ -305,14 +305,6 @@ impl Client {
         }
 
         Ok(response.bytes_stream().map_err(|e| anyhow!(e)))
-    }
-
-    fn package_url(&self, package_name: &str) -> String {
-        format!(
-            "{base}/{id}",
-            base = self.0.join("package").unwrap(),
-            id = LogId::package_log::<Sha256>(package_name)
-        )
     }
 
     fn content_url(&self, digest: &DynHash) -> String {

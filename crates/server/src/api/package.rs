@@ -35,24 +35,24 @@ impl Config {
 
     pub fn build_router(self) -> Router {
         Router::new()
-            .route("/:package_id", post(publish))
+            .route("/", post(publish))
             .route("/:package_id/records/:record_id", get(get_record))
             .route("/:package_id/pending/:record_id", get(get_pending_record))
             .with_state(self)
     }
 }
 
-fn record_url(package_id: LogId, record_id: RecordId) -> String {
+fn record_url(package_id: &LogId, record_id: &RecordId) -> String {
     format!("/package/{package_id}/records/{record_id}")
 }
 
-fn pending_record_url(package_id: LogId, record_id: RecordId) -> String {
+fn pending_record_url(package_id: &LogId, record_id: &RecordId) -> String {
     format!("/package/{package_id}/pending/{record_id}")
 }
 
 fn create_pending_response(
-    package_id: LogId,
-    record_id: RecordId,
+    package_id: &LogId,
+    record_id: &RecordId,
     state: RecordState,
 ) -> Result<PendingRecordResponse, AnyError> {
     let response = match state {
@@ -71,10 +71,8 @@ fn create_pending_response(
 #[debug_handler]
 pub(crate) async fn publish(
     State(config): State<Config>,
-    Path(package_id): Path<String>,
     Json(body): Json<PublishRequest>,
 ) -> Result<impl IntoResponse, AnyError> {
-    let package_id: LogId = DynHash::from_str(&package_id)?.into();
     let record = Arc::new(body.record.try_into()?);
     let record_id = RecordId::package_record::<Sha256>(&record);
 
@@ -93,12 +91,14 @@ pub(crate) async fn publish(
         }
     }
 
+    let package_id = LogId::package_log::<Sha256>(&body.name);
+
     let state = config
         .core_service
-        .submit_package_record(package_id.clone(), body.name, record, body.content_sources)
+        .submit_package_record(body.name, record, body.content_sources)
         .await;
 
-    let response = create_pending_response(package_id, record_id, state)?;
+    let response = create_pending_response(&package_id, &record_id, state)?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -144,7 +144,6 @@ pub(crate) async fn get_pending_record(
         .get_package_record_status(package_id.clone(), record_id.clone())
         .await;
 
-    let response = create_pending_response(package_id, record_id, status)?;
-
+    let response = create_pending_response(&package_id, &record_id, status)?;
     Ok((StatusCode::OK, Json(response)))
 }
