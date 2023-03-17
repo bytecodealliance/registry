@@ -7,8 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
+digest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }

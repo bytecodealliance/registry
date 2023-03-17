@@ -410,8 +410,10 @@ name = "client-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "digest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "warg-crypto",
  "warg-protocol",

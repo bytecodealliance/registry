@@ -19,7 +19,8 @@ impl Signable for MapCheckpoint {
 }
 
 impl prefix::VisitPrefixEncode for MapCheckpoint {
-    fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+    fn visit_pe<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+        println!("THE VISITOR INNER {:?}", visitor.inner);
         visitor.visit_str_raw("WARG-MAP-CHECKPOINT-V0");
         visitor.visit_unsigned(self.log_length as u64);
         visitor.visit_str(&self.log_root.to_string());
@@ -29,7 +30,8 @@ impl prefix::VisitPrefixEncode for MapCheckpoint {
 
 // Manual impls of VisitBytes for VisitPrefixEncode to avoid conflict with blanket impls
 impl VisitBytes for MapCheckpoint {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
+      println!("THE VISITOR {:?}", visitor);
         self.visit_bv(visitor);
     }
 }
@@ -40,7 +42,7 @@ pub struct MapLeaf {
 }
 
 impl prefix::VisitPrefixEncode for MapLeaf {
-    fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+    fn visit_pe<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
         visitor.visit_str_raw("WARG-MAP-LEAF-V0");
         visitor.visit_str(&self.record_id.0.to_string());
     }
@@ -48,7 +50,7 @@ impl prefix::VisitPrefixEncode for MapLeaf {
 
 // Manual impls of VisitBytes for VisitPrefixEncode to avoid conflict with blanket impls
 impl VisitBytes for MapLeaf {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.visit_bv(visitor);
     }
 }
@@ -60,7 +62,7 @@ pub struct LogLeaf {
 }
 
 impl prefix::VisitPrefixEncode for LogLeaf {
-    fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+    fn visit_pe<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
         visitor.visit_str_raw("WARG-LOG-LEAF-V0");
         visitor.visit_str(&self.log_id.0.to_string());
         visitor.visit_str(&self.record_id.0.to_string());
@@ -69,7 +71,7 @@ impl prefix::VisitPrefixEncode for LogLeaf {
 
 // Manual impls of VisitBytes for VisitPrefixEncode to avoid conflict with blanket impls
 impl VisitBytes for LogLeaf {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.visit_bv(visitor);
     }
 }

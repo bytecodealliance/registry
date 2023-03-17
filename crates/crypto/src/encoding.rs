@@ -7,7 +7,7 @@ pub trait Encode {
     fn encode(&self) -> Vec<u8>;
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct EncodingVisitor {
     bytes: Vec<u8>,
 }

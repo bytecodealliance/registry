@@ -5,6 +5,7 @@ use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
 };
+use std::fmt::Debug;
 
 use crate::{map::proof::Proof, protobuf};
 
@@ -19,7 +20,7 @@ where
 
 impl<D, V> ProofBundle<D, V>
 where
-    D: SupportedDigest,
+    D: SupportedDigest + Debug,
     V: VisitBytes,
 {
     /// Bundles inclusion proofs together
@@ -48,7 +49,7 @@ where
 
 impl<D, V> From<ProofBundle<D, V>> for protobuf::MapProofBundle
 where
-    D: SupportedDigest,
+    D: SupportedDigest + Debug,
     V: VisitBytes,
 {
     fn from(value: ProofBundle<D, V>) -> Self {
@@ -59,7 +60,7 @@ where
 
 impl<D, V> From<Proof<D, V>> for protobuf::MapInclusionProof
 where
-    D: SupportedDigest,
+    D: SupportedDigest + Debug,
     V: VisitBytes,
 {
     fn from(value: Proof<D, V>) -> Self {
@@ -72,7 +73,7 @@ where
 
 impl<D> From<Option<Hash<D>>> for protobuf::OptionalHash
 where
-    D: SupportedDigest,
+    D: SupportedDigest + Debug,
 {
     fn from(value: Option<Hash<D>>) -> Self {
         protobuf::OptionalHash {

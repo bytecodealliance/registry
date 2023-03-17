@@ -199,8 +199,10 @@ impl Client {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: Vec<String>,
     ) -> Result<(), ClientError> {
+        println!("The checkpoint to be hashed {:?}", checkpoint);
         let root: Hash<Sha256> = Hash::of(checkpoint.as_ref());
         let root: DynHash = root.into();
+        println!("THE ROOT HASH {:?}", root);
 
         let mut validators = Vec::new();
         let mut heads = Vec::new();

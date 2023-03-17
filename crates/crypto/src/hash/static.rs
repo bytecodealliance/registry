@@ -14,13 +14,14 @@ pub struct Hash<D: SupportedDigest> {
     pub(crate) digest: Output<D>,
 }
 
-struct HashVisitor<D: SupportedDigest> {
+#[derive(Debug)]
+struct HashVisitor<D: SupportedDigest + fmt::Debug> {
     digest: D,
 }
 
 impl<D> HashVisitor<D>
 where
-    D: SupportedDigest,
+    D: SupportedDigest + fmt::Debug,
 {
     fn new() -> Self {
         HashVisitor { digest: D::new() }
@@ -33,13 +34,15 @@ where
     }
 }
 
-impl<D: SupportedDigest> ByteVisitor for HashVisitor<D> {
+impl<D: SupportedDigest + fmt::Debug> ByteVisitor for HashVisitor<D> {
     fn visit_bytes(&mut self, bytes: impl AsRef<[u8]>) {
+      // let s: = bytes.;
+      println!("THE BYTES {:?}", std::str::from_utf8(bytes.as_ref()));
         self.digest.update(bytes)
     }
 }
 
-impl<D: SupportedDigest> Hash<D> {
+impl<D: SupportedDigest + fmt::Debug> Hash<D> {
     pub fn of(content: impl VisitBytes) -> Self {
         let mut visitor = HashVisitor::new();
         content.visit(&mut visitor);
@@ -56,8 +59,8 @@ impl<D: SupportedDigest> Hash<D> {
     }
 }
 
-impl<D: SupportedDigest> VisitBytes for Hash<D> {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+impl<D: SupportedDigest + fmt::Debug> VisitBytes for Hash<D> {
+    fn visit<BV: ?Sized + ByteVisitor + fmt::Debug>(&self, visitor: &mut BV) {
         visitor.visit_bytes(self.bytes())
     }
 }

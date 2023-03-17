@@ -1,7 +1,7 @@
 pub trait ByteVisitor {
     fn visit_bytes(&mut self, bytes: impl AsRef<[u8]>);
 
-    fn visit_nested(&mut self, nested: impl VisitBytes) {
+    fn visit_nested(&mut self, nested: impl VisitBytes) where Self: std::fmt::Debug {
         nested.visit(self)
     }
 }
@@ -13,11 +13,11 @@ impl<'a, BV: ?Sized + ByteVisitor> ByteVisitor for &'a mut BV {
 }
 
 pub trait VisitBytes {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV);
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV);
 }
 
 impl<'a, VB: ?Sized + VisitBytes> VisitBytes for &'a VB {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         (self as &VB).visit(visitor)
     }
 }
@@ -48,7 +48,7 @@ impl<T1> VisitBytes for (T1,)
 where
     T1: VisitBytes,
 {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
     }
 }
@@ -58,7 +58,7 @@ where
     T1: VisitBytes,
     T2: VisitBytes,
 {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
         self.1.visit(visitor);
     }
@@ -70,7 +70,7 @@ where
     T2: VisitBytes,
     T3: VisitBytes,
 {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
         self.1.visit(visitor);
         self.2.visit(visitor);
@@ -84,7 +84,7 @@ where
     T3: VisitBytes,
     T4: VisitBytes,
 {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
         self.1.visit(visitor);
         self.2.visit(visitor);
@@ -100,7 +100,7 @@ where
     T4: VisitBytes,
     T5: VisitBytes,
 {
-    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+    fn visit<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         self.0.visit(visitor);
         self.1.visit(visitor);
         self.2.visit(visitor);
