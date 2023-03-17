@@ -1,5 +1,6 @@
 {
   "name": "my-qwik-basic-starter",
+  "type": "module",
   "description": "App with Routing built-in (recommended)",
   "engines": {
     "node": ">=15.0.0"
@@ -16,7 +17,7 @@
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts*\"",
-    "preview": "qwik build preview && vite preview --open",
+    "preview": "qwik build preview && cp ./src/registry/client_storage.core.wasm server && cp ./src/registry/client_storage.core2.wasm server && vite preview --open",
     "start": "vite --open --mode ssr",
     "qwik": "qwik"
   },
