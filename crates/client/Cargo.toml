@@ -16,9 +16,20 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tempfile = { workspace = true }
 reqwest = { workspace = true }
-indexmap = { workspace = true }
 futures-util = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
+url = { workspace = true }
+libc = { workspace = true }
+tracing = { workspace = true }
+itertools = { workspace = true }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.45"
+features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+]

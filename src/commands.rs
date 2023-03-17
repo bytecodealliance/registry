@@ -3,19 +3,19 @@
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
+use warg_client::storage::FileSystemStorage;
 use warg_client::Client;
-use warg_client::FileSystemStorage;
 
+mod download;
 mod info;
 mod init;
-mod install;
 mod publish;
 mod run;
 mod update;
 
+pub use self::download::*;
 pub use self::info::*;
 pub use self::init::*;
-pub use self::install::*;
 pub use self::publish::*;
 pub use self::run::*;
 pub use self::update::*;
@@ -31,9 +31,22 @@ pub struct CommonOptions {
 }
 
 impl CommonOptions {
+    /// Locks the client storage.
+    pub fn lock_storage(&self) -> Result<FileSystemStorage> {
+        match FileSystemStorage::try_lock(&self.storage)? {
+            Some(storage) => Ok(storage),
+            None => {
+                println!(
+                    "blocking on lock for registry `{path}`...",
+                    path = self.storage.display()
+                );
+                Ok(FileSystemStorage::lock(&self.storage)?)
+            }
+        }
+    }
+
     /// Creates the warg client to use.
-    pub fn create_client(self) -> Result<Client> {
-        let storage = FileSystemStorage::new(self.storage)?;
-        Ok(Client::new(Box::new(storage)))
+    pub async fn create_client(&self) -> Result<Client<FileSystemStorage>> {
+        Ok(Client::new(self.lock_storage()?).await?)
     }
 }

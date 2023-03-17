@@ -5,9 +5,19 @@ pub mod services;
 use std::{fmt, path::PathBuf};
 
 use anyhow::Result;
-use axum::{http::StatusCode, response::IntoResponse, Router};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+    response::IntoResponse,
+    Router,
+};
 
 use api::content::ContentConfig;
+use tower_http::{
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    LatencyUnit,
+};
+use tracing::{Level, Span};
 use warg_crypto::signing::PrivateKey;
 
 pub struct Config {
@@ -40,7 +50,7 @@ impl Config {
     }
 
     pub fn build_router(self) -> Result<Router> {
-        let mut router: Router = Router::new();
+        let mut router = Router::new();
         if let Some(upload) = self.content {
             router = router.nest("/content", upload.build_router()?);
         }
@@ -53,7 +63,19 @@ impl Config {
         Ok(router
             .nest("/package", package_config.build_router())
             .nest("/fetch", fetch_config.build_router())
-            .nest("/proof", proof_config.build_router()))
+            .nest("/proof", proof_config.build_router())
+            .layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                    .on_request(|request: &Request<Body>, _span: &Span| {
+                        tracing::info!("starting {} {}", request.method(), request.uri().path())
+                    })
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(Level::INFO)
+                            .latency_unit(LatencyUnit::Micros),
+                    ),
+            ))
     }
 }
 

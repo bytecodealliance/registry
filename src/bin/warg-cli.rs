@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use std::process::exit;
+use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
-    InfoCommand, InitCommand, InstallCommand, PublishCommand, RunCommand, UpdateCommand,
+    DownloadCommand, InfoCommand, InitCommand, PublishCommand, RunCommand, UpdateCommand,
 };
 use warg_client::ClientError;
 
@@ -22,7 +23,7 @@ fn version() -> &'static str {
 enum WargCli {
     Info(InfoCommand),
     Init(InitCommand),
-    Install(InstallCommand),
+    Download(DownloadCommand),
     Update(UpdateCommand),
     #[clap(subcommand)]
     Publish(PublishCommand),
@@ -31,10 +32,14 @@ enum WargCli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     if let Err(e) = match WargCli::parse() {
         WargCli::Info(cmd) => cmd.exec().await,
         WargCli::Init(cmd) => cmd.exec().await,
-        WargCli::Install(cmd) => cmd.exec().await,
+        WargCli::Download(cmd) => cmd.exec().await,
         WargCli::Update(cmd) => cmd.exec().await,
         WargCli::Publish(cmd) => cmd.exec().await,
         WargCli::Run(cmd) => cmd.exec().await,
@@ -52,44 +57,23 @@ async fn main() -> Result<()> {
 
 fn describe_client_error(e: &ClientError) {
     match e {
-        ClientError::RegistryNotSet => {
-            eprintln!("error: registry was not initialized; use the `init` command to get started");
+        ClientError::StorageNotInitialized => {
+            eprintln!("error: {e}; use the `init` command to get started")
         }
-        ClientError::AlreadyPublishing => {
-            eprintln!("error: a publish operation is already in progress");
+        ClientError::MustInitializePackage { package } => {
             eprintln!(
-                "use `publish submit` or `publish abort` to resolve the current publish operation"
-            );
-        }
-        ClientError::NotPublishing => {
-            eprintln!("error: there is no pending publish operation; use `publish start` to begin publishing");
-        }
-        ClientError::InitAlreadyExistingPackage => {
-            eprintln!("error: selected package name already exists; choose a different name for creating a new package");
-        }
-        ClientError::PublishToNonExistingPackage => {
-            eprintln!("error: selected package does not exist; create the package with `publish start --init`");
-        }
-        ClientError::NeededContentNotFound { digest } => {
-            eprintln!("error: content needed by the current publish operation was not found");
-            eprintln!("content with digest `{digest}` not present in contents directory");
-            eprintln!("this indicates that the directory has been modified or that a previous");
-            eprintln!("`publish release` command was interrupted.");
-        }
-        ClientError::RequestedPackageOmitted { package } => {
-            eprintln!(
-                "note: the registry did not provide the requested data about package `{package}`"
-            );
+                "error: package `{package}` is not initialized; use the `--init` option when publishing"
+            )
         }
         ClientError::PackageValidationError { package, inner } => {
-            eprintln!("error: the log for package `{package}` is invalid / corrupt: {inner:?}");
+            eprintln!("error: the log for package `{package}` is invalid: {inner:?}")
         }
-        ClientError::PackageLogEmpty => {
-            eprintln!("error: the package could be empty or the registry could be lying.");
+        ClientError::PackageLogEmpty { package } => {
+            eprintln!(
+                "error: the log for package `{package}` is empty (the registry could be lying)"
+            );
             eprintln!("see issue https://github.com/bytecodealliance/registry/issues/66");
         }
-        ClientError::OtherError(e) => {
-            eprintln!("error: {:?}", e);
-        }
+        _ => eprintln!("error: {e}"),
     }
 }

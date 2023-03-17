@@ -44,7 +44,116 @@ updated to install the crates.io package once a proper release is made.
 
 ## Getting Started
 
-TODO
+### Running the server
+
+Before running the server, set the `WARG_DEMO_OPERATOR_KEY` environment 
+variable:
+
+```
+export WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
+```
+
+`WARG_DEMO_OPERATOR_KEY` is the private key of the server operator. 
+
+Currently this is sourced through an environment variable, but soon this will 
+be sourced via command line arguments or integration with system key rings.
+
+Use `cargo` to run the server:
+
+```
+mkdir content
+cargo run -p warg-server -- --content-dir content
+```
+
+The `content` directory created here is where the server will store package 
+contents.
+
+**Note: currently the server stores its state only in memory, so it will be 
+lost when the server is restarted. A persistence layer will be added in the 
+near future.**
+
+### Setting up the client
+
+Before running the client, set the `WARG_DEMO_USER_KEY` environment variable:
+
+```
+export WARG_DEMO_USER_KEY="ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
+```
+
+`WARG_DEMO_USER_KEY` is the private key of the user that is used to sign 
+packages.
+
+Currently this is sourced through an environment variable, but soon this will 
+be sourced via command line arguments or integration with system key rings.
+
+Start by creating a new client storage directory, giving the URL of the server 
+to use:
+
+```
+warg-cli init http://127.0.0.1:8090
+```
+
+This creates a `.warg` directory where the client will store package logs and 
+contents.
+
+### Publishing a package
+
+A new package can be initialized by running:
+
+```
+warg-cli publish init hello
+```
+
+This creates a new package named `hello` in the registry.
+
+A version of the package can be published by running:
+
+```
+warg-cli publish release --name hello --version 0.1.0 hello.wasm
+```
+
+This publishes a package named `hello` with version `0.1.0` and content from 
+`hello.wasm`.
+
+Alternatively, the above can be batched into a single publish operation:
+
+```
+warg-cli publish start hello
+warg-cli publish init hello
+warg-cli publish release --name hello --version 0.1.0 hello.wasm
+warg-cli publish submit
+```
+
+Here the records created from initializing the package and releasing version
+0.1.0 are made as part of the same transaction.
+
+Use `warg-cli publish abort` to abort a pending publish operation.
+
+### Running a package
+
+For demonstration purposes, the `run` command in `warg-cli` will download and 
+run a package using [Wasmtime](https://wasmtime.dev/).
+
+The package is expected to be a Wasm module implementing a WASI command.
+
+A demo module that implements a simple "grep" tool is available in `demo/simple-grep-1.0.0.wasm`.
+
+To publish the demo module:
+
+```
+warg-cli publish start simple-grep
+warg-cli publish init simple-grep
+warg-cli publish release --name simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
+warg-cli publish submit
+```
+
+To run the demo package:
+
+```
+echo 'hello world' | warg-cli run simple-grep hello
+```
+
+This should download and run the package, and print out the line `hello world` as it matches the pattern `hello`.
 
 ## Contributing
 

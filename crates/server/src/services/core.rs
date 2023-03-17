@@ -474,10 +474,9 @@ impl CoreService {
 
     pub async fn get_package_record_status(
         &self,
-        package_name: &str,
+        package_id: LogId,
         record_id: RecordId,
     ) -> RecordState {
-        let package_id = LogId::package_log::<Sha256>(package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordStatus {
@@ -493,10 +492,9 @@ impl CoreService {
 
     pub async fn get_package_record_info(
         &self,
-        package_name: String,
+        package_id: LogId,
         record_id: RecordId,
     ) -> Option<PackageRecordInfo> {
-        let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordInfo {
