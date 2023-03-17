@@ -1,31 +1,88 @@
 use super::CommonOptions;
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
+use async_trait::async_trait;
+use bytes::Bytes;
 use clap::{Args, Subcommand};
-use std::{env, path::PathBuf};
-use warg_client::PackageEntryInfo;
-use warg_crypto::signing;
+use futures::{Stream, TryStreamExt};
+use std::{env, future::Future, path::PathBuf, pin::Pin};
+use tokio::io::BufReader;
+use tokio_util::io::ReaderStream;
+use warg_client::{
+    storage::{
+        ClientStorage, FileSystemStorage, PackageInfo, PublishEntry, PublishInfo, RegistryInfo,
+    },
+    Client,
+};
+use warg_crypto::{hash::DynHash, signing};
 use warg_protocol::Version;
 
 // TODO: convert this to proper CLI options.
 fn demo_signing_key() -> Result<signing::PrivateKey> {
-    let path = env::var("WARG_DEMO_USER_KEY")
-        .context("WARG_DEMO_USER_KEY environment variable not set")?;
+    env::var("WARG_DEMO_USER_KEY")
+        .context("WARG_DEMO_USER_KEY environment variable not set")?
+        .parse()
+        .context("failed to parse signing key")
+}
 
-    path.parse().context("failed to parse signing key")
+/// Used to enqueue a publish entry if there is a pending publish.
+/// Returns `Ok(None)` if the entry was enqueued or `Ok(Some(entry))` if there
+/// was no pending publish.
+async fn enqueue<'a, T>(
+    storage: &'a FileSystemStorage,
+    name: &str,
+    entry: impl FnOnce(&'a FileSystemStorage) -> T,
+) -> Result<Option<PublishEntry>>
+where
+    T: Future<Output = Result<PublishEntry>> + 'a,
+{
+    match storage.load_publish_info().await? {
+        Some(mut info) => {
+            if info.package != name {
+                bail!(
+                    "there is already publish in progress for package `{package}`",
+                    package = info.package
+                );
+            }
+
+            let entry = entry(storage).await?;
+
+            if matches!(entry, PublishEntry::Init) && info.initializing() {
+                bail!(
+                    "there is already a pending initializing for package `{package}`",
+                    package = name
+                );
+            }
+
+            info.entries.push(entry);
+            storage.store_publish_info(Some(&info)).await?;
+            Ok(None)
+        }
+        None => Ok(Some(entry(storage).await?)),
+    }
+}
+
+/// Submits a publish to the registry.
+async fn submit(storage: &FileSystemStorage, info: &PublishInfo) -> Result<()> {
+    let signing_key = demo_signing_key()?;
+    let mut client = Client::new(InMemoryPublishStorage { storage, info }).await?;
+    client.publish(&signing_key).await?;
+    Ok(())
 }
 
 /// Publish a package to a warg registry.
 #[derive(Subcommand)]
 pub enum PublishCommand {
-    /// Start a new package publish.
-    Start(PublishStartCommand),
+    /// Initialize a new package.
+    Init(PublishInitCommand),
     /// Release a package version.
     Release(PublishReleaseCommand),
-    /// List the pending publish operations.
+    /// Start a new pending publish.
+    Start(PublishStartCommand),
+    /// List the records in a pending publish.
     List(PublishListCommand),
-    /// Abort a pending publish operation.
+    /// Abort a pending publish.
     Abort(PublishAbortCommand),
-    /// Submit a pending publish operation.
+    /// Submit a pending publish.
     Submit(PublishSubmitCommand),
 }
 
@@ -33,8 +90,9 @@ impl PublishCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         match self {
-            Self::Start(cmd) => cmd.exec().await,
+            Self::Init(cmd) => cmd.exec().await,
             Self::Release(cmd) => cmd.exec().await,
+            Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
             Self::Submit(cmd) => cmd.exec().await,
@@ -42,54 +100,67 @@ impl PublishCommand {
     }
 }
 
-/// Start a new package publish.
+/// Initialize a new package.
 #[derive(Args)]
-pub struct PublishStartCommand {
+#[clap(disable_version_flag = true)]
+pub struct PublishInitCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// Use to initialize a new package.
-    #[clap(long)]
-    pub init: bool,
-    /// The name of the package being published.
+    /// The name of the package being initialized.
     #[clap(value_name = "NAME")]
     pub name: String,
 }
 
-impl PublishStartCommand {
+impl PublishInitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let mut client = self.common.create_client()?;
-        let signing_key = demo_signing_key()?;
+        let storage = self.common.lock_storage()?;
 
-        if self.init {
-            println!(
-                "starting publish for new package `{name}`...",
-                name = self.name
-            );
-
-            client
-                .start_publish_init(self.name, signing_key.public_key())
+        match enqueue(&storage, &self.name, |_| {
+            std::future::ready(Ok(PublishEntry::Init))
+        })
+        .await?
+        {
+            Some(entry) => {
+                submit(
+                    &storage,
+                    &PublishInfo {
+                        package: self.name.clone(),
+                        entries: vec![entry],
+                    },
+                )
                 .await?;
 
-            return Ok(());
+                println!(
+                    "published initialization of package `{name}`",
+                    name = self.name
+                );
+            }
+            None => {
+                println!(
+                    "added initialization of package `{package}` to pending publish",
+                    package = self.name
+                );
+            }
         }
 
-        println!("starting publish for package `{name}`...", name = self.name);
-        client.start_publish(self.name).await?;
         Ok(())
     }
 }
 
-/// Release a package version.
+/// Publish a package to a warg registry.
 #[derive(Args)]
 #[clap(disable_version_flag = true)]
 pub struct PublishReleaseCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
+    /// The name of the package being published.
+    #[clap(long, short, value_name = "NAME")]
+    pub name: String,
     /// The version of the package being published.
-    #[clap(long, short)]
+    #[clap(long, short, value_name = "VERSION")]
     pub version: Version,
     /// The path to the package being published.
     #[clap(value_name = "PATH")]
@@ -99,30 +170,93 @@ pub struct PublishReleaseCommand {
 impl PublishReleaseCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        println!(
-            "queuing release of {version} with content `{path}`...",
-            version = self.version,
-            path = self.path.display()
-        );
+        let storage = self.common.lock_storage()?;
+        let path = self.path.clone();
+        let version = self.version.clone();
+        match enqueue(&storage, &self.name, move |s| async move {
+            let content = s
+                .store_content(
+                    Box::pin(
+                        ReaderStream::new(BufReader::new(
+                            tokio::fs::File::open(&path).await.with_context(|| {
+                                format!("failed to open `{path}`", path = path.display())
+                            })?,
+                        ))
+                        .map_err(|e| anyhow!(e)),
+                    ),
+                    None,
+                )
+                .await?;
 
-        let mut client = self.common.create_client()?;
-        let content = tokio::fs::read(&self.path).await.with_context(|| {
-            format!(
-                "failed to read package content `{path}`",
-                path = self.path.display()
-            )
-        })?;
+            Ok(PublishEntry::Release { version, content })
+        })
+        .await?
+        {
+            Some(entry) => {
+                submit(
+                    &storage,
+                    &PublishInfo {
+                        package: self.name.clone(),
+                        entries: vec![entry],
+                    },
+                )
+                .await?;
 
-        let mut storage_content = client.storage().create_content().await?;
-        storage_content.write_all(content.as_slice()).await?;
-        let digest = storage_content.finalize().await?;
+                println!(
+                    "published version {version} of package `{name}`",
+                    version = self.version,
+                    name = self.name
+                );
+            }
+            None => {
+                println!(
+                    "added release of version {version} for package `{package}` to pending publish",
+                    version = self.version,
+                    package = self.name
+                );
+            }
+        }
 
-        client.queue_release(self.version, digest).await?;
         Ok(())
     }
 }
 
-/// List the pending publish operations.
+/// Start a new pending publish.
+#[derive(Args)]
+#[clap(disable_version_flag = true)]
+pub struct PublishStartCommand {
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
+    /// The name of the package being published.
+    #[clap(value_name = "NAME")]
+    pub name: String,
+}
+
+impl PublishStartCommand {
+    /// Executes the command.
+    pub async fn exec(self) -> Result<()> {
+        let storage = self.common.lock_storage()?;
+        match storage.load_publish_info().await? {
+            Some(info) => bail!("a publish is already in progress for package `{package}`; use `publish abort` to abort the current publish", package = info.package),
+            None => {
+                storage.store_publish_info(Some(&PublishInfo {
+                    package: self.name.clone(),
+                    entries: Default::default(),
+                }))
+                .await?;
+
+                println!(
+                    "started new pending publish for package `{name}`",
+                    name = self.name
+                );
+                Ok(())
+            },
+        }
+    }
+}
+
+/// List the records in a pending publish.
 #[derive(Args)]
 pub struct PublishListCommand {
     /// The common command options.
@@ -133,45 +267,35 @@ pub struct PublishListCommand {
 impl PublishListCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let mut client = self.common.create_client()?;
-
-        match client.storage().load_publish_info().await? {
+        let storage = self.common.lock_storage()?;
+        match storage.load_publish_info().await? {
             Some(info) => {
                 println!(
-                    "publishing package `{package}` ({entries} entries)\n",
+                    "publishing package `{package}` with {count} record(s) to publish\n",
                     package = info.package,
-                    entries = info.entries.len()
+                    count = info.entries.len()
                 );
 
-                if let Some(prev) = &info.prev {
-                    println!("previous record hash: {prev}");
-                } else {
-                    println!("no previous record (this publish must init)");
-                }
-
                 for (i, entry) in info.entries.iter().enumerate() {
-                    print!("{i} ");
+                    print!("record {i}: ");
                     match entry {
-                        PackageEntryInfo::Init {
-                            hash_algorithm,
-                            key,
-                        } => {
-                            println!("init {hash_algorithm} - {key}")
+                        PublishEntry::Init => {
+                            println!("initialize package");
                         }
-                        PackageEntryInfo::Release { version, content } => {
-                            println!("release {version} - {content}")
+                        PublishEntry::Release { version, content } => {
+                            println!("release {version} with content digest `{content}`")
                         }
                     }
                 }
-
-                Ok(())
             }
-            None => bail!("no pending publish operations"),
+            None => bail!("no pending publish to list"),
         }
+
+        Ok(())
     }
 }
 
-/// Abort a pending publish operation.
+/// Abort a pending publish.
 #[derive(Args)]
 pub struct PublishAbortCommand {
     /// The common command options.
@@ -182,15 +306,19 @@ pub struct PublishAbortCommand {
 impl PublishAbortCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        println!("aborting current publish...");
+        let storage = self.common.lock_storage()?;
+        if storage.has_publish_info() {
+            storage.store_publish_info(None).await?;
+            println!("aborted the pending publish");
+        } else {
+            bail!("no pending publish to abort");
+        }
 
-        let mut client = self.common.create_client()?;
-        client.cancel_publish().await?;
         Ok(())
     }
 }
 
-/// Submit a pending publish operation.
+/// Submit a pending publish.
 #[derive(Args)]
 pub struct PublishSubmitCommand {
     /// The common command options.
@@ -201,11 +329,98 @@ pub struct PublishSubmitCommand {
 impl PublishSubmitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        println!("submitting current publish...");
-        let signing_key = demo_signing_key()?;
+        let storage = self.common.lock_storage()?;
+        match storage.load_publish_info().await? {
+            Some(info) => {
+                println!(
+                    "submitting publish for package `{package}`...",
+                    package = info.package
+                );
 
-        let mut client = self.common.create_client()?;
-        client.submit_publish(&signing_key).await?;
+                submit(&storage, &info).await?;
+
+                for entry in &info.entries {
+                    match entry {
+                        PublishEntry::Init => {
+                            println!(
+                                "published initialization of package `{package}`",
+                                package = info.package
+                            );
+                        }
+                        PublishEntry::Release { version, .. } => {
+                            println!(
+                                "published version {version} of package `{package}`",
+                                version = version,
+                                package = info.package,
+                            );
+                        }
+                    }
+                }
+            }
+            None => bail!("no pending publish to submit"),
+        }
+
         Ok(())
+    }
+}
+
+// A client storage wrapper that doesn't hit disk to provide publishing information.
+struct InMemoryPublishStorage<'a> {
+    storage: &'a FileSystemStorage,
+    info: &'a PublishInfo,
+}
+
+#[async_trait]
+impl<'a> ClientStorage for InMemoryPublishStorage<'a> {
+    async fn load_registry_info(&self) -> Result<Option<RegistryInfo>> {
+        self.storage.load_registry_info().await
+    }
+
+    async fn store_registry_info(&self, info: &RegistryInfo) -> Result<()> {
+        self.storage.store_registry_info(info).await
+    }
+
+    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
+        self.storage.load_packages().await
+    }
+
+    async fn load_package_info(&self, package: &str) -> Result<Option<PackageInfo>> {
+        self.storage.load_package_info(package).await
+    }
+
+    async fn store_package_info(&self, info: &PackageInfo) -> Result<()> {
+        self.storage.store_package_info(info).await
+    }
+
+    fn has_publish_info(&self) -> bool {
+        true
+    }
+
+    async fn load_publish_info(&self) -> Result<Option<PublishInfo>> {
+        Ok(Some(self.info.clone()))
+    }
+
+    async fn store_publish_info(&self, info: Option<&PublishInfo>) -> Result<()> {
+        assert!(info.is_none());
+        self.storage.store_publish_info(info).await
+    }
+
+    fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
+        self.storage.content_location(digest)
+    }
+
+    async fn load_content(
+        &self,
+        digest: &DynHash,
+    ) -> Result<Option<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>>> {
+        self.storage.load_content(digest).await
+    }
+
+    async fn store_content(
+        &self,
+        stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
+        expected_digest: Option<&DynHash>,
+    ) -> Result<DynHash> {
+        self.storage.store_content(stream, expected_digest).await
     }
 }

@@ -71,17 +71,17 @@ impl FromStr for DynHash {
 
 #[derive(Error, Debug)]
 pub enum DynHashParseError {
-    #[error("expected 2 parts, found {0}")]
+    #[error("expected two parts for hash; found {0}")]
     IncorrectStructure(usize),
 
-    #[error("unable to parse hash algorithm")]
+    #[error("unable to parse hash algorithm: {0}")]
     HashAlgorithmParseError(#[from] Error),
 
-    #[error("contained uppercase hex value(s)")]
+    #[error("hash contained uppercase hex values")]
     UppercaseHex,
 
-    #[error("hexadecimal decode failed")]
-    HexDecodEError(#[from] hex::FromHexError),
+    #[error("hexadecimal decode failed: {0}")]
+    HexDecodeError(#[from] hex::FromHexError),
 }
 
 impl Serialize for DynHash {

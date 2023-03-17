@@ -9,6 +9,8 @@ use warg_protocol::{registry::MapCheckpoint, ProtoEnvelopeBody, SerdeEnvelope};
 #[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct PublishRequest {
+    /// The name of the package being published.
+    pub name: String,
     /// The publish record to add to the package log.
     pub record: ProtoEnvelopeBody,
     /// The content sources for the record.

@@ -19,7 +19,7 @@ pub struct ContentSource {
 pub enum ContentSourceKind {
     /// The content is located at an anonymous HTTP URL.
     HttpAnonymous {
-        /// The URL for the content
+        /// The URL of the content.
         url: String,
     },
 }

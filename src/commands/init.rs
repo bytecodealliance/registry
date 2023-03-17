@@ -1,7 +1,7 @@
 use super::CommonOptions;
 use anyhow::{bail, Result};
 use clap::Args;
-use warg_client::RegistryInfo;
+use warg_client::storage::{ClientStorage, RegistryInfo};
 
 /// Initializes a new warg registry.
 #[derive(Args)]
@@ -23,17 +23,16 @@ impl InitCommand {
             registry = self.registry
         );
 
-        let mut client = self.common.create_client()?;
+        let storage = self.common.lock_storage()?;
 
-        match client.storage().load_registry_info().await? {
-            Some(_) => bail!("registry has already been initialized"),
+        match storage.load_registry_info().await? {
+            Some(_) => bail!(
+                "registry at `{path}` has already been initialized",
+                path = self.common.storage.display()
+            ),
             None => {
-                client
-                    .storage()
-                    .store_registry_info(&RegistryInfo {
-                        url: self.registry,
-                        checkpoint: None,
-                    })
+                storage
+                    .store_registry_info(&RegistryInfo::new(self.registry))
                     .await
             }
         }

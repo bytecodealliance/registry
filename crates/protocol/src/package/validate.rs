@@ -135,6 +135,7 @@ pub struct Head {
 
 /// A validator for package records.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Validator {
     /// The hash algorithm used by the package log.
     /// This is `None` until the first (i.e. init) record is validated.

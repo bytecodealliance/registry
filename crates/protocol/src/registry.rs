@@ -94,9 +94,21 @@ impl LogId {
     }
 }
 
+impl fmt::Display for LogId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl VisitBytes for LogId {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         visitor.visit_bytes(self.0.bytes())
+    }
+}
+
+impl From<DynHash> for LogId {
+    fn from(value: DynHash) -> Self {
+        Self(value)
     }
 }
 
