@@ -1,6 +1,6 @@
 //! A module for Warg registry API clients.
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use reqwest::{Body, IntoUrl, Response, Url};
@@ -58,7 +58,25 @@ pub struct Client(Url);
 impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl) -> Result<Self> {
-        let url = url.into_url()?;
+        let url = Self::validate_url(url)?;
+        Ok(Self(url))
+    }
+
+    /// Gets the URL of the API client.
+    pub fn url(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub(crate) fn validate_url(url: impl IntoUrl) -> Result<Url> {
+        // Default to a HTTPS scheme if none is provided
+        let url: Url = if !url.as_str().contains("://") {
+            Url::parse(&format!("https://{url}", url = url.as_str()))
+                .context("failed to parse registry server URL")?
+        } else {
+            url.into_url()
+                .context("failed to parse registry server URL")?
+        };
+
         match url.scheme() {
             "https" => {}
             "http" => {
@@ -86,8 +104,7 @@ impl Client {
             }
             _ => bail!("expected a HTTPS scheme for URL `{url}`"),
         }
-
-        Ok(Self(url))
+        Ok(url)
     }
 
     /// Gets the latest checkpoint from the registry.

@@ -19,44 +19,40 @@ use warg_protocol::{
 mod fs;
 pub use fs::*;
 
-/// Trait for client storage implementations.
+/// Trait for package storage implementations.
 ///
-/// Client storage implementations must be synchronized if shared between
+/// Package storage data must be synchronized if shared between
 /// multiple threads and processes.
 #[async_trait]
-pub trait ClientStorage: Send + Sync {
-    /// Loads the registry information from client storage.
-    ///
-    /// Returns `Ok(None)` if the information is not present.
-    async fn load_registry_info(&self) -> Result<Option<RegistryInfo>>;
-
-    /// Stores the registry information in client storage.
-    async fn store_registry_info(&self, info: &RegistryInfo) -> Result<()>;
-
-    /// Loads the package information for all packages in the client storage.
+pub trait PackageStorage: Send + Sync {
+    /// Loads the package information for all packages in the storage.
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
 
-    /// Loads the package information from client storage.
+    /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package_info(&self, package: &str) -> Result<Option<PackageInfo>>;
+    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>>;
 
-    /// Stores the package information in client storage.
-    async fn store_package_info(&self, info: &PackageInfo) -> Result<()>;
+    /// Stores the package information in the storage.
+    async fn store_package(&self, info: &PackageInfo) -> Result<()>;
 
-    /// Determines if the client storage currently has publish information.
-    fn has_publish_info(&self) -> bool;
-
-    /// Loads the publish information from client storage.
+    /// Loads information about a pending publish operation.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_publish_info(&self) -> Result<Option<PublishInfo>>;
+    async fn load_publish(&self) -> Result<Option<PublishInfo>>;
 
-    /// Stores the publish information in client storage.
+    /// Stores information about a pending publish operation.
     ///
-    /// If the info is `None`, the publish information is deleted.
-    async fn store_publish_info(&self, info: Option<&PublishInfo>) -> Result<()>;
+    /// If the info is `None`, the any existing publish information is deleted.
+    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()>;
+}
 
+/// Trait for content storage implementations.
+///
+/// Content storage data must be synchronized if shared between
+/// multiple threads and processes.
+#[async_trait]
+pub trait ContentStorage: Send + Sync {
     /// Gets the location of the content associated with the given digest if it
     /// exists as a file on disk.
     ///
@@ -73,7 +69,7 @@ pub trait ClientStorage: Send + Sync {
 
     /// Stores the given stream as content.
     ///
-    /// If `expected_digest` is `Some`, the store will verify that the written
+    /// If `expected_digest` is `Some`, the storage will verify that the written
     /// content matches the given digest. If the digests do not match, an
     /// error is returned.
     ///
@@ -83,21 +79,6 @@ pub trait ClientStorage: Send + Sync {
         stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
         expected_digest: Option<&DynHash>,
     ) -> Result<DynHash>;
-}
-
-/// Represents information about a registry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegistryInfo {
-    /// The URL of the remote registry.
-    pub url: String,
-}
-
-impl RegistryInfo {
-    /// Creates a new registry information for the registry of the given URL.
-    pub fn new(url: String) -> Self {
-        Self { url }
-    }
 }
 
 /// Represents information about a registry package.

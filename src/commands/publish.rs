@@ -9,9 +9,10 @@ use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
     storage::{
-        ClientStorage, FileSystemStorage, PackageInfo, PublishEntry, PublishInfo, RegistryInfo,
+        ContentStorage as _, FileSystemContentStorage, FileSystemPackageStorage, PackageInfo,
+        PackageStorage as _, PublishEntry, PublishInfo,
     },
-    Client,
+    Client, FileSystemClient,
 };
 use warg_crypto::{hash::DynHash, signing};
 use warg_protocol::Version;
@@ -28,14 +29,14 @@ fn demo_signing_key() -> Result<signing::PrivateKey> {
 /// Returns `Ok(None)` if the entry was enqueued or `Ok(Some(entry))` if there
 /// was no pending publish.
 async fn enqueue<'a, T>(
-    storage: &'a FileSystemStorage,
+    client: &'a FileSystemClient,
     name: &str,
-    entry: impl FnOnce(&'a FileSystemStorage) -> T,
+    entry: impl FnOnce(&'a FileSystemClient) -> T,
 ) -> Result<Option<PublishEntry>>
 where
     T: Future<Output = Result<PublishEntry>> + 'a,
 {
-    match storage.load_publish_info().await? {
+    match client.packages().load_publish().await? {
         Some(mut info) => {
             if info.package != name {
                 bail!(
@@ -44,7 +45,7 @@ where
                 );
             }
 
-            let entry = entry(storage).await?;
+            let entry = entry(client).await?;
 
             if matches!(entry, PublishEntry::Init) && info.initializing() {
                 bail!(
@@ -54,17 +55,24 @@ where
             }
 
             info.entries.push(entry);
-            storage.store_publish_info(Some(&info)).await?;
+            client.packages().store_publish(Some(&info)).await?;
             Ok(None)
         }
-        None => Ok(Some(entry(storage).await?)),
+        None => Ok(Some(entry(client).await?)),
     }
 }
 
 /// Submits a publish to the registry.
-async fn submit(storage: &FileSystemStorage, info: &PublishInfo) -> Result<()> {
+async fn submit(client: &FileSystemClient, info: &PublishInfo) -> Result<()> {
     let signing_key = demo_signing_key()?;
-    let mut client = Client::new(InMemoryPublishStorage { storage, info }).await?;
+    let client = Client::new(
+        client.url(),
+        PackageStorage {
+            storage: client.packages(),
+            info,
+        },
+        ContentStorage(client.content()),
+    )?;
     client.publish(&signing_key).await?;
     Ok(())
 }
@@ -115,16 +123,17 @@ pub struct PublishInitCommand {
 impl PublishInitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
 
-        match enqueue(&storage, &self.name, |_| {
+        match enqueue(&client, &self.name, |_| {
             std::future::ready(Ok(PublishEntry::Init))
         })
         .await?
         {
             Some(entry) => {
                 submit(
-                    &storage,
+                    &client,
                     &PublishInfo {
                         package: self.name.clone(),
                         entries: vec![entry],
@@ -170,11 +179,14 @@ pub struct PublishReleaseCommand {
 impl PublishReleaseCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
         let path = self.path.clone();
         let version = self.version.clone();
-        match enqueue(&storage, &self.name, move |s| async move {
-            let content = s
+        match enqueue(&client, &self.name, move |c| async move {
+            let content = c
+                .content()
                 .store_content(
                     Box::pin(
                         ReaderStream::new(BufReader::new(
@@ -194,7 +206,7 @@ impl PublishReleaseCommand {
         {
             Some(entry) => {
                 submit(
-                    &storage,
+                    &client,
                     &PublishInfo {
                         package: self.name.clone(),
                         entries: vec![entry],
@@ -236,11 +248,13 @@ pub struct PublishStartCommand {
 impl PublishStartCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
-        match storage.load_publish_info().await? {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match client.packages().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{package}`; use `publish abort` to abort the current publish", package = info.package),
             None => {
-                storage.store_publish_info(Some(&PublishInfo {
+                client.packages().store_publish(Some(&PublishInfo {
                     package: self.name.clone(),
                     entries: Default::default(),
                 }))
@@ -267,8 +281,10 @@ pub struct PublishListCommand {
 impl PublishListCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
-        match storage.load_publish_info().await? {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match client.packages().load_publish().await? {
             Some(info) => {
                 println!(
                     "publishing package `{package}` with {count} record(s) to publish\n",
@@ -306,12 +322,18 @@ pub struct PublishAbortCommand {
 impl PublishAbortCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
-        if storage.has_publish_info() {
-            storage.store_publish_info(None).await?;
-            println!("aborted the pending publish");
-        } else {
-            bail!("no pending publish to abort");
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match client.packages().load_publish().await? {
+            Some(info) => {
+                client.packages().store_publish(None).await?;
+                println!(
+                    "aborted the pending publish for package `{package}`",
+                    package = info.package
+                );
+            }
+            None => bail!("no pending publish to abort"),
         }
 
         Ok(())
@@ -329,15 +351,17 @@ pub struct PublishSubmitCommand {
 impl PublishSubmitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
-        match storage.load_publish_info().await? {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match client.packages().load_publish().await? {
             Some(info) => {
                 println!(
                     "submitting publish for package `{package}`...",
                     package = info.package
                 );
 
-                submit(&storage, &info).await?;
+                submit(&client, &info).await?;
 
                 for entry in &info.entries {
                     match entry {
@@ -364,56 +388,52 @@ impl PublishSubmitCommand {
     }
 }
 
-// A client storage wrapper that doesn't hit disk to provide publishing information.
-struct InMemoryPublishStorage<'a> {
-    storage: &'a FileSystemStorage,
+/// A package storage implementation that can be used to immediately
+/// publish a package.
+struct PackageStorage<'a> {
+    storage: &'a FileSystemPackageStorage,
     info: &'a PublishInfo,
 }
 
 #[async_trait]
-impl<'a> ClientStorage for InMemoryPublishStorage<'a> {
-    async fn load_registry_info(&self) -> Result<Option<RegistryInfo>> {
-        self.storage.load_registry_info().await
-    }
-
-    async fn store_registry_info(&self, info: &RegistryInfo) -> Result<()> {
-        self.storage.store_registry_info(info).await
-    }
-
+impl<'a> warg_client::storage::PackageStorage for PackageStorage<'a> {
     async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
         self.storage.load_packages().await
     }
 
-    async fn load_package_info(&self, package: &str) -> Result<Option<PackageInfo>> {
-        self.storage.load_package_info(package).await
+    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {
+        self.storage.load_package(package).await
     }
 
-    async fn store_package_info(&self, info: &PackageInfo) -> Result<()> {
-        self.storage.store_package_info(info).await
+    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
+        self.storage.store_package(info).await
     }
 
-    fn has_publish_info(&self) -> bool {
-        true
-    }
-
-    async fn load_publish_info(&self) -> Result<Option<PublishInfo>> {
+    async fn load_publish(&self) -> Result<Option<PublishInfo>> {
         Ok(Some(self.info.clone()))
     }
 
-    async fn store_publish_info(&self, info: Option<&PublishInfo>) -> Result<()> {
+    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()> {
         assert!(info.is_none());
-        self.storage.store_publish_info(info).await
+        self.storage.store_publish(info).await
     }
+}
 
+/// A wrapper around a content storage implementation that can be used
+/// to immediately publish a package.
+struct ContentStorage<'a>(&'a FileSystemContentStorage);
+
+#[async_trait]
+impl warg_client::storage::ContentStorage for ContentStorage<'_> {
     fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
-        self.storage.content_location(digest)
+        self.0.content_location(digest)
     }
 
     async fn load_content(
         &self,
         digest: &DynHash,
     ) -> Result<Option<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>>> {
-        self.storage.load_content(digest).await
+        self.0.load_content(digest).await
     }
 
     async fn store_content(
@@ -421,6 +441,6 @@ impl<'a> ClientStorage for InMemoryPublishStorage<'a> {
         stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
         expected_digest: Option<&DynHash>,
     ) -> Result<DynHash> {
-        self.storage.store_content(stream, expected_digest).await
+        self.0.store_content(stream, expected_digest).await
     }
 }
