@@ -1,6 +1,6 @@
 //! Module for client configuration.
 
-use crate::api;
+use crate::{api, ClientError};
 use anyhow::{anyhow, Context, Result};
 use normpath::PathExt;
 use once_cell::sync::Lazy;
@@ -215,12 +215,11 @@ impl Config {
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
-    ) -> Result<(Url, PathBuf, PathBuf)> {
-        let url = api::Client::validate_url(url.or(self.default_url.as_deref()).ok_or_else(|| {
-            anyhow!(
-                "no default registry server URL is configured; please specify the registry URL to use"
-            )
-        })?)?;
+    ) -> Result<(Url, PathBuf, PathBuf), ClientError> {
+        let url = api::Client::validate_url(
+            url.or(self.default_url.as_deref())
+                .ok_or(ClientError::NoDefaultUrl)?,
+        )?;
 
         let host = url.host().unwrap().to_string().to_ascii_lowercase();
         let packages_dir = self.packages_dir()?.join(host);

@@ -3,9 +3,7 @@
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
-use warg_client::Config;
-use warg_client::FileSystemClient;
-use warg_client::StorageLockResult;
+use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 
 mod config;
 mod download;
@@ -51,7 +49,7 @@ impl CommonOptions {
     }
 
     /// Creates the warg client to use.
-    pub fn create_client(&self, config: &Config) -> Result<FileSystemClient> {
+    pub fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
         match FileSystemClient::try_new_with_config(self.registry.as_deref(), config)? {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {

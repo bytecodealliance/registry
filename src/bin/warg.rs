@@ -57,10 +57,8 @@ async fn main() -> Result<()> {
 
 fn describe_client_error(e: &ClientError) {
     match e {
-        ClientError::MustInitializePackage { package } => {
-            eprintln!(
-                "error: package `{package}` is not initialized; use the `--init` option when publishing"
-            )
+        ClientError::NoDefaultUrl => {
+            eprintln!("error: {e}; use the `config` subcommand to set a default URL");
         }
         ClientError::PackageValidationFailed { package, inner } => {
             eprintln!("error: the log for package `{package}` is invalid: {inner:?}")

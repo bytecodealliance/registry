@@ -460,7 +460,7 @@ impl FileSystemClient {
     pub fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
-    ) -> Result<StorageLockResult<Self>> {
+    ) -> Result<StorageLockResult<Self>, ClientError> {
         let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
@@ -483,13 +483,13 @@ impl FileSystemClient {
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
-    pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self> {
+    pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
         let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
-        Ok(Self::new(
+        Self::new(
             url,
             FileSystemPackageStorage::lock(packages_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
-        )?)
+        )
     }
 }
 
@@ -514,6 +514,10 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
+    /// No default registry server URL is configured.
+    #[error("no default registry server URL is configured")]
+    NoDefaultUrl,
+
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
