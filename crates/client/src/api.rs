@@ -67,7 +67,10 @@ impl Client {
         self.0.as_str()
     }
 
-    pub(crate) fn validate_url(url: impl IntoUrl) -> Result<Url> {
+    /// Parses and validates the given URL.
+    ///
+    /// Returns the validated URL on success.
+    pub fn validate_url(url: impl IntoUrl) -> Result<Url> {
         // Default to a HTTPS scheme if none is provided
         let url: Url = if !url.as_str().contains("://") {
             Url::parse(&format!("https://{url}", url = url.as_str()))

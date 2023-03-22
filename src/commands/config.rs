@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use warg_client::Config;
+use warg_client::{api, Config};
 
 /// Creates a new warg configuration file.
 #[derive(Args)]
@@ -44,6 +44,12 @@ impl ConfigCommand {
             );
         }
 
+        let default_url = self
+            .registry
+            .map(api::Client::validate_url)
+            .transpose()?
+            .map(|u| u.to_string());
+
         // The paths specified on the command line are relative to the current
         // directory.
         //
@@ -52,7 +58,7 @@ impl ConfigCommand {
         let cwd = std::env::current_dir().context("failed to determine current directory")?;
 
         let config = Config {
-            default_url: self.registry,
+            default_url,
             packages_dir: self.packages_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
         };
