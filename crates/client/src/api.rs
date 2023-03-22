@@ -209,8 +209,11 @@ impl Client {
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(response.log.as_slice())?;
         let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
+        println!("LOG DATA {:?}", log_data);
+        println!("LOG INCLUSIONS {:?}", log_inclusions);
         for (leaf, proof) in heads.iter().zip(log_inclusions.iter()) {
             let root = proof.evaluate_value(&log_data, leaf)?;
+            println!("NEW ROOT {:?}", root);
             if checkpoint.log_root != root.clone().into() {
                 return Err(ClientError::Other(anyhow!(
                     "verification proof failed: expected log root `{expected}` but found `{root}`",
@@ -230,6 +233,7 @@ impl Client {
                     record_id: leaf.record_id.clone(),
                 },
             );
+            println!("NEW MAP ROOT");
             if checkpoint.map_root != root.clone().into() {
                 return Err(ClientError::Other(anyhow!(
                     "verification proof failed: expected map root `{expected}` but found `{root}`",

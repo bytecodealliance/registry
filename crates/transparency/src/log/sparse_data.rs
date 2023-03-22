@@ -8,6 +8,7 @@ use warg_crypto::{
 
 use super::{LogData, Node};
 
+#[derive(Debug)]
 pub struct SparseLogData<D, V>
 where
     D: SupportedDigest,

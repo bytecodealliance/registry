@@ -164,6 +164,7 @@ impl ClientStorage for FileSystemStorage {
             .read_dir()
             .with_context(|| format!("failed to read directory `{path}`", path = dir.display()))?
         {
+          println!("entry: {:?}", entry);
             let entry = entry?;
             let path = entry.path();
             packages.push(load(&path).await?.ok_or_else(|| {
@@ -172,6 +173,7 @@ impl ClientStorage for FileSystemStorage {
                     path = path.display()
                 )
             })?);
+            println!("packages: \n{:?}", packages);
         }
 
         Ok(packages)
@@ -289,10 +291,12 @@ async fn load<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>> {
     if !path.is_file() {
         return Ok(None);
     }
+    println!("THE PATH \n {:?}", path);
 
     let contents = tokio::fs::read_to_string(path)
         .await
         .with_context(|| format!("failed to read `{path}`", path = path.display()))?;
+    println!("package info: \n{:?}", contents);
 
     serde_json::from_str(&contents).with_context(|| {
         format!(

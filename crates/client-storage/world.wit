@@ -10,10 +10,14 @@ interface storage {
     key-id: string,
     signature: string
   }
+  record logs {
+    packages
+  }
   store-registry-info: func(input: string)
   get-registry-info: func() -> string
   get-checkpoint: func() -> checkpoint
   hash-checkpoint: func(input: checkpoint) -> string
+  fetch-logs: func() -> logs
 }                
 
 default world component {

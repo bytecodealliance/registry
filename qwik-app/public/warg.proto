@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package warg;
+
+message Envelope {
+    bytes contents = 1;
+    string key_id = 2;
+    string signature = 3;
+}
+
+message OperatorRecord {
+    // The previous entry in the log.
+    // First entry of a log has no previous entry.
+    optional string prev = 1;
+    // The warg protocol version.
+    uint32 version = 2;
+    // The time when this entry was created
+    google.protobuf.Timestamp time = 3;
+
+    // The content specific to this entry type
+    repeated OperatorEntry entries = 4;
+}
+
+message OperatorEntry {
+    oneof contents {
+        OperatorInit init = 1;
+        OperatorGrantFlat grant_flat = 2;
+        OperatorRevokeFlat revoke_flat = 3;
+    }
+}
+
+enum OperatorPermission {
+    OPERATOR_PERMISSION_UNSPECIFIED = 0;
+    OPERATOR_PERMISSION_COMMIT = 1;
+}
+
+message OperatorInit {
+    // The hash algorithm used by this package to link entries.
+    string hash_algorithm = 1;
+    // The key for the author of this entry.
+    string key = 2;
+}
+
+message OperatorGrantFlat {
+    // The key being given the permission.
+    string key = 1;
+    // The permission to grant the key.
+    OperatorPermission permission = 2;
+}
+
+message OperatorRevokeFlat {
+    // The key whose permission is being revoked.
+    string key_id = 1;
+    // The permission to grant the key.
+    OperatorPermission permission = 2;
+}
+
+message PackageRecord {
+    // The previous entry in the log.
+    // First entry of a log has no previous entry.
+    optional string prev = 1;
+
+    // The warg protocol version.
+    uint32 version = 2;
+
+    // The time when this entry was created
+    google.protobuf.Timestamp time = 3;
+
+    repeated PackageEntry entries = 4;
+}
+
+enum PackagePermission {
+    PACKAGE_PERMISSION_UNSPECIFIED = 0;
+    PACKAGE_PERMISSION_RELEASE = 1;
+    PACKAGE_PERMISSION_YANK = 2;
+}
+
+message PackageEntry {
+    oneof contents {
+        PackageInit init = 1;
+        PackageGrantFlat grant_flat = 2;
+        PackageRevokeFlat revoke_flat = 3;
+        PackageRelease release = 4;
+        PackageYank yank = 5;
+    }
+}
+
+message PackageInit {
+    string key = 1;
+    string hash_algorithm = 2;
+}
+
+message PackageGrantFlat {
+    string key = 1;
+    PackagePermission permission = 2;
+}
+
+message PackageRevokeFlat {
+    string key_id = 1;
+    PackagePermission permission = 2;
+}
+
+message PackageRelease {
+    string version = 1;
+    string content_hash = 2;
+}
+
+message PackageYank {
+    string version = 1;
+}

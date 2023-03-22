@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
-use std::{collections::HashSet, marker::PhantomData};
+use std::{collections::HashSet, marker::PhantomData, fmt::Debug};
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
@@ -18,10 +18,11 @@ use crate::{
 };
 
 /// A collection of inclusion proof info
+#[derive(Debug)]
 pub struct ProofBundle<D, V>
 where
-    D: SupportedDigest,
-    V: VisitBytes,
+    D: SupportedDigest + Debug,
+    V: VisitBytes + Debug,
 {
     log_length: u32,
     consistent_lengths: Vec<u32>,
@@ -35,8 +36,8 @@ where
 
 impl<D, V> ProofBundle<D, V>
 where
-    D: SupportedDigest,
-    V: VisitBytes,
+    D: SupportedDigest + Debug,
+    V: VisitBytes + Debug,
 {
     /// Bundles inclusion proofs together
     pub fn bundle(
@@ -144,14 +145,15 @@ where
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
         let proto = protobuf::LogProofBundle::decode(bytes)?;
         let bundle = proto.try_into()?;
+        println!("THE PROOF BUNDLE {:?}", bundle);
         Ok(bundle)
     }
 }
 
 impl<D, V> From<ProofBundle<D, V>> for protobuf::LogProofBundle
 where
-    D: SupportedDigest,
-    V: VisitBytes,
+    D: SupportedDigest + Debug,
+    V: VisitBytes + Debug,
 {
     fn from(value: ProofBundle<D, V>) -> Self {
         let included_indices = value
@@ -178,8 +180,8 @@ where
 
 impl<D, V> TryFrom<protobuf::LogProofBundle> for ProofBundle<D, V>
 where
-    D: SupportedDigest,
-    V: VisitBytes,
+    D: SupportedDigest + Debug,
+    V: VisitBytes + Debug,
 {
     type Error = Error;
 

@@ -45,29 +45,9 @@ impl<T: ClientStorage> Client<T> {
         Ok(Self { storage, api })
     }
 
-<<<<<<< HEAD
-    pub async fn inform(&self, package: String) -> Result<(), ClientError> {
-        let state = self.storage.load_package_state(&package).await?;
-        println!("Versions");
-        state.releases().for_each(|r| {
-            println!(
-                "{}.{}.{}",
-                r.version.major, r.version.minor, r.version.patch
-            )
-        });
-        Ok(())
-    }
-
-    async fn registry_info(&self) -> Result<RegistryInfo, ClientError> {
-        match self.storage.load_registry_info().await? {
-            Some(reg_info) => Ok(reg_info),
-            None => Err(ClientError::RegistryNotSet),
-        }
-=======
     /// Gets the storage used by the client.
     pub fn storage(&self) -> &dyn ClientStorage {
         &self.storage
->>>>>>> main
     }
 
     /// Submits the publish information in client storage.
@@ -294,29 +274,8 @@ impl<T: ClientStorage> Client<T> {
             .inspect(|(n, _)| tracing::info!("log of package `{n}` will be updated"))
             .collect::<HashMap<_, _>>();
 
-<<<<<<< HEAD
-    async fn update_packages(
-        &mut self,
-        client: &api::Client,
-        checkpoint: &SerdeEnvelope<MapCheckpoint>,
-        packages: Vec<String>,
-    ) -> Result<(), ClientError> {
-        println!("The checkpoint to be hashed {:?}", checkpoint);
-        let root: Hash<Sha256> = Hash::of(checkpoint.as_ref());
-        let root: DynHash = root.into();
-        println!("THE ROOT HASH {:?}", root);
-
-        let mut validators = Vec::new();
-        let mut heads = Vec::new();
-        for name in packages {
-            let state = self.storage.load_package_state(&name).await?;
-            let head = state.head().as_ref().map(|head| head.digest.clone());
-            validators.push((name.clone(), state));
-            heads.push((name, head));
-=======
         if packages.is_empty() {
             return Ok(());
->>>>>>> main
         }
 
         let response: FetchResponse = self
@@ -335,13 +294,16 @@ impl<T: ClientStorage> Client<T> {
                     .collect(),
             })
             .await?;
+        println!("fetched logs: {:?}", response);
 
         let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {
             match packages.get_mut(&name) {
                 Some(package) => {
+                  println!("THE PACkAGE FROM THE MAP {:?}", package);
                     for record in records {
                         let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
+                        println!("THE RECORD {:?}", record);
                         package.state.validate(&record).map_err(|inner| {
                             ClientError::PackageValidationError {
                                 package: name.clone(),
@@ -365,6 +327,7 @@ impl<T: ClientStorage> Client<T> {
             }
         }
 
+        println!("THE HEADS {:?}", heads);
         self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
 
         for package in packages.values_mut() {

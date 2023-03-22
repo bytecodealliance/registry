@@ -39,6 +39,7 @@
     "vite-tsconfig-paths": "3.5.0"
   },
   "dependencies": {
-    "@bytecodealliance/preview2-shim": "^0.0.3"
+    "@bytecodealliance/preview2-shim": "^0.0.3",
+    "protobufjs": "^7.2.2"
   }
 }

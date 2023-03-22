@@ -8,7 +8,7 @@
  * You can also use this file to add more functionality that runs in the service worker.
  */
 import { setupServiceWorker } from '@builder.io/qwik-city/service-worker';
-import { hashCheckpoint } from "../imports"
+// import { hashCheckpoint } from "../imports"
 setupServiceWorker();
 
 addEventListener('install', () => self.skipWaiting());
@@ -20,25 +20,26 @@ self.addEventListener('fetch', async function(event) {
   console.log("EARLY")
   const body = event.request.body
   console.log({body})
+  console.log({event}, "fetch interception")
   const reader = body?.getReader()
-  let content = new Uint8Array()
-  await reader?.read().then((function processText({done, value}) {
-    if (done) {
-      // content = value
-      // console.log({value})
-      return value
-    }
-    // console.log({value})
-    content = value
-    return reader.read().then(processText)
-  }))
   // console.log({content: dec.decode(content)})
   // if (arrayBuffer.length > 0) {
     // let thing = Array.from(body)
     // console.log(thing.map((b) => b.toString(16).padStart(2, "0")).join(""))
-  // }
-  console.log("INTERCEPTING REQUEST", {event: content})
-  if (event.request.url.includes("/hash")) {
+    // }
+    console.log("INTERCEPTING REQUEST")
+    if (event.request.url.includes("/hash")) {
+    let content = new Uint8Array()
+    await reader?.read().then((function processText({done, value}) {
+      if (done) {
+        // content = value
+        // console.log({value})
+        return value
+      }
+      // console.log({value})
+      content = value
+      return reader.read().then(processText)
+    }))
     // const content: Uint8Array = event.request.body || new;
     // event.respondWith(crypto.subtle.digest("SHA-256", enc.encode("foo")).then(dig => new Response(dig)))
 
@@ -48,7 +49,7 @@ self.addEventListener('fetch', async function(event) {
         // console.log({dig})
         let temp = Array.from(new Uint8Array(dig))
         let fin = temp.map((b) => b.toString(16).padStart(2, "0")).join("")
-        // console.log({fin})
+        console.log({fin})
         return fin
       })
       .then(dig => new Response(dig))

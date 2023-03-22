@@ -243,8 +243,11 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
+        println!("THE ENTRIES {:?}", &record.entries);
+        println!("KEYS BEFORE CHECK {:?}", self.keys);
         let contents =
             self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+        println!("KEYS AFTER CHECK {:?}", self.keys);
 
         // At this point the digest algorithm must be set via an init entry
         let _algorithm = self
@@ -257,8 +260,11 @@ impl Validator {
                 key_id: envelope.key_id().clone(),
             }
         })?;
+        println!("THE KEYS AT THIS POINT IN TIME {:?}", self.keys);
 
         // Validate the envelope signature
+        println!("THE ENVELOPE: {:?}", envelope);
+        println!("HE KEY: {:?}", key);
         model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator head
@@ -325,8 +331,10 @@ impl Validator {
         entries: &[model::PackageEntry],
     ) -> Result<Vec<DynHash>, ValidationError> {
         let mut contents = Vec::new();
+        println!("SIGNER KEY ID: {:?}", signer_key_id);
 
         for entry in entries {
+            println!("VALIDATING RECORD ENTRIES");
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
             }
@@ -386,6 +394,8 @@ impl Validator {
             signer_key_id.clone(),
             IndexSet::from(model::Permission::all()),
         );
+        println!("INIT KEY: {:?}", init_key);
+        println!("FINGERPRINT: {:?}", init_key.fingerprint());
         self.keys.insert(init_key.fingerprint(), init_key.clone());
 
         Ok(())
@@ -446,6 +456,7 @@ impl Validator {
                 })
             }
             Entry::Vacant(e) => {
+              // println!("THE KEY {:?}", key);
                 let version = e.key().clone();
                 e.insert(Release {
                     version,
