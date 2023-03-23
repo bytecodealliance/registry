@@ -1,14 +1,13 @@
+use super::DataServiceError;
+use crate::services::transparency::VerifiableMap;
 use std::{collections::HashMap, sync::Arc};
-
-use anyhow::{Context, Error};
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
+use tokio::{
+    sync::{mpsc::Receiver, RwLock},
+    task::JoinHandle,
+};
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf, MapLeaf};
 use warg_transparency::map::MapProofBundle;
-
-use crate::services::transparency::VerifiableMap;
 
 pub struct Input {
     pub data: MapData,
@@ -36,20 +35,28 @@ impl MapData {
 
     pub fn inclusion(
         &self,
-        root: Hash<Sha256>,
+        root: &Hash<Sha256>,
         leaves: &[LogLeaf],
-    ) -> Result<MapProofBundle<Sha256, MapLeaf>, Error> {
-        let map = self.map_index.get(&root).context("Unknown map root")?;
+    ) -> Result<MapProofBundle<Sha256, MapLeaf>, DataServiceError> {
+        let map = self
+            .map_index
+            .get(root)
+            .ok_or_else(|| DataServiceError::RootNotFound(root.clone()))?;
 
         let mut proofs = Vec::new();
         for LogLeaf { log_id, record_id } in leaves {
-            let proof = map.prove(log_id).context("Unable to prove")?;
+            let proof = map
+                .prove(log_id)
+                .ok_or_else(|| DataServiceError::ProofFailure(log_id.clone()))?;
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };
             let found_root = proof.evaluate(log_id, &leaf);
-            if found_root != root {
-                return Err(Error::msg("Requested proof is incorrect"));
+            if found_root != *root {
+                return Err(DataServiceError::IncorrectProof {
+                    root: root.clone(),
+                    expected: found_root,
+                });
             }
             proofs.push(proof);
         }

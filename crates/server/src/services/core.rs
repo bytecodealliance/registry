@@ -1,16 +1,23 @@
 use anyhow::Error;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::oneshot;
-use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use axum::{body::boxed, response::IntoResponse};
+use reqwest::StatusCode;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use thiserror::Error;
+use tokio::{
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        oneshot, Mutex,
+    },
+    task::JoinHandle,
+};
 use warg_api::content::ContentSource;
 use warg_crypto::hash::{DynHash, Hash, Sha256};
-use warg_protocol::registry::LogLeaf;
 use warg_protocol::{
     operator, package,
-    registry::{LogId, MapCheckpoint, RecordId},
+    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -92,10 +99,8 @@ pub struct PackageRecordInfo {
     pub state: RecordState,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RecordState {
-    #[default]
-    Unknown,
     Processing,
     Published {
         checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
@@ -103,6 +108,37 @@ pub enum RecordState {
     Rejected {
         reason: String,
     },
+}
+
+#[derive(Debug, Error)]
+pub enum CoreServiceError {
+    #[error("checkpoint `{0}` not found")]
+    CheckpointNotFound(Hash<Sha256>),
+    #[error("package `{0}` not found")]
+    PackageNotFound(LogId),
+    #[error("package record `{0}` not found")]
+    PackageRecordNotFound(RecordId),
+    #[error("operator record `{0}` not found")]
+    OperatorRecordNotFound(RecordId),
+    #[error("invalid checkpoint: {0}")]
+    InvalidCheckpoint(Error),
+}
+
+impl IntoResponse for CoreServiceError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match &self {
+            Self::CheckpointNotFound(_)
+            | Self::PackageNotFound(_)
+            | Self::PackageRecordNotFound(_)
+            | Self::OperatorRecordNotFound(_) => StatusCode::NOT_FOUND,
+            Self::InvalidCheckpoint(_) => StatusCode::BAD_REQUEST,
+        };
+
+        axum::response::Response::builder()
+            .status(status)
+            .body(boxed(self.to_string()))
+            .unwrap()
+    }
 }
 
 pub struct CoreService {
@@ -121,12 +157,12 @@ enum Message {
     GetPackageRecordStatus {
         package_id: LogId,
         record_id: RecordId,
-        response: oneshot::Sender<RecordState>,
+        response: oneshot::Sender<Result<RecordState, CoreServiceError>>,
     },
     GetPackageRecordInfo {
         package_id: LogId,
         record_id: RecordId,
-        response: oneshot::Sender<Option<PackageRecordInfo>>,
+        response: oneshot::Sender<Result<PackageRecordInfo, CoreServiceError>>,
     },
     NewCheckpoint {
         checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
@@ -135,13 +171,17 @@ enum Message {
     FetchOperatorRecords {
         root: Hash<Sha256>,
         since: Option<RecordId>,
-        response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error>>,
+        response: oneshot::Sender<
+            Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError>,
+        >,
     },
     FetchPackageRecords {
         root: Hash<Sha256>,
         package_id: LogId,
         since: Option<RecordId>,
-        response: oneshot::Sender<Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error>>,
+        response: oneshot::Sender<
+            Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError>,
+        >,
     },
     GetLatestCheckpoint {
         response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>,
@@ -209,13 +249,17 @@ impl CoreService {
                         tokio::spawn(async move {
                             let info = package_info.as_ref().lock().await;
                             if let Some(record_info) = info.records.get(&record_id) {
-                                response.send(record_info.state.clone()).unwrap();
+                                response.send(Ok(record_info.state.clone())).unwrap();
                             } else {
-                                response.send(RecordState::Unknown).unwrap();
+                                response
+                                    .send(Err(CoreServiceError::PackageRecordNotFound(record_id)))
+                                    .unwrap();
                             }
                         });
                     } else {
-                        response.send(RecordState::Unknown).unwrap();
+                        response
+                            .send(Err(CoreServiceError::PackageNotFound(package_id)))
+                            .unwrap();
                     }
                 }
                 Message::GetPackageRecordInfo {
@@ -227,13 +271,17 @@ impl CoreService {
                         tokio::spawn(async move {
                             let info = package_info.as_ref().lock().await;
                             if let Some(record_info) = info.records.get(&record_id) {
-                                response.send(Some(record_info.clone())).unwrap();
+                                response.send(Ok(record_info.clone())).unwrap();
                             } else {
-                                response.send(None).unwrap();
+                                response
+                                    .send(Err(CoreServiceError::PackageRecordNotFound(record_id)))
+                                    .unwrap();
                             }
                         });
                     } else {
-                        response.send(None).unwrap();
+                        response
+                            .send(Err(CoreServiceError::PackageNotFound(package_id)))
+                            .unwrap();
                     }
                 }
                 Message::NewCheckpoint { checkpoint, leaves } => {
@@ -273,7 +321,7 @@ impl CoreService {
                         });
                     } else {
                         response
-                            .send(Err(Error::msg("Checkpoint not known")))
+                            .send(Err(CoreServiceError::CheckpointNotFound(root)))
                             .unwrap();
                     }
                 }
@@ -298,11 +346,13 @@ impl CoreService {
                                     .unwrap();
                             });
                         } else {
-                            response.send(Err(Error::msg("Package not found"))).unwrap();
+                            response
+                                .send(Err(CoreServiceError::PackageNotFound(package_id)))
+                                .unwrap();
                         }
                     } else {
                         response
-                            .send(Err(Error::msg("Checkpoint not known")))
+                            .send(Err(CoreServiceError::CheckpointNotFound(root)))
                             .unwrap();
                     }
                 }
@@ -396,7 +446,7 @@ async fn fetch_operator_records(
     operator_info: Arc<Mutex<OperatorInfo>>,
     since: Option<RecordId>,
     checkpoint_index: usize,
-) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
+) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError> {
     let info = operator_info.as_ref().lock().await;
 
     let start = match since {
@@ -412,7 +462,7 @@ async fn fetch_package_records(
     package_info: Arc<Mutex<PackageInfo>>,
     since: Option<RecordId>,
     checkpoint_index: usize,
-) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
+) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError> {
     let info = package_info.as_ref().lock().await;
 
     let start = match since {
@@ -427,21 +477,21 @@ async fn fetch_package_records(
 fn get_package_record_index(
     log: &[Arc<ProtoEnvelope<package::PackageRecord>>],
     hash: RecordId,
-) -> Result<usize, Error> {
+) -> Result<usize, CoreServiceError> {
     log.iter()
         .map(|env| RecordId::package_record::<Sha256>(env.as_ref()))
         .position(|found| found == hash)
-        .ok_or_else(|| Error::msg("Hash value not found"))
+        .ok_or_else(|| CoreServiceError::PackageRecordNotFound(hash))
 }
 
 fn get_operator_record_index(
     log: &[Arc<ProtoEnvelope<operator::OperatorRecord>>],
     hash: RecordId,
-) -> Result<usize, Error> {
+) -> Result<usize, CoreServiceError> {
     log.iter()
         .map(|env| RecordId::operator_record::<Sha256>(env.as_ref()))
         .position(|found| found == hash)
-        .ok_or_else(|| Error::msg("Hash value not found"))
+        .ok_or_else(|| CoreServiceError::OperatorRecordNotFound(hash))
 }
 
 fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> usize {
@@ -476,7 +526,7 @@ impl CoreService {
         &self,
         package_id: LogId,
         record_id: RecordId,
-    ) -> RecordState {
+    ) -> Result<RecordState, CoreServiceError> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordStatus {
@@ -494,7 +544,7 @@ impl CoreService {
         &self,
         package_id: LogId,
         record_id: RecordId,
-    ) -> Option<PackageRecordInfo> {
+    ) -> Result<PackageRecordInfo, CoreServiceError> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::GetPackageRecordInfo {
@@ -526,8 +576,10 @@ impl CoreService {
         &self,
         root: DynHash,
         since: Option<RecordId>,
-    ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, Error> {
-        let root = root.try_into()?;
+    ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError> {
+        let root = root
+            .try_into()
+            .map_err(CoreServiceError::InvalidCheckpoint)?;
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::FetchOperatorRecords {
@@ -546,8 +598,10 @@ impl CoreService {
         root: DynHash,
         package_name: String,
         since: Option<RecordId>,
-    ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, Error> {
-        let root = root.try_into()?;
+    ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError> {
+        let root = root
+            .try_into()
+            .map_err(CoreServiceError::InvalidCheckpoint)?;
         let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox

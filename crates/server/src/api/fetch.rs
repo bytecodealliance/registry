@@ -1,16 +1,15 @@
-use crate::services::core::CoreService;
-use crate::AnyError;
+use crate::services::core::{CoreService, CoreServiceError};
 use anyhow::Result;
-use axum::extract::State;
 use axum::{
     debug_handler,
-    http::StatusCode,
+    extract::State,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use indexmap::IndexMap;
 use std::sync::Arc;
+use thiserror::Error;
 use warg_api::fetch::{CheckpointResponse, FetchRequest, FetchResponse};
 
 #[derive(Clone)]
@@ -31,11 +30,25 @@ impl Config {
     }
 }
 
+#[derive(Debug, Error)]
+pub(crate) enum FetchApiError {
+    #[error("{0}")]
+    CoreService(#[from] CoreServiceError),
+}
+
+impl IntoResponse for FetchApiError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::CoreService(e) => e.into_response(),
+        }
+    }
+}
+
 #[debug_handler]
 async fn fetch_logs(
     State(config): State<Config>,
     Json(body): Json<FetchRequest>,
-) -> Result<impl IntoResponse, AnyError> {
+) -> Result<Json<FetchResponse>, FetchApiError> {
     let operator = config
         .core_service
         .fetch_operator_records(body.root.clone(), body.operator)
@@ -56,18 +69,19 @@ async fn fetch_logs(
             .collect();
         packages.insert(name, records);
     }
-    let response = FetchResponse { operator, packages };
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(FetchResponse { operator, packages }))
 }
 
 #[debug_handler]
-async fn fetch_checkpoint(State(config): State<Config>) -> Result<impl IntoResponse, AnyError> {
+async fn fetch_checkpoint(
+    State(config): State<Config>,
+) -> Result<Json<CheckpointResponse>, FetchApiError> {
     let checkpoint = config
         .core_service
         .get_latest_checkpoint()
         .await
         .as_ref()
         .to_owned();
-    let response = CheckpointResponse { checkpoint };
-    Ok((StatusCode::OK, Json(response)))
+
+    Ok(Json(CheckpointResponse { checkpoint }))
 }

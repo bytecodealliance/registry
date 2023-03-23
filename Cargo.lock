@@ -3128,6 +3128,7 @@ dependencies = [
  "indexmap",
  "reqwest",
  "tempfile",
+ "thiserror",
  "tokio",
  "tower-http",
  "tracing",
