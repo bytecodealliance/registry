@@ -1,5 +1,4 @@
 use crate::services::core::{CoreService, CoreServiceError};
-use anyhow::Result;
 use axum::{
     debug_handler,
     extract::State,

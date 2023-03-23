@@ -1,5 +1,4 @@
 use crate::services::data::{self, DataServiceError};
-use anyhow::{Error, Result};
 use axum::{
     body::boxed, debug_handler, extract::State, http::StatusCode, response::IntoResponse,
     routing::post, Json, Router,
@@ -37,13 +36,13 @@ impl Config {
 #[derive(Debug, Error)]
 pub(crate) enum ProofApiError {
     #[error("invalid old root: {0}")]
-    InvalidOldRoot(Error),
+    InvalidOldRoot(anyhow::Error),
     #[error("invalid new root: {0}")]
-    InvalidNewRoot(Error),
+    InvalidNewRoot(anyhow::Error),
     #[error("invalid log root: {0}")]
-    InvalidLogRoot(Error),
+    InvalidLogRoot(anyhow::Error),
     #[error("invalid map root: {0}")]
-    InvalidMapRoot(Error),
+    InvalidMapRoot(anyhow::Error),
     #[error("{0}")]
     DataService(#[from] DataServiceError),
 }

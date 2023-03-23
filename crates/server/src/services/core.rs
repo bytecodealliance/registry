@@ -1,4 +1,3 @@
-use anyhow::Error;
 use axum::{body::boxed, response::IntoResponse};
 use reqwest::StatusCode;
 use std::{
@@ -121,7 +120,7 @@ pub enum CoreServiceError {
     #[error("operator record `{0}` not found")]
     OperatorRecordNotFound(RecordId),
     #[error("invalid checkpoint: {0}")]
-    InvalidCheckpoint(Error),
+    InvalidCheckpoint(anyhow::Error),
 }
 
 impl IntoResponse for CoreServiceError {

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use api::content::ContentConfig;
 use axum::{body::Body, http::Request, Router};
 use std::{fmt, path::PathBuf};
@@ -42,10 +41,10 @@ impl Config {
         self
     }
 
-    pub fn build_router(self) -> Result<Router> {
+    pub fn build_router(self) -> Router {
         let mut router = Router::new();
         if let Some(upload) = self.content {
-            router = router.nest("/content", upload.build_router()?);
+            router = router.nest("/content", upload.build_router());
         }
 
         let (core, data) = services::init(self.signing_key);
@@ -53,7 +52,7 @@ impl Config {
         let fetch_config = api::fetch::Config::new(core);
         let proof_config = api::proof::Config::new(data.log_data, data.map_data);
 
-        Ok(router
+        router
             .nest("/package", package_config.build_router())
             .nest("/fetch", fetch_config.build_router())
             .nest("/proof", proof_config.build_router())
@@ -68,6 +67,6 @@ impl Config {
                             .level(Level::INFO)
                             .latency_unit(LatencyUnit::Micros),
                     ),
-            ))
+            )
     }
 }

@@ -1,5 +1,4 @@
 use crate::services::core::{CoreService, CoreServiceError, PackageRecordInfo, RecordState};
-use anyhow::{Error, Result};
 use axum::body::boxed;
 use axum::{
     debug_handler,
@@ -58,7 +57,7 @@ pub(crate) enum PackageApiError {
     #[error("invalid record id: {0}")]
     InvalidRecordId(DynHashParseError),
     #[error("invalid record: {0}")]
-    InvalidRecord(Error),
+    InvalidRecord(anyhow::Error),
     #[error("package record `{0}` not found")]
     RecordNotFound(RecordId),
     #[error("failed to fetch content: {0}")]

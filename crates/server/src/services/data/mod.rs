@@ -1,5 +1,4 @@
 use super::transparency::VerifiableMap;
-use anyhow::Error;
 use axum::{body::boxed, response::IntoResponse};
 use reqwest::StatusCode;
 use std::sync::Arc;
@@ -21,7 +20,7 @@ pub enum DataServiceError {
     #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
     LeafNotFound(LogLeaf),
     #[error("failed to bundle proofs: {0}")]
-    BundleFailure(Error),
+    BundleFailure(anyhow::Error),
     #[error("failed to proof inclusion of package `{0}`")]
     ProofFailure(LogId),
     #[error("incorrect proof: expected `{expected}`, got `{root}`")]

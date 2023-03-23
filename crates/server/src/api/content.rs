@@ -1,4 +1,3 @@
-use anyhow::Result;
 use axum::{
     body::boxed,
     debug_handler,
@@ -22,8 +21,8 @@ pub struct ContentConfig {
 }
 
 impl ContentConfig {
-    pub fn build_router(self) -> Result<Router> {
-        Ok(Router::new()
+    pub fn build_router(self) -> Router {
+        Router::new()
             .route("/", post(upload_content))
             .fallback_service(get_service(ServeDir::new(&self.content_path)).handle_error(
                 |err| async move {
@@ -31,7 +30,7 @@ impl ContentConfig {
                     StatusCode::INTERNAL_SERVER_ERROR
                 },
             ))
-            .with_state(Arc::new(self)))
+            .with_state(Arc::new(self))
     }
 }
 
