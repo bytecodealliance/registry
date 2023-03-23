@@ -96,5 +96,5 @@ async fn upload_content(
         .map_err(|_| ContentApiError::FailedToPersist)?;
 
     let location = format!("{}/{}", orig_uri.path().trim_end_matches('/'), dest_name);
-    Ok((StatusCode::ACCEPTED, [(LOCATION, location)]))
+    Ok((StatusCode::CREATED, [(LOCATION, location)]))
 }
