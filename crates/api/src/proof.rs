@@ -6,6 +6,8 @@ use thiserror::Error;
 use warg_crypto::hash::{DynHash, Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
 
+use crate::FromError;
+
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,4 +100,25 @@ pub enum ProofError {
         /// The found root.
         found: Hash<Sha256>,
     },
+    /// An error occurred while performing the requested operation.
+    #[error("an error occurred while performing the requested operation: {message}")]
+    Operation {
+        /// The error message.
+        message: String,
+    },
 }
+
+impl From<String> for ProofError {
+    fn from(message: String) -> Self {
+        Self::Operation { message }
+    }
+}
+
+impl FromError for ProofError {
+    fn from_error<E: std::error::Error>(error: E) -> Self {
+        Self::from(error.to_string())
+    }
+}
+
+/// Represents the result of a proof API operation.
+pub type ProofResult<T> = Result<T, ProofError>;

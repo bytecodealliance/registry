@@ -1,6 +1,6 @@
 //! Types relating to the package API.
 
-use crate::content::ContentSource;
+use crate::{content::ContentSource, FromError};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
@@ -126,4 +126,25 @@ pub enum PackageError {
         /// The validation error message.
         message: String,
     },
+    /// An error occurred while performing the requested operation.
+    #[error("an error occurred while performing the requested operation: {message}")]
+    Operation {
+        /// The error message.
+        message: String,
+    },
 }
+
+impl From<String> for PackageError {
+    fn from(message: String) -> Self {
+        Self::Operation { message }
+    }
+}
+
+impl FromError for PackageError {
+    fn from_error<E: std::error::Error>(error: E) -> Self {
+        Self::from(error.to_string())
+    }
+}
+
+/// Represents the result of a package API operation.
+pub type PackageResult<T> = Result<T, PackageError>;

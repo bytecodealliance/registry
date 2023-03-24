@@ -9,6 +9,8 @@ use warg_protocol::{
     ProtoEnvelopeBody, SerdeEnvelope,
 };
 
+use crate::FromError;
+
 /// Represents a fetch request.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +31,14 @@ pub struct FetchResponse {
     pub operator: Vec<ProtoEnvelopeBody>,
     /// The package records appended since last known package record ids.
     pub packages: IndexMap<String, Vec<ProtoEnvelopeBody>>,
+}
+
+/// Represents a checkpoint response.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointResponse {
+    /// The latest registry checkpoint.
+    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
 }
 
 /// Represents an error from the fetch API.
@@ -66,12 +76,25 @@ pub enum FetchError {
         /// The validation error message.
         message: String,
     },
+    /// An error occurred while performing the requested operation.
+    #[error("an error occurred while performing the requested operation: {message}")]
+    Operation {
+        /// The error message.
+        message: String,
+    },
 }
 
-/// Represents a checkpoint response.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckpointResponse {
-    /// The latest registry checkpoint.
-    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
+impl From<String> for FetchError {
+    fn from(message: String) -> Self {
+        Self::Operation { message }
+    }
 }
+
+impl FromError for FetchError {
+    fn from_error<E: std::error::Error>(error: E) -> Self {
+        Self::from(error.to_string())
+    }
+}
+
+/// Represents the result of a fetch API operation.
+pub type FetchResult<T> = Result<T, FetchError>;

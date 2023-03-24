@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use warg_crypto::hash::DynHash;
 
+use crate::FromError;
+
 /// Represents a content source.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,4 +50,25 @@ pub enum ContentError {
     /// The service failed to persist the temporary file to the content directory.
     #[error("failed to persist temporary file to content directory")]
     FailedToPersist,
+    /// An error occurred while performing the requested operation.
+    #[error("an error occurred while performing the requested operation: {message}")]
+    Operation {
+        /// The error message.
+        message: String,
+    },
 }
+
+impl From<String> for ContentError {
+    fn from(message: String) -> Self {
+        Self::Operation { message }
+    }
+}
+
+impl FromError for ContentError {
+    fn from_error<E: std::error::Error>(error: E) -> Self {
+        Self::from(error.to_string())
+    }
+}
+
+/// Represents the result of a content API operation.
+pub type ContentResult<T> = Result<T, ContentError>;

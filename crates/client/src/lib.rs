@@ -4,15 +4,15 @@
 
 use crate::storage::PackageInfo;
 use anyhow::Result;
-use api::ApiError;
 use reqwest::Body;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::ClientStorage;
 use thiserror::Error;
 use warg_api::{
-    content::{ContentSource, ContentSourceKind},
-    fetch::{FetchRequest, FetchResponse},
-    package::{PendingRecordResponse, RecordResponse},
+    content::{ContentError, ContentSource, ContentSourceKind},
+    fetch::{FetchError, FetchRequest, FetchResponse},
+    package::{PackageError, PendingRecordResponse, RecordResponse},
+    proof::ProofError,
 };
 use warg_crypto::{
     hash::{DynHash, Hash, Sha256},
@@ -524,9 +524,21 @@ pub enum ClientError {
         reason: String,
     },
 
-    /// An error occurred while communicating with the registry.
+    /// An error occurred while communicating with the content service.
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Content(#[from] ContentError),
+
+    /// An error occurred while communicating with the fetch service.
+    #[error(transparent)]
+    Fetch(#[from] FetchError),
+
+    /// An error occurred while communicating with the package service.
+    #[error(transparent)]
+    Package(#[from] PackageError),
+
+    /// An error occurred while communicating with the proof service.
+    #[error(transparent)]
+    Proof(#[from] ProofError),
 
     /// An error occurred while performing a client operation.
     #[error("{0:?}")]
