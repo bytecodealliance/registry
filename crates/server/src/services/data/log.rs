@@ -1,14 +1,13 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use anyhow::{Context, Error};
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
-
+use std::{collections::HashMap, sync::Arc};
+use tokio::{
+    sync::{mpsc::Receiver, RwLock},
+    task::JoinHandle,
+};
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_transparency::log::{LogBuilder, LogData, LogProofBundle, Node, VecLog};
+
+use super::DataServiceError;
 
 pub type ProofLog = VecLog<Sha256, LogLeaf>;
 
@@ -51,40 +50,45 @@ impl ProofData {
     /// Generate a proof bundle for the consistency of the log across two times
     pub fn consistency(
         &self,
-        old_root: Hash<Sha256>,
-        new_root: Hash<Sha256>,
-    ) -> Result<LogProofBundle<Sha256, LogLeaf>, Error> {
+        old_root: &Hash<Sha256>,
+        new_root: &Hash<Sha256>,
+    ) -> Result<LogProofBundle<Sha256, LogLeaf>, DataServiceError> {
         let old_len = self
             .root_index
-            .get(&old_root)
-            .context("Old root not found")?;
+            .get(old_root)
+            .ok_or_else(|| DataServiceError::RootNotFound(old_root.clone()))?;
         let new_len = self
             .root_index
-            .get(&new_root)
-            .context("New root not found")?;
+            .get(new_root)
+            .ok_or_else(|| DataServiceError::RootNotFound(new_root.clone()))?;
 
         let proof = self.log.prove_consistency(*old_len, *new_len);
-        let bundle = LogProofBundle::bundle(vec![proof], vec![], &self.log)?;
+        let bundle = LogProofBundle::bundle(vec![proof], vec![], &self.log)
+            .map_err(DataServiceError::BundleFailure)?;
         Ok(bundle)
     }
 
     /// Generate a proof bundle for a group of inclusion proofs
     pub fn inclusion(
         &self,
-        root: Hash<Sha256>,
+        root: &Hash<Sha256>,
         leaves: &[LogLeaf],
-    ) -> Result<LogProofBundle<Sha256, LogLeaf>, Error> {
-        let log_length = *self.root_index.get(&root).context("Root not found")?;
+    ) -> Result<LogProofBundle<Sha256, LogLeaf>, DataServiceError> {
+        let log_length = *self
+            .root_index
+            .get(root)
+            .ok_or_else(|| DataServiceError::RootNotFound(root.clone()))?;
         let mut proofs = Vec::new();
         for leaf in leaves {
             let node = *self
                 .leaf_index
                 .get(leaf)
-                .context("Leaf not found with provided root")?;
+                .ok_or_else(|| DataServiceError::LeafNotFound(leaf.clone()))?;
             let proof = self.log.prove_inclusion(node, log_length);
             proofs.push(proof);
         }
-        let bundle = LogProofBundle::bundle(vec![], proofs, &self.log)?;
+        let bundle = LogProofBundle::bundle(vec![], proofs, &self.log)
+            .map_err(DataServiceError::BundleFailure)?;
         Ok(bundle)
     }
 }

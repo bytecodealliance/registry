@@ -1,8 +1,6 @@
-use std::{net::SocketAddr, path::PathBuf};
-
 use anyhow::Result;
 use clap::Parser;
-
+use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::filter::LevelFilter;
 use warg_server::Config;
 
@@ -50,7 +48,7 @@ async fn main() -> Result<()> {
     }
     tracing::debug!("Config: {config:?}");
 
-    let router = config.build_router()?;
+    let router = config.build_router();
 
     tracing::info!("Listening on {:?}", args.listen);
     axum::Server::try_bind(&args.listen)?

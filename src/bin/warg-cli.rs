@@ -65,7 +65,7 @@ fn describe_client_error(e: &ClientError) {
                 "error: package `{package}` is not initialized; use the `--init` option when publishing"
             )
         }
-        ClientError::PackageValidationError { package, inner } => {
+        ClientError::PackageValidationFailed { package, inner } => {
             eprintln!("error: the log for package `{package}` is invalid: {inner:?}")
         }
         ClientError::PackageLogEmpty { package } => {

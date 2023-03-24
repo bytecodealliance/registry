@@ -1,6 +1,5 @@
-use crate::services::core::{CoreService, PackageRecordInfo, RecordState};
-use crate::AnyError;
-use anyhow::{Error, Result};
+use crate::services::core::{CoreService, CoreServiceError, PackageRecordInfo, RecordState};
+use anyhow::Error;
 use axum::{
     debug_handler,
     extract::{Path, State},
@@ -12,6 +11,7 @@ use axum::{
 use reqwest::Client;
 use std::str::FromStr;
 use std::sync::Arc;
+use warg_api::package::PackageError;
 use warg_api::{
     content::ContentSourceKind,
     package::{PendingRecordResponse, PublishRequest, RecordResponse},
@@ -50,13 +50,55 @@ fn pending_record_url(package_id: &LogId, record_id: &RecordId) -> String {
     format!("/package/{package_id}/pending/{record_id}")
 }
 
+struct PackageApiError(PackageError);
+
+impl From<CoreServiceError> for PackageApiError {
+    fn from(value: CoreServiceError) -> Self {
+        Self(match value {
+            CoreServiceError::CheckpointNotFound(checkpoint) => {
+                PackageError::CheckpointNotFound { checkpoint }
+            }
+            CoreServiceError::PackageNotFound(id) => PackageError::PackageNotFound { id },
+            CoreServiceError::PackageRecordNotFound(id) => {
+                PackageError::PackageRecordNotFound { id }
+            }
+            CoreServiceError::OperatorRecordNotFound(id) => {
+                PackageError::OperatorRecordNotFound { id }
+            }
+            CoreServiceError::InvalidCheckpoint(e) => PackageError::InvalidCheckpoint {
+                message: e.to_string(),
+            },
+        })
+    }
+}
+
+impl IntoResponse for PackageApiError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match &self.0 {
+            PackageError::InvalidPackageId { .. }
+            | PackageError::InvalidRecordId { .. }
+            | PackageError::InvalidRecord { .. }
+            | PackageError::FailedToFetchContent { .. }
+            | PackageError::ContentFetchErrorResponse { .. }
+            | PackageError::ContentUrlInvalid { .. }
+            | PackageError::InvalidCheckpoint { .. } => StatusCode::BAD_REQUEST,
+            PackageError::PackageNotFound { .. }
+            | PackageError::PackageRecordNotFound { .. }
+            | PackageError::CheckpointNotFound { .. }
+            | PackageError::OperatorRecordNotFound { .. } => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
+        (status, Json(self.0)).into_response()
+    }
+}
+
 fn create_pending_response(
     package_id: &LogId,
     record_id: &RecordId,
     state: RecordState,
-) -> Result<PendingRecordResponse, AnyError> {
+) -> Result<PendingRecordResponse, PackageApiError> {
     let response = match state {
-        RecordState::Unknown => return Err(Error::msg("Internal error").into()),
         RecordState::Processing => PendingRecordResponse::Processing {
             status_url: pending_record_url(package_id, record_id),
         },
@@ -69,23 +111,45 @@ fn create_pending_response(
 }
 
 #[debug_handler]
-pub(crate) async fn publish(
+async fn publish(
     State(config): State<Config>,
     Json(body): Json<PublishRequest>,
-) -> Result<impl IntoResponse, AnyError> {
-    let record = Arc::new(body.record.try_into()?);
+) -> Result<Json<PendingRecordResponse>, PackageApiError> {
+    let record = Arc::new(body.record.try_into().map_err(|e: Error| {
+        PackageApiError(PackageError::InvalidRecord {
+            message: e.to_string(),
+        })
+    })?);
     let record_id = RecordId::package_record::<Sha256>(&record);
 
     for source in body.content_sources.iter() {
         match &source.kind {
             ContentSourceKind::HttpAnonymous { url } => {
                 if url.starts_with(&config.base_url) {
-                    let response = Client::builder().build()?.head(url).send().await?;
+                    let response = Client::builder()
+                        .build()
+                        .map_err(|e| {
+                            PackageApiError(PackageError::FailedToFetchContent {
+                                message: e.to_string(),
+                            })
+                        })?
+                        .head(url)
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            PackageApiError(PackageError::FailedToFetchContent {
+                                message: e.to_string(),
+                            })
+                        })?;
                     if !response.status().is_success() {
-                        return Err(Error::msg("Unable to validate content is present").into());
+                        return Err(PackageApiError(PackageError::ContentFetchErrorResponse {
+                            status_code: response.status().as_u16(),
+                        }));
                     }
                 } else {
-                    return Err(Error::msg("URL not from current host").into());
+                    return Err(PackageApiError(PackageError::ContentUrlInvalid {
+                        url: url.clone(),
+                    }));
                 }
             }
         }
@@ -98,52 +162,81 @@ pub(crate) async fn publish(
         .submit_package_record(body.name, record, body.content_sources)
         .await;
 
-    let response = create_pending_response(&package_id, &record_id, state)?;
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(create_pending_response(
+        &package_id,
+        &record_id,
+        state,
+    )?))
 }
 
 #[debug_handler]
-pub(crate) async fn get_record(
+async fn get_record(
     State(config): State<Config>,
-    Path((log_id, record_id)): Path<(String, String)>,
-) -> Result<impl IntoResponse, AnyError> {
-    let log_id: LogId = DynHash::from_str(&log_id)?.into();
-    let record_id: RecordId = DynHash::from_str(&record_id)?.into();
+    Path((package_id, record_id)): Path<(String, String)>,
+) -> Result<Json<RecordResponse>, PackageApiError> {
+    let package_id: LogId = DynHash::from_str(&package_id)
+        .map_err(|e| {
+            PackageApiError(PackageError::InvalidPackageId {
+                message: e.to_string(),
+            })
+        })?
+        .into();
+    let record_id: RecordId = DynHash::from_str(&record_id)
+        .map_err(|e| {
+            PackageApiError(PackageError::InvalidRecordId {
+                message: e.to_string(),
+            })
+        })?
+        .into();
 
-    let info = config
+    match config
         .core_service
-        .get_package_record_info(log_id, record_id)
-        .await;
-    match info {
-        Some(PackageRecordInfo {
+        .get_package_record_info(package_id, record_id.clone())
+        .await?
+    {
+        PackageRecordInfo {
             record,
             content_sources,
             state: RecordState::Published { checkpoint },
-        }) => {
-            let response = RecordResponse {
-                record: record.as_ref().clone().into(),
-                content_sources,
-                checkpoint,
-            };
-            Ok((StatusCode::OK, Json(response)))
-        }
-        _ => Err(Error::msg("Not found").into()), // todo: improve to 404
+        } => Ok(Json(RecordResponse {
+            record: record.as_ref().clone().into(),
+            content_sources,
+            checkpoint,
+        })),
+        _ => Err(PackageApiError(PackageError::PackageRecordNotFound {
+            id: record_id,
+        })),
     }
 }
 
 #[debug_handler]
-pub(crate) async fn get_pending_record(
+async fn get_pending_record(
     State(config): State<Config>,
     Path((package_id, record_id)): Path<(String, String)>,
-) -> Result<impl IntoResponse, AnyError> {
-    let package_id: LogId = DynHash::from_str(&package_id)?.into();
-    let record_id: RecordId = DynHash::from_str(&record_id)?.into();
+) -> Result<Json<PendingRecordResponse>, PackageApiError> {
+    let package_id: LogId = DynHash::from_str(&package_id)
+        .map_err(|e| {
+            PackageApiError(PackageError::InvalidPackageId {
+                message: e.to_string(),
+            })
+        })?
+        .into();
+    let record_id: RecordId = DynHash::from_str(&record_id)
+        .map_err(|e| {
+            PackageApiError(PackageError::InvalidRecordId {
+                message: e.to_string(),
+            })
+        })?
+        .into();
 
     let status = config
         .core_service
         .get_package_record_status(package_id.clone(), record_id.clone())
-        .await;
+        .await?;
 
-    let response = create_pending_response(&package_id, &record_id, status)?;
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(create_pending_response(
+        &package_id,
+        &record_id,
+        status,
+    )?))
 }

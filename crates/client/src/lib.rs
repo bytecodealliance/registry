@@ -5,12 +5,14 @@
 use crate::storage::PackageInfo;
 use anyhow::Result;
 use reqwest::Body;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::ClientStorage;
 use thiserror::Error;
 use warg_api::{
-    content::{ContentSource, ContentSourceKind},
-    fetch::{FetchRequest, FetchResponse},
+    content::{ContentError, ContentSource, ContentSourceKind},
+    fetch::{FetchError, FetchRequest, FetchResponse},
+    package::{PackageError, PendingRecordResponse, RecordResponse},
+    proof::ProofError,
 };
 use warg_crypto::{
     hash::{DynHash, Hash, Sha256},
@@ -34,7 +36,7 @@ pub struct Client<T> {
 
 impl<T: ClientStorage> Client<T> {
     /// Creates a new client with the given client storage.
-    pub async fn new(storage: T) -> Result<Self, ClientError> {
+    pub async fn new(storage: T) -> ClientResult<Self> {
         let api = storage
             .load_registry_info()
             .await?
@@ -53,7 +55,7 @@ impl<T: ClientStorage> Client<T> {
     /// Submits the publish information in client storage.
     ///
     /// If there's no publishing information in client storage, an error is returned.
-    pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> Result<(), ClientError> {
+    pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> ClientResult<()> {
         let info = self
             .storage
             .load_publish_info()
@@ -82,8 +84,11 @@ impl<T: ClientStorage> Client<T> {
 
         // If we're not initializing the package, update it to the latest checkpoint to get the current head
         if !initializing {
-            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
-                .await?;
+            self.update_checkpoint(
+                &self.api.latest_checkpoint().await?.checkpoint,
+                [&mut package],
+            )
+            .await?;
         }
 
         match (initializing, package.state.head().is_some()) {
@@ -127,9 +132,14 @@ impl<T: ClientStorage> Client<T> {
         }
 
         let response = self
-            .api
-            .publish(&package.name, record.into(), sources)
+            .wait_for_publish(
+                &package.name,
+                self.api
+                    .publish(&package.name, record.into(), sources)
+                    .await?,
+            )
             .await?;
+
         self.storage.store_publish_info(None).await?;
 
         // Finally, update the checkpoint again post-publish
@@ -144,8 +154,11 @@ impl<T: ClientStorage> Client<T> {
         tracing::info!("updating all packages to latest checkpoint");
 
         let mut updating = self.storage.load_packages().await?;
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+        self.update_checkpoint(
+            &self.api.latest_checkpoint().await?.checkpoint,
+            &mut updating,
+        )
+        .await?;
 
         Ok(())
     }
@@ -165,8 +178,11 @@ impl<T: ClientStorage> Client<T> {
             );
         }
 
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+        self.update_checkpoint(
+            &self.api.latest_checkpoint().await?.checkpoint,
+            &mut updating,
+        )
+        .await?;
 
         Ok(())
     }
@@ -302,7 +318,7 @@ impl<T: ClientStorage> Client<T> {
                     for record in records {
                         let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
                         package.state.validate(&record).map_err(|inner| {
-                            ClientError::PackageValidationError {
+                            ClientError::PackageValidationFailed {
                                 package: name.clone(),
                                 inner,
                             }
@@ -342,8 +358,11 @@ impl<T: ClientStorage> Client<T> {
             }
             None => {
                 let mut info = PackageInfo::new(name);
-                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
-                    .await?;
+                self.update_checkpoint(
+                    &self.api.latest_checkpoint().await?.checkpoint,
+                    [&mut info],
+                )
+                .await?;
 
                 Ok(info)
             }
@@ -370,6 +389,31 @@ impl<T: ClientStorage> Client<T> {
                     .ok_or_else(|| ClientError::ContentNotFound {
                         digest: digest.clone(),
                     })
+            }
+        }
+    }
+
+    async fn wait_for_publish(
+        &self,
+        name: &str,
+        mut response: PendingRecordResponse,
+    ) -> ClientResult<RecordResponse> {
+        loop {
+            match response {
+                PendingRecordResponse::Published { record_url } => {
+                    return Ok(self.api.get_package_record(&record_url).await?);
+                }
+                PendingRecordResponse::Rejected { reason } => {
+                    return Err(ClientError::PublishRejected {
+                        package: name.to_string(),
+                        reason,
+                    });
+                }
+                PendingRecordResponse::Processing { status_url } => {
+                    // TODO: make the wait configurable
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    response = self.api.get_pending_package_record(&status_url).await?;
+                }
             }
         }
     }
@@ -450,7 +494,7 @@ pub enum ClientError {
 
     /// The package failed validation.
     #[error("package `{package}` failed validation: {inner}.")]
-    PackageValidationError {
+    PackageValidationFailed {
         /// The package that failed validation.
         package: String,
         /// The validation error.
@@ -480,26 +524,26 @@ pub enum ClientError {
         reason: String,
     },
 
-    /// An error occurred while communicating with the registry.
-    #[error("an error occurred while communicating with registry {registry} ({status}): {body}")]
-    ApiError {
-        /// The registry server that returned the error.
-        registry: String,
-        /// The status code of the API error.
-        status: u16,
-        /// The response body.
-        body: String,
-    },
-
-    /// An error occurred while proving the inclusion of a package in a registry checkpoint.
+    /// An error occurred while communicating with the content service.
     #[error(transparent)]
-    InclusionProof(#[from] warg_transparency::log::InclusionProofError),
+    Content(#[from] ContentError),
 
-    /// An error occurred while communicating with the registry.
+    /// An error occurred while communicating with the fetch service.
     #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
+    Fetch(#[from] FetchError),
 
-    /// An error occurred while performing a client operation
+    /// An error occurred while communicating with the package service.
+    #[error(transparent)]
+    Package(#[from] PackageError),
+
+    /// An error occurred while communicating with the proof service.
+    #[error(transparent)]
+    Proof(#[from] ProofError),
+
+    /// An error occurred while performing a client operation.
     #[error("{0:?}")]
     Other(#[from] anyhow::Error),
 }
+
+/// Represents the result of a client operation.
+pub type ClientResult<T> = Result<T, ClientError>;

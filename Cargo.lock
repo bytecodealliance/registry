@@ -3023,6 +3023,7 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_with",
+ "thiserror",
  "warg-crypto",
  "warg-protocol",
 ]
@@ -3128,6 +3129,7 @@ dependencies = [
  "indexmap",
  "reqwest",
  "tempfile",
+ "thiserror",
  "tokio",
  "tower-http",
  "tracing",
