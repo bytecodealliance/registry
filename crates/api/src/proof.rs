@@ -1,12 +1,11 @@
 //! Types relating to the proof API.
 
+use crate::FromError;
 use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 use thiserror::Error;
 use warg_crypto::hash::{DynHash, Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
-
-use crate::FromError;
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]

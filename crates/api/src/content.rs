@@ -1,10 +1,9 @@
 //! Types relating to the content API.
 
+use crate::FromError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use warg_crypto::hash::DynHash;
-
-use crate::FromError;
 
 /// Represents a content source.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

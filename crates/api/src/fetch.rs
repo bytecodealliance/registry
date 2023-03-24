@@ -1,5 +1,6 @@
 //! Types relating to the fetch API.
 
+use crate::FromError;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -8,8 +9,6 @@ use warg_protocol::{
     registry::{LogId, MapCheckpoint, RecordId},
     ProtoEnvelopeBody, SerdeEnvelope,
 };
-
-use crate::FromError;
 
 /// Represents a fetch request.
 #[derive(Debug, Serialize, Deserialize)]

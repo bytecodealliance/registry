@@ -180,7 +180,7 @@ impl Client {
         )
         .await?;
 
-        match Self::prove_inclusion_response(response, checkpoint, &heads) {
+        match Self::validate_inclusion_response(response, checkpoint, &heads) {
             Ok(()) => Ok(()),
             Err(e) => match e.downcast::<ProofError>() {
                 Ok(e) => Err(e),
@@ -279,7 +279,7 @@ impl Client {
         )
     }
 
-    fn prove_inclusion_response(
+    fn validate_inclusion_response(
         response: InclusionResponse,
         checkpoint: &MapCheckpoint,
         heads: &[LogLeaf],
