@@ -48,10 +48,4 @@ pub enum ContentError {
     /// The service failed to persist the temporary file to the content directory.
     #[error("failed to persist temporary file to content directory")]
     FailedToPersist,
-    /// The content was not found.
-    #[error("content with digest `{digest}` was not found")]
-    ContentNotFound {
-        /// The digest of the content that was not found.
-        digest: DynHash,
-    },
 }

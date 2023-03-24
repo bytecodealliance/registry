@@ -32,12 +32,8 @@ struct ContentApiError(ContentError);
 
 impl IntoResponse for ContentApiError {
     fn into_response(self) -> axum::response::Response {
-        let status = match &self.0 {
-            ContentError::ContentNotFound { .. } => StatusCode::NOT_FOUND,
-            // Currently all other responses from the content service are 500s
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-
+        // Currently all responses from the content service are 500s
+        let status = StatusCode::INTERNAL_SERVER_ERROR;
         (status, Json(self.0)).into_response()
     }
 }
