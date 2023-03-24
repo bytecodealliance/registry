@@ -47,7 +47,7 @@ impl MapData {
         for LogLeaf { log_id, record_id } in leaves {
             let proof = map
                 .prove(log_id)
-                .ok_or_else(|| DataServiceError::ProofFailure(log_id.clone()))?;
+                .ok_or_else(|| DataServiceError::PackageNotIncluded(log_id.clone()))?;
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };
@@ -55,7 +55,7 @@ impl MapData {
             if found_root != *root {
                 return Err(DataServiceError::IncorrectProof {
                     root: root.clone(),
-                    expected: found_root,
+                    found: found_root,
                 });
             }
             proofs.push(proof);

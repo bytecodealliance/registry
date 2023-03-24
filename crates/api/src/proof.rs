@@ -2,8 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
-use warg_crypto::hash::DynHash;
-use warg_protocol::registry::{LogLeaf, MapCheckpoint};
+use thiserror::Error;
+use warg_crypto::hash::{DynHash, Hash, Sha256};
+use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
@@ -46,4 +47,55 @@ pub struct InclusionResponse {
     /// The bytes of the map inclusion proof bundle.
     #[serde_as(as = "Base64")]
     pub map: Vec<u8>,
+}
+
+/// Represents an error from the proof API.
+#[non_exhaustive]
+#[derive(Debug, Error, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ProofError {
+    /// The provided log root is invalid.
+    #[error("invalid log root: {message}")]
+    InvalidLogRoot {
+        /// The validation error message.
+        message: String,
+    },
+    /// The provided map root is invalid.
+    #[error("invalid map root: {message}")]
+    InvalidMapRoot {
+        /// The validation error message.
+        message: String,
+    },
+    /// The provided log root was not found.
+    #[error("root `{root}` was not found")]
+    RootNotFound {
+        /// The root that was not found.
+        root: Hash<Sha256>,
+    },
+    /// The provided log leaf was not found.
+    #[error("log leaf `{}:{}` was not found", .leaf.log_id, .leaf.record_id)]
+    LeafNotFound {
+        /// The leaf that was not found.
+        leaf: LogLeaf,
+    },
+    /// A failure was encountered while bundling proofs.
+    #[error("failed to bundle proofs: {message}")]
+    BundleFailure {
+        /// The failure message.
+        message: String,
+    },
+    /// Failed to prove inclusion of a package.
+    #[error("failed to prove inclusion of package `{id}`")]
+    PackageNotIncluded {
+        /// The id of the package.
+        id: LogId,
+    },
+    /// The provided root for an inclusion proof was incorrect.
+    #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
+    IncorrectProof {
+        /// The provided root.
+        root: Hash<Sha256>,
+        /// The found root.
+        found: Hash<Sha256>,
+    },
 }

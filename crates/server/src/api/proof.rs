@@ -1,13 +1,13 @@
 use crate::services::data::{self, DataServiceError};
+use anyhow::Error;
 use axum::{
-    body::boxed, debug_handler, extract::State, http::StatusCode, response::IntoResponse,
-    routing::post, Json, Router,
+    debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Json,
+    Router,
 };
 use std::sync::Arc;
-use thiserror::Error;
 use tokio::sync::RwLock;
 use warg_api::proof::{
-    ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse,
+    ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
 use warg_crypto::hash::{Hash, Sha256};
 
@@ -33,55 +33,59 @@ impl Config {
     }
 }
 
-#[derive(Debug, Error)]
-pub(crate) enum ProofApiError {
-    #[error("invalid old root: {0}")]
-    InvalidOldRoot(anyhow::Error),
-    #[error("invalid new root: {0}")]
-    InvalidNewRoot(anyhow::Error),
-    #[error("invalid log root: {0}")]
-    InvalidLogRoot(anyhow::Error),
-    #[error("invalid map root: {0}")]
-    InvalidMapRoot(anyhow::Error),
-    #[error("{0}")]
-    DataService(#[from] DataServiceError),
+struct ProofApiError(ProofError);
+
+impl From<DataServiceError> for ProofApiError {
+    fn from(value: DataServiceError) -> Self {
+        Self(match value {
+            DataServiceError::RootNotFound(root) => ProofError::RootNotFound { root },
+            DataServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound { leaf },
+            DataServiceError::BundleFailure(e) => ProofError::BundleFailure {
+                message: e.to_string(),
+            },
+            DataServiceError::PackageNotIncluded(id) => ProofError::PackageNotIncluded { id },
+            DataServiceError::IncorrectProof { root, found } => {
+                ProofError::IncorrectProof { root, found }
+            }
+        })
+    }
 }
 
 impl IntoResponse for ProofApiError {
     fn into_response(self) -> axum::response::Response {
-        let status = match self {
-            Self::InvalidOldRoot(_)
-            | Self::InvalidNewRoot(_)
-            | Self::InvalidLogRoot(_)
-            | Self::InvalidMapRoot(_) => StatusCode::BAD_REQUEST,
-            Self::DataService(_) => match self {
-                Self::DataService(e) => return e.into_response(),
-                _ => unreachable!(),
-            },
+        let status = match &self.0 {
+            ProofError::InvalidLogRoot { .. }
+            | ProofError::InvalidMapRoot { .. }
+            | ProofError::BundleFailure { .. }
+            | ProofError::PackageNotIncluded { .. }
+            | ProofError::IncorrectProof { .. } => StatusCode::BAD_REQUEST,
+            ProofError::RootNotFound { .. } | ProofError::LeafNotFound { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
-        axum::response::Response::builder()
-            .status(status)
-            .body(boxed(self.to_string()))
-            .unwrap()
+        (status, Json(self.0)).into_response()
     }
 }
 
 #[debug_handler]
-pub(crate) async fn prove_consistency(
+async fn prove_consistency(
     State(config): State<Config>,
     Json(body): Json<ConsistencyRequest>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let log = config.log.as_ref().read().await;
 
-    let old_root: Hash<Sha256> = body
-        .old_root
-        .try_into()
-        .map_err(ProofApiError::InvalidOldRoot)?;
-    let new_root: Hash<Sha256> = body
-        .new_root
-        .try_into()
-        .map_err(ProofApiError::InvalidNewRoot)?;
+    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
+    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
 
     let bundle = log.consistency(&old_root, &new_root)?;
 
@@ -91,20 +95,20 @@ pub(crate) async fn prove_consistency(
 }
 
 #[debug_handler]
-pub(crate) async fn prove_inclusion(
+async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
-    let log_root = body
-        .checkpoint
-        .log_root
-        .try_into()
-        .map_err(ProofApiError::InvalidLogRoot)?;
-    let map_root = body
-        .checkpoint
-        .map_root
-        .try_into()
-        .map_err(ProofApiError::InvalidMapRoot)?;
+    let log_root = body.checkpoint.log_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
+    let map_root = body.checkpoint.map_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidMapRoot {
+            message: e.to_string(),
+        })
+    })?;
 
     let log_bundle = {
         let log = config.log.as_ref().read().await;

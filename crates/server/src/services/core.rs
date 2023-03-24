@@ -1,5 +1,3 @@
-use axum::{body::boxed, response::IntoResponse};
-use reqwest::StatusCode;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -121,23 +119,6 @@ pub enum CoreServiceError {
     OperatorRecordNotFound(RecordId),
     #[error("invalid checkpoint: {0}")]
     InvalidCheckpoint(anyhow::Error),
-}
-
-impl IntoResponse for CoreServiceError {
-    fn into_response(self) -> axum::response::Response {
-        let status = match &self {
-            Self::CheckpointNotFound(_)
-            | Self::PackageNotFound(_)
-            | Self::PackageRecordNotFound(_)
-            | Self::OperatorRecordNotFound(_) => StatusCode::NOT_FOUND,
-            Self::InvalidCheckpoint(_) => StatusCode::BAD_REQUEST,
-        };
-
-        axum::response::Response::builder()
-            .status(status)
-            .body(boxed(self.to_string()))
-            .unwrap()
-    }
 }
 
 pub struct CoreService {

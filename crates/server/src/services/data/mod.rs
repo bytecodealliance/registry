@@ -1,6 +1,4 @@
 use super::transparency::VerifiableMap;
-use axum::{body::boxed, response::IntoResponse};
-use reqwest::StatusCode;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{
@@ -21,29 +19,13 @@ pub enum DataServiceError {
     LeafNotFound(LogLeaf),
     #[error("failed to bundle proofs: {0}")]
     BundleFailure(anyhow::Error),
-    #[error("failed to proof inclusion of package `{0}`")]
-    ProofFailure(LogId),
-    #[error("incorrect proof: expected `{expected}`, got `{root}`")]
+    #[error("failed to prove inclusion of package `{0}`")]
+    PackageNotIncluded(LogId),
+    #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
     IncorrectProof {
         root: Hash<Sha256>,
-        expected: Hash<Sha256>,
+        found: Hash<Sha256>,
     },
-}
-
-impl IntoResponse for DataServiceError {
-    fn into_response(self) -> axum::response::Response {
-        let status = match &self {
-            Self::RootNotFound(_) | Self::LeafNotFound(_) => StatusCode::NOT_FOUND,
-            Self::BundleFailure(_) | Self::ProofFailure(_) | Self::IncorrectProof { .. } => {
-                StatusCode::BAD_REQUEST
-            }
-        };
-
-        axum::response::Response::builder()
-            .status(status)
-            .body(boxed(self.to_string()))
-            .unwrap()
-    }
 }
 
 pub struct Input {

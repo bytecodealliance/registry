@@ -1,4 +1,5 @@
 use crate::services::core::{CoreService, CoreServiceError};
+use axum::http::StatusCode;
 use axum::{
     debug_handler,
     extract::State,
@@ -8,8 +9,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use std::sync::Arc;
-use thiserror::Error;
-use warg_api::fetch::{CheckpointResponse, FetchRequest, FetchResponse};
+use warg_api::fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse};
 
 #[derive(Clone)]
 pub struct Config {
@@ -29,17 +29,38 @@ impl Config {
     }
 }
 
-#[derive(Debug, Error)]
-pub(crate) enum FetchApiError {
-    #[error("{0}")]
-    CoreService(#[from] CoreServiceError),
+struct FetchApiError(FetchError);
+
+impl From<CoreServiceError> for FetchApiError {
+    fn from(value: CoreServiceError) -> Self {
+        Self(match value {
+            CoreServiceError::CheckpointNotFound(checkpoint) => {
+                FetchError::CheckpointNotFound { checkpoint }
+            }
+            CoreServiceError::PackageNotFound(id) => FetchError::PackageNotFound { id },
+            CoreServiceError::PackageRecordNotFound(id) => FetchError::PackageRecordNotFound { id },
+            CoreServiceError::OperatorRecordNotFound(id) => {
+                FetchError::OperatorRecordNotFound { id }
+            }
+            CoreServiceError::InvalidCheckpoint(e) => FetchError::InvalidCheckpoint {
+                message: e.to_string(),
+            },
+        })
+    }
 }
 
 impl IntoResponse for FetchApiError {
     fn into_response(self) -> axum::response::Response {
-        match self {
-            Self::CoreService(e) => e.into_response(),
-        }
+        let status = match &self.0 {
+            FetchError::CheckpointNotFound { .. }
+            | FetchError::PackageNotFound { .. }
+            | FetchError::PackageRecordNotFound { .. }
+            | FetchError::OperatorRecordNotFound { .. } => StatusCode::NOT_FOUND,
+            FetchError::InvalidCheckpoint { .. } => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
+        (status, Json(self.0)).into_response()
     }
 }
 
