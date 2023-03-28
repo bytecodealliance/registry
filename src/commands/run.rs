@@ -2,6 +2,7 @@ use super::CommonOptions;
 use crate::demo;
 use anyhow::{anyhow, Result};
 use clap::Args;
+use warg_client::storage::ContentStorage;
 use warg_protocol::VersionReq;
 
 /// Run a package.
@@ -24,9 +25,10 @@ pub struct RunCommand {
 impl RunCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        println!("downloading package `{name}`...", name = self.name);
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
 
-        let mut client = self.common.create_client().await?;
+        println!("downloading package `{name}`...", name = self.name);
 
         let res = client
             .download(
@@ -50,7 +52,7 @@ impl RunCommand {
         );
 
         let path = client
-            .storage()
+            .content()
             .content_location(&res.digest)
             .ok_or_else(|| {
                 anyhow::anyhow!(

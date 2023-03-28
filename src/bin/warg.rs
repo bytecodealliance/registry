@@ -3,7 +3,7 @@ use clap::Parser;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
-    DownloadCommand, InfoCommand, InitCommand, PublishCommand, RunCommand, UpdateCommand,
+    ConfigCommand, DownloadCommand, InfoCommand, PublishCommand, RunCommand, UpdateCommand,
 };
 use warg_client::ClientError;
 
@@ -14,15 +14,15 @@ fn version() -> &'static str {
 /// Warg component registry client.
 #[derive(Parser)]
 #[clap(
-    bin_name = "warg-cli",
+    bin_name = "warg",
     version,
     propagate_version = true,
     arg_required_else_help = true
 )]
 #[command(version = version())]
 enum WargCli {
+    Config(ConfigCommand),
     Info(InfoCommand),
-    Init(InitCommand),
     Download(DownloadCommand),
     Update(UpdateCommand),
     #[clap(subcommand)]
@@ -37,8 +37,8 @@ async fn main() -> Result<()> {
         .init();
 
     if let Err(e) = match WargCli::parse() {
+        WargCli::Config(cmd) => cmd.exec().await,
         WargCli::Info(cmd) => cmd.exec().await,
-        WargCli::Init(cmd) => cmd.exec().await,
         WargCli::Download(cmd) => cmd.exec().await,
         WargCli::Update(cmd) => cmd.exec().await,
         WargCli::Publish(cmd) => cmd.exec().await,
@@ -57,13 +57,8 @@ async fn main() -> Result<()> {
 
 fn describe_client_error(e: &ClientError) {
     match e {
-        ClientError::StorageNotInitialized => {
-            eprintln!("error: {e}; use the `init` command to get started")
-        }
-        ClientError::MustInitializePackage { package } => {
-            eprintln!(
-                "error: package `{package}` is not initialized; use the `--init` option when publishing"
-            )
+        ClientError::NoDefaultUrl => {
+            eprintln!("error: {e}; use the `config` subcommand to set a default URL");
         }
         ClientError::PackageValidationFailed { package, inner } => {
             eprintln!("error: the log for package `{package}` is invalid: {inner:?}")

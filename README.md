@@ -30,7 +30,7 @@ various component tooling.
 
 ## Installation
 
-To install `warg-cli`, first you'll want to install
+To install `warg`, first you'll want to install
 [the latest stable Rust](https://www.rust-lang.org/tools/install) and then
 you'll execute to  install the subcommand:
 
@@ -86,22 +86,28 @@ packages.
 Currently this is sourced through an environment variable, but soon this will 
 be sourced via command line arguments or integration with system key rings.
 
-Start by creating a new client storage directory, giving the URL of the server 
-to use:
+Start by configuring the client to use the local server's URL:
 
 ```
-warg-cli init http://127.0.0.1:8090
+warg config --registry http://127.0.0.1:8090
 ```
 
-This creates a `.warg` directory where the client will store package logs and 
-contents.
+This creates a [`$CONFIG_DIR/warg/config.json`][config_dir] configuration file; 
+the configuration file will specify the default registry URL to use so that the
+`--registry` option does not need to be specified for every command.
+
+Data downloaded by the client is stored in [`$CACHE_DIR/warg`][cache_dir] by 
+default.
+
+[config_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.config_dir.html
+[cache_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.cache_dir.html
 
 ### Publishing a package
 
 A new package can be initialized by running:
 
 ```
-warg-cli publish init hello
+warg publish init hello
 ```
 
 This creates a new package named `hello` in the registry.
@@ -109,7 +115,7 @@ This creates a new package named `hello` in the registry.
 A version of the package can be published by running:
 
 ```
-warg-cli publish release --name hello --version 0.1.0 hello.wasm
+warg publish release --name hello --version 0.1.0 hello.wasm
 ```
 
 This publishes a package named `hello` with version `0.1.0` and content from 
@@ -118,20 +124,20 @@ This publishes a package named `hello` with version `0.1.0` and content from
 Alternatively, the above can be batched into a single publish operation:
 
 ```
-warg-cli publish start hello
-warg-cli publish init hello
-warg-cli publish release --name hello --version 0.1.0 hello.wasm
-warg-cli publish submit
+warg publish start hello
+warg publish init hello
+warg publish release --name hello --version 0.1.0 hello.wasm
+warg publish submit
 ```
 
 Here the records created from initializing the package and releasing version
 0.1.0 are made as part of the same transaction.
 
-Use `warg-cli publish abort` to abort a pending publish operation.
+Use `warg publish abort` to abort a pending publish operation.
 
 ### Running a package
 
-For demonstration purposes, the `run` command in `warg-cli` will download and 
+For demonstration purposes, the `run` command in `warg` will download and 
 run a package using [Wasmtime](https://wasmtime.dev/).
 
 The package is expected to be a Wasm module implementing a WASI command.
@@ -141,16 +147,16 @@ A demo module that implements a simple "grep" tool is available in `demo/simple-
 To publish the demo module:
 
 ```
-warg-cli publish start simple-grep
-warg-cli publish init simple-grep
-warg-cli publish release --name simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
-warg-cli publish submit
+warg publish start simple-grep
+warg publish init simple-grep
+warg publish release --name simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
+warg publish submit
 ```
 
 To run the demo package:
 
 ```
-echo 'hello world' | warg-cli run simple-grep hello
+echo 'hello world' | warg run simple-grep hello
 ```
 
 This should download and run the package, and print out the line `hello world` as it matches the pattern `hello`.
