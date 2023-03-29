@@ -1,7 +1,7 @@
 use super::CommonOptions;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Args;
-use warg_client::storage::{ClientStorage, PackageInfo};
+use warg_client::storage::{PackageInfo, PackageStorage};
 use warg_crypto::hash::DynHash;
 use warg_protocol::Version;
 
@@ -20,23 +20,20 @@ pub struct InfoCommand {
 impl InfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let storage = self.common.lock_storage()?;
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
 
-        let registry_info = storage
-            .load_registry_info()
-            .await?
-            .ok_or_else(|| anyhow!("the registry is not initialized"))?;
-
-        println!("registry: {url}", url = registry_info.url);
+        println!("registry: {url}", url = client.url());
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
-                if let Some(info) = storage.load_package_info(&package).await? {
+                if let Some(info) = client.packages().load_package(&package).await? {
                     Self::print_package_info(&info);
                 }
             }
             None => {
-                storage
+                client
+                    .packages()
                     .load_packages()
                     .await?
                     .iter()

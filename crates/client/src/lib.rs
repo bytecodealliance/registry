@@ -4,13 +4,15 @@
 
 use crate::storage::PackageInfo;
 use anyhow::Result;
-use reqwest::Body;
-use std::{collections::HashMap, path::PathBuf};
-use storage::ClientStorage;
+use reqwest::{Body, IntoUrl};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
+use storage::{ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PackageStorage};
 use thiserror::Error;
 use warg_api::{
-    content::{ContentSource, ContentSourceKind},
-    fetch::{FetchRequest, FetchResponse},
+    content::{ContentError, ContentSource, ContentSourceKind},
+    fetch::{FetchError, FetchRequest, FetchResponse},
+    package::{PackageError, PendingRecordResponse, RecordResponse},
+    proof::ProofError,
 };
 use warg_crypto::{
     hash::{DynHash, Hash, Sha256},
@@ -23,40 +25,51 @@ use warg_protocol::{
 };
 
 pub mod api;
+mod config;
 pub mod lock;
 pub mod storage;
+pub use self::config::*;
 
 /// A client for a Warg registry.
-pub struct Client<T> {
-    storage: T,
+pub struct Client<P, C> {
+    packages: P,
+    content: C,
     api: api::Client,
 }
 
-impl<T: ClientStorage> Client<T> {
-    /// Creates a new client with the given client storage.
-    pub async fn new(storage: T) -> Result<Self, ClientError> {
-        let api = storage
-            .load_registry_info()
-            .await?
-            .map(|info| api::Client::new(info.url))
-            .transpose()?
-            .ok_or(ClientError::StorageNotInitialized)?;
-
-        Ok(Self { storage, api })
+impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
+    /// Creates a new client for the given URL, package storage, and
+    /// content storage.
+    pub fn new(url: impl IntoUrl, packages: P, content: C) -> ClientResult<Self> {
+        Ok(Self {
+            packages,
+            content,
+            api: api::Client::new(url)?,
+        })
     }
 
-    /// Gets the storage used by the client.
-    pub fn storage(&self) -> &dyn ClientStorage {
-        &self.storage
+    /// Gets the URL of the client.
+    pub fn url(&self) -> &str {
+        self.api.url()
+    }
+
+    /// Gets the package storage used by the client.
+    pub fn packages(&self) -> &P {
+        &self.packages
+    }
+
+    /// Gets the content storage used by the client.
+    pub fn content(&self) -> &C {
+        &self.content
     }
 
     /// Submits the publish information in client storage.
     ///
     /// If there's no publishing information in client storage, an error is returned.
-    pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> Result<(), ClientError> {
+    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<()> {
         let info = self
-            .storage
-            .load_publish_info()
+            .packages
+            .load_publish()
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
@@ -75,15 +88,18 @@ impl<T: ClientStorage> Client<T> {
         );
 
         let mut package = self
-            .storage
-            .load_package_info(&info.package)
+            .packages
+            .load_package(&info.package)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.package.clone()));
 
         // If we're not initializing the package, update it to the latest checkpoint to get the current head
         if !initializing {
-            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
-                .await?;
+            self.update_checkpoint(
+                &self.api.latest_checkpoint().await?.checkpoint,
+                [&mut package],
+            )
+            .await?;
         }
 
         match (initializing, package.state.head().is_some()) {
@@ -112,7 +128,7 @@ impl<T: ClientStorage> Client<T> {
                 .api
                 .upload_content(
                     &content,
-                    Body::wrap_stream(self.storage.load_content(&content).await?.ok_or_else(
+                    Body::wrap_stream(self.content.load_content(&content).await?.ok_or_else(
                         || ClientError::ContentNotFound {
                             digest: content.clone(),
                         },
@@ -127,10 +143,14 @@ impl<T: ClientStorage> Client<T> {
         }
 
         let response = self
-            .api
-            .publish(&package.name, record.into(), sources)
+            .wait_for_publish(
+                &package.name,
+                self.api
+                    .publish(&package.name, record.into(), sources)
+                    .await?,
+            )
             .await?;
-        self.storage.store_publish_info(None).await?;
+        self.packages.store_publish(None).await?;
 
         // Finally, update the checkpoint again post-publish
         self.update_checkpoint(response.checkpoint.as_ref(), [&mut package])
@@ -140,33 +160,39 @@ impl<T: ClientStorage> Client<T> {
     }
 
     /// Updates every package log in client storage to the latest registry checkpoint.
-    pub async fn update(&mut self) -> Result<(), ClientError> {
+    pub async fn update(&self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
 
-        let mut updating = self.storage.load_packages().await?;
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+        let mut updating = self.packages.load_packages().await?;
+        self.update_checkpoint(
+            &self.api.latest_checkpoint().await?.checkpoint,
+            &mut updating,
+        )
+        .await?;
 
         Ok(())
     }
 
     /// Inserts or updates the logs of the specified packages in client storage to
     /// the latest registry checkpoint.
-    pub async fn upsert(&mut self, packages: &[&str]) -> Result<(), ClientError> {
+    pub async fn upsert(&self, packages: &[&str]) -> Result<(), ClientError> {
         tracing::info!("updating specific packages to latest checkpoint");
 
         let mut updating = Vec::with_capacity(packages.len());
         for package in packages {
             updating.push(
-                self.storage
-                    .load_package_info(package)
+                self.packages
+                    .load_package(package)
                     .await?
                     .unwrap_or_else(|| PackageInfo::new(*package)),
             );
         }
 
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+        self.update_checkpoint(
+            &self.api.latest_checkpoint().await?.checkpoint,
+            &mut updating,
+        )
+        .await?;
 
         Ok(())
     }
@@ -185,7 +211,7 @@ impl<T: ClientStorage> Client<T> {
     /// Returns the path within client storage of the package contents for
     /// the resolved version.
     pub async fn download(
-        &mut self,
+        &self,
         package: &str,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
@@ -224,7 +250,7 @@ impl<T: ClientStorage> Client<T> {
     /// Returns the path within client storage of the package contents for
     /// the specified version.
     pub async fn download_exact(
-        &mut self,
+        &self,
         package: &str,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
@@ -305,7 +331,7 @@ impl<T: ClientStorage> Client<T> {
                         let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
                         println!("THE RECORD {:?}", record);
                         package.state.validate(&record).map_err(|inner| {
-                            ClientError::PackageValidationError {
+                            ClientError::PackageValidationFailed {
                                 package: name.clone(),
                                 inner,
                             }
@@ -332,22 +358,25 @@ impl<T: ClientStorage> Client<T> {
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            self.storage.store_package_info(package).await?;
+            self.packages.store_package(package).await?;
         }
 
         Ok(())
     }
 
     async fn fetch_package(&self, name: &str) -> Result<PackageInfo, ClientError> {
-        match self.storage.load_package_info(name).await? {
+        match self.packages.load_package(name).await? {
             Some(info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
             }
             None => {
                 let mut info = PackageInfo::new(name);
-                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
-                    .await?;
+                self.update_checkpoint(
+                    &self.api.latest_checkpoint().await?.checkpoint,
+                    [&mut info],
+                )
+                .await?;
 
                 Ok(info)
             }
@@ -355,25 +384,50 @@ impl<T: ClientStorage> Client<T> {
     }
 
     async fn download_content(&self, digest: &DynHash) -> Result<PathBuf, ClientError> {
-        match self.storage.content_location(digest) {
+        match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
                 Ok(path)
             }
             None => {
                 tracing::info!("downloading content for digest `{digest}`");
-                self.storage
+                self.content
                     .store_content(
                         Box::pin(self.api.download_content(digest).await?),
                         Some(digest),
                     )
                     .await?;
 
-                self.storage
+                self.content
                     .content_location(digest)
                     .ok_or_else(|| ClientError::ContentNotFound {
                         digest: digest.clone(),
                     })
+            }
+        }
+    }
+
+    async fn wait_for_publish(
+        &self,
+        name: &str,
+        mut response: PendingRecordResponse,
+    ) -> ClientResult<RecordResponse> {
+        loop {
+            match response {
+                PendingRecordResponse::Published { record_url } => {
+                    return Ok(self.api.get_package_record(&record_url).await?);
+                }
+                PendingRecordResponse::Rejected { reason } => {
+                    return Err(ClientError::PublishRejected {
+                        package: name.to_string(),
+                        reason,
+                    });
+                }
+                PendingRecordResponse::Processing { status_url } => {
+                    // TODO: make the wait configurable
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    response = self.api.get_pending_package_record(&status_url).await?;
+                }
             }
         }
     }
@@ -383,6 +437,63 @@ impl<T: ClientStorage> Client<T> {
         // When the component model figures out what to store in extern descriptors, this
         // will likely be removed.
         format!("warg:///{id}", id = LogId::package_log::<Sha256>(package))
+    }
+}
+
+/// A Warg registry client that uses the local file system to store
+/// package logs and content.
+pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage>;
+
+/// A result of an attempt to lock client storage.
+pub enum StorageLockResult<T> {
+    /// The storage lock was acquired.
+    Acquired(T),
+    /// The storage lock was not acquired for the specified directory.
+    NotAcquired(PathBuf),
+}
+
+impl FileSystemClient {
+    /// Attempts to create a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the default URL is used; if there is no default
+    /// URL, an error is returned.
+    ///
+    /// If a lock cannot be acquired for a storage directory, then
+    /// `NewClientResult::Blocked` is returned with the path to the
+    /// directory that could not be locked.
+    pub fn try_new_with_config(
+        url: Option<&str>,
+        config: &Config,
+    ) -> Result<StorageLockResult<Self>, ClientError> {
+        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+
+        let (packages, content) = match (
+            FileSystemPackageStorage::try_lock(packages_dir.clone())?,
+            FileSystemContentStorage::try_lock(content_dir.clone())?,
+        ) {
+            (Some(packages), Some(content)) => (packages, content),
+            (None, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
+            (_, None) => return Ok(StorageLockResult::NotAcquired(content_dir)),
+        };
+
+        Ok(StorageLockResult::Acquired(Self::new(
+            url, packages, content,
+        )?))
+    }
+
+    /// Creates a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the default URL is used; if there is no default
+    /// URL, an error is returned.
+    ///
+    /// This method blocks if storage locks cannot be acquired.
+    pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
+        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        Self::new(
+            url,
+            FileSystemPackageStorage::lock(packages_dir)?,
+            FileSystemContentStorage::lock(content_dir)?,
+        )
     }
 }
 
@@ -407,9 +518,9 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
-    /// The storage provided to the client has not been initialized.
-    #[error("the storage provided to the client has not been initialized")]
-    StorageNotInitialized,
+    /// No default registry server URL is configured.
+    #[error("no default registry server URL is configured")]
+    NoDefaultUrl,
 
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
@@ -454,7 +565,7 @@ pub enum ClientError {
 
     /// The package failed validation.
     #[error("package `{package}` failed validation: {inner}.")]
-    PackageValidationError {
+    PackageValidationFailed {
         /// The package that failed validation.
         package: String,
         /// The validation error.
@@ -484,26 +595,26 @@ pub enum ClientError {
         reason: String,
     },
 
-    /// An error occurred while communicating with the registry.
-    #[error("an error occurred while communicating with registry {registry} ({status}): {body}")]
-    ApiError {
-        /// The registry server that returned the error.
-        registry: String,
-        /// The status code of the API error.
-        status: u16,
-        /// The response body.
-        body: String,
-    },
-
-    /// An error occurred while proving the inclusion of a package in a registry checkpoint.
+    /// An error occurred while communicating with the content service.
     #[error(transparent)]
-    InclusionProof(#[from] warg_transparency::log::InclusionProofError),
+    Content(#[from] ContentError),
 
-    /// An error occurred while communicating with the registry.
+    /// An error occurred while communicating with the fetch service.
     #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
+    Fetch(#[from] FetchError),
 
-    /// An error occurred while performing a client operation
+    /// An error occurred while communicating with the package service.
+    #[error(transparent)]
+    Package(#[from] PackageError),
+
+    /// An error occurred while communicating with the proof service.
+    #[error(transparent)]
+    Proof(#[from] ProofError),
+
+    /// An error occurred while performing a client operation.
     #[error("{0:?}")]
     Other(#[from] anyhow::Error),
 }
+
+/// Represents the result of a client operation.
+pub type ClientResult<T> = Result<T, ClientError>;

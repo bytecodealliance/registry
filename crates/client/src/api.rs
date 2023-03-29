@@ -1,24 +1,55 @@
 //! A module for Warg registry API clients.
 
-use crate::ClientError;
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
-use reqwest::{Body, IntoUrl, Url};
-use std::time::Duration;
+use reqwest::{Body, IntoUrl, Response, Url};
+use serde::de::DeserializeOwned;
 use url::Host;
 use warg_api::{
-    content::ContentSource,
-    fetch::{CheckpointResponse, FetchRequest, FetchResponse},
-    package::{PendingRecordResponse, PublishRequest, RecordResponse},
-    proof::{InclusionRequest, InclusionResponse},
+    content::{ContentError, ContentResult, ContentSource},
+    fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse, FetchResult},
+    package::{PackageError, PackageResult, PendingRecordResponse, PublishRequest, RecordResponse},
+    proof::{InclusionRequest, InclusionResponse, ProofError, ProofResult},
+    FromError,
 };
 use warg_crypto::hash::{DynHash, Sha256};
 use warg_protocol::{
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
-    ProtoEnvelopeBody, SerdeEnvelope,
+    ProtoEnvelopeBody,
 };
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
+
+async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, String> {
+    let status = response.status();
+    match response.headers().get("content-type") {
+        Some(content_type) if content_type == "application/json" => {
+            match response.json::<T>().await {
+                Ok(e) => Ok(e),
+                Err(e) => Err(format!(
+                    "failed to deserialize JSON response: {e} (status code: {status})"
+                )),
+            }
+        }
+        Some(ty) => Err(format!(
+            "the server returned an unsupported content type of `{ty}` (status code: {status})",
+            ty = ty.to_str().unwrap_or("")
+        )),
+        None => Err(format!(
+            "the server did not return a content type (status code: {status})"
+        )),
+    }
+}
+
+async fn into_result<T: DeserializeOwned, E: DeserializeOwned + From<String>>(
+    response: Response,
+) -> Result<T, E> {
+    if response.status().is_success() {
+        Ok(deserialize::<T>(response).await.map_err(E::from)?)
+    } else {
+        Err(deserialize::<E>(response).await.map_err(E::from)?)
+    }
+}
 
 /// Represents a Warg API client for communicating with
 /// a Warg registry server.
@@ -27,7 +58,28 @@ pub struct Client(Url);
 impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl) -> Result<Self> {
-        let url = url.into_url()?;
+        let url = Self::validate_url(url)?;
+        Ok(Self(url))
+    }
+
+    /// Gets the URL of the API client.
+    pub fn url(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Parses and validates the given URL.
+    ///
+    /// Returns the validated URL on success.
+    pub fn validate_url(url: impl IntoUrl) -> Result<Url> {
+        // Default to a HTTPS scheme if none is provided
+        let url: Url = if !url.as_str().contains("://") {
+            Url::parse(&format!("https://{url}", url = url.as_str()))
+                .context("failed to parse registry server URL")?
+        } else {
+            url.into_url()
+                .context("failed to parse registry server URL")?
+        };
+
         match url.scheme() {
             "https" => {}
             "http" => {
@@ -55,46 +107,27 @@ impl Client {
             }
             _ => bail!("expected a HTTPS scheme for URL `{url}`"),
         }
-
-        Ok(Self(url))
+        Ok(url)
     }
 
     /// Gets the latest checkpoint from the registry.
-    pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, ClientError> {
+    pub async fn latest_checkpoint(&self) -> FetchResult<CheckpointResponse> {
         let url = self.0.join("fetch/checkpoint").unwrap();
         tracing::debug!("getting latest checkpoint at `{url}`");
-
-        let response = reqwest::get(url).await?;
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
-        }
-
-        let response = response.json::<CheckpointResponse>().await?;
-        Ok(response.checkpoint)
+        into_result(reqwest::get(url).await.map_err(FetchError::from_error)?).await
     }
 
     /// Fetches package log entries from the registry.
-    pub async fn fetch_logs(&self, request: FetchRequest) -> Result<FetchResponse, ClientError> {
+    pub async fn fetch_logs(&self, request: FetchRequest) -> FetchResult<FetchResponse> {
         let client = reqwest::Client::new();
         let response = client
             .post(self.0.join("fetch/logs").unwrap())
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(FetchError::from_error)?;
 
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
-        }
-
-        Ok(response.json::<FetchResponse>().await?)
+        into_result(response).await
     }
 
     /// Publishes a new package record to the registry.
@@ -103,7 +136,7 @@ impl Client {
         package_name: &str,
         record: ProtoEnvelopeBody,
         content_sources: Vec<ContentSource>,
-    ) -> Result<RecordResponse, ClientError> {
+    ) -> PackageResult<PendingRecordResponse> {
         let client = reqwest::Client::new();
         let request = PublishRequest {
             name: package_name.to_string(),
@@ -112,72 +145,35 @@ impl Client {
         };
 
         let url = self.0.join("package").unwrap();
-
         tracing::debug!("publishing package `{package_name}` to `{url}`");
-        let response = client.post(url).json(&request).send().await?;
-
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
-        }
-
-        let mut response = response.json::<PendingRecordResponse>().await?;
-
-        loop {
-            match response {
-                PendingRecordResponse::Published { record_url } => {
-                    return self.get_package_record(&record_url).await
-                }
-                PendingRecordResponse::Rejected { reason } => {
-                    return Err(ClientError::PublishRejected {
-                        package: package_name.to_string(),
-                        reason,
-                    });
-                }
-                PendingRecordResponse::Processing { status_url } => {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    response = self.get_pending_package_record(&status_url).await?;
-                }
-            }
-        }
+        into_result(
+            client
+                .post(url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(PackageError::from_error)?,
+        )
+        .await
     }
 
     /// Gets the pending package record from the registry.
     pub async fn get_pending_package_record(
         &self,
         route: &str,
-    ) -> Result<PendingRecordResponse, ClientError> {
+    ) -> PackageResult<PendingRecordResponse> {
         let url = self.0.join(route).unwrap();
         tracing::debug!("getting pending package record from `{url}`");
-        let response = reqwest::get(url).await?;
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
-        }
-
-        Ok(response.json::<PendingRecordResponse>().await?)
+        into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
+            .await
     }
 
     /// Gets the package record from the registry.
-    pub async fn get_package_record(&self, route: &str) -> Result<RecordResponse, ClientError> {
+    pub async fn get_package_record(&self, route: &str) -> PackageResult<RecordResponse> {
         let url = self.0.join(route).unwrap();
         tracing::debug!("getting package record from `{url}`");
-        let response = reqwest::get(url).await?;
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
-        }
-
-        Ok(response.json::<RecordResponse>().await?)
+        into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
+            .await
     }
 
     /// Proves the inclusion of the given package log heads in the registry.
@@ -185,7 +181,7 @@ impl Client {
         &self,
         checkpoint: &MapCheckpoint,
         heads: Vec<LogLeaf>,
-    ) -> Result<(), ClientError> {
+    ) -> ProofResult<()> {
         let client = reqwest::Client::new();
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
@@ -194,60 +190,31 @@ impl Client {
 
         let url = self.0.join("proof/inclusion").unwrap();
         tracing::debug!("proving checkpoint inclusion from `{url}`");
-        let response = client.post(url).json(&request).send().await?;
+        let response = into_result::<InclusionResponse, ProofError>(
+            client
+                .post(url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(ProofError::from_error)?,
+        )
+        .await?;
 
-        if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
+        match Self::validate_inclusion_response(response, checkpoint, &heads) {
+            Ok(()) => Ok(()),
+            Err(e) => match e.downcast::<ProofError>() {
+                Ok(e) => Err(e),
+                Err(e) => Err(ProofError::from(e.to_string())),
+            },
         }
-
-        let response = response.json::<InclusionResponse>().await?;
-
-        let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
-            LogProofBundle::decode(response.log.as_slice())?;
-        let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
-        println!("LOG DATA {:?}", log_data);
-        println!("LOG INCLUSIONS {:?}", log_inclusions);
-        for (leaf, proof) in heads.iter().zip(log_inclusions.iter()) {
-            let root = proof.evaluate_value(&log_data, leaf)?;
-            println!("NEW ROOT {:?}", root);
-            if checkpoint.log_root != root.clone().into() {
-                return Err(ClientError::Other(anyhow!(
-                    "verification proof failed: expected log root `{expected}` but found `{root}`",
-                    expected = checkpoint.log_root,
-                    root = root
-                )));
-            }
-        }
-
-        let map_proof_bundle: MapProofBundle<Sha256, MapLeaf> =
-            MapProofBundle::decode(response.map.as_slice())?;
-        let map_inclusions = map_proof_bundle.unbundle();
-        for (leaf, proof) in heads.iter().zip(map_inclusions.iter()) {
-            let root = proof.evaluate(
-                &leaf.log_id,
-                &MapLeaf {
-                    record_id: leaf.record_id.clone(),
-                },
-            );
-            println!("NEW MAP ROOT");
-            if checkpoint.map_root != root.clone().into() {
-                return Err(ClientError::Other(anyhow!(
-                    "verification proof failed: expected map root `{expected}` but found `{root}`",
-                    expected = checkpoint.map_root,
-                    root = root
-                )));
-            }
-        }
-
-        Ok(())
     }
 
     /// Proves consistency of a new checkpoint with a previously known checkpoint.
-    pub async fn prove_log_consistency(&self, old_root: DynHash, new_root: DynHash) -> Result<()> {
+    pub async fn prove_log_consistency(
+        &self,
+        old_root: DynHash,
+        new_root: DynHash,
+    ) -> ProofResult<()> {
         dbg!(old_root);
         dbg!(new_root);
         todo!()
@@ -258,54 +225,67 @@ impl Client {
         &self,
         digest: &DynHash,
         content: impl Into<Body>,
-    ) -> Result<String, ClientError> {
+    ) -> ContentResult<String> {
         let client = reqwest::Client::new();
 
         let url = self.content_url(digest);
         tracing::debug!("checking if content exists at `{url}`");
-        if client.head(&url).send().await?.status().is_success() {
+        if client
+            .head(&url)
+            .send()
+            .await
+            .map_err(ContentError::from_error)?
+            .status()
+            .is_success()
+        {
             return Ok(url);
         }
 
-        let url = self.0.join("content").unwrap();
         tracing::debug!("uploading content to `{url}`");
-        let response = client.post(url).body(content).send().await?;
 
+        let url = self.0.join("content").unwrap();
+        let response = client
+            .post(url)
+            .body(content)
+            .send()
+            .await
+            .map_err(ContentError::from_error)?;
         if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
+            return Err(deserialize::<ContentError>(response).await?);
         }
 
         let location = response
             .headers()
             .get("location")
-            .context("Uploaded URL not known")?
+            .ok_or_else(|| {
+                ContentError::from("server did not return a location header".to_string())
+            })?
             .to_str()
-            .map_err(|e| anyhow!(e))?;
+            .map_err(|_| {
+                ContentError::from("returned location header was not UTF-8".to_string())
+            })?;
 
-        Ok(self.0.join(location).map_err(|e| anyhow!(e))?.to_string())
+        Ok(self
+            .0
+            .join(location)
+            .map_err(|_| {
+                ContentError::from("returned location header was not relative".to_string())
+            })?
+            .to_string())
     }
 
     /// Downloads package content from the registry.
     pub async fn download_content(
         &self,
         digest: &DynHash,
-    ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
+    ) -> ContentResult<impl Stream<Item = Result<Bytes>>> {
         let url = self.content_url(digest);
 
         tracing::debug!("downloading content from `{url}`");
 
-        let response = reqwest::get(url).await?;
-
+        let response = reqwest::get(url).await.map_err(ContentError::from_error)?;
         if !response.status().is_success() {
-            return Err(ClientError::ApiError {
-                registry: self.0.host_str().unwrap_or("").to_string(),
-                status: response.status().as_u16(),
-                body: response.text().await?,
-            });
+            return Err(deserialize::<ContentError>(response).await?);
         }
 
         Ok(response.bytes_stream().map_err(|e| anyhow!(e)))
@@ -317,5 +297,40 @@ impl Client {
             base = self.0.join("content").unwrap(),
             digest = digest.to_string().replace(':', "-")
         )
+    }
+
+    fn validate_inclusion_response(
+        response: InclusionResponse,
+        checkpoint: &MapCheckpoint,
+        heads: &[LogLeaf],
+    ) -> Result<()> {
+        let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
+            LogProofBundle::decode(response.log.as_slice())?;
+        let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
+        for (leaf, proof) in heads.iter().zip(log_inclusions.iter()) {
+            let found = proof.evaluate_value(&log_data, leaf)?;
+            let root = checkpoint.log_root.clone().try_into()?;
+            if found != root {
+                return Err(anyhow!(ProofError::IncorrectProof { root, found }));
+            }
+        }
+
+        let map_proof_bundle: MapProofBundle<Sha256, MapLeaf> =
+            MapProofBundle::decode(response.map.as_slice())?;
+        let map_inclusions = map_proof_bundle.unbundle();
+        for (leaf, proof) in heads.iter().zip(map_inclusions.iter()) {
+            let found = proof.evaluate(
+                &leaf.log_id,
+                &MapLeaf {
+                    record_id: leaf.record_id.clone(),
+                },
+            );
+            let root = checkpoint.map_root.clone().try_into()?;
+            if found != root {
+                return Err(anyhow!(ProofError::IncorrectProof { root, found }));
+            }
+        }
+
+        Ok(())
     }
 }

@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ClientStorage, PackageInfo, PublishInfo, RegistryInfo};
+use super::{ContentStorage, PackageInfo, PackageStorage, PublishInfo};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -8,6 +8,7 @@ use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     pin::Pin,
@@ -15,41 +16,38 @@ use std::{
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio_util::io::ReaderStream;
+use walkdir::WalkDir;
 use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
 use warg_protocol::registry::LogId;
 
 const TEMP_DIRECTORY: &str = "temp";
-const CONTENTS_DIRECTORY: &str = "contents";
-const PACKAGES_DIRECTORY: &str = "packages";
-const REGISTRY_INFO_FILE: &str = "registry-info.json";
-const PUBLISH_QUEUE_FILE: &str = "publish-queue.json";
-const REGISTRY_LOCK_FILE: &str = ".lock";
+const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
+const LOCK_FILE_NAME: &str = ".lock";
 
-/// Implements client storage using the local file system.
-pub struct FileSystemStorage {
+/// Represents a package storage using the local file system.
+pub struct FileSystemPackageStorage {
     _lock: FileLock,
-    temp_dir: PathBuf,
-    contents_dir: PathBuf,
-    packages_dir: PathBuf,
-    registry_info_path: PathBuf,
-    publish_queue_path: PathBuf,
+    base_dir: PathBuf,
 }
 
-impl FileSystemStorage {
-    /// Attempts to lock the file system storage.
+impl FileSystemPackageStorage {
+    /// Attempts to lock the package storage.
     ///
     /// The base directory will be created if it does not exist.
     ///
     /// If the lock cannot be acquired, `Ok(None)` is returned.
     pub fn try_lock(base_dir: impl Into<PathBuf>) -> Result<Option<Self>> {
         let base_dir = base_dir.into();
-        match FileLock::try_open_rw(base_dir.join(REGISTRY_LOCK_FILE))? {
-            Some(lock) => Ok(Some(Self::new(base_dir, lock))),
+        match FileLock::try_open_rw(base_dir.join(LOCK_FILE_NAME))? {
+            Some(lock) => Ok(Some(Self {
+                _lock: lock,
+                base_dir,
+            })),
             None => Ok(None),
         }
     }
 
-    /// Locks a new file system storage at the given base directory.
+    /// Locks a new package storage at the given base directory.
     ///
     /// The base directory will be created if it does not exist.
     ///
@@ -57,29 +55,129 @@ impl FileSystemStorage {
     /// will block.
     pub fn lock(base_dir: impl Into<PathBuf>) -> Result<Self> {
         let base_dir = base_dir.into();
-        let lock = FileLock::open_rw(base_dir.join(REGISTRY_LOCK_FILE))?;
-        Ok(Self::new(base_dir, lock))
+        let lock = FileLock::open_rw(base_dir.join(LOCK_FILE_NAME))?;
+        Ok(Self {
+            _lock: lock,
+            base_dir,
+        })
     }
 
-    fn new(base_dir: PathBuf, lock: FileLock) -> Self {
-        let temp_dir = base_dir.join(TEMP_DIRECTORY);
-        let contents_dir = base_dir.join(CONTENTS_DIRECTORY);
-        let packages_dir = base_dir.join(PACKAGES_DIRECTORY);
-        let registry_info_path = base_dir.join(REGISTRY_INFO_FILE);
-        let publish_queue_path = base_dir.join(PUBLISH_QUEUE_FILE);
+    fn package_path(&self, name: &str) -> PathBuf {
+        self.base_dir.join(
+            LogId::package_log::<Sha256>(name)
+                .to_string()
+                .replace(':', "/"),
+        )
+    }
 
-        Self {
-            _lock: lock,
-            temp_dir,
-            contents_dir,
-            packages_dir,
-            registry_info_path,
-            publish_queue_path,
+    fn pending_publish_path(&self) -> PathBuf {
+        self.base_dir.join(PENDING_PUBLISH_FILE)
+    }
+}
+
+#[async_trait]
+impl PackageStorage for FileSystemPackageStorage {
+    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
+        let mut packages = Vec::new();
+
+        for entry in WalkDir::new(&self.base_dir) {
+            let entry = entry.with_context(|| {
+                anyhow!(
+                    "failed to walk directory `{path}`",
+                    path = self.base_dir.display()
+                )
+            })?;
+
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            if let Some(name) = path.file_name().and_then(OsStr::to_str) {
+                if name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            packages.push(load(path).await?.ok_or_else(|| {
+                anyhow!(
+                    "failed to load package state from `{path}`",
+                    path = path.display()
+                )
+            })?);
+            println!("packages: \n{:?}", packages);
+        }
+
+        Ok(packages)
+    }
+
+    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {
+        Ok(load(&self.package_path(package)).await?)
+    }
+
+    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
+        store(&self.package_path(&info.name), info).await
+    }
+
+    async fn load_publish(&self) -> Result<Option<PublishInfo>> {
+        Ok(load(&self.base_dir.join(PENDING_PUBLISH_FILE))
+            .await?
+            .unwrap_or_default())
+    }
+
+    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()> {
+        let path = self.pending_publish_path();
+        match info {
+            Some(info) => store(&path, info).await,
+            None => delete(&path).await,
+        }
+    }
+}
+
+/// Represents a content storage using the local file system.
+pub struct FileSystemContentStorage {
+    _lock: FileLock,
+    base_dir: PathBuf,
+    temp_dir: PathBuf,
+}
+
+impl FileSystemContentStorage {
+    /// Attempts to lock the content storage.
+    ///
+    /// The base directory will be created if it does not exist.
+    ///
+    /// If the lock cannot be acquired, `Ok(None)` is returned.
+    pub fn try_lock(base_dir: impl Into<PathBuf>) -> Result<Option<Self>> {
+        let base_dir = base_dir.into();
+        let temp_dir = base_dir.join(TEMP_DIRECTORY);
+        match FileLock::try_open_rw(base_dir.join(LOCK_FILE_NAME))? {
+            Some(lock) => Ok(Some(Self {
+                _lock: lock,
+                base_dir,
+                temp_dir,
+            })),
+            None => Ok(None),
         }
     }
 
-    /// Creates a temporary file in the client storage.
-    pub fn temp_file(&self) -> Result<NamedTempFile> {
+    /// Locks a new content storage at the given base directory.
+    ///
+    /// The base directory will be created if it does not exist.
+    ///
+    /// If the lock cannot be immediately acquired, this function
+    /// will block.
+    pub fn lock(base_dir: impl Into<PathBuf>) -> Result<Self> {
+        let base_dir = base_dir.into();
+        let temp_dir = base_dir.join(TEMP_DIRECTORY);
+        let lock = FileLock::open_rw(base_dir.join(LOCK_FILE_NAME))?;
+        Ok(Self {
+            _lock: lock,
+            base_dir,
+            temp_dir,
+        })
+    }
+
+    fn temp_file(&self) -> Result<NamedTempFile> {
         fs::create_dir_all(&self.temp_dir).with_context(|| {
             format!(
                 "failed to create directory `{path}`",
@@ -95,113 +193,13 @@ impl FileSystemStorage {
         })
     }
 
-    /// Gets the path to the registry information file.
-    ///
-    /// The path is not checked for existence.
-    pub fn registry_info_path(&self) -> &Path {
-        &self.registry_info_path
-    }
-
-    /// Gets the path to the publish queue file.
-    ///
-    /// The path is not checked for existence.
-    pub fn publish_queue_path(&self) -> &Path {
-        &self.publish_queue_path
-    }
-
-    /// Gets the path to the directory containing package contents.
-    ///
-    /// The path is not checked for existence.
-    pub fn contents_dir(&self) -> &Path {
-        &self.contents_dir
-    }
-
-    /// Gets the path to the content associated with the given digest.
-    ///
-    /// The path is not checked for existence.
-    pub fn content_path(&self, digest: &DynHash) -> PathBuf {
-        self.contents_dir()
-            .join(digest.to_string().replace(':', "-"))
-    }
-
-    /// Gets the path to the directory containing package state.
-    ///
-    /// The path is not checked for existence.
-    pub fn packages_dir(&self) -> &Path {
-        &self.packages_dir
-    }
-
-    /// Gets the path to the package state for the given package name.
-    ///
-    /// The path is not checked for existence.
-    pub fn package_path(&self, name: &str) -> PathBuf {
-        self.packages_dir().join(
-            LogId::package_log::<Sha256>(name)
-                .to_string()
-                .replace(':', "-"),
-        )
+    fn content_path(&self, digest: &DynHash) -> PathBuf {
+        self.base_dir.join(digest.to_string().replace(':', "/"))
     }
 }
 
 #[async_trait]
-impl ClientStorage for FileSystemStorage {
-    async fn load_registry_info(&self) -> Result<Option<RegistryInfo>> {
-        load(self.registry_info_path()).await
-    }
-
-    async fn store_registry_info(&self, info: &RegistryInfo) -> Result<()> {
-        store(self.registry_info_path(), info).await
-    }
-
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
-        let mut packages = Vec::new();
-        let dir = self.packages_dir();
-        if !dir.exists() {
-            return Ok(packages);
-        }
-
-        for entry in dir
-            .read_dir()
-            .with_context(|| format!("failed to read directory `{path}`", path = dir.display()))?
-        {
-          println!("entry: {:?}", entry);
-            let entry = entry?;
-            let path = entry.path();
-            packages.push(load(&path).await?.ok_or_else(|| {
-                anyhow!(
-                    "failed to load package state from `{path}`",
-                    path = path.display()
-                )
-            })?);
-            println!("packages: \n{:?}", packages);
-        }
-
-        Ok(packages)
-    }
-
-    async fn load_package_info(&self, package: &str) -> Result<Option<PackageInfo>> {
-        Ok(load(&self.package_path(package)).await?)
-    }
-
-    async fn store_package_info(&self, info: &PackageInfo) -> Result<()> {
-        store(&self.package_path(&info.name), info).await
-    }
-
-    fn has_publish_info(&self) -> bool {
-        self.publish_queue_path().is_file()
-    }
-
-    async fn load_publish_info(&self) -> Result<Option<PublishInfo>> {
-        Ok(load(self.publish_queue_path()).await?.unwrap_or_default())
-    }
-
-    async fn store_publish_info(&self, info: Option<&PublishInfo>) -> Result<()> {
-        match info {
-            Some(info) => store(self.publish_queue_path(), info).await,
-            None => delete(self.publish_queue_path()).await,
-        }
-    }
-
+impl ContentStorage for FileSystemContentStorage {
     fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
         let path = self.content_path(digest);
         if path.is_file() {

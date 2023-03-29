@@ -1,15 +1,32 @@
+use super::transparency::VerifiableMap;
 use std::sync::Arc;
-
+use thiserror::Error;
 use tokio::{
     sync::{mpsc::Receiver, RwLock},
     task::JoinHandle,
 };
-use warg_protocol::registry::LogLeaf;
-
-use super::transparency::VerifiableMap;
+use warg_crypto::hash::{Hash, Sha256};
+use warg_protocol::registry::{LogId, LogLeaf};
 
 pub mod log;
 pub mod map;
+
+#[derive(Debug, Error)]
+pub enum DataServiceError {
+    #[error("root `{0}` was not found")]
+    RootNotFound(Hash<Sha256>),
+    #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
+    LeafNotFound(LogLeaf),
+    #[error("failed to bundle proofs: {0}")]
+    BundleFailure(anyhow::Error),
+    #[error("failed to prove inclusion of package `{0}`")]
+    PackageNotIncluded(LogId),
+    #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
+    IncorrectProof {
+        root: Hash<Sha256>,
+        found: Hash<Sha256>,
+    },
+}
 
 pub struct Input {
     pub log_data: log::ProofData,

@@ -28,7 +28,7 @@ jobs:
       run: cargo test --all
 
   install:
-    name: Install warg-cli
+    name: Install warg CLI
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -38,7 +38,7 @@ jobs:
       uses: arduino/setup-protoc@v1
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Install warg-cli
+    - name: Install warg CLI
       run: cargo install --locked --path .
 
   rustfmt:

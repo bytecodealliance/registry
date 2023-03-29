@@ -1,5 +1,5 @@
-use crate::{services::data, AnyError};
-use anyhow::Result;
+use crate::services::data::{self, DataServiceError};
+use anyhow::Error;
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Json,
     Router,
@@ -7,7 +7,7 @@ use axum::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use warg_api::proof::{
-    ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse,
+    ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
 use warg_crypto::hash::{Hash, Sha256};
 
@@ -33,47 +33,95 @@ impl Config {
     }
 }
 
-#[debug_handler]
-pub(crate) async fn prove_consistency(
-    State(config): State<Config>,
-    Json(body): Json<ConsistencyRequest>,
-) -> Result<impl IntoResponse, AnyError> {
-    let log = config.log.as_ref().read().await;
+struct ProofApiError(ProofError);
 
-    let old_root: Hash<Sha256> = body.old_root.try_into()?;
-    let new_root: Hash<Sha256> = body.new_root.try_into()?;
+impl From<DataServiceError> for ProofApiError {
+    fn from(value: DataServiceError) -> Self {
+        Self(match value {
+            DataServiceError::RootNotFound(root) => ProofError::RootNotFound { root },
+            DataServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound { leaf },
+            DataServiceError::BundleFailure(e) => ProofError::BundleFailure {
+                message: e.to_string(),
+            },
+            DataServiceError::PackageNotIncluded(id) => ProofError::PackageNotIncluded { id },
+            DataServiceError::IncorrectProof { root, found } => {
+                ProofError::IncorrectProof { root, found }
+            }
+        })
+    }
+}
 
-    let bundle = log.consistency(old_root, new_root)?;
+impl IntoResponse for ProofApiError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match &self.0 {
+            ProofError::InvalidLogRoot { .. }
+            | ProofError::InvalidMapRoot { .. }
+            | ProofError::BundleFailure { .. }
+            | ProofError::PackageNotIncluded { .. }
+            | ProofError::IncorrectProof { .. } => StatusCode::BAD_REQUEST,
+            ProofError::RootNotFound { .. } | ProofError::LeafNotFound { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
 
-    let response = ConsistencyResponse {
-        proof: bundle.encode(),
-    };
-
-    Ok((StatusCode::OK, Json(response)))
+        (status, Json(self.0)).into_response()
+    }
 }
 
 #[debug_handler]
-pub(crate) async fn prove_inclusion(
+async fn prove_consistency(
+    State(config): State<Config>,
+    Json(body): Json<ConsistencyRequest>,
+) -> Result<Json<ConsistencyResponse>, ProofApiError> {
+    let log = config.log.as_ref().read().await;
+
+    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
+    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
+
+    let bundle = log.consistency(&old_root, &new_root)?;
+
+    Ok(Json(ConsistencyResponse {
+        proof: bundle.encode(),
+    }))
+}
+
+#[debug_handler]
+async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest>,
-) -> Result<impl IntoResponse, AnyError> {
-    let log_root: Hash<Sha256> = body.checkpoint.log_root.try_into()?;
-    let map_root = body.checkpoint.map_root.try_into()?;
+) -> Result<Json<InclusionResponse>, ProofApiError> {
+    let log_root = body.checkpoint.log_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidLogRoot {
+            message: e.to_string(),
+        })
+    })?;
+    let map_root = body.checkpoint.map_root.try_into().map_err(|e: Error| {
+        ProofApiError(ProofError::InvalidMapRoot {
+            message: e.to_string(),
+        })
+    })?;
 
     let log_bundle = {
         let log = config.log.as_ref().read().await;
-        log.inclusion(log_root, body.heads.as_slice())?
+        log.inclusion(&log_root, body.heads.as_slice())?
     };
 
     let map_bundle = {
         let map = config.map.as_ref().read().await;
-        map.inclusion(map_root, body.heads.as_slice())?
+        map.inclusion(&map_root, body.heads.as_slice())?
     };
 
-    let response = InclusionResponse {
+    Ok(Json(InclusionResponse {
         log: log_bundle.encode(),
         map: map_bundle.encode(),
-    };
-
-    Ok((StatusCode::OK, Json(response)))
+    }))
 }
