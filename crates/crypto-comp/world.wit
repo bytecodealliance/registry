@@ -1,0 +1,4 @@
+/// An example world for the component to target.
+default world component {
+    export hello-world: func() -> string
+}                
