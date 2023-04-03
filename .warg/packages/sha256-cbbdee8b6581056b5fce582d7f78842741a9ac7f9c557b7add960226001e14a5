@@ -1,0 +1,39 @@
+{
+  "name": "funny",
+  "checkpoint": {
+    "contents": {
+      "log_root": "sha256:30d770de6920e8f0b65af598f359b798576de9d60ea44bbd011042d7c7ade447",
+      "log_length": 2,
+      "map_root": "sha256:6d196f3d8aa12021cde85815871e6ec07092824640adec841650ad83d7d95acb"
+    },
+    "key_id": "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d",
+    "signature": "ecdsa-p256:MEUCIQDe80+6M/DyW+Kp5SO/d88demPvnO+64OZpFTfnZ1V4tAIgFBOI7kBx7/OHWDXxHQ7wXws4+5dEfKyT6zsyJyiqNHI="
+  },
+  "state": {
+    "algorithm": "sha256",
+    "head": {
+      "digest": "sha256:7b969c4708c9c4d6cb20e0e55d5a15d166199697bac9b3c27d4f8e09fde4ca1f",
+      "timestamp": "1679334335.17104000"
+    },
+    "permissions": {
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": [
+        "release",
+        "yank"
+      ]
+    },
+    "releases": {
+      "1.0.0": {
+        "version": "1.0.0",
+        "by": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
+        "timestamp": "1679334335.17104000",
+        "state": {
+          "status": "released",
+          "content": "sha256:4470bd2867f49ef7119691d6e1cb9a4ecd46b79c394a7587dc78874c9382ca37"
+        }
+      }
+    },
+    "keys": {
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": "ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu"
+    }
+  }
+}

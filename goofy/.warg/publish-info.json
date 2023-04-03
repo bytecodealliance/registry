@@ -1,0 +1,12 @@
+{
+  "package": "silly",
+  "prev": "sha256:e8c2642ef9e2f639d6acbed8e8d893373f146d88427f5e71db8204389af46909",
+  "entries": [
+    {
+      "Release": {
+        "version": "1.0.1",
+        "content": "sha256:117f7766b7c8d89bdaf49fe7eb4c14d68d81fde0d15f2bc46905da4ed63d6d80"
+      }
+    }
+  ]
+}
