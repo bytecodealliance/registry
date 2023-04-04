@@ -664,25 +664,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypto-comp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.21.0",
- "digest",
- "hex",
- "leb128",
- "p256",
- "rand_core",
- "secrecy",
- "serde",
- "sha2",
- "signature",
- "thiserror",
- "wit-bindgen",
-]
-
-[[package]]
 name = "ctor"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3090,7 +3071,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "clap 4.1.9",
- "crypto-comp",
  "futures",
  "thiserror",
  "tokio",
@@ -3847,15 +3827,6 @@ dependencies = [
  "bitflags",
  "io-lifetimes",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "wit-bindgen"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c528d2ebfc375d928a6682a46acab1c125071908fa91378a63feca794c3c515a"
-dependencies = [
- "bitflags",
 ]
 
 [[package]]

@@ -179,9 +179,11 @@ impl Validator {
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
+        println!("VALIDATING");
         let snapshot = self.snapshot();
 
         let result = self.validate_envelope(envelope);
+        println!("THE RESULT {:?}", result);
         if result.is_err() {
             self.rollback(snapshot);
         }

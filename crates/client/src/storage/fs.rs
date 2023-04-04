@@ -63,6 +63,7 @@ impl FileSystemPackageStorage {
     }
 
     fn package_path(&self, name: &str) -> PathBuf {
+        println!("BASE DIR {:?}", self.base_dir);
         self.base_dir.join(
             LogId::package_log::<Sha256>(name)
                 .to_string()

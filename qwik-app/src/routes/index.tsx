@@ -4,7 +4,7 @@ import { isBrowser } from '@builder.io/qwik/build';
 import type { DocumentHead } from '@builder.io/qwik-city';
 // import { reg } from '../registry/client_storage';
 import { Checkpoint } from "../components/checkpoint"
-import Update from "../components/update"
+// import Update from "../components/update"
 import {$init} from "../registry/client_storage.js"
 import myWorker from "./web-worker?worker"
 
@@ -26,6 +26,7 @@ export default component$(() => {
         console.log("main thread back", {event})
         if (event.data) {
           store.root = event.data
+          console.log(store.root, "CAME FROM EVENT")
         }
       })
       store.postMessage = noSerialize(function(message: any) {
@@ -34,11 +35,12 @@ export default component$(() => {
       window.localStorage.setItem("url", "http://127.0.0.1:8090")
     }
   })
+  console.log("ROOT", store.root)
   return (
     <div>
       <h1>
-        <Checkpoint postMessage={store.postMessage}/>
-        <Update postMessage={store.postMessage} root={store.root}/>
+        <Checkpoint postMessage={store.postMessage} root={store.root}/>
+        {/* <Update postMessage={store.postMessage} root={store.root} checkpoint={"foo"}/> */}
       </h1>
     </div>
   );

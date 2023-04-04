@@ -32,11 +32,11 @@ export function getCheckpoint() {
 export function hashCheckpoint(checkpoint) {
   const preview = enc.encode("WARG-MAP-CHECKPOINT-V0")
   console.log({checkpoint})
-  const length = new Uint8Array([checkpoint.contents.logLength])
-  const logRootLength = new Uint8Array([checkpoint.contents.logRoot.length])
-  const logRoot = enc.encode(checkpoint.contents.logRoot)
-  const mapRootLength = new Uint8Array([checkpoint.contents.mapRoot.length])
-  const mapRoot = enc.encode(checkpoint.contents.mapRoot)
+  const length = new Uint8Array([checkpoint.contents.log_length])
+  const logRootLength = new Uint8Array([checkpoint.contents.log_root.length])
+  const logRoot = enc.encode(checkpoint.contents.log_root)
+  const mapRootLength = new Uint8Array([checkpoint.contents.map_root.length])
+  const mapRoot = enc.encode(checkpoint.contents.map_root)
   const total = preview.length + length.length + logRoot.length + logRootLength.length + mapRoot.length + mapRootLength.length
   const all = new Uint8Array(total)
   console.log("HASHING CHECKPOINT")

@@ -1,5 +1,6 @@
 import { component$, useVisibleTask$, useStore, NoSerialize } from "@builder.io/qwik"
-export const Checkpoint = component$((props: {postMessage: NoSerialize<(message: any) => void>}) => {
+import Update from "../update/index"
+export const Checkpoint = component$((props: {postMessage: NoSerialize<(message: any) => void>, root: string}) => {
   const store = useStore({ checkpoint: {key_id: ""}})
 
   useVisibleTask$(async () => {
@@ -11,7 +12,15 @@ export const Checkpoint = component$((props: {postMessage: NoSerialize<(message:
       const waited = await resp.json()
       console.log({waited})
       store.checkpoint = waited.checkpoint;
+      console.log("IN TASK", {props: props})
+      console.log({store})
     })
-  console.log({store})
-  return <div>{store.checkpoint.key_id}</div>
+  console.log({props: props.root})
+  // console.log({store})
+  return <div>
+    <Update postMessage={props.postMessage} root={props.root} 
+    checkpoint={store.checkpoint}
+    />
+    {store.checkpoint.key_id}
+    </div>
 })
