@@ -571,9 +571,12 @@ const protocol = {
     (new Uint8Array(memory0.buffer, ptr1, len1 * 1)).set(src1);
     const ptr2 = utf8Encode(v0_1, realloc1, memory0);
     const len2 = utf8EncodedLen;
+    console.log({len2})
     const ptr3 = utf8Encode(v0_2, realloc1, memory0);
     const len3 = utf8EncodedLen;
-    exports1['protocol#validate'](ptr1, len1, ptr2, len2, ptr3, len3);
+    console.log(exports1['protocol#validate'])
+    console.log({len2})
+    exports1['protocol#validate'](ptr1, len1, ptr2, 71, ptr3, len3);
   },
   
 };

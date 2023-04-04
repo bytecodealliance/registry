@@ -4,7 +4,7 @@
 // import { WasiRandom as WasiRandomImports } from './imports/wasi-random';
 // import { WasiExit as WasiExitImports } from './imports/wasi-exit';
 // import { WasiEnvironment as WasiEnvironmentImports } from './imports/wasi-environment';
-// import { Protocol as ProtocolExports } from './exports/protocol';
+import { Protocol as ProtocolExports } from './exports/protocol';
 export const protocol: typeof ProtocolExports;
 export function helloWorld(): string;
 

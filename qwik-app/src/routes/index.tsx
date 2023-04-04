@@ -19,6 +19,8 @@ export default component$(() => {
   // reg.passthrough();
   useVisibleTask$(async () => {
     if (isBrowser) {
+      const opfsRoot = await navigator.storage.getDirectory();
+      console.log({opfsRoot})
       // const worker = new Worker("web-worker.js", { type: "module" })
       await $init
       const worker = new myWorker()

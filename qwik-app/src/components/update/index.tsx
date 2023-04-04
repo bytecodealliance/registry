@@ -1,45 +1,11 @@
 import { component$, useStore, NoSerialize, useTask$ } from "@builder.io/qwik"
 import { hashCheckpoint } from "../../imports"
 import { reg } from "../../registry/client_storage"
-// import { proto } from "./proto"
-// import { Validator } from "./validator"
 import { $init, 
   protocol
  } from "../../protocol/proto_comp"
 import { ProtoEnvelopeBody } from "~/protocol/exports/protocol"
 
-// const dec = new TextDecoder()
-// const enc = new TextEncoder()
-// enum PERMS {
-//   YANK,
-//   RELEASE
-// }
-
-// function appendBuffer(buffer1: Int8Array, buffer2: Int8Array) {
-//   const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
-//   tmp.set(new Uint8Array(buffer1), 0);
-//   tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
-//   return tmp;
-// }
-// function parseASN1ToIEEEP1363(signature) {
-//     const buffer = new ArrayBuffer(signature.length);
-//     const int8View = new Int8Array(buffer);
-//     for (let i = 0, strLen = signature.length; i < strLen; i++) {
-//       int8View[i] = signature.charCodeAt(i);
-//     }
-    //Currently these bytes getting for SHA256. for other hashings need to make it dynamic
-    // const r = new Int8Array(buffer.slice(4, 36));
-    // const s = new Int8Array(buffer.slice(39));
-    // return appendBuffer(r, s);
-// }
-
-// function appendBuffer(buffer1, buffer2) {
-//   var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
-//   tmp.set(new Uint8Array(buffer1), 0);
-//   tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
-//   return tmp;
-// };
-// const enc = new TextEncoder()
 export default component$((props: {
   postMessage: NoSerialize<(message: any) => void>,
   root: string,
@@ -58,17 +24,13 @@ export default component$((props: {
       } = await resp.json()
       console.log({logs})
       const first = Object.keys(logs.packages)[0]
-      // console.log({resp}, resp.body, {logs})
       const pkg: {content_bytes: string, key_id: string, signature: string}[] = logs.packages[first]
-      // const decoded: {[k: string]: any} | undefined = await proto(pkg.content_bytes)
-      // console.log({decoded})
       const binary_string = window.atob(pkg[0].content_bytes);
       const len = binary_string.length;
       const bytes = new Uint8Array(len);
       for (let i = 0; i < len; i++) {
           bytes[i] = binary_string.charCodeAt(i);
       }
-        // return bytes.buffer;
       console.log({checkpoint: props.checkpoint})
       const envelope: ProtoEnvelopeBody = {
         // contentBytes: enc.encode(pkg[0].content_bytes),
@@ -76,6 +38,7 @@ export default component$((props: {
         keyId: pkg[0].key_id,
         signature: pkg[0].signature
       }
+      console.log({envelope})
       protocol.validate(envelope)
       // const validator = new Validator()
       // if (decoded !== undefined) {
