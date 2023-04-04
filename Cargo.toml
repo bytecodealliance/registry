@@ -8,6 +8,7 @@ rust-version = { workspace = true }
 [dependencies]
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
+proto-comp = { workspace = true }
 warg-client = { workspace = true }
 warg-storage = { workspace = true }
 clap = { workspace = true }
@@ -39,6 +40,7 @@ warg-api = { path = "crates/api" }
 warg-client = { path = "crates/client" }
 warg-crypto = { path = "crates/crypto" }
 warg-protocol = { path = "crates/protocol" }
+proto-comp = { path = "crates/proto-comp" }
 warg-transparency = { path = "crates/transparency" }
 clap = { version = "4.1.8", features = ["derive"] }
 thiserror = "1.0.39"

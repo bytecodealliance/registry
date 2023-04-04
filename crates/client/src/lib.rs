@@ -328,6 +328,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
                 Some(package) => {
                   println!("THE PACkAGE FROM THE MAP {:?}", package);
                     for record in records {
+                        println!("BEFORE HAND THE RECORD {:?}", record);
                         let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
                         println!("THE RECORD {:?}", record);
                         package.state.validate(&record).map_err(|inner| {

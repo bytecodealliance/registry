@@ -2106,6 +2106,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "proto-comp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.0",
+ "hex",
+ "indexmap",
+ "pbjson",
+ "pbjson-build",
+ "pbjson-types",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+ "warg-crypto",
+ "warg-transparency",
+]
+
+[[package]]
 name = "psm"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3072,6 +3095,7 @@ dependencies = [
  "bytes",
  "clap 4.1.9",
  "futures",
+ "proto-comp",
  "thiserror",
  "tokio",
  "tokio-util",

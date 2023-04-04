@@ -1,0 +1,12 @@
+/// An example world for the component to target.
+default world component {
+  export protocol: interface {
+    record proto-envelope-body {
+      content-bytes: list<u8>,
+      key-id: string,
+      signature: string
+    }
+    validate: func(package-record: proto-envelope-body)
+  }
+  export hello-world: func() -> string
+}                
