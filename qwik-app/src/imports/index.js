@@ -1,7 +1,6 @@
 import fs from "fs"
 
 const enc = new TextEncoder()
-const dec = new TextDecoder()
 export function storeRegistryInfo() {
   fs.writeFileSync("./storage.json", "{\"registry\": \"http://127.0.0.1:8090\"}");
 }
@@ -31,7 +30,6 @@ export function getCheckpoint() {
 
 export function hashCheckpoint(checkpoint) {
   const preview = enc.encode("WARG-MAP-CHECKPOINT-V0")
-  console.log({checkpoint})
   const length = new Uint8Array([checkpoint.contents.log_length])
   const logRootLength = new Uint8Array([checkpoint.contents.log_root.length])
   const logRoot = enc.encode(checkpoint.contents.log_root)
@@ -39,7 +37,6 @@ export function hashCheckpoint(checkpoint) {
   const mapRoot = enc.encode(checkpoint.contents.map_root)
   const total = preview.length + length.length + logRoot.length + logRootLength.length + mapRoot.length + mapRootLength.length
   const all = new Uint8Array(total)
-  console.log("HASHING CHECKPOINT")
   all.set(preview)
   all.set(length, preview.length)
   all.set(logRootLength, preview.length + length.length)

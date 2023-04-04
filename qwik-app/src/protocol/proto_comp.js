@@ -561,46 +561,19 @@ let exports3;
 let realloc1;
 let postReturn0;
 const protocol = {
-  validate(arg0, arg1) {
+  validate(arg0) {
     if (!_initialized) throwUninitialized();
-    const ptr0 = utf8Encode(arg0, realloc1, memory0);
-    const len0 = utf8EncodedLen;
-    const {logRoot: v1_0, logLength: v1_1, mapRoot: v1_2 } = arg1;
-    const {algo: v2_0, bytes: v2_1 } = v1_0;
-    const val3 = toString(v2_0);
-    let enum3;
-    switch (val3) {
-      case 'sha256': {
-        enum3 = 0;
-        break;
-      }
-      default: {
-        throw new TypeError(`"${val3}" is not one of the cases of hash-algorithm`);
-      }
-    }
-    const val4 = v2_1;
-    const len4 = val4.byteLength;
-    const ptr4 = realloc1(0, 0, 1, len4 * 1);
-    const src4 = new Uint8Array(val4.buffer || val4, val4.byteOffset, len4 * 1);
-    (new Uint8Array(memory0.buffer, ptr4, len4 * 1)).set(src4);
-    const {algo: v5_0, bytes: v5_1 } = v1_2;
-    const val6 = toString(v5_0);
-    let enum6;
-    switch (val6) {
-      case 'sha256': {
-        enum6 = 0;
-        break;
-      }
-      default: {
-        throw new TypeError(`"${val6}" is not one of the cases of hash-algorithm`);
-      }
-    }
-    const val7 = v5_1;
-    const len7 = val7.byteLength;
-    const ptr7 = realloc1(0, 0, 1, len7 * 1);
-    const src7 = new Uint8Array(val7.buffer || val7, val7.byteOffset, len7 * 1);
-    (new Uint8Array(memory0.buffer, ptr7, len7 * 1)).set(src7);
-    exports1['protocol#validate'](ptr0, len0, enum3, ptr4, len4, toUint32(v1_1), enum6, ptr7, len7);
+    const {contentBytes: v0_0, keyId: v0_1, signature: v0_2 } = arg0;
+    const val1 = v0_0;
+    const len1 = val1.byteLength;
+    const ptr1 = realloc1(0, 0, 1, len1 * 1);
+    const src1 = new Uint8Array(val1.buffer || val1, val1.byteOffset, len1 * 1);
+    (new Uint8Array(memory0.buffer, ptr1, len1 * 1)).set(src1);
+    const ptr2 = utf8Encode(v0_1, realloc1, memory0);
+    const len2 = utf8EncodedLen;
+    const ptr3 = utf8Encode(v0_2, realloc1, memory0);
+    const len3 = utf8EncodedLen;
+    exports1['protocol#validate'](ptr1, len1, ptr2, len2, ptr3, len3);
   },
   
 };

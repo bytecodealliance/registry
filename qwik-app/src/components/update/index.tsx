@@ -1,11 +1,12 @@
 import { component$, useStore, NoSerialize, useTask$ } from "@builder.io/qwik"
 import { hashCheckpoint } from "../../imports"
 import { reg } from "../../registry/client_storage"
-import { proto } from "./proto"
+// import { proto } from "./proto"
 // import { Validator } from "./validator"
 import { $init, 
-  // protocol
+  protocol
  } from "../../protocol/proto_comp"
+import { ProtoEnvelopeBody } from "~/protocol/exports/protocol"
 
 // const dec = new TextDecoder()
 // const enc = new TextEncoder()
@@ -52,14 +53,30 @@ export default component$((props: {
       const resp = await fetch("http://127.0.0.1:8090/fetch/logs", {
         headers: { "Content-Type": "application/json" }, method: "POST", body: JSON.stringify({"root": `sha256:${props.root}`, "packages": {"funny": null}})
       })
-      const logs = await resp.json()
+      const logs: {packages: Record<string,
+        {content_bytes: string, key_id: string, signature: string}[]>
+      } = await resp.json()
       console.log({logs})
+      const first = Object.keys(logs.packages)[0]
       // console.log({resp}, resp.body, {logs})
-      const pkg = logs.packages.funny[0]
-      const decoded: {[k: string]: any} | undefined = await proto(pkg.content_bytes)
-      console.log({decoded})
+      const pkg: {content_bytes: string, key_id: string, signature: string}[] = logs.packages[first]
+      // const decoded: {[k: string]: any} | undefined = await proto(pkg.content_bytes)
+      // console.log({decoded})
+      const binary_string = window.atob(pkg[0].content_bytes);
+      const len = binary_string.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+          bytes[i] = binary_string.charCodeAt(i);
+      }
+        // return bytes.buffer;
       console.log({checkpoint: props.checkpoint})
-      // protocol.validate("foo", )
+      const envelope: ProtoEnvelopeBody = {
+        // contentBytes: enc.encode(pkg[0].content_bytes),
+        contentBytes: bytes,
+        keyId: pkg[0].key_id,
+        signature: pkg[0].signature
+      }
+      protocol.validate(envelope)
       // const validator = new Validator()
       // if (decoded !== undefined) {
       //   for (const entry of decoded.entries) {
@@ -129,9 +146,7 @@ export default component$((props: {
       // })
       // const logs = await resp.json()
       // console.log({logs})
-      console.log("THE HASH", hashCheckpoint(props.checkpoint))
       store.content = reg.getRegistryPass()
-      // const checkpoint = getCheckpoint()
       console.log({checkpoint: props.checkpoint})
       // const { contents } = props.checkpoint 
       // protocol.validate("foo", {
