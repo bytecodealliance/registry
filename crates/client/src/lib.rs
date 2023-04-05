@@ -231,7 +231,6 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             .max_by(|(a, ..), (b, ..)| a.cmp(b))
         {
             Some((version, digest)) => Ok(Some(PackageDownload {
-                url: Self::warg_url(package),
                 version: version.clone(),
                 digest: digest.clone(),
                 path: self.download_content(digest).await?,
@@ -273,7 +272,6 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             })?;
 
         Ok(PackageDownload {
-            url: Self::warg_url(package),
             version: version.clone(),
             digest: digest.clone(),
             path: self.download_content(digest).await?,
@@ -427,13 +425,6 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             }
         }
     }
-
-    fn warg_url(package: &str) -> String {
-        // TODO: currently this is required for parsing WIT packages
-        // When the component model figures out what to store in extern descriptors, this
-        // will likely be removed.
-        format!("warg:///{id}", id = LogId::package_log::<Sha256>(package))
-    }
 }
 
 /// A Warg registry client that uses the local file system to store
@@ -496,13 +487,6 @@ impl FileSystemClient {
 /// Represents information about a downloaded package.
 #[derive(Debug, Clone)]
 pub struct PackageDownload {
-    /// The url of the package.
-    ///
-    /// Currently this is a `warg://` URL for referencing in WIT packages.
-    ///
-    /// This field may be removed when the component model figures out what to store in extern
-    /// descriptors.
-    pub url: String,
     /// The package version that was downloaded.
     pub version: Version,
     /// The digest of the package contents.

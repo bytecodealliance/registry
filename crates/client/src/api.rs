@@ -53,18 +53,24 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + From<String>>(
 
 /// Represents a Warg API client for communicating with
 /// a Warg registry server.
-pub struct Client(Url);
+pub struct Client {
+    url: Url,
+    client: reqwest::Client,
+}
 
 impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl) -> Result<Self> {
         let url = Self::validate_url(url)?;
-        Ok(Self(url))
+        Ok(Self {
+            url,
+            client: reqwest::Client::new(),
+        })
     }
 
     /// Gets the URL of the API client.
     pub fn url(&self) -> &str {
-        self.0.as_str()
+        self.url.as_str()
     }
 
     /// Parses and validates the given URL.
@@ -112,16 +118,16 @@ impl Client {
 
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(&self) -> FetchResult<CheckpointResponse> {
-        let url = self.0.join("fetch/checkpoint").unwrap();
+        let url = self.url.join("fetch/checkpoint").unwrap();
         tracing::debug!("getting latest checkpoint at `{url}`");
         into_result(reqwest::get(url).await.map_err(FetchError::from_error)?).await
     }
 
     /// Fetches package log entries from the registry.
     pub async fn fetch_logs(&self, request: FetchRequest) -> FetchResult<FetchResponse> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(self.0.join("fetch/logs").unwrap())
+        let response = self
+            .client
+            .post(self.url.join("fetch/logs").unwrap())
             .json(&request)
             .send()
             .await
@@ -137,17 +143,16 @@ impl Client {
         record: ProtoEnvelopeBody,
         content_sources: Vec<ContentSource>,
     ) -> PackageResult<PendingRecordResponse> {
-        let client = reqwest::Client::new();
         let request = PublishRequest {
             name: package_name.to_string(),
             record,
             content_sources,
         };
 
-        let url = self.0.join("package").unwrap();
+        let url = self.url.join("package").unwrap();
         tracing::debug!("publishing package `{package_name}` to `{url}`");
         into_result(
-            client
+            self.client
                 .post(url)
                 .json(&request)
                 .send()
@@ -162,7 +167,7 @@ impl Client {
         &self,
         route: &str,
     ) -> PackageResult<PendingRecordResponse> {
-        let url = self.0.join(route).unwrap();
+        let url = self.url.join(route).unwrap();
         tracing::debug!("getting pending package record from `{url}`");
         into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
             .await
@@ -170,7 +175,7 @@ impl Client {
 
     /// Gets the package record from the registry.
     pub async fn get_package_record(&self, route: &str) -> PackageResult<RecordResponse> {
-        let url = self.0.join(route).unwrap();
+        let url = self.url.join(route).unwrap();
         tracing::debug!("getting package record from `{url}`");
         into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
             .await
@@ -182,16 +187,15 @@ impl Client {
         checkpoint: &MapCheckpoint,
         heads: Vec<LogLeaf>,
     ) -> ProofResult<()> {
-        let client = reqwest::Client::new();
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
             heads: heads.clone(),
         };
 
-        let url = self.0.join("proof/inclusion").unwrap();
+        let url = self.url.join("proof/inclusion").unwrap();
         tracing::debug!("proving checkpoint inclusion from `{url}`");
         let response = into_result::<InclusionResponse, ProofError>(
-            client
+            self.client
                 .post(url)
                 .json(&request)
                 .send()
@@ -226,11 +230,10 @@ impl Client {
         digest: &DynHash,
         content: impl Into<Body>,
     ) -> ContentResult<String> {
-        let client = reqwest::Client::new();
-
         let url = self.content_url(digest);
         tracing::debug!("checking if content exists at `{url}`");
-        if client
+        if self
+            .client
             .head(&url)
             .send()
             .await
@@ -243,8 +246,9 @@ impl Client {
 
         tracing::debug!("uploading content to `{url}`");
 
-        let url = self.0.join("content").unwrap();
-        let response = client
+        let url = self.url.join("content").unwrap();
+        let response = self
+            .client
             .post(url)
             .body(content)
             .send()
@@ -266,7 +270,7 @@ impl Client {
             })?;
 
         Ok(self
-            .0
+            .url
             .join(location)
             .map_err(|_| {
                 ContentError::from("returned location header was not relative".to_string())
@@ -294,7 +298,7 @@ impl Client {
     fn content_url(&self, digest: &DynHash) -> String {
         format!(
             "{base}/{digest}",
-            base = self.0.join("content").unwrap(),
+            base = self.url.join("content").unwrap(),
             digest = digest.to_string().replace(':', "-")
         )
     }
