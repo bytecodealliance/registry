@@ -1,0 +1,28 @@
+{
+  "name": "funny",
+  "checkpoint": {
+    "contents": {
+      "log_root": "sha256:1c083898ab4791e2a5ede97db68b082d789fe721a3302fe6ca193c97646af9f7",
+      "log_length": 2,
+      "map_root": "sha256:e54bf76fe186661edda9b9e2589be9c2609e14ecdfb178d3dec4eb4d2b431ed9"
+    },
+    "key_id": "sha256:d6d9b4cd077a829c0275233bf3843c8294e250dfcc82b8ea15745e92982a820d",
+    "signature": "ecdsa-p256:MEUCIAMU68uM67yW0UwRo0BnRZqhNK8M0faYZNxfPJv5zs5MAiEA1Oh31UhEDHoOtoeUgK/dbPY87+0tuycOXQU1/7uaOys="
+  },
+  "state": {
+    "algorithm": "sha256",
+    "head": {
+      "digest": "sha256:ac5bc42fffc1d20ddc79fad9681feeff9375cfab7cca4645f283fe90418948dc",
+      "timestamp": "1680573738.173644000"
+    },
+    "permissions": {
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": [
+        "release",
+        "yank"
+      ]
+    },
+    "keys": {
+      "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb": "ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu"
+    }
+  }
+}

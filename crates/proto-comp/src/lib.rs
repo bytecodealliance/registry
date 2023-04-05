@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use chrono::{DateTime, Utc}; // 0.4.15
 
 use bindings::protocol;
 use serde::{Deserialize, Serialize};
@@ -143,19 +144,55 @@ where
     }
 }
 
+fn perm_binding(perm: package::model::Permission) -> bindings::protocol::Perm {
+  match perm {
+    package::Permission::Release => bindings::protocol::Perm::Release,
+    package::Permission::Yank => bindings::protocol::Perm::Yank,
+  }
+}
+
 impl protocol::Protocol for Component {
   fn validate(
     package_record: bindings::protocol::ProtoEnvelopeBody
-    // private_key: String, contents: bindings::protocol::MapCheckpoint
-  ) {
-    println!("THIS IS THE CONTENTS {:?}", package_record);
-    println!("LENGTH OF KEY ID {:?}", package_record.key_id.chars().count());
+  ) -> bindings::protocol::PackageInfo {
     let mut package = PackageInfo::new("funny");
-    println!("THE PACKAGE {:?}", package);
     let rec: MyBody = MyBody(package_record);
     let record: ProtoEnvelope<package::model::PackageRecord> = rec.try_into().unwrap();
     let res = package.state.validate(&record);
-    println!("VALIDATION OVER {:?}", res);
+    println!("THE PACKAGE {:?}", package);
+    let mut permissions = Vec::new();
+    for (key, value) in package.state.permissions {
+      permissions.push(bindings::protocol::PermEntry {
+        key_id: key.to_string(),
+        perms: value.into_iter().map(|p: package::model::Permission| perm_binding(p)).collect()
+      })
+    }
+    let mut keys = Vec::new();
+    for (key, value) in package.state.keys {
+      keys.push(bindings::protocol::KeyEntry {
+        key_id: key.to_string(),
+        public_key: value.to_string()
+      })
+    }
+    return bindings::protocol::PackageInfo {
+      name: package.name,
+      checkpoint: package.checkpoint,
+      state: bindings::protocol::Validator {
+        algorithm: Some(bindings::protocol::HashAlgorithm::Sha256),
+        head: Some(bindings::protocol::Head {
+          digest: bindings::protocol::RecordId::DynHash(bindings::protocol::DynHash {
+              algo: bindings::protocol::HashAlgorithm::Sha256,
+              bytes: package.state.head.as_ref().map(|h| {h.digest.0.bytes().to_vec()})
+            }),
+          timestamp: package.state.head.map(|h| {
+            let t: DateTime<Utc> = h.timestamp.into();
+            t.to_rfc3339()
+          })
+        }),
+        permissions,
+        keys: Some(keys)
+      }
+    }
   }
 }
 

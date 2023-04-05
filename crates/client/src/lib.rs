@@ -337,6 +337,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
                                 inner,
                             }
                         })?;
+                        println!("THE PACKAGE BEFORE INCLUSION {:?}", package);
                     }
 
                     if let Some(head) = package.state.head() {
@@ -359,6 +360,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
+            println!("package being stored {:?}", package);
             self.packages.store_package(package).await?;
         }
 

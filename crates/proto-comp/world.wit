@@ -6,7 +6,44 @@ default world component {
       key-id: string,
       signature: string
     }
-    validate: func(package-record: proto-envelope-body)
+    enum hash-algorithm {
+      sha256
+    }
+    record dyn-hash {
+      algo: hash-algorithm,
+      bytes: option<list<u8>>
+    }
+    variant record-id {
+      dyn-hash(dyn-hash)
+    }
+    record head {
+      digest: record-id,
+      timestamp: option<string>
+    }
+    enum perm {
+      release,
+      yank
+    }
+    record perm-entry {
+      key-id: string,
+      perms: list<perm>
+    }
+    record key-entry {
+      key-id: string,
+      public-key: string
+    }
+    record validator {
+      algorithm: option<hash-algorithm>,
+      head: option<head>,
+      permissions: list<perm-entry>,
+      keys: option<list<key-entry>>,
+    }
+    record package-info {
+      name: string,
+      checkpoint: option<string>,
+      state: validator
+    }
+    validate: func(package-record: proto-envelope-body) -> package-info
   }
   export hello-world: func() -> string
 }                

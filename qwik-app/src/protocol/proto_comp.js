@@ -560,6 +560,7 @@ function lowering9(arg0) {
 let exports3;
 let realloc1;
 let postReturn0;
+let postReturn1;
 const protocol = {
   validate(arg0) {
     if (!_initialized) throwUninitialized();
@@ -571,12 +572,205 @@ const protocol = {
     (new Uint8Array(memory0.buffer, ptr1, len1 * 1)).set(src1);
     const ptr2 = utf8Encode(v0_1, realloc1, memory0);
     const len2 = utf8EncodedLen;
-    console.log({len2})
     const ptr3 = utf8Encode(v0_2, realloc1, memory0);
     const len3 = utf8EncodedLen;
-    console.log(exports1['protocol#validate'])
-    console.log({len2})
-    exports1['protocol#validate'](ptr1, len1, ptr2, 71, ptr3, len3);
+    const ret = exports1['protocol#validate'](ptr1, len1, ptr2, 71, ptr3, len3);
+    const ptr4 = dataView(memory0).getInt32(ret + 0, true);
+    const len4 = dataView(memory0).getInt32(ret + 4, true);
+    const result4 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr4, len4));
+    let variant6;
+    switch (dataView(memory0).getUint8(ret + 8, true)) {
+      case 0: {
+        variant6 = null;
+        break;
+      }
+      case 1: {
+        const ptr5 = dataView(memory0).getInt32(ret + 12, true);
+        const len5 = dataView(memory0).getInt32(ret + 16, true);
+        const result5 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr5, len5));
+        variant6 = result5;
+        break;
+      }
+      default: {
+        throw new TypeError('invalid variant discriminant for option');
+      }
+    }
+    let variant8;
+    switch (dataView(memory0).getUint8(ret + 20, true)) {
+      case 0: {
+        variant8 = null;
+        break;
+      }
+      case 1: {
+        let enum7;
+        switch (dataView(memory0).getUint8(ret + 21, true)) {
+          case 0: {
+            enum7 = 'sha256';
+            break;
+          }
+          default: {
+            throw new TypeError('invalid discriminant specified for HashAlgorithm');
+          }
+        }
+        variant8 = enum7;
+        break;
+      }
+      default: {
+        throw new TypeError('invalid variant discriminant for option');
+      }
+    }
+    let variant15;
+    switch (dataView(memory0).getUint8(ret + 24, true)) {
+      case 0: {
+        variant15 = null;
+        break;
+      }
+      case 1: {
+        let variant12;
+        switch (dataView(memory0).getUint8(ret + 28, true)) {
+          case 0: {
+            let enum9;
+            switch (dataView(memory0).getUint8(ret + 32, true)) {
+              case 0: {
+                enum9 = 'sha256';
+                break;
+              }
+              default: {
+                throw new TypeError('invalid discriminant specified for HashAlgorithm');
+              }
+            }
+            let variant11;
+            switch (dataView(memory0).getUint8(ret + 36, true)) {
+              case 0: {
+                variant11 = null;
+                break;
+              }
+              case 1: {
+                const ptr10 = dataView(memory0).getInt32(ret + 40, true);
+                const len10 = dataView(memory0).getInt32(ret + 44, true);
+                const result10 = new Uint8Array(memory0.buffer.slice(ptr10, ptr10 + len10 * 1));
+                variant11 = result10;
+                break;
+              }
+              default: {
+                throw new TypeError('invalid variant discriminant for option');
+              }
+            }
+            variant12= {
+              tag: 'dyn-hash',
+              val: {
+                algo: enum9,
+                bytes: variant11,
+              }
+            };
+            break;
+          }
+          default: {
+            throw new TypeError('invalid variant discriminant for RecordId');
+          }
+        }
+        let variant14;
+        switch (dataView(memory0).getUint8(ret + 48, true)) {
+          case 0: {
+            variant14 = null;
+            break;
+          }
+          case 1: {
+            const ptr13 = dataView(memory0).getInt32(ret + 52, true);
+            const len13 = dataView(memory0).getInt32(ret + 56, true);
+            const result13 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr13, len13));
+            variant14 = result13;
+            break;
+          }
+          default: {
+            throw new TypeError('invalid variant discriminant for option');
+          }
+        }
+        variant15 = {
+          digest: variant12,
+          timestamp: variant14,
+        };
+        break;
+      }
+      default: {
+        throw new TypeError('invalid variant discriminant for option');
+      }
+    }
+    const len19 = dataView(memory0).getInt32(ret + 64, true);
+    const base19 = dataView(memory0).getInt32(ret + 60, true);
+    const result19 = [];
+    for (let i = 0; i < len19; i++) {
+      const base = base19 + i * 16;
+      const ptr16 = dataView(memory0).getInt32(base + 0, true);
+      const len16 = dataView(memory0).getInt32(base + 4, true);
+      const result16 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr16, len16));
+      const len18 = dataView(memory0).getInt32(base + 12, true);
+      const base18 = dataView(memory0).getInt32(base + 8, true);
+      const result18 = [];
+      for (let i = 0; i < len18; i++) {
+        const base = base18 + i * 1;
+        let enum17;
+        switch (dataView(memory0).getUint8(base + 0, true)) {
+          case 0: {
+            enum17 = 'release';
+            break;
+          }
+          case 1: {
+            enum17 = 'yank';
+            break;
+          }
+          default: {
+            throw new TypeError('invalid discriminant specified for Perm');
+          }
+        }
+        result18.push(enum17);
+      }
+      result19.push({
+        keyId: result16,
+        perms: result18,
+      });
+    }
+    let variant23;
+    switch (dataView(memory0).getUint8(ret + 68, true)) {
+      case 0: {
+        variant23 = null;
+        break;
+      }
+      case 1: {
+        const len22 = dataView(memory0).getInt32(ret + 76, true);
+        const base22 = dataView(memory0).getInt32(ret + 72, true);
+        const result22 = [];
+        for (let i = 0; i < len22; i++) {
+          const base = base22 + i * 16;
+          const ptr20 = dataView(memory0).getInt32(base + 0, true);
+          const len20 = dataView(memory0).getInt32(base + 4, true);
+          const result20 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr20, len20));
+          const ptr21 = dataView(memory0).getInt32(base + 8, true);
+          const len21 = dataView(memory0).getInt32(base + 12, true);
+          const result21 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr21, len21));
+          result22.push({
+            keyId: result20,
+            publicKey: result21,
+          });
+        }
+        variant23 = result22;
+        break;
+      }
+      default: {
+        throw new TypeError('invalid variant discriminant for option');
+      }
+    }
+    postReturn0(ret);
+    return {
+      name: result4,
+      checkpoint: variant6,
+      state: {
+        algorithm: variant8,
+        head: variant15,
+        permissions: result19,
+        keys: variant23,
+      },
+    };
   },
   
 };
@@ -587,7 +781,7 @@ function helloWorld() {
   const ptr0 = dataView(memory0).getInt32(ret + 0, true);
   const len0 = dataView(memory0).getInt32(ret + 4, true);
   const result0 = utf8Decoder.decode(new Uint8Array(memory0.buffer, ptr0, len0));
-  postReturn0(ret);
+  postReturn1(ret);
   return result0;
 }
 
@@ -659,6 +853,7 @@ export const $init = (async() => {
     },
   }));
   realloc1 = exports1.cabi_realloc;
-  postReturn0 = exports1['cabi_post_hello-world'];
+  postReturn0 = exports1['cabi_post_protocol#validate'];
+  postReturn1 = exports1['cabi_post_hello-world'];
   _initialized = true;
 })();

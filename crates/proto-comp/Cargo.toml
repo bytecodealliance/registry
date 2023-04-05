@@ -21,6 +21,7 @@ serde_with = { workspace = true }
 semver = { workspace = true }
 indexmap = { workspace = true }
 serde_json.workspace = true
+chrono = "0.4.24"
 
 [lib]
 crate-type = ["cdylib"]

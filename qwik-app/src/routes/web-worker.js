@@ -2,7 +2,7 @@
 // const reg = require("../src/registry/client_storage.js")
 import { reg } from "../registry/client_storage"
 
-addEventListener("message", (e) => {
+addEventListener("message", async (e) => {
   console.log("EVENT DATA for will", e)
   if (e.data.type === "makeRequest") {
     const xhr = new XMLHttpRequest()
@@ -16,6 +16,13 @@ addEventListener("message", (e) => {
     console.log("IN FOO BRANCH")
     console.log("event", e.data)
 
-    // reg.passthrough()
+  } else if (e.data.type === "opfs") {
+    const opfsRoot = await navigator.storage.getDirectory();
+    const fileHandle = await opfsRoot.getFileHandle('my first file', {create: true});
+    const contents = 'Some text';
+    const writable = await fileHandle.createWritable();
+    await writable.write(contents);
+    await writable.close();
+
   }
 })
