@@ -1,5 +1,5 @@
 [package]
-name = "proto-comp"
+name = "protocol-wasm"
 version = "0.1.0"
 edition = "2021"
 

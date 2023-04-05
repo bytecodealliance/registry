@@ -2109,7 +2109,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "proto-comp"
+name = "protocol-wasm"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3110,7 +3110,7 @@ dependencies = [
  "bytes",
  "clap 4.1.9",
  "futures",
- "proto-comp",
+ "protocol-wasm",
  "thiserror",
  "tokio",
  "tokio-util",
