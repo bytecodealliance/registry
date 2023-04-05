@@ -6,7 +6,9 @@ use crate::storage::PackageInfo;
 use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
-use storage::{ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PackageStorage};
+use storage::{
+    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PackageStorage, PublishInfo,
+};
 use thiserror::Error;
 use warg_api::{
     content::{ContentError, ContentSource, ContentSourceKind},
@@ -73,6 +75,19 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
+        let res = self.publish_with_info(signing_key, info).await;
+        self.packages.store_publish(None).await?;
+        res
+    }
+
+    /// Submits the provided publish information.
+    ///
+    /// Any publish information in client storage is ignored.
+    pub async fn publish_with_info(
+        &self,
+        signing_key: &signing::PrivateKey,
+        info: PublishInfo,
+    ) -> ClientResult<()> {
         if info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
                 package: info.package.clone(),
@@ -150,7 +165,6 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
                     .await?,
             )
             .await?;
-        self.packages.store_publish(None).await?;
 
         // Finally, update the checkpoint again post-publish
         self.update_checkpoint(response.checkpoint.as_ref(), [&mut package])
