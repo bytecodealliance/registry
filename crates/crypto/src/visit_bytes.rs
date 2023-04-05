@@ -1,7 +1,10 @@
 pub trait ByteVisitor {
     fn visit_bytes(&mut self, bytes: impl AsRef<[u8]>);
 
-    fn visit_nested(&mut self, nested: impl VisitBytes) where Self: std::fmt::Debug {
+    fn visit_nested(&mut self, nested: impl VisitBytes)
+    where
+        Self: std::fmt::Debug,
+    {
         nested.visit(self)
     }
 }

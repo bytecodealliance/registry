@@ -6,10 +6,10 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
-  };
-use tower_http::cors::{Any, CorsLayer};
+};
 use indexmap::IndexMap;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 use warg_api::fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse};
 
 #[derive(Clone)]

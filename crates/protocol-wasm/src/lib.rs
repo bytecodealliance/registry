@@ -1,5 +1,5 @@
-use std::str::FromStr;
-use chrono::{DateTime, Utc}; // 0.4.15
+use chrono::{DateTime, Utc};
+use std::str::FromStr; // 0.4.15
 
 use bindings::protocol;
 use serde::{Deserialize, Serialize};
@@ -12,10 +12,10 @@ mod serde_envelope;
 
 pub use semver::{Version, VersionReq};
 
+use anyhow::Error;
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
 pub use serde_envelope::SerdeEnvelope;
 use warg_crypto::{signing, Decode};
-use anyhow::Error;
 
 /// Represents information about a registry package.
 #[derive(Debug, Clone)]
@@ -34,10 +34,9 @@ pub struct PackageInfo {
 
 impl PackageInfo {
     /// Creates a new package info for the given package name and url.
-    pub fn new(name: impl Into<String>
-      // checkpoint: bindings::protocol::MapCheckpoint
+    pub fn new(name: impl Into<String>, // checkpoint: bindings::protocol::MapCheckpoint
     ) -> Self {
-      // println!("NEW PACKAGE");
+        // println!("NEW PACKAGE");
         Self {
             name: name.into(),
             checkpoint: None,
@@ -121,7 +120,6 @@ impl bindings::Component for Component {
     }
 }
 
-
 #[derive(Debug)]
 struct MyBody(bindings::protocol::ProtoEnvelopeBody);
 
@@ -132,7 +130,7 @@ where
     type Error = Error;
 
     fn try_from(value: MyBody) -> Result<Self, Self::Error> {
-      println!("TRYING FROM {:?}", &value);
+        println!("TRYING FROM {:?}", &value);
         let contents = Content::decode(&value.0.content_bytes)?;
         let envelope = ProtoEnvelope {
             contents,
@@ -145,55 +143,62 @@ where
 }
 
 fn perm_binding(perm: package::model::Permission) -> bindings::protocol::Perm {
-  match perm {
-    package::Permission::Release => bindings::protocol::Perm::Release,
-    package::Permission::Yank => bindings::protocol::Perm::Yank,
-  }
+    match perm {
+        package::Permission::Release => bindings::protocol::Perm::Release,
+        package::Permission::Yank => bindings::protocol::Perm::Yank,
+    }
 }
 
 impl protocol::Protocol for Component {
-  fn validate(
-    package_record: bindings::protocol::ProtoEnvelopeBody
-  ) -> bindings::protocol::PackageInfo {
-    let mut package = PackageInfo::new("funny");
-    let rec: MyBody = MyBody(package_record);
-    let record: ProtoEnvelope<package::model::PackageRecord> = rec.try_into().unwrap();
-    let res = package.state.validate(&record);
-    println!("THE PACKAGE {:?}", package);
-    let mut permissions = Vec::new();
-    for (key, value) in package.state.permissions {
-      permissions.push(bindings::protocol::PermEntry {
-        key_id: key.to_string(),
-        perms: value.into_iter().map(|p: package::model::Permission| perm_binding(p)).collect()
-      })
+    fn validate(
+        package_record: bindings::protocol::ProtoEnvelopeBody,
+    ) -> bindings::protocol::PackageInfo {
+        let mut package = PackageInfo::new("funny");
+        let rec: MyBody = MyBody(package_record);
+        let record: ProtoEnvelope<package::model::PackageRecord> = rec.try_into().unwrap();
+        let res = package.state.validate(&record);
+        println!("THE PACKAGE {:?}", package);
+        let mut permissions = Vec::new();
+        for (key, value) in package.state.permissions {
+            permissions.push(bindings::protocol::PermEntry {
+                key_id: key.to_string(),
+                perms: value
+                    .into_iter()
+                    .map(|p: package::model::Permission| perm_binding(p))
+                    .collect(),
+            })
+        }
+        let mut keys = Vec::new();
+        for (key, value) in package.state.keys {
+            keys.push(bindings::protocol::KeyEntry {
+                key_id: key.to_string(),
+                public_key: value.to_string(),
+            })
+        }
+        return bindings::protocol::PackageInfo {
+            name: package.name,
+            checkpoint: package.checkpoint,
+            state: bindings::protocol::Validator {
+                algorithm: Some(bindings::protocol::HashAlgorithm::Sha256),
+                head: Some(bindings::protocol::Head {
+                    digest: bindings::protocol::RecordId::DynHash(bindings::protocol::DynHash {
+                        algo: bindings::protocol::HashAlgorithm::Sha256,
+                        bytes: package
+                            .state
+                            .head
+                            .as_ref()
+                            .map(|h| h.digest.0.bytes().to_vec()),
+                    }),
+                    timestamp: package.state.head.map(|h| {
+                        let t: DateTime<Utc> = h.timestamp.into();
+                        t.to_rfc3339()
+                    }),
+                }),
+                permissions,
+                keys: Some(keys),
+            },
+        };
     }
-    let mut keys = Vec::new();
-    for (key, value) in package.state.keys {
-      keys.push(bindings::protocol::KeyEntry {
-        key_id: key.to_string(),
-        public_key: value.to_string()
-      })
-    }
-    return bindings::protocol::PackageInfo {
-      name: package.name,
-      checkpoint: package.checkpoint,
-      state: bindings::protocol::Validator {
-        algorithm: Some(bindings::protocol::HashAlgorithm::Sha256),
-        head: Some(bindings::protocol::Head {
-          digest: bindings::protocol::RecordId::DynHash(bindings::protocol::DynHash {
-              algo: bindings::protocol::HashAlgorithm::Sha256,
-              bytes: package.state.head.as_ref().map(|h| {h.digest.0.bytes().to_vec()})
-            }),
-          timestamp: package.state.head.map(|h| {
-            let t: DateTime<Utc> = h.timestamp.into();
-            t.to_rfc3339()
-          })
-        }),
-        permissions,
-        keys: Some(keys)
-      }
-    }
-  }
 }
 
 bindings::export!(Component);

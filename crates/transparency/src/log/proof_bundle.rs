@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
-use std::{collections::HashSet, marker::PhantomData, fmt::Debug};
+use std::{collections::HashSet, fmt::Debug, marker::PhantomData};
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,

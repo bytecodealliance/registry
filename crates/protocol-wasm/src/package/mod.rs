@@ -26,7 +26,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
-      println!("SOMETHOW MISSED THIS \n\n\n {:?}", record);
+        println!("SOMETHOW MISSED THIS \n\n\n {:?}", record);
         let prev: Option<RecordId> = match record.prev {
             Some(hash_string) => {
                 let hash: DynHash = hash_string.parse()?;

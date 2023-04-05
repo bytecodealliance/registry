@@ -1,7 +1,10 @@
 use crate::ByteVisitor;
 
 pub trait VisitPrefixEncode {
-    fn visit_pe<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut PrefixEncodeVisitor<BV>);
+    fn visit_pe<BV: ?Sized + ByteVisitor + std::fmt::Debug>(
+        &self,
+        visitor: &mut PrefixEncodeVisitor<BV>,
+    );
 
     fn visit_bv<BV: ?Sized + ByteVisitor + std::fmt::Debug>(&self, visitor: &mut BV) {
         let mut prefix_visitor = PrefixEncodeVisitor::new(visitor);

@@ -45,7 +45,7 @@ impl<Contents> SerdeEnvelope<Contents> {
     // }
 }
 
-impl<Content> AsRef<Content> for SerdeEnvelope<Content>{
+impl<Content> AsRef<Content> for SerdeEnvelope<Content> {
     fn as_ref(&self) -> &Content {
         &self.contents
     }

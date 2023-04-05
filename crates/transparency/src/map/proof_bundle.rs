@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 use anyhow::Error;
 use prost::Message;
+use std::fmt::Debug;
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
 };
-use std::fmt::Debug;
 
 use crate::{map::proof::Proof, protobuf};
 
