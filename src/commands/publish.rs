@@ -1,20 +1,15 @@
 use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
-use async_trait::async_trait;
-use bytes::Bytes;
 use clap::{Args, Subcommand};
-use futures::{Stream, TryStreamExt};
-use std::{env, future::Future, path::PathBuf, pin::Pin};
+use futures::TryStreamExt;
+use std::{env, future::Future, path::PathBuf};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
-    storage::{
-        ContentStorage as _, FileSystemContentStorage, FileSystemPackageStorage, PackageInfo,
-        PackageStorage as _, PublishEntry, PublishInfo,
-    },
-    Client, FileSystemClient,
+    storage::{ContentStorage as _, PackageStorage as _, PublishEntry, PublishInfo},
+    FileSystemClient,
 };
-use warg_crypto::{hash::DynHash, signing};
+use warg_crypto::signing;
 use warg_protocol::Version;
 
 // TODO: convert this to proper CLI options.
@@ -63,17 +58,9 @@ where
 }
 
 /// Submits a publish to the registry.
-async fn submit(client: &FileSystemClient, info: &PublishInfo) -> Result<()> {
+async fn submit(client: &FileSystemClient, info: PublishInfo) -> Result<()> {
     let signing_key = demo_signing_key()?;
-    let client = Client::new(
-        client.url(),
-        PackageStorage {
-            storage: client.packages(),
-            info,
-        },
-        ContentStorage(client.content()),
-    )?;
-    client.publish(&signing_key).await?;
+    client.publish_with_info(&signing_key, info).await?;
     Ok(())
 }
 
@@ -134,7 +121,7 @@ impl PublishInitCommand {
             Some(entry) => {
                 submit(
                     &client,
-                    &PublishInfo {
+                    PublishInfo {
                         package: self.name.clone(),
                         entries: vec![entry],
                     },
@@ -207,7 +194,7 @@ impl PublishReleaseCommand {
             Some(entry) => {
                 submit(
                     &client,
-                    &PublishInfo {
+                    PublishInfo {
                         package: self.name.clone(),
                         entries: vec![entry],
                     },
@@ -361,7 +348,9 @@ impl PublishSubmitCommand {
                     package = info.package
                 );
 
-                submit(&client, &info).await?;
+                submit(&client, info.clone()).await?;
+
+                client.packages().store_publish(None).await?;
 
                 for entry in &info.entries {
                     match entry {
@@ -385,62 +374,5 @@ impl PublishSubmitCommand {
         }
 
         Ok(())
-    }
-}
-
-/// A package storage implementation that can be used to immediately
-/// publish a package.
-struct PackageStorage<'a> {
-    storage: &'a FileSystemPackageStorage,
-    info: &'a PublishInfo,
-}
-
-#[async_trait]
-impl<'a> warg_client::storage::PackageStorage for PackageStorage<'a> {
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
-        self.storage.load_packages().await
-    }
-
-    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {
-        self.storage.load_package(package).await
-    }
-
-    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
-        self.storage.store_package(info).await
-    }
-
-    async fn load_publish(&self) -> Result<Option<PublishInfo>> {
-        Ok(Some(self.info.clone()))
-    }
-
-    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()> {
-        assert!(info.is_none());
-        self.storage.store_publish(info).await
-    }
-}
-
-/// A wrapper around a content storage implementation that can be used
-/// to immediately publish a package.
-struct ContentStorage<'a>(&'a FileSystemContentStorage);
-
-#[async_trait]
-impl warg_client::storage::ContentStorage for ContentStorage<'_> {
-    fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
-        self.0.content_location(digest)
-    }
-
-    async fn load_content(
-        &self,
-        digest: &DynHash,
-    ) -> Result<Option<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>>> {
-        self.0.load_content(digest).await
-    }
-
-    async fn store_content(
-        &self,
-        stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
-        expected_digest: Option<&DynHash>,
-    ) -> Result<DynHash> {
-        self.0.store_content(stream, expected_digest).await
     }
 }
