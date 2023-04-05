@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use std::str::FromStr; // 0.4.15
 
 use bindings::protocol;
-use serde::{Deserialize, Serialize};
 struct Component;
 pub mod operator;
 pub mod package;

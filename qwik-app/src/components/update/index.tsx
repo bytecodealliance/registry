@@ -1,6 +1,5 @@
 import { component$, useStore, NoSerialize, useTask$ } from "@builder.io/qwik"
 import { hashCheckpoint } from "../../imports"
-// import { reg } from "../../registry/client_storage"
 import { $init, 
   protocol
  } from "../../protocol/proto_comp"

@@ -1,6 +1,4 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-// const reg = require("../src/registry/client_storage.js")
-import { reg } from "../registry/client_storage"
 
 addEventListener("message", async (e) => {
   console.log("EVENT DATA for will", e)
@@ -12,7 +10,6 @@ addEventListener("message", async (e) => {
     console.log("WEB WORKER", {resp})
     postMessage(resp)
   } else if (e.data.type === "foo") {
-    console.log({reg})
     console.log("IN FOO BRANCH")
     console.log("event", e.data)
 
