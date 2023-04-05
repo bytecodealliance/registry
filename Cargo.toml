@@ -10,7 +10,6 @@ warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 proto-comp = { workspace = true }
 warg-client = { workspace = true }
-warg-storage = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -35,7 +34,6 @@ edition = "2021"
 rust-version = "1.66.0"
 
 [workspace.dependencies]
-warg-storage = { path = "crates/storage" }
 warg-api = { path = "crates/api" }
 warg-client = { path = "crates/client" }
 warg-crypto = { path = "crates/crypto" }

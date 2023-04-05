@@ -3118,7 +3118,6 @@ dependencies = [
  "warg-client",
  "warg-crypto",
  "warg-protocol",
- "warg-storage",
  "wasmtime",
  "wasmtime-wasi",
 ]
@@ -3218,18 +3217,6 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",
-]
-
-[[package]]
-name = "warg-storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tempfile",
- "warg-crypto",
- "warg-protocol",
 ]
 
 [[package]]
