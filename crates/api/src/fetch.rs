@@ -10,7 +10,6 @@ use warg_protocol::{
     ProtoEnvelopeBody, SerdeEnvelope,
 };
 
-
 /// Represents a fetch request.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

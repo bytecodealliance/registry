@@ -120,7 +120,6 @@ impl Client {
     /// Fetches package log entries from the registry.
     pub async fn fetch_logs(&self, request: FetchRequest) -> FetchResult<FetchResponse> {
         let client = reqwest::Client::new();
-        println!("THE REQUEST FOR LOGS {:?}", request);
         let response = client
             .post(self.0.join("fetch/logs").unwrap())
             .json(&request)

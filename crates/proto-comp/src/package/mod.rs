@@ -18,7 +18,6 @@ pub const PACKAGE_RECORD_VERSION: u32 = 0;
 
 impl Decode for model::PackageRecord {
     fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        println!("DECODEING PACKAGE RECORD,");
         protobuf::PackageRecord::decode(bytes)?.try_into()
     }
 }

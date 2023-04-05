@@ -36,8 +36,6 @@ where
 
 impl<D: SupportedDigest + fmt::Debug> ByteVisitor for HashVisitor<D> {
     fn visit_bytes(&mut self, bytes: impl AsRef<[u8]>) {
-      // let s: = bytes.;
-      println!("THE BYTES {:?}", std::str::from_utf8(bytes.as_ref()));
         self.digest.update(bytes)
     }
 }

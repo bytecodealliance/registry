@@ -37,7 +37,7 @@ impl FromStr for HashAlgorithm {
     }
 }
 
-pub trait SupportedDigest: Digest + private::Sealed + fmt::Debug{
+pub trait SupportedDigest: Digest + private::Sealed + fmt::Debug {
     const ALGORITHM: HashAlgorithm;
 }
 

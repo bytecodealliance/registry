@@ -30,8 +30,6 @@ where
 
     pub fn visit_unsigned(&mut self, i: u64) {
         let len = leb128::write::unsigned(&mut self.buffer.as_mut_slice(), i).unwrap();
-        println!("len {}", len);
-        println!("VISITED BYTES {:?}", &self.buffer[..len]);
         self.inner.visit_bytes(&self.buffer[..len]);
     }
 
@@ -40,8 +38,6 @@ where
     }
 
     pub fn visit_str(&mut self, s: &str) {
-        println!("THE LENGTH OF STRING {}", s.len());
-        println!("THE RAW STRING {}", s);
         self.visit_unsigned(s.len() as u64);
         self.visit_str_raw(s);
     }

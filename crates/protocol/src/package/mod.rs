@@ -18,7 +18,6 @@ pub const PACKAGE_RECORD_VERSION: u32 = 0;
 
 impl Decode for model::PackageRecord {
     fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        println!("DECODEING PACKAGE RECORD");
         protobuf::PackageRecord::decode(bytes)?.try_into()
     }
 }
@@ -27,7 +26,6 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
-      println!("SOMETHOW MISSED THIS \n\n\n {:?}", record);
         let prev: Option<RecordId> = match record.prev {
             Some(hash_string) => {
                 let hash: DynHash = hash_string.parse()?;

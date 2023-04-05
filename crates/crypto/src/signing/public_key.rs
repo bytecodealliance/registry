@@ -41,7 +41,6 @@ impl PublicKey {
             .digest_algorithm()
             .digest(format!("{}", self).as_bytes());
 
-        println!("KEY HASH: {:?}", key_hash);
         KeyID(format!("{}", key_hash))
     }
 }

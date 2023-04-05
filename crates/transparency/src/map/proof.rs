@@ -78,7 +78,6 @@ where
         // Loop over each side and peer.
         let peers = fill.chain(self.peers.iter().cloned());
         for (side, peer) in path.rev().zip(peers) {
-            println!("THE SIDE : {:?}", side);
             hash = match side {
                 Side::Left => hash_branch(Some(hash), peer),
                 Side::Right => hash_branch(peer, Some(hash)),

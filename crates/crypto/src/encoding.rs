@@ -45,13 +45,7 @@ pub trait Signable: Encode {
         msg: &[u8],
         signature: &signing::Signature,
     ) -> Result<(), SignatureError> {
-        println!("THE SIGNATURE {:?}", signature.bytes());
-        println!("THE PREFIX {:?}", Self::PREFIX);
         let prefixed_content = [Self::PREFIX, b":", msg].concat();
-        println!("PREFIXED CONTENT: {:?}", prefixed_content);
-        println!("PUBLIC KEY {:?}", public_key);
-        let verification = public_key.verify(&prefixed_content, signature);
-        println!("THE VERIFICATION {:?}", verification);
-        verification
+        public_key.verify(&prefixed_content, signature)
     }
 }

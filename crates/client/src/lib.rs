@@ -320,24 +320,19 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
                     .collect(),
             })
             .await?;
-        println!("fetched logs: {:?}", response);
 
         let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {
             match packages.get_mut(&name) {
                 Some(package) => {
-                  println!("THE PACkAGE FROM THE MAP {:?}", package);
                     for record in records {
-                        println!("BEFORE HAND THE RECORD {:?}", record);
                         let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
-                        println!("THE RECORD {:?}", record);
                         package.state.validate(&record).map_err(|inner| {
                             ClientError::PackageValidationFailed {
                                 package: name.clone(),
                                 inner,
                             }
                         })?;
-                        println!("THE PACKAGE BEFORE INCLUSION {:?}", package);
                     }
 
                     if let Some(head) = package.state.head() {
@@ -355,12 +350,10 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             }
         }
 
-        println!("THE HEADS {:?}", heads);
         self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            println!("package being stored {:?}", package);
             self.packages.store_package(package).await?;
         }
 
