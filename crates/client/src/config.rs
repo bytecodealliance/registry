@@ -14,6 +14,22 @@ use std::{
 
 static CACHE_DIR: Lazy<Option<PathBuf>> = Lazy::new(dirs::cache_dir);
 static CONFIG_DIR: Lazy<Option<PathBuf>> = Lazy::new(dirs::config_dir);
+static CONFIG_FILE_NAME: &str = "warg-config.json";
+
+fn find_warg_config(cwd: &Path) -> Option<PathBuf> {
+    let mut current = Some(cwd);
+
+    while let Some(dir) = current {
+        let config = dir.join(CONFIG_FILE_NAME);
+        if config.is_file() {
+            return Some(config);
+        }
+
+        current = dir.parent();
+    }
+
+    None
+}
 
 /// Normalize a path, removing things like `.` and `..`.
 /// Sourced from: https://github.com/rust-lang/cargo/blob/15d090969743630bff549a1b068bcaa8174e5ee3/crates/cargo-util/src/paths.rs#L82
@@ -155,20 +171,20 @@ impl Config {
     ///
     /// The following paths are checked in order:
     ///
-    /// * `./warg-config.json`
+    /// * `warg-config.json` at the current directory and its parents
     /// * `$CONFIG_DIR/warg/config.json`
     ///
     /// Where `$CONFIG_DIR` is the platform-specific configuration directory.
     ///
     /// Returns `Ok(None)` if no configuration file was found.
     pub fn from_default_file() -> Result<Option<Self>> {
-        for path in [
-            PathBuf::from("warg-config.json"),
-            Self::default_config_path()?,
-        ] {
-            if path.is_file() {
-                return Ok(Some(Self::from_file(path)?));
-            }
+        if let Some(path) = find_warg_config(&std::env::current_dir()?) {
+            return Ok(Some(Self::from_file(path)?));
+        }
+
+        let path = Self::default_config_path()?;
+        if path.is_file() {
+            return Ok(Some(Self::from_file(path)?));
         }
 
         Ok(None)
