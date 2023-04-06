@@ -33,9 +33,8 @@ pub struct PackageInfo {
 
 impl PackageInfo {
     /// Creates a new package info for the given package name and url.
-    pub fn new(name: impl Into<String>, // checkpoint: bindings::protocol::MapCheckpoint
+    pub fn new(name: impl Into<String>, // checkpoint: protocol::MapCheckpoint
     ) -> Self {
-        // println!("NEW PACKAGE");
         Self {
             name: name.into(),
             checkpoint: None,
@@ -113,14 +112,8 @@ mod timestamp {
     }
 }
 
-impl bindings::Component for Component {
-    fn hello_world() -> String {
-        "Hello, World!".to_string()
-    }
-}
-
 #[derive(Debug)]
-struct MyBody(bindings::protocol::ProtoEnvelopeBody);
+struct MyBody(protocol::ProtoEnvelopeBody);
 
 impl<Content> TryFrom<MyBody> for ProtoEnvelope<Content>
 where
@@ -129,7 +122,6 @@ where
     type Error = Error;
 
     fn try_from(value: MyBody) -> Result<Self, Self::Error> {
-        println!("TRYING FROM {:?}", &value);
         let contents = Content::decode(&value.0.content_bytes)?;
         let envelope = ProtoEnvelope {
             contents,
@@ -141,47 +133,78 @@ where
     }
 }
 
-fn perm_binding(perm: package::model::Permission) -> bindings::protocol::Perm {
+fn perm_binding(perm: &package::model::Permission) -> protocol::Perm {
     match perm {
-        package::Permission::Release => bindings::protocol::Perm::Release,
-        package::Permission::Yank => bindings::protocol::Perm::Yank,
+        &package::Permission::Release => protocol::Perm::Release,
+        &package::Permission::Yank => protocol::Perm::Yank,
     }
 }
 
 impl protocol::Protocol for Component {
     fn validate(
-        package_record: bindings::protocol::ProtoEnvelopeBody,
-    ) -> bindings::protocol::PackageInfo {
+        package_records: Vec<protocol::ProtoEnvelopeBody>,
+    ) -> protocol::PackageInfo {
         let mut package = PackageInfo::new("funny");
-        let rec: MyBody = MyBody(package_record);
-        let record: ProtoEnvelope<package::model::PackageRecord> = rec.try_into().unwrap();
-        let res = package.state.validate(&record);
-        println!("THE PACKAGE {:?}", package);
         let mut permissions = Vec::new();
-        for (key, value) in package.state.permissions {
-            permissions.push(bindings::protocol::PermEntry {
-                key_id: key.to_string(),
-                perms: value
-                    .into_iter()
-                    .map(|p: package::model::Permission| perm_binding(p))
-                    .collect(),
-            })
-        }
+        let mut releases = Vec::new();
         let mut keys = Vec::new();
-        for (key, value) in package.state.keys {
-            keys.push(bindings::protocol::KeyEntry {
-                key_id: key.to_string(),
-                public_key: value.to_string(),
+        for package_record in package_records {
+          let rec: MyBody = MyBody(package_record);
+          println!("BEFORE TRY {:?}", rec);
+          let record: Result<ProtoEnvelope<package::model::PackageRecord>, Error> = rec.try_into();
+          println!("the record {:?}", record);
+          let record = record.unwrap();
+          println!("AFTER TRY");
+          let res = package.state.validate(&record);
+          println!("THE VALIDATION: {:?}", res);
+          for (key, value) in &package.state.permissions {
+              permissions.push(protocol::PermEntry {
+                  key_id: key.to_string(),
+                  perms: value
+                      .into_iter()
+                      .map(|p: &package::model::Permission| perm_binding(p))
+                      .collect(),
+              })
+          }
+          for (key, value) in &package.state.releases {
+            let t: DateTime<Utc> = value.timestamp.into();
+            releases.push(protocol::Release {
+              version: key.to_string(),
+              by: value.by.to_string(),
+              timestamp: t.to_rfc3339(),
+              state: match &value.state {
+                package::ReleaseState::Released{ content } => protocol::ReleaseState::Released(protocol::Released {
+                  content: protocol::DynHash {
+                    algo: protocol::HashAlgorithm::Sha256,
+                    bytes: Some(content.bytes().to_vec())
+                  }
+                }),
+                package::ReleaseState::Yanked{ by, timestamp } => {
+                  let ts: DateTime<Utc> = (*timestamp).into();
+                  protocol::ReleaseState::Yanked(protocol::Yanked {
+                    by: by.to_string(),
+                    timestamp: ts.to_string()
+                  })
+                }
+              }
             })
+          }
+          for (key, value) in &package.state.keys {
+              keys.push(protocol::KeyEntry {
+                  key_id: key.to_string(),
+                  public_key: value.to_string(),
+              })
+          }
         }
-        return bindings::protocol::PackageInfo {
+        
+        return protocol::PackageInfo {
             name: package.name,
             checkpoint: package.checkpoint,
-            state: bindings::protocol::Validator {
-                algorithm: Some(bindings::protocol::HashAlgorithm::Sha256),
-                head: Some(bindings::protocol::Head {
-                    digest: bindings::protocol::RecordId::DynHash(bindings::protocol::DynHash {
-                        algo: bindings::protocol::HashAlgorithm::Sha256,
+            state: protocol::Validator {
+                algorithm: Some(protocol::HashAlgorithm::Sha256),
+                head: Some(protocol::Head {
+                    digest: protocol::RecordId::DynHash(protocol::DynHash {
+                        algo: protocol::HashAlgorithm::Sha256,
                         bytes: package
                             .state
                             .head
@@ -194,6 +217,7 @@ impl protocol::Protocol for Component {
                     }),
                 }),
                 permissions,
+                releases,
                 keys: Some(keys),
             },
         };

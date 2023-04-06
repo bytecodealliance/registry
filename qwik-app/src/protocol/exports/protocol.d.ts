@@ -34,6 +34,28 @@ export interface PermEntry {
   keyId: string,
   perms: Perm[],
 }
+export interface Released {
+  content: DynHash,
+}
+export interface Yanked {
+  by: string,
+  timestamp: string,
+}
+export type ReleaseState = ReleaseStateReleased | ReleaseStateYanked;
+export interface ReleaseStateReleased {
+  tag: 'released',
+  val: Released,
+}
+export interface ReleaseStateYanked {
+  tag: 'yanked',
+  val: Yanked,
+}
+export interface Release {
+  version: string,
+  by: string,
+  timestamp: string,
+  state: ReleaseState,
+}
 export interface KeyEntry {
   keyId: string,
   publicKey: string,
@@ -42,6 +64,7 @@ export interface Validator {
   algorithm?: HashAlgorithm,
   head?: Head,
   permissions: PermEntry[],
+  releases: Release[],
   keys?: KeyEntry[],
 }
 export interface PackageInfo {
@@ -50,5 +73,5 @@ export interface PackageInfo {
   state: Validator,
 }
 export namespace Protocol {
-  export function validate(packageRecord: ProtoEnvelopeBody): PackageInfo;
+  export function validate(packageRecords: ProtoEnvelopeBody[]): PackageInfo;
 }

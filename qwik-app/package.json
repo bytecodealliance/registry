@@ -17,7 +17,7 @@
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts*\"",
-    "preview": "qwik build preview && cp ./src/protocol/proto_comp.core.wasm server && cp ./src/protocol/proto_comp.core2.wasm server && vite preview --open",
+    "preview": "qwik build preview && cp ./src/protocol/protocol_wasm.core.wasm server && cp ./src/protocol/protocol_wasm.core2.wasm server && vite preview --open",
     "start": "vite --open --mode ssr",
     "qwik": "qwik"
   },

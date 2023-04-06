@@ -32,7 +32,6 @@ impl<Contents> ProtoEnvelope<Contents> {
     where
         Contents: Signable,
     {
-        println!("MAYBE IT IS HERE \n\n\n\n");
         let content_bytes: Vec<u8> = contents.encode();
 
         let key_id = private_key.public_key().fingerprint();
@@ -61,7 +60,6 @@ impl<Contents> ProtoEnvelope<Contents> {
     /// Get the representation of the entire envelope as a byte vector.
     /// This is the logical inverse of `Envelope::from_bytes`.
     pub fn to_protobuf(&self) -> Vec<u8> {
-        println!("TO PROTOBOF \n\n\n");
         let proto_envelope = protobuf::Envelope {
             contents: self.content_bytes.clone(),
             key_id: self.key_id.to_string(),
@@ -76,7 +74,6 @@ impl<Contents> ProtoEnvelope<Contents> {
     where
         Contents: Decode,
     {
-        println!("FROM PROTOBOF \n\n\n");
         // Parse outer envelope
         let envelope = protobuf::Envelope::decode(bytes.as_slice())?;
         let contents = Contents::decode(&envelope.contents)?;
@@ -135,6 +132,7 @@ where
     type Error = Error;
 
     fn try_from(value: ProtoEnvelopeBody) -> Result<Self, Self::Error> {
+        println!("EEK");
         println!("TRYING FROM {:?}", &value);
         let contents = Content::decode(&value.content_bytes)?;
         let envelope = ProtoEnvelope {
@@ -149,12 +147,14 @@ where
 
 impl<Content> From<ProtoEnvelope<Content>> for ProtoEnvelopeBody {
     fn from(value: ProtoEnvelope<Content>) -> Self {
+      println!("FROM");
         ProtoEnvelopeBody {
             content_bytes: value.content_bytes,
             key_id: value.key_id,
             signature: value.signature,
         }
-    }
+      
+  }
 }
 
 impl fmt::Debug for ProtoEnvelopeBody {

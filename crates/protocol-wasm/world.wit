@@ -32,10 +32,29 @@ default world component {
       key-id: string,
       public-key: string
     }
+    record released {
+      content: dyn-hash
+    }
+    record yanked {
+      by: string,
+      timestamp: string
+    }
+    variant release-state {
+      released(released),
+      yanked(yanked)
+    }
+    record release {
+      version: string,
+      by: string,
+      timestamp: string,
+      state: release-state
+    }
+    
     record validator {
       algorithm: option<hash-algorithm>,
       head: option<head>,
       permissions: list<perm-entry>,
+      releases: list<release>,
       keys: option<list<key-entry>>,
     }
     record package-info {
@@ -43,7 +62,6 @@ default world component {
       checkpoint: option<string>,
       state: validator
     }
-    validate: func(package-record: proto-envelope-body) -> package-info
+    validate: func(package-records: list<proto-envelope-body>) -> package-info
   }
-  export hello-world: func() -> string
 }                

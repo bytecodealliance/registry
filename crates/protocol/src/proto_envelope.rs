@@ -132,6 +132,7 @@ where
     type Error = Error;
 
     fn try_from(value: ProtoEnvelopeBody) -> Result<Self, Self::Error> {
+        println!("TYRING FROM {:?}", value);
         let contents = Content::decode(&value.content_bytes)?;
         let envelope = ProtoEnvelope {
             contents,

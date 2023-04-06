@@ -231,9 +231,11 @@ impl Validator {
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
+        println!("VALIDATING ENVELOPE");
         let record = envelope.as_ref();
 
         // Validate previous hash
+        println!("VALIDATING HASH");
         self.validate_record_hash(record)?;
 
         // Validate version
