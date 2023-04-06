@@ -112,6 +112,8 @@ pub enum CoreServiceError {
     #[error("checkpoint `{0}` not found")]
     CheckpointNotFound(Hash<Sha256>),
     #[error("package `{0}` not found")]
+    PackageNameNotFound(String),
+    #[error("package `{0}` not found")]
     PackageNotFound(LogId),
     #[error("package record `{0}` not found")]
     PackageRecordNotFound(RecordId),
@@ -157,7 +159,7 @@ enum Message {
     },
     FetchPackageRecords {
         root: Hash<Sha256>,
-        package_id: LogId,
+        package_name: String,
         since: Option<RecordId>,
         response: oneshot::Sender<
             Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError>,
@@ -307,11 +309,12 @@ impl CoreService {
                 }
                 Message::FetchPackageRecords {
                     root,
-                    package_id,
+                    package_name,
                     since,
                     response,
                 } => {
                     if let Some(&checkpoint_index) = state.checkpoint_index.get(&root) {
+                        let package_id = LogId::package_log::<Sha256>(&package_name);
                         if let Some(package_info) = state.package_states.get(&package_id).cloned() {
                             tokio::spawn(async move {
                                 response
@@ -327,7 +330,7 @@ impl CoreService {
                             });
                         } else {
                             response
-                                .send(Err(CoreServiceError::PackageNotFound(package_id)))
+                                .send(Err(CoreServiceError::PackageNameNotFound(package_name)))
                                 .unwrap();
                         }
                     } else {
@@ -582,12 +585,11 @@ impl CoreService {
         let root = root
             .try_into()
             .map_err(CoreServiceError::InvalidCheckpoint)?;
-        let package_id = LogId::package_log::<Sha256>(&package_name);
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(Message::FetchPackageRecords {
                 root,
-                package_id,
+                package_name,
                 since,
                 response: tx,
             })

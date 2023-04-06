@@ -58,6 +58,9 @@ impl From<CoreServiceError> for PackageApiError {
             CoreServiceError::CheckpointNotFound(checkpoint) => {
                 PackageError::CheckpointNotFound { checkpoint }
             }
+            CoreServiceError::PackageNameNotFound(name) => {
+                PackageError::PackageNameNotFound { name }
+            }
             CoreServiceError::PackageNotFound(id) => PackageError::PackageNotFound { id },
             CoreServiceError::PackageRecordNotFound(id) => {
                 PackageError::PackageRecordNotFound { id }
@@ -82,7 +85,8 @@ impl IntoResponse for PackageApiError {
             | PackageError::ContentFetchErrorResponse { .. }
             | PackageError::ContentUrlInvalid { .. }
             | PackageError::InvalidCheckpoint { .. } => StatusCode::BAD_REQUEST,
-            PackageError::PackageNotFound { .. }
+            PackageError::PackageNameNotFound { .. }
+            | PackageError::PackageNotFound { .. }
             | PackageError::PackageRecordNotFound { .. }
             | PackageError::CheckpointNotFound { .. }
             | PackageError::OperatorRecordNotFound { .. } => StatusCode::NOT_FOUND,

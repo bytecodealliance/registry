@@ -85,6 +85,12 @@ pub enum PackageError {
         message: String,
     },
     /// The provided package was not found.
+    #[error("package `{name}` not found")]
+    PackageNameNotFound {
+        /// The name of the missing package log.
+        name: String,
+    },
+    /// The provided package was not found.
     #[error("package `{id}` not found")]
     PackageNotFound {
         /// The id of the missing package log.
