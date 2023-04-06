@@ -51,6 +51,12 @@ pub enum FetchError {
         /// The missing checkpoint.
         checkpoint: Hash<Sha256>,
     },
+    /// The provided package name was not found.
+    #[error("package `{name}` not found")]
+    PackageNameNotFound {
+        /// The missing package name.
+        name: String,
+    },
     /// The provided package was not found.
     #[error("package `{id}` not found")]
     PackageNotFound {

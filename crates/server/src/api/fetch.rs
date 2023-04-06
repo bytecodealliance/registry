@@ -38,6 +38,7 @@ impl From<CoreServiceError> for FetchApiError {
                 FetchError::CheckpointNotFound { checkpoint }
             }
             CoreServiceError::PackageNotFound(id) => FetchError::PackageNotFound { id },
+            CoreServiceError::PackageNameNotFound(name) => FetchError::PackageNameNotFound { name },
             CoreServiceError::PackageRecordNotFound(id) => FetchError::PackageRecordNotFound { id },
             CoreServiceError::OperatorRecordNotFound(id) => {
                 FetchError::OperatorRecordNotFound { id }
@@ -53,6 +54,7 @@ impl IntoResponse for FetchApiError {
     fn into_response(self) -> axum::response::Response {
         let status = match &self.0 {
             FetchError::CheckpointNotFound { .. }
+            | FetchError::PackageNameNotFound { .. }
             | FetchError::PackageNotFound { .. }
             | FetchError::PackageRecordNotFound { .. }
             | FetchError::OperatorRecordNotFound { .. } => StatusCode::NOT_FOUND,
