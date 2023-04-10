@@ -1,6 +1,6 @@
 pub mod operator;
 pub mod package;
-mod proto_envelope;
+pub mod proto_envelope;
 pub mod registry;
 mod serde_envelope;
 

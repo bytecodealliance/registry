@@ -7,7 +7,7 @@ use thiserror::Error;
 use warg_crypto::hash::DynHash;
 use warg_crypto::{Decode, Encode, Signable};
 
-mod model;
+pub mod model;
 mod validate;
 
 pub use model::{PackageEntry, PackageRecord, Permission};

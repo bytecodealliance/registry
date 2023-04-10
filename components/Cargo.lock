@@ -743,6 +743,7 @@ dependencies = [
  "serde_with",
  "thiserror",
  "warg-crypto",
+ "warg-protocol",
  "warg-transparency",
 ]
 
@@ -1116,6 +1117,28 @@ dependencies = [
  "sha2",
  "signature",
  "thiserror",
+]
+
+[[package]]
+name = "warg-protocol"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.0",
+ "hex",
+ "indexmap",
+ "pbjson",
+ "pbjson-build",
+ "pbjson-types",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "semver",
+ "serde",
+ "serde_with",
+ "thiserror",
+ "warg-crypto",
+ "warg-transparency",
 ]
 
 [[package]]
