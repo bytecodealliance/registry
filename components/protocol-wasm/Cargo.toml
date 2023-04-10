@@ -1,0 +1,36 @@
+[package]
+name = "protocol-wasm"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+warg-crypto = { workspace = true }
+warg-transparency = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde.workspace = true
+prost = { workspace = true }
+prost-types = { workspace = true }
+pbjson = { workspace = true }
+pbjson-types = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+serde_with = { workspace = true }
+semver = { workspace = true }
+indexmap = { workspace = true }
+serde_json.workspace = true
+chrono = "0.4.24"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+target = { path = "world.wit" }
+
+[package.metadata.component.dependencies]
+
+[build-dependencies]
+prost-build = { workspace = true }
+pbjson-build = { workspace = true }

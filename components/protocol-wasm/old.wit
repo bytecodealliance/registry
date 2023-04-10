@@ -1,0 +1,19 @@
+/// An example world for the component to target.
+default world component {
+  export protocol: interface {
+    enum hash-algorithm {
+      sha256
+    }
+    record dyn-hash {
+      algo: hash-algorithm,
+      bytes: list<u8>
+    }
+    record map-checkpoint {
+      log-root: dyn-hash,
+      log-length: u32,
+      map-root: dyn-hash
+    }
+    validate: func(private-key: string, contents: map-checkpoint)
+  }
+  export hello-world: func() -> string
+}                

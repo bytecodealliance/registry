@@ -1,0 +1,67 @@
+/// An example world for the component to target.
+default world component {
+  export protocol: interface {
+    record proto-envelope-body {
+      content-bytes: list<u8>,
+      key-id: string,
+      signature: string
+    }
+    enum hash-algorithm {
+      sha256
+    }
+    record dyn-hash {
+      algo: hash-algorithm,
+      bytes: option<list<u8>>
+    }
+    variant record-id {
+      dyn-hash(dyn-hash)
+    }
+    record head {
+      digest: record-id,
+      timestamp: option<string>
+    }
+    enum perm {
+      release,
+      yank
+    }
+    record perm-entry {
+      key-id: string,
+      perms: list<perm>
+    }
+    record key-entry {
+      key-id: string,
+      public-key: string
+    }
+    record released {
+      content: dyn-hash
+    }
+    record yanked {
+      by: string,
+      timestamp: string
+    }
+    variant release-state {
+      released(released),
+      yanked(yanked)
+    }
+    record release {
+      version: string,
+      by: string,
+      timestamp: string,
+      state: release-state
+    }
+    
+    record validator {
+      algorithm: option<hash-algorithm>,
+      head: option<head>,
+      permissions: list<perm-entry>,
+      releases: list<release>,
+      keys: option<list<key-entry>>,
+    }
+    record package-info {
+      name: string,
+      checkpoint: option<string>,
+      state: validator
+    }
+    validate: func(package-records: list<proto-envelope-body>) -> package-info
+  }
+}                
