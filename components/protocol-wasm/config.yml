@@ -1,7 +1,0 @@
-search-paths:
-  - ./
-
-instantiations:
-  $input:
-    arguments:
-      stuff: myguy

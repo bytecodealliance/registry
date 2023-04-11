@@ -134,11 +134,11 @@ where
     }
 }
 
-fn perm_binding(perm: &package::model::Permission) -> protocol::Perm {
-    match perm {
-        &package::Permission::Release => protocol::Perm::Release,
-        &package::Permission::Yank => protocol::Perm::Yank,
-        &_ => protocol::Perm::Release,
+fn perm_binding(permission: &package::model::Permission) -> protocol::Permission {
+    match permission {
+        &package::Permission::Release => protocol::Permission::Release,
+        &package::Permission::Yank => protocol::Permission::Yank,
+        &_ => protocol::Permission::Release,
     }
 }
 
@@ -160,9 +160,9 @@ impl protocol::Protocol for Component {
           let res = package.state.validate(&record);
           println!("THE VALIDATION: {:?}", res);
           for (key, value) in &package.state.permissions {
-              permissions.push(protocol::PermEntry {
+              permissions.push(protocol::PermissionEntry {
                   key_id: key.to_string(),
-                  perms: value
+                  permissions: value
                       .into_iter()
                       .map(|p: &package::model::Permission| perm_binding(p))
                       .collect(),
@@ -178,7 +178,7 @@ impl protocol::Protocol for Component {
                 package::ReleaseState::Released{ content } => protocol::ReleaseState::Released(protocol::Released {
                   content: protocol::DynHash {
                     algo: protocol::HashAlgorithm::Sha256,
-                    bytes: Some(content.bytes().to_vec())
+                    bytes: content.bytes().to_vec()
                   }
                 }),
                 package::ReleaseState::Yanked{ by, timestamp } => {
@@ -211,7 +211,7 @@ impl protocol::Protocol for Component {
                             .state
                             .head
                             .as_ref()
-                            .map(|h| h.digest.0.bytes().to_vec()),
+                            .map(|h| h.digest.0.bytes().to_vec()).unwrap(),
                     }),
                     timestamp: package.state.head.map(|h| {
                         let t: DateTime<Utc> = h.timestamp.into();

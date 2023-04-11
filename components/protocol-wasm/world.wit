@@ -11,7 +11,7 @@ default world component {
     }
     record dyn-hash {
       algo: hash-algorithm,
-      bytes: option<list<u8>>
+      bytes: list<u8>
     }
     variant record-id {
       dyn-hash(dyn-hash)
@@ -20,13 +20,13 @@ default world component {
       digest: record-id,
       timestamp: option<string>
     }
-    enum perm {
+    enum permission {
       release,
       yank
     }
-    record perm-entry {
+    record permission-entry {
       key-id: string,
-      perms: list<perm>
+      permissions: list<permission>
     }
     record key-entry {
       key-id: string,
@@ -53,7 +53,7 @@ default world component {
     record validator {
       algorithm: option<hash-algorithm>,
       head: option<head>,
-      permissions: list<perm-entry>,
+      permissions: list<permission-entry>,
       releases: list<release>,
       keys: option<list<key-entry>>,
     }
