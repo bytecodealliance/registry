@@ -742,6 +742,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "thiserror",
+ "warg-api",
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",
@@ -1100,6 +1101,18 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "warg-api"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_with",
+ "thiserror",
+ "warg-crypto",
+ "warg-protocol",
+]
 
 [[package]]
 name = "warg-crypto"

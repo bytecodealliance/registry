@@ -24,8 +24,8 @@ impl HashAlgorithm {
 
 #[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DynHash {
-    pub(crate) algo: HashAlgorithm,
-    pub(crate) bytes: Vec<u8>,
+    pub algo: HashAlgorithm,
+    pub bytes: Vec<u8>,
 }
 
 impl DynHash {

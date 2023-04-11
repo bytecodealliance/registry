@@ -10,6 +10,7 @@ use warg_api::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
 use warg_crypto::hash::{Hash, Sha256};
+use tower_http::cors::{CorsLayer};
 
 #[derive(Clone)]
 pub struct Config {
@@ -29,6 +30,8 @@ impl Config {
         Router::new()
             .route("/consistency", post(prove_consistency))
             .route("/inclusion", post(prove_inclusion))
+            .layer(CorsLayer::permissive())
+
             .with_state(self)
     }
 }
@@ -74,6 +77,7 @@ async fn prove_consistency(
     State(config): State<Config>,
     Json(body): Json<ConsistencyRequest>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
+  println!("MADE IT TO HANDLER");
     let log = config.log.as_ref().read().await;
 
     let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: Error| {

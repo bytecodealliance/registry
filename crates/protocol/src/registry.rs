@@ -76,7 +76,7 @@ impl VisitBytes for LogLeaf {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LogId(DynHash);
+pub struct LogId(pub DynHash);
 
 impl LogId {
     pub fn operator_log<D: SupportedDigest>() -> Self {

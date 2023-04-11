@@ -57,11 +57,26 @@ default world component {
       releases: list<release>,
       keys: option<list<key-entry>>,
     }
+    record log-leaf {
+      log-id: string,
+      record-id: string
+    }
     record package-info {
       name: string,
       checkpoint: option<string>,
-      state: validator
+      state: validator,
+      heads: list<log-leaf>
+    }
+    record map-checkpoint {
+      log-root: string,
+      log-length: u32,
+      map-root: string
+    }
+    record inclusion {
+      log: string,
+      map: string
     }
     validate: func(package-records: list<proto-envelope-body>) -> package-info
+    prove-inclusion: func(input: inclusion, checkpoint: map-checkpoint, heads: list<log-leaf>)
   }
 }                
