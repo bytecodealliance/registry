@@ -9,7 +9,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use std::sync::Arc;
-use tower_http::cors::{CorsLayer};
+use tower_http::cors::CorsLayer;
 use warg_api::fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse};
 
 #[derive(Clone)]
