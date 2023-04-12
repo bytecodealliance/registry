@@ -1,28 +1,22 @@
 use chrono::{DateTime, Utc};
+use base64::{Engine as _, engine::{self, general_purpose}};
 use std::str::FromStr; // 0.4.15
 
 use bindings::protocol;
 struct Component;
-// pub mod operator;
-// pub mod package;
-// mod proto_envelope;
-// pub mod registry;
-// mod serde_envelope;
 
 pub use semver::{Version, VersionReq};
 
 use anyhow::Error;
 use anyhow::anyhow;
 
-// pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
-// pub use serde_envelope::SerdeEnvelope;
 use warg_protocol::{
   package,
   proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody}, 
   SerdeEnvelope,
   registry::{MapCheckpoint, RecordId, LogId, LogLeaf, MapLeaf},
 };
-use warg_crypto::{signing, Decode, hash::{Sha256, HashAlgorithm, DynHash}};
+use warg_crypto::{signing, Decode, hash::{Hash, Sha256, HashAlgorithm, DynHash}};
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
 use warg_api::proof::ProofError;
 
@@ -126,8 +120,6 @@ fn perm_binding(permission: &package::model::Permission) -> protocol::Permission
 
 impl protocol::Protocol for Component {
     fn prove_inclusion(input: protocol::Inclusion, checkpoint: protocol::MapCheckpoint, heads: Vec<protocol::LogLeaf>) {
-      println!("inclusion input {:?}", &input);
-      println!("inclusion checkpoint {:?}", &checkpoint);
       let map_checkpoint = MapCheckpoint {
         log_root: DynHash {
           algo: HashAlgorithm::Sha256,
@@ -139,42 +131,39 @@ impl protocol::Protocol for Component {
           bytes: checkpoint.map_root.as_bytes().to_vec()
         }
       };
+      let bytes = general_purpose::STANDARD.decode(&input.log).unwrap();
       let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
-            LogProofBundle::decode(input.log.as_bytes()).unwrap();
+            LogProofBundle::decode(general_purpose::STANDARD
+              .decode(&input.log).unwrap().as_slice()).unwrap();
         let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
         for (leaf, proof) in heads.iter().zip(log_inclusions.iter()) {
+          let leaf = &LogLeaf {
+            log_id: LogId(DynHash::from_str(&leaf.log_id).unwrap()),
+            record_id: RecordId(DynHash::from_str(&leaf.record_id).unwrap())
+          };
             let found = proof.evaluate_value(
               &log_data,
-              &LogLeaf { log_id: LogId(DynHash {
-                algo: HashAlgorithm::Sha256,
-                bytes: leaf.log_id.as_bytes().to_vec()
-              }), record_id: RecordId(DynHash {
-                algo: HashAlgorithm::Sha256,
-                bytes: leaf.record_id.as_bytes().to_vec()
-              }) }).unwrap();
-            
-            // let root = map_checkpoint.log_root.clone().try_into().unwrap();
-            // if found != root {
-            //     println!("ERR: {:?}", Err::<ProofError, anyhow::Error>(anyhow!(ProofError::IncorrectProof { root, found })));
-            // }
+              &leaf).unwrap();
+            let root: Hash<Sha256> = DynHash::from_str(&checkpoint.log_root).expect("SOMETHING").clone().try_into().unwrap();
+            if found != root {
+                println!("ERR: {:?}", Err::<ProofError, anyhow::Error>(anyhow!(ProofError::IncorrectProof { root, found })));
+            }
         }
         let map_proof_bundle: MapProofBundle<Sha256, MapLeaf> =
-        MapProofBundle::decode(input.map.as_bytes()).unwrap();
+        MapProofBundle::decode(general_purpose::STANDARD
+          .decode(&input.map).unwrap().as_slice()).unwrap();
         let map_inclusions = map_proof_bundle.unbundle();
         for (leaf, proof) in heads.iter().zip(map_inclusions.iter()) {
-            let found = proof.evaluate(
-                &leaf.log_id.as_bytes(),
+            let map_found = proof.evaluate(
+                &LogId(DynHash::from_str(&leaf.log_id).unwrap()),
                 &MapLeaf {
-                    record_id: RecordId(DynHash {
-                      algo: HashAlgorithm::Sha256,
-                      bytes: leaf.record_id.as_bytes().to_vec()
-                    })
+                    record_id: RecordId(DynHash::from_str(&leaf.record_id).unwrap()) 
                 },
-            );
-            // let root = map_checkpoint.map_root.clone().try_into().unwrap();
-            // if found != root {
-            //     println!("ERR {:?}", Err::ProofError, anyhow::Error>(anyhow!(ProofError::IncorrectProof { root, found })));
-            // }
+              );
+            let map_root: Hash<Sha256> = DynHash::from_str(&checkpoint.map_root).expect("SOMETHING").clone().try_into().unwrap();
+            if map_found != map_root {
+                println!("ERR {:?}", Err::<ProofError, anyhow::Error>(anyhow!(ProofError::IncorrectProof { root: map_root, found: map_found })));
+            }
         }
     }
     fn validate(
