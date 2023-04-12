@@ -47,48 +47,6 @@ impl PackageInfo {
     }
 }
 
-mod timestamp {
-    use serde::Deserializer;
-    use serde::{Deserialize, Serializer};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    pub fn serialize<S>(timestamp: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use serde::ser::Error;
-
-        let duration_since_epoch = match timestamp.duration_since(UNIX_EPOCH) {
-            Ok(duration_since_epoch) => duration_since_epoch,
-            Err(_) => return Err(S::Error::custom("timestamp must be later than UNIX_EPOCH")),
-        };
-
-        serializer.serialize_str(&format!(
-            "{secs}.{nsecs}",
-            secs = duration_since_epoch.as_secs(),
-            nsecs = duration_since_epoch.subsec_nanos()
-        ))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error;
-
-        let s = String::deserialize(deserializer)?;
-        let (secs, nsecs) = s
-            .split_once('.')
-            .ok_or_else(|| D::Error::custom("timestamp must be in the format <secs>.<nsecs>"))?;
-
-        Ok(SystemTime::UNIX_EPOCH
-            + Duration::new(
-                secs.parse::<u64>().map_err(D::Error::custom)?,
-                nsecs.parse::<u32>().map_err(D::Error::custom)?,
-            ))
-    }
-}
-
 #[derive(Debug)]
 struct MyBody(protocol::ProtoEnvelopeBody);
 
@@ -176,13 +134,9 @@ impl protocol::Protocol for Component {
         let mut heads = Vec::with_capacity(1);
         for package_record in package_records {
           let rec: MyBody = MyBody(package_record);
-          println!("BEFORE TRY {:?}", rec);
           let record: Result<ProtoEnvelope<package::model::PackageRecord>, Error> = rec.try_into();
-          println!("the record {:?}", record);
           let record = record.unwrap();
-          println!("AFTER TRY");
           let res = package.state.validate(&record);
-          println!("THE VALIDATION: {:?}", res);
           for (key, value) in &package.state.permissions {
               permissions.push(protocol::PermissionEntry {
                   key_id: key.to_string(),
@@ -228,12 +182,6 @@ impl protocol::Protocol for Component {
               record_id: head.digest.clone().to_string(),
           });
         } 
-        // else {
-        //     return Err("COULDNt DO IT FOR SOME REASON");
-        // }
-        
-        println!("MAYBE WHAT I NEED {:?}", package.state.head);
-        println!("MAYBE MORE OF WHAT I NEED {:?}", heads);
         return protocol::PackageInfo {
             name: package.name,
             checkpoint: package.checkpoint,
