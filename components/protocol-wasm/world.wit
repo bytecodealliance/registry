@@ -1,4 +1,7 @@
-/// An example world for the component to target.
+/// Exposes functions to perform package validations and inclusion proofs from the `protocol` and `transparency` crates
+/// Protobuf structures for validations can be found in the warg.proto file
+/// Protobuf structures for inclusion proofs can be found in the proof.proto file
+
 default world component {
   export protocol: self.protocol
 }                
