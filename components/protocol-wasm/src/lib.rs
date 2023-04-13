@@ -49,15 +49,15 @@ impl PackageInfo {
 }
 
 #[derive(Debug)]
-struct MyBody(protocolbindings::ProtoEnvelopeBody);
+struct ProtoBody(protocolbindings::ProtoEnvelopeBody);
 
-impl<Content> TryFrom<MyBody> for ProtoEnvelope<Content>
+impl<Content> TryFrom<ProtoBody> for ProtoEnvelope<Content>
 where
     Content: Decode,
 {
     type Error = Error;
 
-    fn try_from(value: MyBody) -> Result<Self, Self::Error> {
+    fn try_from(value: ProtoBody) -> Result<Self, Self::Error> {
         let contents = Content::decode(&value.0.content_bytes)?;
         let envelope = ProtoEnvelope {
             contents,
@@ -134,7 +134,7 @@ impl protocolbindings::Protocol for Component {
         let mut keys = Vec::new();
         let mut heads = Vec::with_capacity(1);
         for package_record in package_records {
-          let rec: MyBody = MyBody(package_record);
+          let rec: ProtoBody = ProtoBody(package_record);
           let record: Result<ProtoEnvelope<package::model::PackageRecord>, Error> = rec.try_into();
           let record = record.unwrap();
           let res = package.state.validate(&record);
