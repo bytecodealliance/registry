@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use base64::{Engine as _, engine::{self, general_purpose}};
 use std::str::FromStr; // 0.4.15
 
-use bindings::protocol;
+use bindings::protocol as protocolbindings;
 struct Component;
 
 pub use semver::{Version, VersionReq};
@@ -20,6 +20,7 @@ use warg_crypto::{signing, Decode, hash::{Hash, Sha256, HashAlgorithm, DynHash}}
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
 use warg_api::proof::ProofError;
 
+bindings::export!(Component);
 /// Represents information about a registry package.
 #[derive(Debug, Clone)]
 // #[serde(rename_all = "camelCase")]
@@ -37,7 +38,7 @@ pub struct PackageInfo {
 
 impl PackageInfo {
     /// Creates a new package info for the given package name and url.
-    pub fn new(name: impl Into<String>, // checkpoint: protocol::MapCheckpoint
+    pub fn new(name: impl Into<String>, 
     ) -> Self {
         Self {
             name: name.into(),
@@ -48,7 +49,7 @@ impl PackageInfo {
 }
 
 #[derive(Debug)]
-struct MyBody(protocol::ProtoEnvelopeBody);
+struct MyBody(protocolbindings::ProtoEnvelopeBody);
 
 impl<Content> TryFrom<MyBody> for ProtoEnvelope<Content>
 where
@@ -68,16 +69,16 @@ where
     }
 }
 
-fn perm_binding(permission: &package::model::Permission) -> protocol::Permission {
+fn perm_binding(permission: &package::model::Permission) -> protocolbindings::Permission {
     match permission {
-        &package::Permission::Release => protocol::Permission::Release,
-        &package::Permission::Yank => protocol::Permission::Yank,
-        &_ => protocol::Permission::Release,
+        &package::Permission::Release => protocolbindings::Permission::Release,
+        &package::Permission::Yank => protocolbindings::Permission::Yank,
+        &_ => protocolbindings::Permission::Release,
     }
 }
 
-impl protocol::Protocol for Component {
-    fn prove_inclusion(input: protocol::Inclusion, checkpoint: protocol::MapCheckpoint, heads: Vec<protocol::LogLeaf>) {
+impl protocolbindings::Protocol for Component {
+    fn prove_inclusion(input: protocolbindings::Inclusion, checkpoint: protocolbindings::MapCheckpoint, heads: Vec<protocolbindings::LogLeaf>) {
       let map_checkpoint = MapCheckpoint {
         log_root: DynHash {
           algo: HashAlgorithm::Sha256,
@@ -125,8 +126,8 @@ impl protocol::Protocol for Component {
         }
     }
     fn validate(
-        package_records: Vec<protocol::ProtoEnvelopeBody>,
-    ) -> protocol::PackageInfo {
+        package_records: Vec<protocolbindings::ProtoEnvelopeBody>,
+    ) -> protocolbindings::PackageInfo {
         let mut package = PackageInfo::new("funny");
         let mut permissions = Vec::new();
         let mut releases = Vec::new();
@@ -138,7 +139,7 @@ impl protocol::Protocol for Component {
           let record = record.unwrap();
           let res = package.state.validate(&record);
           for (key, value) in &package.state.permissions {
-              permissions.push(protocol::PermissionEntry {
+              permissions.push(protocolbindings::PermissionEntry {
                   key_id: key.to_string(),
                   permissions: value
                       .into_iter()
@@ -148,20 +149,20 @@ impl protocol::Protocol for Component {
           }
           for (key, value) in &package.state.releases {
             let t: DateTime<Utc> = value.timestamp.into();
-            releases.push(protocol::Release {
+            releases.push(protocolbindings::Release {
               version: key.to_string(),
               by: value.by.to_string(),
               timestamp: t.to_rfc3339(),
               state: match &value.state {
-                package::ReleaseState::Released{ content } => protocol::ReleaseState::Released(protocol::Released {
-                  content: protocol::DynHash {
-                    algo: protocol::HashAlgorithm::Sha256,
+                package::ReleaseState::Released{ content } => protocolbindings::ReleaseState::Released(protocolbindings::Released {
+                  content: protocolbindings::DynHash {
+                    algo: protocolbindings::HashAlgorithm::Sha256,
                     bytes: content.bytes().to_vec()
                   }
                 }),
                 package::ReleaseState::Yanked{ by, timestamp } => {
                   let ts: DateTime<Utc> = (*timestamp).into();
-                  protocol::ReleaseState::Yanked(protocol::Yanked {
+                  protocolbindings::ReleaseState::Yanked(protocolbindings::Yanked {
                     by: by.to_string(),
                     timestamp: ts.to_string()
                   })
@@ -170,26 +171,26 @@ impl protocol::Protocol for Component {
             })
           }
           for (key, value) in &package.state.keys {
-              keys.push(protocol::KeyEntry {
+              keys.push(protocolbindings::KeyEntry {
                   key_id: key.to_string(),
                   public_key: value.to_string(),
               })
           }
         }
         if let Some(head) = package.state.head() {
-          heads.push(protocol::LogLeaf {
+          heads.push(protocolbindings::LogLeaf {
               log_id: LogId::package_log::<Sha256>("funny").to_string(),
               record_id: head.digest.clone().to_string(),
           });
         } 
-        return protocol::PackageInfo {
+        return protocolbindings::PackageInfo {
             name: package.name,
             checkpoint: package.checkpoint,
-            state: protocol::Validator {
-                algorithm: Some(protocol::HashAlgorithm::Sha256),
-                head: Some(protocol::Head {
-                    digest: protocol::RecordId::DynHash(protocol::DynHash {
-                        algo: protocol::HashAlgorithm::Sha256,
+            state: protocolbindings::Validator {
+                algorithm: Some(protocolbindings::HashAlgorithm::Sha256),
+                head: Some(protocolbindings::Head {
+                    digest: protocolbindings::RecordId::DynHash(protocolbindings::DynHash {
+                        algo: protocolbindings::HashAlgorithm::Sha256,
                         bytes: package
                             .state
                             .head
@@ -210,4 +211,3 @@ impl protocol::Protocol for Component {
     }
 }
 
-bindings::export!(Component);

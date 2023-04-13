@@ -1,6 +1,9 @@
 /// An example world for the component to target.
 default world component {
-  export protocol: interface {
+  export protocol: self.protocol
+}                
+
+interface protocol {
     record proto-envelope-body {
       content-bytes: list<u8>,
       key-id: string,
@@ -79,4 +82,3 @@ default world component {
     validate: func(package-records: list<proto-envelope-body>) -> package-info
     prove-inclusion: func(input: inclusion, checkpoint: map-checkpoint, heads: list<log-leaf>)
   }
-}                

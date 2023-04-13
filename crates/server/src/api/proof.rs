@@ -76,7 +76,6 @@ async fn prove_consistency(
     State(config): State<Config>,
     Json(body): Json<ConsistencyRequest>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
-    println!("MADE IT TO HANDLER");
     let log = config.log.as_ref().read().await;
 
     let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: Error| {
