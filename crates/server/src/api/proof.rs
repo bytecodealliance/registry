@@ -1,5 +1,4 @@
-use crate::services::data::{self, DataServiceError};
-use anyhow::Error;
+use crate::services::{DataServiceError, LogData, MapData};
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Json,
     Router,
@@ -9,23 +8,20 @@ use tokio::sync::RwLock;
 use warg_api::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
-use warg_crypto::hash::{Hash, Sha256};
+use warg_crypto::hash::{DynHashError, Hash, Sha256};
 
 #[derive(Clone)]
 pub struct Config {
-    log: Arc<RwLock<data::log::ProofData>>,
-    map: Arc<RwLock<data::map::MapData>>,
+    log: Arc<RwLock<LogData>>,
+    map: Arc<RwLock<MapData>>,
 }
 
 impl Config {
-    pub fn new(
-        log: Arc<RwLock<data::log::ProofData>>,
-        map: Arc<RwLock<data::map::MapData>>,
-    ) -> Self {
+    pub fn new(log: Arc<RwLock<LogData>>, map: Arc<RwLock<MapData>>) -> Self {
         Self { log, map }
     }
 
-    pub fn build_router(self) -> Router {
+    pub fn into_router(self) -> Router {
         Router::new()
             .route("/consistency", post(prove_consistency))
             .route("/inclusion", post(prove_inclusion))
@@ -38,15 +34,16 @@ struct ProofApiError(ProofError);
 impl From<DataServiceError> for ProofApiError {
     fn from(value: DataServiceError) -> Self {
         Self(match value {
-            DataServiceError::RootNotFound(root) => ProofError::RootNotFound { root },
+            DataServiceError::RootNotFound(root) => ProofError::RootNotFound { root: root.into() },
             DataServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound { leaf },
             DataServiceError::BundleFailure(e) => ProofError::BundleFailure {
                 message: e.to_string(),
             },
             DataServiceError::PackageNotIncluded(id) => ProofError::PackageNotIncluded { id },
-            DataServiceError::IncorrectProof { root, found } => {
-                ProofError::IncorrectProof { root, found }
-            }
+            DataServiceError::IncorrectProof { root, found } => ProofError::IncorrectProof {
+                root: root.into(),
+                found: found.into(),
+            },
         })
     }
 }
@@ -76,12 +73,12 @@ async fn prove_consistency(
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let log = config.log.as_ref().read().await;
 
-    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: Error| {
+    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: DynHashError| {
         ProofApiError(ProofError::InvalidLogRoot {
             message: e.to_string(),
         })
     })?;
-    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: Error| {
+    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: DynHashError| {
         ProofApiError(ProofError::InvalidLogRoot {
             message: e.to_string(),
         })
@@ -99,16 +96,24 @@ async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
-    let log_root = body.checkpoint.log_root.try_into().map_err(|e: Error| {
-        ProofApiError(ProofError::InvalidLogRoot {
-            message: e.to_string(),
-        })
-    })?;
-    let map_root = body.checkpoint.map_root.try_into().map_err(|e: Error| {
-        ProofApiError(ProofError::InvalidMapRoot {
-            message: e.to_string(),
-        })
-    })?;
+    let log_root = body
+        .checkpoint
+        .log_root
+        .try_into()
+        .map_err(|e: DynHashError| {
+            ProofApiError(ProofError::InvalidLogRoot {
+                message: e.to_string(),
+            })
+        })?;
+    let map_root = body
+        .checkpoint
+        .map_root
+        .try_into()
+        .map_err(|e: DynHashError| {
+            ProofApiError(ProofError::InvalidMapRoot {
+                message: e.to_string(),
+            })
+        })?;
 
     let log_bundle = {
         let log = config.log.as_ref().read().await;

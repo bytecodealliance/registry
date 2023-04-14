@@ -1,5 +1,5 @@
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
-
+use tokio_util::sync::CancellationToken;
 use warg_crypto::signing;
 use warg_protocol::registry::LogLeaf;
 
@@ -12,48 +12,56 @@ pub use map::VerifiableMap;
 pub use sign::Signature;
 
 pub struct Input {
+    pub token: CancellationToken,
     pub log: log::VerifiableLog,
     pub map: map::VerifiableMap,
-    pub private_key: signing::PrivateKey,
-
+    pub leaves: Vec<LogLeaf>,
+    pub signing_key: signing::PrivateKey,
     pub log_rx: Receiver<LogLeaf>,
 }
 
 pub struct Output {
-    pub log_handle: JoinHandle<log::VerifiableLog>,
-    pub map_handle: JoinHandle<map::VerifiableMap>,
+    pub log_rx: Receiver<LogLeaf>,
+    pub map_rx: Receiver<map::VerifiableMap>,
+    pub signature_rx: Receiver<sign::Signature>,
+    pub log_handle: JoinHandle<()>,
+    pub map_handle: JoinHandle<()>,
     pub sign_handle: JoinHandle<()>,
-
-    pub log_data: Receiver<LogLeaf>,
-    pub map_data: Receiver<map::VerifiableMap>,
-    pub signatures: Receiver<sign::Signature>,
 }
 
-pub fn process(input: Input) -> Output {
+pub fn spawn(input: Input) -> Output {
     let Input {
+        token,
         log,
         map,
+        leaves,
         log_rx,
-        private_key,
+        signing_key,
     } = input;
 
-    let log_output = log::process(log::Input { log, log_rx });
-    let map_output = map::process(map::Input {
-        map,
-        map_rx: log_output.summary_rx,
+    let log = log::spawn(log::Input {
+        token: token.clone(),
+        log,
+        log_rx,
     });
-    let sign_output = sign::process(sign::Input {
-        private_key,
-        sign_rx: map_output.summary_rx,
+    let map = map::spawn(map::Input {
+        token: token.clone(),
+        map,
+        leaves,
+        log_summary_rx: log.log_summary_rx,
+    });
+    let sign = sign::spawn(sign::Input {
+        token,
+        signing_key,
+        map_summary_rx: map.map_summary_rx,
     });
 
     Output {
-        log_handle: log_output.handle,
-        map_handle: map_output.handle,
-        sign_handle: sign_output.handle,
-
-        log_data: log_output.log_data_rx,
-        map_data: map_output.map_data_rx,
-        signatures: sign_output.signatures,
+        log_rx: log.log_rx,
+        map_rx: map.map_rx,
+        signature_rx: sign.signature_rx,
+        log_handle: log.handle,
+        map_handle: map.handle,
+        sign_handle: sign.handle,
     }
 }

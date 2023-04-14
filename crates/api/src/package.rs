@@ -2,9 +2,7 @@
 
 use crate::{content::ContentSource, FromError};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use thiserror::Error;
-use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::{
     registry::{LogId, MapCheckpoint, RecordId},
     ProtoEnvelopeBody, SerdeEnvelope,
@@ -50,9 +48,9 @@ pub struct RecordResponse {
     /// The body of the record.
     pub record: ProtoEnvelopeBody,
     /// The content sources of the record.
-    pub content_sources: Arc<Vec<ContentSource>>,
+    pub content_sources: Vec<ContentSource>,
     /// The checkpoint of the record.
-    pub checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
+    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
 }
 
 /// Represents an error from the package API.
@@ -60,12 +58,6 @@ pub struct RecordResponse {
 #[derive(Debug, Error, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PackageError {
-    /// The provided checkpoint as not found.
-    #[error("checkpoint `{checkpoint}` not found")]
-    CheckpointNotFound {
-        /// The missing checkpoint.
-        checkpoint: Hash<Sha256>,
-    },
     /// The provided package id was invalid.
     #[error("invalid package id: {message}")]
     InvalidPackageId {
@@ -85,19 +77,19 @@ pub enum PackageError {
         message: String,
     },
     /// The provided package was not found.
-    #[error("package `{name}` not found")]
-    PackageNameNotFound {
+    #[error("package log `{log_id}` was not found")]
+    PackageIdNotFound {
+        /// The id of the missing package log.
+        log_id: LogId,
+    },
+    /// The provided package was not found.
+    #[error("package `{name}` was not found")]
+    PackageNotFound {
         /// The name of the missing package log.
         name: String,
     },
-    /// The provided package was not found.
-    #[error("package `{id}` not found")]
-    PackageNotFound {
-        /// The id of the missing package log.
-        id: LogId,
-    },
     /// The provided package record was not found.
-    #[error("package record `{id}` not found")]
+    #[error("package record `{id}` was not found")]
     PackageRecordNotFound {
         /// The id of the missing package record.
         id: RecordId,
@@ -120,21 +112,12 @@ pub enum PackageError {
         /// The provided content source url.
         url: String,
     },
-    /// The provided operator record was not found.
-    #[error("operator record `{id}` not found")]
-    OperatorRecordNotFound {
-        /// The id of the missing operator record.
-        id: RecordId,
-    },
-    /// The provided checkpoint was invalid.
-    #[error("invalid checkpoint: {message}")]
-    InvalidCheckpoint {
-        /// The validation error message.
-        message: String,
-    },
     /// An error occurred while performing the requested operation.
-    #[error("an error occurred while performing the requested operation: {message}")]
-    Operation {
+    #[error("an error occurred while performing the requested operation")]
+    Operation,
+    /// An error with a message occurred.
+    #[error("{message}")]
+    Message {
         /// The error message.
         message: String,
     },
@@ -142,7 +125,7 @@ pub enum PackageError {
 
 impl From<String> for PackageError {
     fn from(message: String) -> Self {
-        Self::Operation { message }
+        Self::Message { message }
     }
 }
 

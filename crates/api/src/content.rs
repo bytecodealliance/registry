@@ -49,9 +49,9 @@ pub enum ContentError {
     /// The service failed to persist the temporary file to the content directory.
     #[error("failed to persist temporary file to content directory")]
     FailedToPersist,
-    /// An error occurred while performing the requested operation.
-    #[error("an error occurred while performing the requested operation: {message}")]
-    Operation {
+    /// An error with a message occurred.
+    #[error("{message}")]
+    Message {
         /// The error message.
         message: String,
     },
@@ -59,7 +59,7 @@ pub enum ContentError {
 
 impl From<String> for ContentError {
     fn from(message: String) -> Self {
-        Self::Operation { message }
+        Self::Message { message }
     }
 }
 

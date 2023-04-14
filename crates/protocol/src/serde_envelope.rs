@@ -13,6 +13,17 @@ pub struct SerdeEnvelope<Contents> {
 }
 
 impl<Contents> SerdeEnvelope<Contents> {
+    /// Creates a new envelope for some contents using a signature.
+    ///
+    /// Note: this does not verify the signature matches the contents.
+    pub fn new(contents: Contents, key_id: signing::KeyID, signature: signing::Signature) -> Self {
+        Self {
+            contents,
+            key_id,
+            signature,
+        }
+    }
+
     /// Create an envelope for some contents using a signature.
     pub fn signed_contents(
         private_key: &signing::PrivateKey,

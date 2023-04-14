@@ -1,4 +1,5 @@
-use crate::services::core::{CoreService, CoreServiceError};
+use crate::datastore::DataStoreError;
+use crate::services::{CoreService, CoreServiceError};
 use axum::http::StatusCode;
 use axum::{
     debug_handler,
@@ -21,7 +22,7 @@ impl Config {
         Self { core_service }
     }
 
-    pub fn build_router(self) -> Router {
+    pub fn into_router(self) -> Router {
         Router::new()
             .route("/logs", post(fetch_logs))
             .route("/checkpoint", get(fetch_checkpoint))
@@ -32,20 +33,24 @@ impl Config {
 struct FetchApiError(FetchError);
 
 impl From<CoreServiceError> for FetchApiError {
-    fn from(value: CoreServiceError) -> Self {
-        Self(match value {
-            CoreServiceError::CheckpointNotFound(checkpoint) => {
-                FetchError::CheckpointNotFound { checkpoint }
-            }
-            CoreServiceError::PackageNotFound(id) => FetchError::PackageNotFound { id },
-            CoreServiceError::PackageNameNotFound(name) => FetchError::PackageNameNotFound { name },
-            CoreServiceError::PackageRecordNotFound(id) => FetchError::PackageRecordNotFound { id },
-            CoreServiceError::OperatorRecordNotFound(id) => {
-                FetchError::OperatorRecordNotFound { id }
-            }
-            CoreServiceError::InvalidCheckpoint(e) => FetchError::InvalidCheckpoint {
-                message: e.to_string(),
+    fn from(e: CoreServiceError) -> Self {
+        Self(match e {
+            CoreServiceError::DataStore(e) => match e {
+                DataStoreError::CheckpointNotFound(checkpoint) => {
+                    FetchError::CheckpointNotFound { checkpoint }
+                }
+                DataStoreError::LogNotFound(log_id) => FetchError::LogNotFound { log_id },
+                DataStoreError::RecordNotFound(record_id) => {
+                    FetchError::RecordNotFound { record_id }
+                }
+
+                // Other errors are unexpected operational errors
+                e => {
+                    tracing::error!("unexpected data store error: {e}");
+                    FetchError::Operation
+                }
             },
+            CoreServiceError::PackageNotFound(name) => FetchError::PackageNotFound { name },
         })
     }
 }
@@ -54,11 +59,9 @@ impl IntoResponse for FetchApiError {
     fn into_response(self) -> axum::response::Response {
         let status = match &self.0 {
             FetchError::CheckpointNotFound { .. }
-            | FetchError::PackageNameNotFound { .. }
+            | FetchError::LogNotFound { .. }
             | FetchError::PackageNotFound { .. }
-            | FetchError::PackageRecordNotFound { .. }
-            | FetchError::OperatorRecordNotFound { .. } => StatusCode::NOT_FOUND,
-            FetchError::InvalidCheckpoint { .. } => StatusCode::BAD_REQUEST,
+            | FetchError::RecordNotFound { .. } => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -73,24 +76,24 @@ async fn fetch_logs(
 ) -> Result<Json<FetchResponse>, FetchApiError> {
     let operator = config
         .core_service
-        .fetch_operator_records(body.root.clone(), body.operator)
-        .await?;
-    let operator = operator
+        .fetch_operator_records(&body.root, body.since.as_ref())
+        .await?
         .into_iter()
-        .map(|env| env.as_ref().clone().into())
+        .map(Into::into)
         .collect();
 
     let mut packages = IndexMap::new();
     for (name, since) in body.packages.into_iter() {
         let records = config
             .core_service
-            .fetch_package_records(body.root.clone(), name.clone(), since)
+            .fetch_package_records(&name, &body.root, since.as_ref())
             .await?
             .into_iter()
-            .map(|env| env.as_ref().clone().into())
+            .map(Into::into)
             .collect();
         packages.insert(name, records);
     }
+
     Ok(Json(FetchResponse { operator, packages }))
 }
 
@@ -98,12 +101,6 @@ async fn fetch_logs(
 async fn fetch_checkpoint(
     State(config): State<Config>,
 ) -> Result<Json<CheckpointResponse>, FetchApiError> {
-    let checkpoint = config
-        .core_service
-        .get_latest_checkpoint()
-        .await
-        .as_ref()
-        .to_owned();
-
+    let checkpoint = config.core_service.get_latest_checkpoint().await?;
     Ok(Json(CheckpointResponse { checkpoint }))
 }

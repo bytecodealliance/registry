@@ -6,10 +6,11 @@ mod dynamic;
 mod r#static;
 
 pub use digest::{Digest, Output};
+pub use dynamic::{DynHash, DynHashError};
+pub use r#static::Hash;
 pub use sha2::Sha256;
 
-pub use dynamic::{DynHash, DynHashParseError};
-pub use r#static::Hash;
+use self::r#static::IncorrectLengthError;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -62,14 +63,24 @@ impl<D: SupportedDigest> From<Hash<D>> for DynHash {
 }
 
 impl<D: SupportedDigest> TryFrom<DynHash> for Hash<D> {
-    type Error = Error;
+    type Error = DynHashError;
 
     fn try_from(value: DynHash) -> Result<Self, Self::Error> {
         if value.algorithm() == D::ALGORITHM {
-            let hash = Hash::try_from(value.bytes)?;
-            Ok(hash)
+            let len = value.bytes.len();
+            match Hash::try_from(value.bytes) {
+                Ok(hash) => Ok(hash),
+                Err(IncorrectLengthError) => Err(DynHashError::IncorrectLength {
+                    expected: <D as Digest>::output_size(),
+                    algo: D::ALGORITHM,
+                    actual: len,
+                }),
+            }
         } else {
-            Err(Error::msg("Mismatched algorithms"))
+            Err(DynHashError::MismatchedAlgorithms {
+                expected: D::ALGORITHM,
+                actual: value.algorithm(),
+            })
         }
     }
 }

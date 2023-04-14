@@ -1,50 +1,40 @@
+use super::DataServiceError;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
     sync::{mpsc::Receiver, RwLock},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::LogLeaf;
-use warg_transparency::log::{LogBuilder, LogData, LogProofBundle, Node, VecLog};
-
-use super::DataServiceError;
-
-pub type ProofLog = VecLog<Sha256, LogLeaf>;
+use warg_transparency::log::{LogBuilder, LogData as _, LogProofBundle, Node, VecLog};
 
 pub struct Input {
-    pub data: ProofData,
+    pub token: CancellationToken,
+    pub data: LogData,
     pub log_rx: Receiver<LogLeaf>,
 }
 
 pub struct Output {
-    pub data: Arc<RwLock<ProofData>>,
+    pub data: Arc<RwLock<LogData>>,
     pub handle: JoinHandle<()>,
 }
 
 #[derive(Default)]
-pub struct ProofData {
-    log: ProofLog,
+pub struct LogData {
+    log: VecLog<Sha256, LogLeaf>,
     leaf_index: HashMap<LogLeaf, Node>,
     root_index: HashMap<Hash<Sha256>, usize>,
 }
 
-impl ProofData {
-    pub fn new(init: LogLeaf) -> Self {
-        let mut log = ProofLog::default();
-        let init_node = log.push(&init);
-
-        let mut leaf_index = HashMap::new();
-        let mut root_index = HashMap::new();
-
-        let checkpoint = log.checkpoint();
-        leaf_index.insert(init, init_node);
-        root_index.insert(checkpoint.root(), checkpoint.length());
-
-        Self {
-            log,
-            leaf_index,
-            root_index,
-        }
+impl LogData {
+    /// Push a new leaf into the log.
+    pub fn push(&mut self, leaf: LogLeaf) {
+        let node = self.log.push(&leaf);
+        let checkpoint = self.log.checkpoint();
+        self.root_index
+            .insert(checkpoint.root(), checkpoint.length());
+        self.leaf_index.insert(leaf, node);
     }
 
     /// Generate a proof bundle for the consistency of the log across two times
@@ -93,24 +83,28 @@ impl ProofData {
     }
 }
 
-pub fn process(input: Input) -> Output {
-    let Input { data, mut log_rx } = input;
+pub fn spawn(input: Input) -> Output {
+    let Input {
+        token,
+        data,
+        mut log_rx,
+    } = input;
     let data = Arc::new(RwLock::new(data));
     let processor_data = data.clone();
 
     let handle = tokio::spawn(async move {
-        let data = processor_data;
-
-        while let Some(leaf) = log_rx.recv().await {
-            let mut data = data.as_ref().write().await;
-            let node = data.log.push(&leaf);
-
-            let checkpoint = data.log.checkpoint();
-            data.root_index
-                .insert(checkpoint.root(), checkpoint.length());
-            data.leaf_index.insert(leaf, node);
-
-            drop(data);
+        loop {
+            tokio::select! {
+                leaf = log_rx.recv() => {
+                    if let Some(leaf) = leaf {
+                        let mut data = processor_data.as_ref().write().await;
+                        data.push(leaf);
+                    } else {
+                        break;
+                    }
+                }
+                _ = token.cancelled() => break,
+            }
         }
     });
 

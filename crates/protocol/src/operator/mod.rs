@@ -1,18 +1,14 @@
+use crate::{protobuf, registry::RecordId};
 use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
-
-use warg_crypto::hash::DynHash;
-use warg_crypto::{Decode, Encode, Signable};
-
-use crate::protobuf;
-use crate::registry::RecordId;
+use warg_crypto::{hash::DynHash, Decode, Encode, Signable};
 
 mod model;
 mod validate;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use validate::{Head, ValidationError, Validator};
+pub use validate::{Head, Snapshot, ValidationError, Validator};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;

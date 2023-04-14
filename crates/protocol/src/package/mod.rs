@@ -1,17 +1,14 @@
-use crate::protobuf;
-use crate::registry::RecordId;
+use crate::{protobuf, registry::RecordId};
 use anyhow::Error;
 use prost::Message;
 use thiserror::Error;
-
-use warg_crypto::hash::DynHash;
-use warg_crypto::{Decode, Encode, Signable};
+use warg_crypto::{hash::DynHash, Decode, Encode, Signable};
 
 mod model;
 mod validate;
 
 pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Head, Release, ReleaseState, ValidationError, Validator};
+pub use validate::{Head, Release, ReleaseState, Snapshot, ValidationError, Validator};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

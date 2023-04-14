@@ -13,61 +13,61 @@ use crate::ProtoEnvelope;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("The first entry of the log is not \"init\"")]
+    #[error("the first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
-    #[error("The initial record is empty and does not \"init\"")]
+    #[error("the initial record is empty and does not \"init\"")]
     InitialRecordDoesNotInit,
 
-    #[error("The Key ID used to sign this envelope is not known to this package log")]
+    #[error("the Key ID used to sign this envelope is not known to this package log")]
     KeyIDNotRecognized { key_id: signing::KeyID },
 
-    #[error("A second \"init\" entry was found")]
+    #[error("a second \"init\" entry was found")]
     InitialEntryAfterBeginning,
 
-    #[error("The key with ID {key_id} did not have required permission {needed_permission}")]
+    #[error("the key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
         key_id: signing::KeyID,
         needed_permission: model::Permission,
     },
 
-    #[error("Attempted to remove permission {permission} from key {key_id} which did not have it")]
+    #[error("attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
         permission: model::Permission,
         key_id: signing::KeyID,
     },
 
-    #[error("An entry attempted to release already released version {version}")]
+    #[error("an entry attempted to release version {version} which is already released")]
     ReleaseOfReleased { version: Version },
 
-    #[error("An entry attempted to yank version {version} which had not yet been released")]
+    #[error("an entry attempted to yank version {version} which had not yet been released")]
     YankOfUnreleased { version: Version },
 
-    #[error("An entry attempted to yank already yanked version {version}")]
+    #[error("an entry attempted to yank version {version} which is already yanked")]
     YankOfYanked { version: Version },
 
-    #[error("Unable to verify signature")]
+    #[error("unable to verify signature")]
     SignatureError(#[from] signing::SignatureError),
 
-    #[error("Record hash uses {found} algorithm but {expected} was expected")]
+    #[error("record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
         found: HashAlgorithm,
         expected: HashAlgorithm,
     },
 
-    #[error("Previous record hash does not match")]
+    #[error("previous record hash does not match")]
     RecordHashDoesNotMatch,
 
-    #[error("The first record contained a previous hash value")]
+    #[error("the first record contained a previous hash value")]
     PreviousHashOnFirstRecord,
 
-    #[error("Non-initial record contained no previous hash")]
+    #[error("non-initial record contained no previous hash")]
     NoPreviousHashAfterInit,
 
-    #[error("Protocol version {version} not allowed")]
+    #[error("protocol version {version} not allowed")]
     ProtocolVersionNotAllowed { version: u32 },
 
-    #[error("Record has lower timestamp than previous")]
+    #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
 }
 
@@ -177,11 +177,11 @@ impl Validator {
     /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
-        envelope: &ProtoEnvelope<model::PackageRecord>,
+        record: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
         let snapshot = self.snapshot();
 
-        let result = self.validate_envelope(envelope);
+        let result = unsafe { self.validate_record(record) };
         if result.is_err() {
             self.rollback(snapshot);
         }
@@ -189,45 +189,17 @@ impl Validator {
         result
     }
 
-    /// Gets the releases known to the validator.
+    /// Validates an individual package record without a transaction.
     ///
-    /// The releases are returned in package log order.
+    /// # Safety
     ///
-    /// Yanked releases are included.
-    pub fn releases(&self) -> impl Iterator<Item = &Release> {
-        self.releases.values()
-    }
-
-    /// Gets the release with the given version.
+    /// This is marked as unsafe as the caller must ensure that the validator
+    /// is snapshoted before calling this method and rolled back if the
+    /// validation fails.
     ///
-    /// Returns `None` if a release with the given version does not exist.
-    pub fn release(&self, version: &Version) -> Option<&Release> {
-        self.releases.get(version)
-    }
-
-    /// Finds the latest release matching the given version requirement.
-    ///
-    /// Releases that have been yanked are not considered.
-    pub fn find_latest_release(&self, req: &VersionReq) -> Option<&Release> {
-        self.releases
-            .values()
-            .filter(|release| !release.yanked() && req.matches(&release.version))
-            .max_by(|a, b| a.version.cmp(&b.version))
-    }
-
-    /// Gets the public key of the given key id.
-    ///
-    /// Returns `None` if the key id is not recognized.
-    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
-        self.keys.get(key_id)
-    }
-
-    fn initialized(&self) -> bool {
-        // The package log is initialized if the hash algorithm is set
-        self.algorithm.is_some()
-    }
-
-    fn validate_envelope(
+    /// Failure to do so may result in the validator being left in an inconsistent
+    /// state.
+    pub unsafe fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<Vec<DynHash>, ValidationError> {
@@ -268,6 +240,44 @@ impl Validator {
         });
 
         Ok(contents)
+    }
+
+    /// Gets the releases known to the validator.
+    ///
+    /// The releases are returned in package log order.
+    ///
+    /// Yanked releases are included.
+    pub fn releases(&self) -> impl Iterator<Item = &Release> {
+        self.releases.values()
+    }
+
+    /// Gets the release with the given version.
+    ///
+    /// Returns `None` if a release with the given version does not exist.
+    pub fn release(&self, version: &Version) -> Option<&Release> {
+        self.releases.get(version)
+    }
+
+    /// Finds the latest release matching the given version requirement.
+    ///
+    /// Releases that have been yanked are not considered.
+    pub fn find_latest_release(&self, req: &VersionReq) -> Option<&Release> {
+        self.releases
+            .values()
+            .filter(|release| !release.yanked() && req.matches(&release.version))
+            .max_by(|a, b| a.version.cmp(&b.version))
+    }
+
+    /// Gets the public key of the given key id.
+    ///
+    /// Returns `None` if the key id is not recognized.
+    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
+        self.keys.get(key_id)
+    }
+
+    fn initialized(&self) -> bool {
+        // The package log is initialized if the hash algorithm is set
+        self.algorithm.is_some()
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
@@ -504,6 +514,9 @@ impl Validator {
         })
     }
 
+    /// Takes a snapshot of the validator state.
+    ///
+    /// Used with `rollback` to revert the validator to a previous state.
     pub fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
@@ -522,6 +535,7 @@ impl Validator {
         }
     }
 
+    /// Roll the validator back to a previous state.
     pub fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
