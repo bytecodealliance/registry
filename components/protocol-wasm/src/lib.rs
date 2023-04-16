@@ -79,17 +79,6 @@ fn perm_binding(permission: &package::model::Permission) -> protocolbindings::Pe
 
 impl protocolbindings::Protocol for Component {
     fn prove_inclusion(input: protocolbindings::Inclusion, checkpoint: protocolbindings::MapCheckpoint, heads: Vec<protocolbindings::LogLeaf>) {
-      let map_checkpoint = MapCheckpoint {
-        log_root: DynHash {
-          algo: HashAlgorithm::Sha256,
-          bytes: checkpoint.log_root.as_bytes().to_vec(),
-        },
-        log_length: checkpoint.log_length,
-        map_root: DynHash {
-          algo: HashAlgorithm::Sha256,
-          bytes: checkpoint.map_root.as_bytes().to_vec()
-        }
-      };
       let bytes = general_purpose::STANDARD.decode(&input.log).unwrap();
       let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(general_purpose::STANDARD
