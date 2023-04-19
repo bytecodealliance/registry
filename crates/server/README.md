@@ -4,7 +4,7 @@
 
 ## Running the server
 
-The registry server can be started with either in-memory or PostgresQL storage.
+The registry server can be started with either in-memory or PostgreSQL storage.
 
 ### In-memory storage
 
@@ -21,15 +21,15 @@ $ WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk
 2023-04-18T23:48:52.170233Z  INFO warg_server: listening on 127.0.0.1:8090
 ```
 
-### PostgresQL storage
+### PostgreSQL storage
 
-With PostgresQL storage, the server will store all data in a PostgresQL 
+With PostgreSQL storage, the server will store all data in a PostgreSQL 
 database. 
 
-Support for PostgresQL storage is behind the `postgres` compilation feature 
+Support for PostgreSQL storage is behind the `postgres` compilation feature 
 flag.
 
-The easiest way to start a PostgresQL server is with Docker:
+The easiest way to start a PostgreSQL server is with Docker:
 
 ```console
 docker run -d --name postgres -e POSTGRES_PASSWORD=password -v /tmp/data:/var/lib/postgresql/data -p 5432:5432 postgres
@@ -58,6 +58,6 @@ To start the registry server, provide both the `WARG_DEMO_OPERATOR_KEY` and
 DATABASE_URL=postgres://postgres:password@localhost/registry WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -p warg-server --features postgres -- --content-dir content --store postgres
 ```
 
-The `--store postgres` flag starts the server with PostgresQL storage.
+The `--store postgres` flag starts the server with PostgreSQL storage.
 
 The server may now be restarted and will continue to use the same database.

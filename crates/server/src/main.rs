@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
         #[cfg(feature = "postgres")]
         DataStoreKind::Postgres => {
             use anyhow::Context;
-            tracing::debug!("using PostgresQL data store");
+            tracing::debug!("using PostgreSQL data store");
             Box::new(warg_server::datastore::PostgresBackend::new(
                 std::env::var("DATABASE_URL").context(
                     "failed to get the database URL from the `DATABASE_URL` environment variable",
