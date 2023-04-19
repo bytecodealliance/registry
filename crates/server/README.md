@@ -55,9 +55,9 @@ To start the registry server, provide both the `WARG_DEMO_OPERATOR_KEY` and
 `DATABASE_URL` environment variables:
 
 ```console
-DATABASE_URL=postgres://postgres:password@localhost/registry WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -p warg-server --features postgres -- --content-dir content --store postgres
+DATABASE_URL=postgres://postgres:password@localhost/registry WARG_DEMO_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -p warg-server --features postgres -- --content-dir content --data-store postgres
 ```
 
-The `--store postgres` flag starts the server with PostgreSQL storage.
+The `--data-store postgres` flag starts the server with PostgreSQL data storage.
 
 The server may now be restarted and will continue to use the same database.

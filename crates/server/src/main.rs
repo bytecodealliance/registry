@@ -33,7 +33,7 @@ struct Args {
 
     /// The data store to use for the server.
     #[arg(long, default_value = "memory")]
-    store: DataStoreKind,
+    data_store: DataStoreKind,
 }
 
 impl Args {
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     }
     tracing::debug!("config: {config:?}");
 
-    let store: Box<dyn DataStore> = match args.store {
+    let store: Box<dyn DataStore> = match args.data_store {
         #[cfg(feature = "postgres")]
         DataStoreKind::Postgres => {
             use anyhow::Context;
