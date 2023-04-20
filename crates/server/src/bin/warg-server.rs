@@ -85,11 +85,12 @@ async fn main() -> Result<()> {
 
     let (core, handle) = CoreService::spawn(signing_key, store).await?;
 
-    tracing::info!("listening on {:?}", args.listen);
-    axum::Server::try_bind(&args.listen)?
-        .serve(config.into_router(core).into_make_service())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let server =
+        axum::Server::try_bind(&args.listen)?.serve(config.into_router(core).into_make_service());
+
+    tracing::info!("listening on {addr:?}", addr = server.local_addr());
+
+    server.with_graceful_shutdown(shutdown_signal()).await?;
 
     tracing::info!("waiting for core service to stop");
     handle.stop().await;
