@@ -9,7 +9,10 @@ use crate::{
 };
 use anyhow::Result;
 use futures::StreamExt;
-use std::{sync::Arc, time::SystemTime};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use thiserror::Error;
 use tokio::{
     sync::{
@@ -107,6 +110,7 @@ impl CoreService {
     pub async fn spawn(
         signing_key: PrivateKey,
         store: Box<dyn DataStore>,
+        checkpoint_interval: Duration,
     ) -> Result<(Arc<Self>, StopHandle), CoreServiceError> {
         let data = Self::initialize(&signing_key, store.as_ref()).await?;
         let token = CancellationToken::new();
@@ -115,6 +119,7 @@ impl CoreService {
         // Spawn the transparency service
         let transparency = transparency::spawn(transparency::Input {
             token: token.clone(),
+            checkpoint_interval,
             log: data.log,
             map: data.map,
             leaves: data.leaves,
@@ -205,7 +210,7 @@ impl CoreService {
             }
         });
 
-        tracing::info!("core service is running");
+        tracing::debug!("core service is running");
 
         let join = vec![
             transparency.log_handle,
@@ -233,7 +238,7 @@ impl CoreService {
         signing_key: &PrivateKey,
         store: &dyn DataStore,
     ) -> Result<InitializationData, CoreServiceError> {
-        tracing::info!("initializing core service");
+        tracing::debug!("initializing core service");
         let mut data = InitializationData::default();
         let mut last_checkpoint = None;
         let mut initial = store.initial_leaves().await?;
@@ -265,7 +270,7 @@ impl CoreService {
             return Self::init_operator_log(signing_key, store).await;
         }
 
-        tracing::info!("core service initialized");
+        tracing::debug!("core service initialized");
         Ok(data)
     }
 

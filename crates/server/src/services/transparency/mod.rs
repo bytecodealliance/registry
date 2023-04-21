@@ -1,3 +1,4 @@
+use std::time::Duration;
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use warg_crypto::signing;
@@ -13,6 +14,7 @@ pub use sign::Signature;
 
 pub struct Input {
     pub token: CancellationToken,
+    pub checkpoint_interval: Duration,
     pub log: log::VerifiableLog,
     pub map: map::VerifiableMap,
     pub leaves: Vec<LogLeaf>,
@@ -32,6 +34,7 @@ pub struct Output {
 pub fn spawn(input: Input) -> Output {
     let Input {
         token,
+        checkpoint_interval,
         log,
         map,
         leaves,
@@ -46,6 +49,7 @@ pub fn spawn(input: Input) -> Output {
     });
     let map = map::spawn(map::Input {
         token: token.clone(),
+        checkpoint_interval,
         map,
         leaves,
         log_summary_rx: log.log_summary_rx,

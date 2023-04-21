@@ -194,7 +194,7 @@ impl Validator {
     /// # Safety
     ///
     /// This is marked as unsafe as the caller must ensure that the validator
-    /// is snapshoted before calling this method and rolled back if the
+    /// is snapshotted before calling this method and rolled back if the
     /// validation fails.
     ///
     /// Failure to do so may result in the validator being left in an inconsistent

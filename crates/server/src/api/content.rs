@@ -15,15 +15,19 @@ use warg_api::content::ContentError;
 use warg_crypto::hash::{Digest, Sha256};
 
 #[derive(Debug)]
-pub struct ContentConfig {
-    pub content_path: PathBuf,
+pub struct Config {
+    dir: PathBuf,
 }
 
-impl ContentConfig {
+impl Config {
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+
     pub fn build_router(self) -> Router {
         Router::new()
             .route("/", post(upload_content))
-            .fallback_service(get_service(ServeDir::new(&self.content_path)))
+            .fallback_service(get_service(ServeDir::new(&self.dir)))
             .with_state(Arc::new(self))
     }
 }
@@ -40,11 +44,11 @@ impl IntoResponse for ContentApiError {
 
 #[debug_handler]
 async fn upload_content(
-    State(state): State<Arc<ContentConfig>>,
+    State(state): State<Arc<Config>>,
     OriginalUri(orig_uri): OriginalUri,
     mut stream: BodyStream,
 ) -> Result<impl IntoResponse, ContentApiError> {
-    let tmp_path = NamedTempFile::new_in(&state.content_path)
+    let tmp_path = NamedTempFile::new_in(&state.dir)
         .map_err(|_| ContentApiError(ContentError::TempFile))?
         .into_temp_path();
 
@@ -69,7 +73,7 @@ async fn upload_content(
 
     let dest_name = format!("sha256-{:x}", hasher.finalize());
     tmp_path
-        .persist(state.content_path.join(&dest_name))
+        .persist(state.dir.join(&dest_name))
         .map_err(|_| ContentApiError(ContentError::FailedToPersist))?;
 
     let location = format!("{}/{}", orig_uri.path().trim_end_matches('/'), dest_name);

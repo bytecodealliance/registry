@@ -47,7 +47,7 @@ pub enum DataStoreError {
     Rejection(String),
 
     #[cfg(feature = "postgres")]
-    #[error("a connection could not be established to the configured data backend: {0}")]
+    #[error("a connection could not be established to the PostgreSQL server: {0}")]
     ConnectionPool(#[from] diesel_async::pooled_connection::deadpool::PoolError),
 
     #[cfg(feature = "postgres")]

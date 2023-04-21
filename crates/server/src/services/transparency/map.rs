@@ -12,6 +12,7 @@ pub type VerifiableMap = Map<Sha256, LogId, MapLeaf>;
 
 pub struct Input {
     pub token: CancellationToken,
+    pub checkpoint_interval: Duration,
     pub map: VerifiableMap,
     pub leaves: Vec<LogLeaf>,
     pub log_summary_rx: Receiver<log::Summary>,
@@ -32,16 +33,16 @@ pub struct Summary {
 pub fn spawn(input: Input) -> Output {
     let (map_summary_tx, map_summary_rx) = mpsc::channel::<Summary>(4);
     let (map_tx, map_rx) = mpsc::channel::<VerifiableMap>(4);
-    let mut interval = time::interval(Duration::from_secs(5));
-
     let handle = tokio::spawn(async move {
         let Input {
             token,
+            checkpoint_interval,
             mut map,
             mut leaves,
             mut log_summary_rx,
         } = input;
         let mut current = None;
+        let mut interval = time::interval(checkpoint_interval);
 
         loop {
             tokio::select! {

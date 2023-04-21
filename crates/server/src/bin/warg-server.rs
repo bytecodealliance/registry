@@ -3,11 +3,7 @@ use clap::{Parser, ValueEnum};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
-use warg_server::{
-    datastore::{DataStore, MemoryDataStore},
-    services::CoreService,
-    Config,
-};
+use warg_server::{Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
@@ -56,47 +52,32 @@ async fn main() -> Result<()> {
     tracing::debug!("args: {args:?}");
 
     // TODO: pull the signing key from the system keyring
-    let demo_operator_key = std::env::var("WARG_DEMO_OPERATOR_KEY")?;
-    let signing_key = demo_operator_key.parse()?;
+    let operator_key = std::env::var("WARG_DEMO_OPERATOR_KEY")?.parse()?;
+    let mut config = Config::new(operator_key)
+        .with_addr(args.listen)
+        .with_shutdown(shutdown_signal());
 
-    let base_url = format!("http://{}", args.listen);
-    let mut config = Config::new(base_url);
-    if let Some(path) = args.content_dir {
-        config.enable_content_service(path)?;
+    if let Some(content_dir) = args.content_dir {
+        config = config.with_content_dir(content_dir);
     }
-    tracing::debug!("config: {config:?}");
 
-    let store: Box<dyn DataStore> = match args.data_store {
+    match args.data_store {
         #[cfg(feature = "postgres")]
         DataStoreKind::Postgres => {
             use anyhow::Context;
             tracing::debug!("using PostgreSQL data store");
-            Box::new(warg_server::datastore::PostgresBackend::new(
+            config = config.with_data_store(warg_server::datastore::PostgresBackend::new(
                 std::env::var("DATABASE_URL").context(
-                    "failed to get the database URL from the `DATABASE_URL` environment variable",
+                    "failed to get the PostgreSQL database URL from the `DATABASE_URL` environment variable",
                 )?,
-            )?)
+            )?);
         }
         DataStoreKind::Memory => {
-            tracing::debug!("using in-memory data store");
-            Box::<MemoryDataStore>::default()
+            tracing::debug!("using default data store");
         }
-    };
+    }
 
-    let (core, handle) = CoreService::spawn(signing_key, store).await?;
-
-    let server =
-        axum::Server::try_bind(&args.listen)?.serve(config.into_router(core).into_make_service());
-
-    tracing::info!("listening on {addr:?}", addr = server.local_addr());
-
-    server.with_graceful_shutdown(shutdown_signal()).await?;
-
-    tracing::info!("waiting for core service to stop");
-    handle.stop().await;
-    tracing::info!("shutdown complete");
-
-    Ok(())
+    Server::new(config).run().await
 }
 
 async fn shutdown_signal() {
