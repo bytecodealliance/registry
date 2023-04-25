@@ -28,7 +28,7 @@ diesel::table! {
     logs (id) {
         id -> Int4,
         log_id -> Text,
-        name -> Text,
+        name -> Nullable<Text>,
         validator -> Jsonb,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,

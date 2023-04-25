@@ -14,12 +14,11 @@ CREATE TABLE checkpoints (
 SELECT diesel_manage_updated_at('checkpoints');
 
 -- Unified table for both package and operator logs.
--- The nullable columns are null for operator logs.
--- TODO: add full text search indexes for description and keywords.
+-- The `name` column is NULL for the operator log.
 CREATE TABLE logs (
   id SERIAL PRIMARY KEY,
   log_id TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL, -- implied UNIQUE constraint as log_id is derived from name
+  name TEXT, -- implied UNIQUE constraint as log_id is derived from name
   validator JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -27,7 +26,7 @@ CREATE TABLE logs (
 
 SELECT diesel_manage_updated_at('logs');
 
-CREATE TYPE record_status AS ENUM ('pending', 'rejected', 'accepted');
+CREATE TYPE record_status AS ENUM ('pending', 'rejected', 'validated');
 
 -- Unified table for both package and operator log records.
 CREATE TABLE records (

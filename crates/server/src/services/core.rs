@@ -169,8 +169,8 @@ impl CoreService {
 
                                     // TODO: perform all policy checks on the record here
 
-                                    // Accept the package record
-                                    match task_core.store.accept_package_record(&log_id, &record_id).await {
+                                    // Validate the package record
+                                    match task_core.store.validate_package_record(&log_id, &record_id).await {
                                         Ok(()) => {
                                             // Send the record to the transparency service to be included in the next checkpoint
                                             let leaf = LogLeaf { log_id, record_id };
@@ -185,7 +185,7 @@ impl CoreService {
                                             e => {
                                                 // TODO: this should be made more robust with a proper reliable message
                                                 // queue with retry logic
-                                                tracing::error!("failed to accept package record `{record_id}`: {e}");
+                                                tracing::error!("failed to validate package record `{record_id}`: {e}");
                                             }
                                         }
                                     }
@@ -288,7 +288,7 @@ impl CoreService {
 
         // TODO: ensure the operator record passes all policy checks
 
-        store.accept_operator_record(&log_id, &record_id).await?;
+        store.validate_operator_record(&log_id, &record_id).await?;
 
         let leaf = LogLeaf { log_id, record_id };
         let mut data = InitializationData::default();

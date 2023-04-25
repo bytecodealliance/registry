@@ -21,7 +21,7 @@ use warg_protocol::registry::{LogId, RecordId};
 pub enum RecordStatus {
     Pending,
     Rejected,
-    Accepted,
+    Validated,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, diesel_derive_enum::DbEnum)]
@@ -71,7 +71,7 @@ where
     V: Serialize,
 {
     pub log_id: TextRef<'a, LogId>,
-    pub name: &'a str,
+    pub name: Option<&'a str>,
     pub validator: &'a Json<V>,
 }
 

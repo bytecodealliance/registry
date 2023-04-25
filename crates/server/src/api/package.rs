@@ -218,7 +218,8 @@ async fn get_pending_record(
             .get_record_status(&package_id, &record_id)
             .await?
         {
-            RecordStatus::Pending | RecordStatus::Accepted => PendingRecordResponse::Processing {
+            // Validated is considered still pending until the record is part of a checkpoint
+            RecordStatus::Pending | RecordStatus::Validated => PendingRecordResponse::Processing {
                 status_url: pending_record_url(&package_id, &record_id),
             },
             RecordStatus::Rejected(reason) => PendingRecordResponse::Rejected { reason },

@@ -108,7 +108,7 @@ async fn get_records<R: Decode>(
             schema::records::log_id
                 .eq(log_id)
                 .and(schema::records::checkpoint_id.le(checkpoint_id))
-                .and(schema::records::status.eq(RecordStatus::Accepted)),
+                .and(schema::records::status.eq(RecordStatus::Validated)),
         );
 
     if let Some(since) = since {
@@ -139,7 +139,7 @@ async fn get_records<R: Decode>(
 async fn insert_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: &LogId,
-    name: &str,
+    name: Option<&str>,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
     sources: &[ContentSource],
@@ -247,7 +247,7 @@ async fn reject_record(
     Ok(())
 }
 
-async fn accept_record<V>(
+async fn validate_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
     record_id: &RecordId,
@@ -277,7 +277,7 @@ where
                 .first::<(i32, Vec<u8>, Json<V>)>(conn)
                 .await
                 .optional()?
-                .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+                .ok_or_else(|| DataStoreError::RecordNotPending(record_id.clone()))?;
 
             let record = ProtoEnvelope::<V::Record>::from_protobuf(content).map_err(|e| {
                 DataStoreError::InvalidRecordContents {
@@ -321,10 +321,10 @@ where
                 .execute(conn)
                 .await?;
 
-            // Finally, accept the record into the log
+            // Finally, mark the record as validated
             diesel::update(schema::records::table)
                 .filter(schema::records::id.eq(id))
-                .set(schema::records::status.eq(RecordStatus::Accepted))
+                .set(schema::records::status.eq(RecordStatus::Validated))
                 .execute(conn)
                 .await?;
 
@@ -375,7 +375,7 @@ where
             schema::records::record_id
                 .eq(TextRef(record_id))
                 .and(schema::records::log_id.eq(log_id))
-                .and(schema::records::status.eq(RecordStatus::Accepted)),
+                .and(schema::records::status.eq(RecordStatus::Validated)),
         )
         .first::<(
             i32,
@@ -459,7 +459,7 @@ impl DataStore for PostgresDataStore {
                     schema::records::record_id,
                     schema::checkpoints::checkpoint_id.nullable(),
                 ))
-                .filter(schema::records::status.eq(RecordStatus::Accepted))
+                .filter(schema::records::status.eq(RecordStatus::Validated))
                 .order_by(schema::records::id)
                 .load_stream::<(
                     ParsedText<DynHash>,
@@ -487,15 +487,8 @@ impl DataStore for PostgresDataStore {
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<operator::Validator>(
-            conn.as_mut(),
-            log_id,
-            "<operator>",
-            record_id,
-            record,
-            &[],
-        )
-        .await
+        insert_record::<operator::Validator>(conn.as_mut(), log_id, None, record_id, record, &[])
+            .await
     }
 
     async fn reject_operator_record(
@@ -516,7 +509,7 @@ impl DataStore for PostgresDataStore {
         reject_record(conn.as_mut(), log_id, record_id, reason).await
     }
 
-    async fn accept_operator_record(
+    async fn validate_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
@@ -530,7 +523,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        accept_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
+        validate_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
     }
 
     async fn store_package_record(
@@ -542,8 +535,15 @@ impl DataStore for PostgresDataStore {
         sources: &[ContentSource],
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<package::Validator>(conn.as_mut(), log_id, name, record_id, record, sources)
-            .await
+        insert_record::<package::Validator>(
+            conn.as_mut(),
+            log_id,
+            Some(name),
+            record_id,
+            record,
+            sources,
+        )
+        .await
     }
 
     async fn reject_package_record(
@@ -564,7 +564,7 @@ impl DataStore for PostgresDataStore {
         reject_record(conn.as_mut(), log_id, record_id, reason).await
     }
 
-    async fn accept_package_record(
+    async fn validate_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
@@ -578,7 +578,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match accept_record::<package::Validator>(conn.as_mut(), log_id, record_id).await {
+        match validate_record::<package::Validator>(conn.as_mut(), log_id, record_id).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -734,11 +734,11 @@ impl DataStore for PostgresDataStore {
         Ok(match status {
             RecordStatus::Pending => super::RecordStatus::Pending,
             RecordStatus::Rejected => super::RecordStatus::Rejected(reason.unwrap_or_default()),
-            RecordStatus::Accepted => {
+            RecordStatus::Validated => {
                 if checkpoint_id.is_some() {
                     super::RecordStatus::InCheckpoint
                 } else {
-                    super::RecordStatus::Accepted
+                    super::RecordStatus::Validated
                 }
             }
         })

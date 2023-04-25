@@ -31,6 +31,9 @@ pub enum DataStoreError {
     #[error("record `{0}` was not found")]
     RecordNotFound(RecordId),
 
+    #[error("record `{0}` cannot be validated as it is not in a pending state")]
+    RecordNotPending(RecordId),
+
     #[error("record contents for log `{record_id}` are invalid: {message}")]
     InvalidRecordContents {
         record_id: RecordId,
@@ -66,7 +69,7 @@ pub struct InitialLeaf {
 pub enum RecordStatus {
     Pending,
     Rejected(String),
-    Accepted,
+    Validated,
     InCheckpoint,
 }
 
@@ -120,10 +123,12 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Accepts the given operator record.
+    /// Validates the given operator record.
     ///
-    /// If the record fails to validate, it will be rejected.
-    async fn accept_operator_record(
+    /// The record must be in a pending state.
+    ///
+    /// If validation succeeds, the record will be considered part of the log.
+    async fn validate_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
@@ -149,10 +154,12 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Accepts the given package record.
+    /// Validates the given package record.
     ///
-    /// If the record fails to validate, it will be rejected.
-    async fn accept_package_record(
+    /// The record must be in a pending state.
+    ///
+    /// If validation succeeds, the record will be considered part of the log.
+    async fn validate_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,

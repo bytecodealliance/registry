@@ -59,7 +59,7 @@ enum PendingRecord {
 enum RecordStatus {
     Pending(PendingRecord),
     Rejected(String),
-    Accepted(Record),
+    Validated(Record),
 }
 
 #[derive(Default)]
@@ -148,7 +148,7 @@ impl DataStore for MemoryDataStore {
         }
     }
 
-    async fn accept_operator_record(
+    async fn validate_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
@@ -187,12 +187,12 @@ impl DataStore for MemoryDataStore {
                     }
                 }
             }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
+            _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
         };
 
         match res {
             Ok(record) => {
-                *status = RecordStatus::Accepted(record);
+                *status = RecordStatus::Validated(record);
                 Ok(())
             }
             Err(e) => {
@@ -246,7 +246,7 @@ impl DataStore for MemoryDataStore {
         }
     }
 
-    async fn accept_package_record(
+    async fn validate_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
@@ -302,12 +302,12 @@ impl DataStore for MemoryDataStore {
                     }
                 }
             }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
+            _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
         };
 
         match res {
             Ok(record) => {
-                *status = RecordStatus::Accepted(record);
+                *status = RecordStatus::Validated(record);
                 Ok(())
             }
             Err(e) => {
@@ -346,7 +346,7 @@ impl DataStore for MemoryDataStore {
                 .get_mut(&leaf.record_id)
                 .unwrap()
             {
-                RecordStatus::Accepted(record) => {
+                RecordStatus::Validated(record) => {
                     record.checkpoint_index = Some(index);
                 }
                 _ => unreachable!(),
@@ -378,7 +378,7 @@ impl DataStore for MemoryDataStore {
         if let Some(checkpoint_index) = state.checkpoints.get_index_of(root) {
             let start = match since {
                 Some(since) => match &state.records[log_id][since] {
-                    RecordStatus::Accepted(record) => record.index + 1,
+                    RecordStatus::Validated(record) => record.index + 1,
                     _ => unreachable!(),
                 },
                 None => 0,
@@ -406,7 +406,7 @@ impl DataStore for MemoryDataStore {
         if let Some(checkpoint_index) = state.checkpoints.get_index_of(root) {
             let start = match since {
                 Some(since) => match &state.records[log_id][since] {
-                    RecordStatus::Accepted(record) => record.index + 1,
+                    RecordStatus::Validated(record) => record.index + 1,
                     _ => unreachable!(),
                 },
                 None => 0,
@@ -436,10 +436,10 @@ impl DataStore for MemoryDataStore {
         match status {
             RecordStatus::Pending(_) => Ok(super::RecordStatus::Pending),
             RecordStatus::Rejected(reason) => Ok(super::RecordStatus::Rejected(reason.clone())),
-            RecordStatus::Accepted(r) => Ok(if r.checkpoint_index.is_some() {
+            RecordStatus::Validated(r) => Ok(if r.checkpoint_index.is_some() {
                 super::RecordStatus::InCheckpoint
             } else {
-                super::RecordStatus::Accepted
+                super::RecordStatus::Validated
             }),
         }
     }
@@ -456,7 +456,7 @@ impl DataStore for MemoryDataStore {
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
         match statuses.get(record_id) {
-            Some(RecordStatus::Accepted(r)) => {
+            Some(RecordStatus::Validated(r)) => {
                 let log = state
                     .operators
                     .get(log_id)
@@ -483,7 +483,7 @@ impl DataStore for MemoryDataStore {
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
         match statuses.get(record_id) {
-            Some(RecordStatus::Accepted(r)) => {
+            Some(RecordStatus::Validated(r)) => {
                 let log = state
                     .packages
                     .get(log_id)
