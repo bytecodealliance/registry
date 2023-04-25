@@ -80,6 +80,14 @@ impl Config {
         self
     }
 
+    /// Specify the data store to use via a boxed data store.
+    ///
+    /// If this is not specified, the server will use an in-memory data store.
+    pub fn with_boxed_data_store(mut self, store: Box<dyn DataStore>) -> Self {
+        self.data_store = Some(store);
+        self
+    }
+
     /// Specify the path to the directory where content will be stored.
     ///
     /// If the directory does not exist, it will be created.

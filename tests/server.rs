@@ -1,15 +1,23 @@
 use self::support::*;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::{fs, str::FromStr};
-use warg_client::{api, FileSystemClient, StorageLockResult};
+use warg_client::{api, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::{signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
 
 mod support;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn it_starts_with_initial_checkpoint() -> Result<()> {
-    let (_server, config) = spawn_server().await?;
+#[cfg(feature = "postgres")]
+mod postgres;
+
+fn create_client(config: &Config) -> Result<FileSystemClient> {
+    match FileSystemClient::try_new_with_config(None, config)? {
+        StorageLockResult::Acquired(client) => Ok(client),
+        _ => bail!("failed to acquire storage lock"),
+    }
+}
+
+async fn validate_initial_checkpoint(config: Config) -> Result<()> {
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
 
     let response = client.latest_checkpoint().await?;
@@ -36,21 +44,15 @@ async fn it_starts_with_initial_checkpoint() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn it_publishes_a_component() -> Result<()> {
-    let (_server, config) = spawn_server().await?;
-    let client = match FileSystemClient::try_new_with_config(None, &config)? {
-        StorageLockResult::Acquired(client) => client,
-        _ => unreachable!("failed to acquire storage lock"),
-    };
+async fn publish_component_package(client: &FileSystemClient) -> Result<()> {
+    publish_component(client, "component:foo", "0.1.0", "(component)", true).await
+}
 
-    // Publish a component to the registry
-    publish_component(&client, "foo:bar", "0.1.0", "(component)", true).await?;
-
+async fn validate_component_package(config: &Config, client: &FileSystemClient) -> Result<()> {
     // Assert that the package can be downloaded
-    client.upsert(&["foo:bar"]).await?;
+    client.upsert(&["component:foo"]).await?;
     let download = client
-        .download("foo:bar", &"0.1.0".parse()?)
+        .download("component:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
     assert_eq!(
@@ -79,33 +81,22 @@ async fn it_publishes_a_component() -> Result<()> {
 
     // Assert that a different version can't be downloaded
     assert!(client
-        .download("foo:bar", &"0.2.0".parse()?)
+        .download("component:foo", &"0.2.0".parse()?)
         .await?
         .is_none());
-
-    // There should be two checkpoints in the registry
-    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let response = client.latest_checkpoint().await?;
-    assert_eq!(response.checkpoint.as_ref().log_length, 2);
 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn it_publishes_a_wit_package() -> Result<()> {
-    let (_server, config) = spawn_server().await?;
-    let client = match FileSystemClient::try_new_with_config(None, &config)? {
-        StorageLockResult::Acquired(client) => client,
-        _ => unreachable!("failed to acquire storage lock"),
-    };
+async fn publish_wit_package(client: &FileSystemClient) -> Result<()> {
+    publish_wit(client, "wit:foo", "0.1.0", "default world foo {}", true).await
+}
 
-    // Publish a wit package to the registry
-    publish_wit(&client, "foo:bar", "0.1.0", "default world foo {}", true).await?;
-
+async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Result<()> {
     // Assert that the package can be downloaded
-    client.upsert(&["foo:bar"]).await?;
+    client.upsert(&["wit:foo"]).await?;
     let download = client
-        .download("foo:bar", &"0.1.0".parse()?)
+        .download("wit:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
     assert_eq!(
@@ -134,11 +125,45 @@ async fn it_publishes_a_wit_package() -> Result<()> {
 
     // Assert that a different version can't be downloaded
     assert!(client
-        .download("foo:bar", &"0.2.0".parse()?)
+        .download("wit:foo", &"0.2.0".parse()?)
         .await?
         .is_none());
 
-    // There should be two checkpoints in the registry
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_starts_with_initial_checkpoint() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None).await?;
+    validate_initial_checkpoint(config).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_publishes_a_component() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None).await?;
+    let client = create_client(&config)?;
+
+    publish_component_package(&client).await?;
+    validate_component_package(&config, &client).await?;
+
+    // There should be two log entries in the registry
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let response = client.latest_checkpoint().await?;
+    assert_eq!(response.checkpoint.as_ref().log_length, 2);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_publishes_a_wit_package() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None).await?;
+    let client = create_client(&config)?;
+
+    publish_wit_package(&client).await?;
+    validate_wit_package(&config, &client).await?;
+
+    // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
     let response = client.latest_checkpoint().await?;
     assert_eq!(response.checkpoint.as_ref().log_length, 2);

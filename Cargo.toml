@@ -29,6 +29,10 @@ wat = "1.0.62"
 wit-component = "0.8.1"
 wit-parser = "0.7.0"
 
+[features]
+default = []
+postgres = ["warg-server/postgres"]
+
 [workspace]
 members = ["crates/server"]
 

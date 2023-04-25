@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{
     env,
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
@@ -11,7 +11,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
     FileSystemClient,
 };
-use warg_server::{Config, Server};
+use warg_server::{datastore::DataStore, Config, Server};
 use wit_parser::{Resolve, UnresolvedPackage};
 
 pub fn test_operator_key() -> &'static str {
@@ -31,13 +31,12 @@ impl Drop for ServerInstance {
     fn drop(&mut self) {
         futures::executor::block_on(async move {
             self.shutdown.cancel();
-            self.task.take().unwrap().await.unwrap();
+            self.task.take().unwrap().await.ok();
         });
     }
 }
 
-/// Spawns a server as a background task.
-pub async fn spawn_server() -> Result<(ServerInstance, warg_client::Config)> {
+pub async fn root() -> Result<PathBuf> {
     static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
     std::thread_local! {
         static TEST_ID: usize = NEXT_ID.fetch_add(1, Ordering::SeqCst);
@@ -63,12 +62,24 @@ pub async fn spawn_server() -> Result<(ServerInstance, warg_client::Config)> {
     let content_dir = path.join("content");
     fs::create_dir_all(&content_dir).await?;
 
+    Ok(path)
+}
+
+/// Spawns a server as a background task.
+pub async fn spawn_server(
+    root: &Path,
+    data_store: Option<Box<dyn DataStore>>,
+) -> Result<(ServerInstance, warg_client::Config)> {
     let shutdown = CancellationToken::new();
-    let config = Config::new(test_operator_key().parse()?)
+    let mut config = Config::new(test_operator_key().parse()?)
         .with_addr(([127, 0, 0, 1], 0))
-        .with_content_dir(server_content_dir)
+        .with_content_dir(root.join("server"))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100));
+
+    if let Some(store) = data_store {
+        config = config.with_boxed_data_store(store);
+    }
 
     let mut server = Server::new(config);
     let addr = server.bind()?;
@@ -84,8 +95,8 @@ pub async fn spawn_server() -> Result<(ServerInstance, warg_client::Config)> {
 
     let config = warg_client::Config {
         default_url: Some(format!("http://{addr}")),
-        packages_dir: Some(packages_dir),
-        content_dir: Some(content_dir),
+        packages_dir: Some(root.join("packages")),
+        content_dir: Some(root.join("content")),
     };
 
     Ok((instance, config))

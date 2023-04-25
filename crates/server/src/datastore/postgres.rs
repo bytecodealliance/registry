@@ -423,9 +423,9 @@ where
     ))
 }
 
-pub struct PostgresBackend(Pool<AsyncPgConnection>);
+pub struct PostgresDataStore(Pool<AsyncPgConnection>);
 
-impl PostgresBackend {
+impl PostgresDataStore {
     pub fn new(url: impl Into<String>) -> Result<Self> {
         let config = AsyncDieselConnectionManager::new(url);
         let pool = Pool::builder(config).build()?;
@@ -434,7 +434,7 @@ impl PostgresBackend {
 }
 
 #[axum::async_trait]
-impl DataStore for PostgresBackend {
+impl DataStore for PostgresDataStore {
     async fn initial_leaves(
         &self,
     ) -> Result<
