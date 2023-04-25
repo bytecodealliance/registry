@@ -92,10 +92,10 @@ pub struct PackageLogEntry {
 /// Implemented by data stores.
 #[axum::async_trait]
 pub trait DataStore: Send + Sync {
-    /// Iterate over the initial leaves in the store.
+    /// Gets a stream of initial leaves in the store.
     ///
     /// This is an expensive operation and should only be performed on startup.
-    async fn initial_leaves(
+    async fn get_initial_leaves(
         &self,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,
@@ -103,8 +103,6 @@ pub trait DataStore: Send + Sync {
     >;
 
     /// Stores the given operator record.
-    ///
-    /// Returns the record id of the new record.
     async fn store_operator_record(
         &self,
         log_id: &LogId,
@@ -132,8 +130,6 @@ pub trait DataStore: Send + Sync {
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
-    ///
-    /// Returns the log leaf representing the new log record.
     async fn store_package_record(
         &self,
         log_id: &LogId,

@@ -241,7 +241,7 @@ impl CoreService {
         tracing::debug!("initializing core service");
         let mut data = InitializationData::default();
         let mut last_checkpoint = None;
-        let mut initial = store.initial_leaves().await?;
+        let mut initial = store.get_initial_leaves().await?;
         while let Some(res) = initial.next().await {
             let InitialLeaf { leaf, checkpoint } = res?;
             data.log.push(&leaf);

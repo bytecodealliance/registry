@@ -99,7 +99,7 @@ impl Default for MemoryDataStore {
 
 #[axum::async_trait]
 impl DataStore for MemoryDataStore {
-    async fn initial_leaves(
+    async fn get_initial_leaves(
         &self,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,
