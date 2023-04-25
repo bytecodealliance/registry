@@ -16,6 +16,7 @@ use warg_protocol::{
 };
 
 struct Log<V, R> {
+    name: Option<String>,
     validator: V,
     entries: Vec<ProtoEnvelope<R>>,
     checkpoint_indices: Vec<usize>,
@@ -27,6 +28,7 @@ where
 {
     fn default() -> Self {
         Self {
+            name: None,
             validator: V::default(),
             entries: Vec::new(),
             checkpoint_indices: Vec::new(),
@@ -48,6 +50,7 @@ enum PendingRecord {
         record: Option<ProtoEnvelope<operator::OperatorRecord>>,
     },
     Package {
+        name: String,
         record: Option<ProtoEnvelope<package::PackageRecord>>,
         sources: Vec<ContentSource>,
     },
@@ -202,6 +205,7 @@ impl DataStore for MemoryDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
+        name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         sources: &[ContentSource],
@@ -210,6 +214,7 @@ impl DataStore for MemoryDataStore {
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {
+                name: name.to_string(),
                 record: Some(record.clone()),
                 sources: sources.to_vec(),
             }),
@@ -259,9 +264,14 @@ impl DataStore for MemoryDataStore {
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
         let res = match status {
-            RecordStatus::Pending(PendingRecord::Package { record, sources }) => {
+            RecordStatus::Pending(PendingRecord::Package {
+                name,
+                record,
+                sources,
+            }) => {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
+                log.name.get_or_insert_with(|| name.to_string());
                 let snapshot = log.validator.snapshot();
 
                 match unsafe { log.validator.validate_record(&record) } {

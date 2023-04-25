@@ -137,6 +137,7 @@ pub trait DataStore: Send + Sync {
     async fn store_package_record(
         &self,
         log_id: &LogId,
+        name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         sources: &[ContentSource],

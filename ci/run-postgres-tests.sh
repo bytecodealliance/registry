@@ -1,19 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-function kill_postgres() {
-    echo killing postgres container
-    docker kill postgres-test &> /dev/null || true
+function stop_postgres() {
+    echo stopping postgres container
+    docker stop postgres-test &> /dev/null || true
     docker rm postgres-test &> /dev/null || true
-    rm -rf /tmp/postgres-test &> /dev/null || true
 }
 
-trap 'kill_postgres' EXIT
+trap 'stop_postgres' EXIT
 
-kill_postgres
+stop_postgres
 
 echo starting postgres container
-docker run -d --name postgres-test -e POSTGRES_PASSWORD=password -v /tmp/postgres-test:/var/lib/postgresql/data -p 5433:5432 postgres
+docker run -d --name postgres-test -e POSTGRES_PASSWORD=password -p 5433:5432 postgres
 
 while ! docker exec postgres-test pg_isready; do
     echo waiting for postgres to accept connections

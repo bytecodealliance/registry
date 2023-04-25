@@ -162,7 +162,7 @@ impl CoreService {
                         }) = message {
                             let log_id = LogId::package_log::<Sha256>(&package_name);
                             let record_id = RecordId::package_record::<Sha256>(&record);
-                            match task_core.store.store_package_record(&log_id, &record_id, &record, &content_sources).await {
+                            match task_core.store.store_package_record(&log_id, &package_name, &record_id, &record, &content_sources).await {
                                 Ok(()) => {
                                     // Record saved successfully, so notify the client that the record is processing
                                     response.send(Ok(())).unwrap();

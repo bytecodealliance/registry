@@ -139,6 +139,7 @@ async fn get_records<R: Decode>(
 async fn insert_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: &LogId,
+    name: &str,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
     sources: &[ContentSource],
@@ -163,6 +164,7 @@ where
                 None => diesel::insert_into(schema::logs::table)
                     .values(NewLog {
                         log_id: TextRef(log_id),
+                        name,
                         validator: &Json(V::default()),
                     })
                     .returning(schema::logs::id)
@@ -485,7 +487,15 @@ impl DataStore for PostgresDataStore {
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<operator::Validator>(conn.as_mut(), log_id, record_id, record, &[]).await
+        insert_record::<operator::Validator>(
+            conn.as_mut(),
+            log_id,
+            "<operator>",
+            record_id,
+            record,
+            &[],
+        )
+        .await
     }
 
     async fn reject_operator_record(
@@ -526,12 +536,14 @@ impl DataStore for PostgresDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
+        name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         sources: &[ContentSource],
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<package::Validator>(conn.as_mut(), log_id, record_id, record, sources).await
+        insert_record::<package::Validator>(conn.as_mut(), log_id, name, record_id, record, sources)
+            .await
     }
 
     async fn reject_package_record(

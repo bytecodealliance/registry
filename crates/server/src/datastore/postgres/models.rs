@@ -71,6 +71,7 @@ where
     V: Serialize,
 {
     pub log_id: TextRef<'a, LogId>,
+    pub name: &'a str,
     pub validator: &'a Json<V>,
 }
 

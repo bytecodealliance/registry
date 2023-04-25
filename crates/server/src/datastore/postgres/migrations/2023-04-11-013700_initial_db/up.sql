@@ -18,7 +18,8 @@ SELECT diesel_manage_updated_at('checkpoints');
 -- TODO: add full text search indexes for description and keywords.
 CREATE TABLE logs (
   id SERIAL PRIMARY KEY,
-  log_id TEXT NOT NULL,
+  log_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL, -- implied UNIQUE constraint as log_id is derived from name
   validator JSONB NOT NULL,
   description TEXT,
   keywords TEXT,
@@ -28,8 +29,6 @@ CREATE TABLE logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-ALTER TABLE logs ADD CONSTRAINT unique_log_id UNIQUE (log_id);
 
 SELECT diesel_manage_updated_at('logs');
 
