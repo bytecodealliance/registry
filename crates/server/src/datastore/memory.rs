@@ -6,7 +6,7 @@ use std::{
     pin::Pin,
     sync::Arc,
 };
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use warg_api::content::ContentSource;
 use warg_crypto::hash::DynHash;
 use warg_protocol::{
@@ -82,12 +82,12 @@ fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> 
 /// Data is not persisted between restarts of the server.
 ///
 /// Note: this is mainly used for testing, so it is not very efficient as
-/// it shares a single lock for all operations.
-pub struct MemoryDataStore(Arc<Mutex<State>>);
+/// it shares a single RwLock for all operations.
+pub struct MemoryDataStore(Arc<RwLock<State>>);
 
 impl MemoryDataStore {
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(State::default())))
+        Self(Arc::new(RwLock::new(State::default())))
     }
 }
 
@@ -114,7 +114,7 @@ impl DataStore for MemoryDataStore {
         record_id: &RecordId,
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Operator {
@@ -132,7 +132,7 @@ impl DataStore for MemoryDataStore {
         record_id: &RecordId,
         reason: &str,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
 
         match state
             .records
@@ -153,7 +153,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
 
         let State {
             operators, records, ..
@@ -210,7 +210,7 @@ impl DataStore for MemoryDataStore {
         record: &ProtoEnvelope<package::PackageRecord>,
         sources: &[ContentSource],
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {
@@ -230,7 +230,7 @@ impl DataStore for MemoryDataStore {
         record_id: &RecordId,
         reason: &str,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
 
         match state
             .records
@@ -251,7 +251,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
 
         let State {
             packages, records, ..
@@ -323,7 +323,7 @@ impl DataStore for MemoryDataStore {
         checkpoint: SerdeEnvelope<MapCheckpoint>,
         participants: &[LogLeaf],
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.lock().await;
+        let mut state = self.0.write().await;
 
         let (index, prev) = state
             .checkpoints
@@ -357,7 +357,7 @@ impl DataStore for MemoryDataStore {
     }
 
     async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
         let checkpoint = state.checkpoints.values().last().unwrap();
         Ok(checkpoint.clone())
     }
@@ -368,7 +368,7 @@ impl DataStore for MemoryDataStore {
         root: &DynHash,
         since: Option<&RecordId>,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
 
         let log = state
             .operators
@@ -396,7 +396,7 @@ impl DataStore for MemoryDataStore {
         root: &DynHash,
         since: Option<&RecordId>,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
 
         let log = state
             .packages
@@ -423,7 +423,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<super::RecordStatus, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
         let log = state
             .records
             .get(log_id)
@@ -449,7 +449,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<OperatorLogEntry, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
         let statuses = state
             .records
             .get(log_id)
@@ -476,7 +476,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<PackageLogEntry, DataStoreError> {
-        let state = self.0.lock().await;
+        let state = self.0.read().await;
         let statuses = state
             .records
             .get(log_id)
