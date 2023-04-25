@@ -76,7 +76,7 @@ async fn fetch_logs(
 ) -> Result<Json<FetchResponse>, FetchApiError> {
     let operator = config
         .core_service
-        .fetch_operator_records(&body.root, body.since.as_ref())
+        .fetch_operator_records(&body.root, body.operator.as_ref())
         .await?
         .into_iter()
         .map(Into::into)

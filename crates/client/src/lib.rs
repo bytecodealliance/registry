@@ -320,7 +320,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             .api
             .fetch_logs(FetchRequest {
                 root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
-                since: None,
+                operator: None,
                 packages: packages
                     .iter()
                     .map(|(name, package)| {

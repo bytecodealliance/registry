@@ -17,7 +17,7 @@ pub struct FetchRequest {
     /// The root of the registry.
     pub root: DynHash,
     /// The last known operator record.
-    pub since: Option<RecordId>,
+    pub operator: Option<RecordId>,
     /// The map of packages to last known record ids.
     #[serde(default)]
     pub packages: IndexMap<String, Option<RecordId>>,
