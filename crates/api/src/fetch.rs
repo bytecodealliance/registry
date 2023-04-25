@@ -56,7 +56,7 @@ pub enum FetchError {
     /// The log was not found.
     #[error("log `{log_id}` was not found")]
     LogNotFound {
-        /// The missing operator log id.
+        /// The missing log id.
         log_id: LogId,
     },
     /// The provided package name was not found.
