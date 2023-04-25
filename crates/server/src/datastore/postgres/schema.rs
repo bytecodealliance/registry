@@ -30,11 +30,6 @@ diesel::table! {
         log_id -> Text,
         name -> Text,
         validator -> Jsonb,
-        description -> Nullable<Text>,
-        keywords -> Nullable<Text>,
-        license -> Nullable<Text>,
-        homepage -> Nullable<Text>,
-        repository -> Nullable<Text>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }

@@ -21,11 +21,6 @@ CREATE TABLE logs (
   log_id TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL, -- implied UNIQUE constraint as log_id is derived from name
   validator JSONB NOT NULL,
-  description TEXT,
-  keywords TEXT,
-  license TEXT,
-  homepage TEXT,
-  repository TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
