@@ -1,0 +1,47 @@
+# PostgreSQL-enabled configuration override for the registry service
+services:
+  db:
+    # NOTE: Note as of 2023-04-26 not all IaaS supports v15 for managed SQL
+    # TODO: Use generated password for local postgres testing
+    image: postgres:14
+    restart: always
+    environment:
+      POSTGRES_DB: warg_registry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: welcome123
+    ports:
+      - "${WARG_POSTGRES_LISTEN_ADDRESS?e.g., 127.0.0.1:17514}:5432"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "warg_registry", "-U", "postgres" ]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - warg-secrets:/var/secrets/warg:ro
+      - postgres-data:/var/lib/postgresql/data:rw
+    networks:
+      - infra
+  warg-registry-db-migration:
+    build:
+      target: warg-postgres-migration
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - --database-url
+      - postgres://postgres:welcome123@db:5432/warg_registry
+    networks:
+      - infra
+  warg-registry:
+    depends_on:
+      warg-registry-db-migration:
+        condition: service_completed_successfully
+    command: 
+      - --content-dir
+      - /var/run/warg/server-content
+      - --data-store
+      - postgres
+    environment:
+      - DATABASE_URL=postgres://postgres:welcome123@db:5432/warg_registry
+volumes:
+  postgres-data:
