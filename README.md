@@ -183,6 +183,10 @@ Ideally, there should be tests written for all changes. Test can be run via:
 cargo test --all
 ```
 
+### Testing with Containers
+
+See the [local infra documentation](infra/local/README.md) on how to develop and test with locally running containers.
+
 ### Submitting Changes
 
 Changes to this repository are managed through pull requests (PRs). Everyone

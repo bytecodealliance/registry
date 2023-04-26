@@ -1,0 +1,39 @@
+# Base in-memory configuration for the registry service
+version: '3'
+name: bytecodealliance-registry
+services:
+  operator-key:
+    container_name: operator-key
+    image: debian:bullseye-slim
+    # TODO: generate operator-key at runtime
+    command:
+      - /bin/bash
+      - -c
+      - >-
+        if [[ ! -f /var/secrets/warg/operator-key ]]; then
+          echo -n "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" >/var/secrets/warg/operator-key
+        fi
+    volumes:
+      - warg-secrets:/var/secrets/warg:rw
+  warg-registry:
+    build:
+      target: warg-server
+      args:
+        - FEATURES=postgres
+    ports:
+      - '${WARG_SERVER_LISTEN_ADDRESS?e.g., 127.0.0.1:17513}:8090'
+    environment:
+      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator-key
+    command: 
+      - --content-dir
+      - /var/run/warg/server-content
+    volumes:
+      - warg-server-content:/var/run/warg/server-content:rw
+      - warg-secrets:/var/secrets/warg:ro
+    networks:
+      - infra
+volumes:
+  warg-server-content:
+  warg-secrets:
+networks:
+  infra:
