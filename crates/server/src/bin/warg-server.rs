@@ -1,8 +1,14 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    fs::File,
+    io::prelude::Read,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
+use warg_crypto::signing::PrivateKey;
 use warg_server::{Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -52,7 +58,27 @@ async fn main() -> Result<()> {
     tracing::debug!("args: {args:?}");
 
     // TODO: pull the signing key from the system keyring
-    let operator_key = std::env::var("WARG_DEMO_OPERATOR_KEY")?.parse()?;
+    // TODO: Add --warg-operator-key[-file] and others cli options
+    let operator_key: PrivateKey = match std::env::var("WARG_OPERATOR_KEY_FILE") {
+        Ok(path_env) => {
+            let path = Path::new(&path_env);
+            let mut file = match File::open(path) {
+                Err(why) => panic!("couldn't open {}: {}", path.display(), why),
+                Ok(file) => file,
+            };
+            let mut s = String::new();
+            match file.read_to_string(&mut s) {
+                Err(why) => panic!("couldn't read {}: {}", path.display(), why),
+                Ok(_) => s,
+            }
+        },
+        Err(_) => {
+            match std::env::var("WARG_OPERATOR_KEY") {
+                Ok(key) => key,
+                Err(_) => panic!("either WARG_OPERATOR_KEY_FILE or WARG_OPERATOR_KEY environment variable needs to be set"),
+            }
+        },
+    }.parse()?;
     let mut config = Config::new(operator_key)
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
