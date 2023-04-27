@@ -137,23 +137,27 @@ where
                     e => e.into(),
                 })?;
 
-            for source in sources {
-                let (kind, url) = match &source.kind {
-                    ContentSourceKind::HttpAnonymous { url } => {
-                        (SourceKind::Http, Some(url.as_str()))
-                    }
-                };
-
-                diesel::insert_into(schema::sources::table)
-                    .values(NewSource {
-                        record_id: id,
-                        digest: TextRef(&source.digest),
-                        kind,
-                        url,
-                    })
-                    .execute(conn)
-                    .await?;
-            }
+            diesel::insert_into(schema::sources::table)
+                .values(
+                    &sources
+                        .iter()
+                        .map(|s| {
+                            let (kind, url) = match &s.kind {
+                                ContentSourceKind::HttpAnonymous { url } => {
+                                    (SourceKind::Http, Some(url.as_str()))
+                                }
+                            };
+                            NewSource {
+                                record_id: id,
+                                digest: TextRef(&s.digest),
+                                kind,
+                                url,
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .execute(conn)
+                .await?;
 
             Ok(())
         }
