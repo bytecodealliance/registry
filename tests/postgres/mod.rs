@@ -25,11 +25,14 @@ where
 ///
 /// A smoke test that ensures that postgres integration works.
 ///
-/// This is one large test currently because there can be only one core service
-/// running at a time due to the checkpoint state it keeps.
+/// As the tests currently share the same database instance, we can only have one
+/// warg server running at a time. This is because the server keeps checkpoint
+/// data structures in memory and assumes that it receives all log leafs processed
+/// by the server.
 ///
-/// In the future when the core server is extracted out of the server,
-/// this test can then be broken apart into smaller tests.
+/// In the future, when either the tests have completely isolated databases or
+/// the checkpointing service is moved to a separate process, we can extract this
+/// out to multiple tests.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test() -> Result<()> {
     let root = super::root().await?;
