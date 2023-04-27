@@ -82,19 +82,6 @@ pub enum DynHashError {
 
     #[error("hexadecimal decode failed: {0}")]
     InvalidHex(#[from] hex::FromHexError),
-
-    #[error("mismatched hash algorithm: expected {expected}, got {actual}")]
-    MismatchedAlgorithms {
-        expected: HashAlgorithm,
-        actual: HashAlgorithm,
-    },
-
-    #[error("expected {expected} bytes for hash algorithm {algo}, got {actual}")]
-    IncorrectLength {
-        expected: usize,
-        algo: HashAlgorithm,
-        actual: usize,
-    },
 }
 
 impl Serialize for DynHash {

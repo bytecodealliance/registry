@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use warg_api::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
-use warg_crypto::hash::{DynHashError, Hash, Sha256};
+use warg_crypto::hash::{Hash, HashError, Sha256};
 
 #[derive(Clone)]
 pub struct Config {
@@ -73,12 +73,12 @@ async fn prove_consistency(
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let log = config.log.as_ref().read().await;
 
-    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: DynHashError| {
+    let old_root: Hash<Sha256> = body.old_root.try_into().map_err(|e: HashError| {
         ProofApiError(ProofError::InvalidLogRoot {
             message: e.to_string(),
         })
     })?;
-    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: DynHashError| {
+    let new_root: Hash<Sha256> = body.new_root.try_into().map_err(|e: HashError| {
         ProofApiError(ProofError::InvalidLogRoot {
             message: e.to_string(),
         })
@@ -100,7 +100,7 @@ async fn prove_inclusion(
         .checkpoint
         .log_root
         .try_into()
-        .map_err(|e: DynHashError| {
+        .map_err(|e: HashError| {
             ProofApiError(ProofError::InvalidLogRoot {
                 message: e.to_string(),
             })
@@ -109,7 +109,7 @@ async fn prove_inclusion(
         .checkpoint
         .map_root
         .try_into()
-        .map_err(|e: DynHashError| {
+        .map_err(|e: HashError| {
             ProofApiError(ProofError::InvalidMapRoot {
                 message: e.to_string(),
             })

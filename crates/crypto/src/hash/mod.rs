@@ -1,6 +1,7 @@
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
+use thiserror::Error;
 
 mod dynamic;
 mod r#static;
@@ -62,22 +63,38 @@ impl<D: SupportedDigest> From<Hash<D>> for DynHash {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum HashError {
+    #[error("mismatched hash algorithm: expected {expected}, got {actual}")]
+    MismatchedAlgorithms {
+        expected: HashAlgorithm,
+        actual: HashAlgorithm,
+    },
+
+    #[error("expected {expected} bytes for hash algorithm {algo}, got {actual}")]
+    IncorrectLength {
+        expected: usize,
+        algo: HashAlgorithm,
+        actual: usize,
+    },
+}
+
 impl<D: SupportedDigest> TryFrom<DynHash> for Hash<D> {
-    type Error = DynHashError;
+    type Error = HashError;
 
     fn try_from(value: DynHash) -> Result<Self, Self::Error> {
         if value.algorithm() == D::ALGORITHM {
             let len = value.bytes.len();
             match Hash::try_from(value.bytes) {
                 Ok(hash) => Ok(hash),
-                Err(IncorrectLengthError) => Err(DynHashError::IncorrectLength {
+                Err(IncorrectLengthError) => Err(HashError::IncorrectLength {
                     expected: <D as Digest>::output_size(),
                     algo: D::ALGORITHM,
                     actual: len,
                 }),
             }
         } else {
-            Err(DynHashError::MismatchedAlgorithms {
+            Err(HashError::MismatchedAlgorithms {
                 expected: D::ALGORITHM,
                 actual: value.algorithm(),
             })
