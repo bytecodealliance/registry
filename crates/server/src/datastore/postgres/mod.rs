@@ -357,7 +357,7 @@ where
             }
         })?,
         sources,
-        SerdeEnvelope::new(
+        SerdeEnvelope::from_parts_unchecked(
             MapCheckpoint {
                 log_root: log_root.0,
                 log_length: log_length as u32,
@@ -597,7 +597,7 @@ impl DataStore for PostgresDataStore {
             .first::<Checkpoint>(&mut conn)
             .await?;
 
-        Ok(SerdeEnvelope::new(
+        Ok(SerdeEnvelope::from_parts_unchecked(
             MapCheckpoint {
                 log_root: checkpoint.log_root.0,
                 log_length: checkpoint.log_length as u32,

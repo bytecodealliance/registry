@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-
 use warg_crypto::{signing, Signable};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,10 +12,14 @@ pub struct SerdeEnvelope<Contents> {
 }
 
 impl<Contents> SerdeEnvelope<Contents> {
-    /// Creates a new envelope for some contents using a signature.
+    /// Creates a new `SerdeEnvelope` from the given content, key ID, and signature.
     ///
-    /// Note: this does not verify the signature matches the contents.
-    pub fn new(contents: Contents, key_id: signing::KeyID, signature: signing::Signature) -> Self {
+    /// Note that this does not verify the signature matches the contents (hence unchecked).
+    pub fn from_parts_unchecked(
+        contents: Contents,
+        key_id: signing::KeyID,
+        signature: signing::Signature,
+    ) -> Self {
         Self {
             contents,
             key_id,
