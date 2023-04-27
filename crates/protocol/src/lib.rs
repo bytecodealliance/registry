@@ -1,13 +1,38 @@
+use serde::{de::DeserializeOwned, Serialize};
+use std::collections::HashSet;
+use warg_crypto::{hash::DynHash, Decode};
+
 pub mod operator;
 pub mod package;
 mod proto_envelope;
 pub mod registry;
 mod serde_envelope;
 
-pub use semver::{Version, VersionReq};
-
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
+pub use semver::{Version, VersionReq};
 pub use serde_envelope::SerdeEnvelope;
+
+/// Trait implemented by the record types.
+pub trait Record: Decode + Send + Sync {
+    /// Gets the set of content hashes associated with the record.
+    ///
+    /// An empty set indicates that the record has no associated content.
+    fn contents(&self) -> HashSet<&DynHash>;
+}
+
+/// Trait implemented by the validator types.
+pub trait Validator:
+    std::fmt::Debug + Serialize + DeserializeOwned + Default + Send + Sync
+{
+    /// The type of record being validated.
+    type Record: Record;
+
+    /// The type of error returned when validation fails.
+    type Error: Send;
+
+    /// Validates the given record.
+    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error>;
+}
 
 /// Types for converting to and from protobuf
 pub mod protobuf {

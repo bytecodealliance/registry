@@ -1,15 +1,13 @@
 use super::{model, PACKAGE_RECORD_VERSION};
+use crate::registry::RecordId;
+use crate::ProtoEnvelope;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-
 use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
-
-use crate::registry::RecordId;
-use crate::ProtoEnvelope;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
@@ -178,68 +176,15 @@ impl Validator {
     pub fn validate(
         &mut self,
         record: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<Vec<DynHash>, ValidationError> {
+    ) -> Result<(), ValidationError> {
         let snapshot = self.snapshot();
 
-        let result = unsafe { self.validate_record(record) };
+        let result = self.validate_record(record);
         if result.is_err() {
             self.rollback(snapshot);
         }
 
         result
-    }
-
-    /// Validates an individual package record without a transaction.
-    ///
-    /// # Safety
-    ///
-    /// This is marked as unsafe as the caller must ensure that the validator
-    /// is snapshotted before calling this method and rolled back if the
-    /// validation fails.
-    ///
-    /// Failure to do so may result in the validator being left in an inconsistent
-    /// state.
-    pub unsafe fn validate_record(
-        &mut self,
-        envelope: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<Vec<DynHash>, ValidationError> {
-        let record = envelope.as_ref();
-
-        // Validate previous hash
-        self.validate_record_hash(record)?;
-
-        // Validate version
-        self.validate_record_version(record)?;
-
-        // Validate timestamp
-        self.validate_record_timestamp(record)?;
-
-        // Validate entries
-        let contents =
-            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
-
-        // At this point the digest algorithm must be set via an init entry
-        let _algorithm = self
-            .algorithm
-            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
-
-        // Validate the envelope key id
-        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
-            ValidationError::KeyIDNotRecognized {
-                key_id: envelope.key_id().clone(),
-            }
-        })?;
-
-        // Validate the envelope signature
-        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
-
-        // Update the validator head
-        self.head = Some(Head {
-            digest: RecordId::package_record::<Sha256>(envelope),
-            timestamp: record.timestamp,
-        });
-
-        Ok(contents)
     }
 
     /// Gets the releases known to the validator.
@@ -278,6 +223,48 @@ impl Validator {
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()
+    }
+
+    fn validate_record(
+        &mut self,
+        envelope: &ProtoEnvelope<model::PackageRecord>,
+    ) -> Result<(), ValidationError> {
+        let record = envelope.as_ref();
+
+        // Validate previous hash
+        self.validate_record_hash(record)?;
+
+        // Validate version
+        self.validate_record_version(record)?;
+
+        // Validate timestamp
+        self.validate_record_timestamp(record)?;
+
+        // Validate entries
+        self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+
+        // At this point the digest algorithm must be set via an init entry
+        let _algorithm = self
+            .algorithm
+            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+
+        // Validate the envelope key id
+        let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
+            ValidationError::KeyIDNotRecognized {
+                key_id: envelope.key_id().clone(),
+            }
+        })?;
+
+        // Validate the envelope signature
+        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+
+        // Update the validator head
+        self.head = Some(Head {
+            digest: RecordId::package_record::<Sha256>(envelope),
+            timestamp: record.timestamp,
+        });
+
+        Ok(())
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
@@ -333,9 +320,7 @@ impl Validator {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         entries: &[model::PackageEntry],
-    ) -> Result<Vec<DynHash>, ValidationError> {
-        let mut contents = Vec::new();
-
+    ) -> Result<(), ValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
@@ -365,7 +350,6 @@ impl Validator {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
                 model::PackageEntry::Release { version, content } => {
-                    contents.push(content.clone());
                     self.validate_release_entry(signer_key_id, timestamp, version, content)?
                 }
                 model::PackageEntry::Yank { version } => {
@@ -374,7 +358,7 @@ impl Validator {
             }
         }
 
-        Ok(contents)
+        Ok(())
     }
 
     fn validate_init_entry(
@@ -514,10 +498,7 @@ impl Validator {
         })
     }
 
-    /// Takes a snapshot of the validator state.
-    ///
-    /// Used with `rollback` to revert the validator to a previous state.
-    pub fn snapshot(&self) -> Snapshot {
+    fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
             head,
@@ -535,8 +516,7 @@ impl Validator {
         }
     }
 
-    /// Roll the validator back to a previous state.
-    pub fn rollback(&mut self, snapshot: Snapshot) {
+    fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
             head,
@@ -553,9 +533,16 @@ impl Validator {
     }
 }
 
-/// Used for snapshotting a validator prior to performing
-/// validations.
-pub struct Snapshot {
+impl crate::Validator for Validator {
+    type Record = model::PackageRecord;
+    type Error = ValidationError;
+
+    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+        self.validate(record)
+    }
+}
+
+struct Snapshot {
     algorithm: Option<HashAlgorithm>,
     head: Option<Head>,
     releases: usize,

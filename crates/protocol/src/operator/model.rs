@@ -1,11 +1,10 @@
+use crate::registry::RecordId;
 use core::fmt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::{str::FromStr, time::SystemTime};
-
-use warg_crypto::hash::HashAlgorithm;
+use warg_crypto::hash::{DynHash, HashAlgorithm};
 use warg_crypto::signing;
-
-use crate::registry::RecordId;
 
 /// A operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +17,12 @@ pub struct OperatorRecord {
     pub timestamp: SystemTime,
     /// The entries being published in this record
     pub entries: Vec<OperatorEntry>,
+}
+
+impl crate::Record for OperatorRecord {
+    fn contents(&self) -> HashSet<&DynHash> {
+        Default::default()
+    }
 }
 
 /// Each permission represents the ability to use the specified entry

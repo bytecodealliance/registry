@@ -12,7 +12,7 @@ use warg_crypto::hash::DynHash;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
-    ProtoEnvelope, SerdeEnvelope,
+    ProtoEnvelope, Record as _, SerdeEnvelope,
 };
 
 struct Log<V, R> {
@@ -169,23 +169,18 @@ impl DataStore for MemoryDataStore {
             RecordStatus::Pending(PendingRecord::Operator { record }) => {
                 let record = record.take().unwrap();
                 let log = operators.entry(log_id.clone()).or_default();
-                let snapshot = log.validator.snapshot();
-
-                match unsafe { log.validator.validate_record(&record) } {
-                    Ok(()) => {
+                log.validator
+                    .validate(&record)
+                    .map(|_| {
                         let index = log.entries.len();
                         log.entries.push(record);
-                        Ok(Record {
+                        Record {
                             index,
                             checkpoint_index: None,
                             sources: Default::default(),
-                        })
-                    }
-                    Err(e) => {
-                        log.validator.rollback(snapshot);
-                        Err(e.into())
-                    }
-                }
+                        }
+                    })
+                    .map_err(Into::into)
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
         };
@@ -272,34 +267,35 @@ impl DataStore for MemoryDataStore {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
                 log.name.get_or_insert_with(|| name.to_string());
-                let snapshot = log.validator.snapshot();
 
-                match unsafe { log.validator.validate_record(&record) } {
-                    Ok(needed) => {
-                        let provided = sources
-                            .iter()
-                            .map(|source| &source.digest)
-                            .collect::<HashSet<_>>();
+                let needed = record.as_ref().contents();
+                let provided = sources
+                    .iter()
+                    .map(|source| &source.digest)
+                    .collect::<HashSet<_>>();
 
-                        if let Some(needed) = needed.into_iter().find(|d| !provided.contains(&d)) {
-                            log.validator.rollback(snapshot);
-                            Err(DataStoreError::Rejection(format!(
-                                "a content source for digest `{needed}` was not provided"
-                            )))
-                        } else {
+                if let Some(missing) = needed.difference(&provided).next() {
+                    Err(DataStoreError::Rejection(format!(
+                        "a content source for digest `{missing}` was not provided"
+                    )))
+                } else if let Some(extra) = provided.difference(&needed).next() {
+                    Err(DataStoreError::Rejection(format!(
+                        "a content source for digest `{extra}` was provided but not needed",
+                    )))
+                } else {
+                    drop(needed);
+                    log.validator
+                        .validate(&record)
+                        .map(|_| {
                             let index = log.entries.len();
                             log.entries.push(record);
-                            Ok(Record {
+                            Record {
                                 index,
                                 checkpoint_index: None,
-                                sources: std::mem::take(sources),
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        log.validator.rollback(snapshot);
-                        Err(e.into())
-                    }
+                                sources: sources.to_vec(),
+                            }
+                        })
+                        .map_err(Into::into)
                 }
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),

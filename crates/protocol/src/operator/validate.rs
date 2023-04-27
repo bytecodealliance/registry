@@ -5,7 +5,6 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-
 use warg_crypto::hash::{HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
@@ -117,7 +116,7 @@ impl Validator {
     ) -> Result<(), ValidationError> {
         let snapshot = self.snapshot();
 
-        let result = unsafe { self.validate_record(record) };
+        let result = self.validate_record(record);
         if result.is_err() {
             self.rollback(snapshot);
         }
@@ -125,17 +124,19 @@ impl Validator {
         result
     }
 
-    /// Validates an individual operator record without a transaction.
+    /// Gets the public key of the given key id.
     ///
-    /// # Safety
-    ///
-    /// This is marked as unsafe as the caller must ensure that the validator
-    /// is snapshotted before calling this method and rolled back if the
-    /// validation fails.
-    ///
-    /// Failure to do so may result in the validator being left in an inconsistent
-    /// state.
-    pub unsafe fn validate_record(
+    /// Returns `None` if the key id is not recognized.
+    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
+        self.keys.get(key_id)
+    }
+
+    fn initialized(&self) -> bool {
+        // The package log is initialized if the hash algorithm is set
+        self.algorithm.is_some()
+    }
+
+    fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::OperatorRecord>,
     ) -> Result<(), ValidationError> {
@@ -175,18 +176,6 @@ impl Validator {
         });
 
         Ok(())
-    }
-
-    /// Gets the public key of the given key id.
-    ///
-    /// Returns `None` if the key id is not recognized.
-    pub fn public_key(&self, key_id: &signing::KeyID) -> Option<&signing::PublicKey> {
-        self.keys.get(key_id)
-    }
-
-    fn initialized(&self) -> bool {
-        // The package log is initialized if the hash algorithm is set
-        self.algorithm.is_some()
     }
 
     fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
@@ -358,10 +347,7 @@ impl Validator {
         })
     }
 
-    /// Takes a snapshot of the validator state.
-    ///
-    /// Used with `rollback` to revert the validator to a previous state.
-    pub fn snapshot(&self) -> Snapshot {
+    fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
             head,
@@ -377,8 +363,7 @@ impl Validator {
         }
     }
 
-    /// Reverts the validator to a previous state.
-    pub fn rollback(&mut self, snapshot: Snapshot) {
+    fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
             head,
@@ -393,9 +378,16 @@ impl Validator {
     }
 }
 
-/// Used for snapshotting a validator prior to performing
-/// validations.
-pub struct Snapshot {
+impl crate::Validator for Validator {
+    type Record = model::OperatorRecord;
+    type Error = ValidationError;
+
+    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+        self.validate(record)
+    }
+}
+
+struct Snapshot {
     algorithm: Option<HashAlgorithm>,
     head: Option<Head>,
     permissions: usize,

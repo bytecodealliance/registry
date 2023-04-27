@@ -12,7 +12,6 @@ use diesel_async::{
 };
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
-use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashSet, pin::Pin};
 use warg_api::content::{ContentSource, ContentSourceKind};
 use warg_crypto::{
@@ -23,68 +22,11 @@ use warg_crypto::{
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
-    ProtoEnvelope, SerdeEnvelope,
+    ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
 mod models;
 mod schema;
-
-/// Trait for abstracting operator/package validator interactions for persistence.
-trait Validator: std::fmt::Debug + Serialize + DeserializeOwned + Default + Send + Sync {
-    type Record: Decode + Send + Sync;
-    type Snapshot: Send;
-    type Error: Send;
-
-    fn snapshot(&self) -> Self::Snapshot;
-    fn validate(
-        &mut self,
-        record: &ProtoEnvelope<Self::Record>,
-    ) -> Result<Vec<DynHash>, Self::Error>;
-    fn rollback(&mut self, snapshot: Self::Snapshot);
-}
-
-impl Validator for operator::Validator {
-    type Record = operator::OperatorRecord;
-    type Snapshot = operator::Snapshot;
-    type Error = operator::ValidationError;
-
-    fn snapshot(&self) -> Self::Snapshot {
-        self.snapshot()
-    }
-
-    fn validate(
-        &mut self,
-        record: &ProtoEnvelope<Self::Record>,
-    ) -> Result<Vec<DynHash>, Self::Error> {
-        self.validate(record)?;
-        Ok(Vec::new())
-    }
-
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
-        self.rollback(snapshot)
-    }
-}
-
-impl Validator for package::Validator {
-    type Record = package::PackageRecord;
-    type Snapshot = package::Snapshot;
-    type Error = package::ValidationError;
-
-    fn snapshot(&self) -> Self::Snapshot {
-        self.snapshot()
-    }
-
-    fn validate(
-        &mut self,
-        record: &ProtoEnvelope<Self::Record>,
-    ) -> Result<Vec<DynHash>, Self::Error> {
-        self.validate(record)
-    }
-
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
-        self.rollback(snapshot)
-    }
-}
 
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
@@ -286,33 +228,31 @@ where
                 }
             })?;
 
-            // Validate the record
-            let needed = match validator.validate(&record) {
-                Ok(needed) => needed,
-                Err(e) => {
-                    return Err(e.into());
-                }
-            };
+            let sources: Vec<_> = schema::sources::table
+                .select(schema::sources::digest)
+                .filter(schema::sources::record_id.eq(id))
+                .load::<ParsedText<DynHash>>(conn)
+                .await?
+                .into_iter()
+                .collect();
 
-            // Ensure the content sources were provided
-            if !needed.is_empty() {
-                let provided: HashSet<_> = schema::sources::table
-                    .select(schema::sources::digest)
-                    .filter(schema::sources::record_id.eq(id))
-                    .load::<ParsedText<DynHash>>(conn)
-                    .await?
-                    .into_iter()
-                    .map(|d| d.0)
-                    .collect();
+            let needed = record.as_ref().contents();
+            let provided = sources.iter().map(|s| &s.0).collect::<HashSet<_>>();
 
-                for digest in needed {
-                    if !provided.contains(&digest) {
-                        let reason =
-                            format!("a content source for digest `{digest}` was not provided");
-                        return Err(DataStoreError::Rejection(reason));
-                    }
-                }
+            if let Some(missing) = needed.difference(&provided).next() {
+                return Err(DataStoreError::Rejection(format!(
+                    "a content source for digest `{missing}` was not provided"
+                )));
             }
+
+            if let Some(extra) = provided.difference(&needed).next() {
+                return Err(DataStoreError::Rejection(format!(
+                    "a content source for digest `{extra}` was provided but not needed",
+                )));
+            }
+
+            // Validate the record
+            validator.validate(&record).map_err(Into::into)?;
 
             // Store the updated validation state
             diesel::update(schema::logs::table)
