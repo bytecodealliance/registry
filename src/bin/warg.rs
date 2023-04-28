@@ -61,7 +61,7 @@ fn describe_client_error(e: &ClientError) {
             eprintln!("error: {e}; use the `config` subcommand to set a default URL");
         }
         ClientError::PackageValidationFailed { package, inner } => {
-            eprintln!("error: the log for package `{package}` is invalid: {inner:?}")
+            eprintln!("error: the log for package `{package}` is invalid: {inner}")
         }
         ClientError::PackageLogEmpty { package } => {
             eprintln!(

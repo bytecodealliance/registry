@@ -5,58 +5,57 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-
 use warg_crypto::hash::{HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("The first entry of the log is not \"init\"")]
+    #[error("the first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
-    #[error("The initial record is empty and does not \"init\"")]
+    #[error("the initial record is empty and does not \"init\"")]
     InitialRecordDoesNotInit,
 
-    #[error("The Key ID used to sign this envelope is not known to this operator log")]
+    #[error("the Key ID used to sign this envelope is not known to this operator log")]
     KeyIDNotRecognized { key_id: signing::KeyID },
 
-    #[error("A second \"init\" entry was found")]
+    #[error("a second \"init\" entry was found")]
     InitialEntryAfterBeginning,
 
-    #[error("The key with ID {key_id} did not have required permission {needed_permission}")]
+    #[error("the key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
         key_id: signing::KeyID,
         needed_permission: model::Permission,
     },
 
-    #[error("Attempted to remove permission {permission} from key {key_id} which did not have it")]
+    #[error("attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
         permission: model::Permission,
         key_id: signing::KeyID,
     },
 
-    #[error("Unable to verify signature")]
+    #[error("unable to verify signature: {0}")]
     SignatureError(#[from] signing::SignatureError),
 
-    #[error("Record hash uses {found} algorithm but {expected} was expected")]
+    #[error("record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
         found: HashAlgorithm,
         expected: HashAlgorithm,
     },
 
-    #[error("Previous record hash does not match")]
+    #[error("previous record hash does not match")]
     RecordHashDoesNotMatch,
 
-    #[error("The first record contained a previous hash value")]
+    #[error("the first record contained a previous hash value")]
     PreviousHashOnFirstRecord,
 
-    #[error("Non-initial record contained no previous hash")]
+    #[error("non-initial record contained no previous hash")]
     NoPreviousHashAfterInit,
 
-    #[error("Protocol version {version} not allowed")]
+    #[error("protocol version {version} not allowed")]
     ProtocolVersionNotAllowed { version: u32 },
 
-    #[error("Record has lower timestamp than previous")]
+    #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
 }
 
@@ -113,11 +112,11 @@ impl Validator {
     /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
-        envelope: &ProtoEnvelope<model::OperatorRecord>,
+        record: &ProtoEnvelope<model::OperatorRecord>,
     ) -> Result<(), ValidationError> {
         let snapshot = self.snapshot();
 
-        let result = self.validate_envelope(envelope);
+        let result = self.validate_record(record);
         if result.is_err() {
             self.rollback(snapshot);
         }
@@ -137,7 +136,7 @@ impl Validator {
         self.algorithm.is_some()
     }
 
-    fn validate_envelope(
+    fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::OperatorRecord>,
     ) -> Result<(), ValidationError> {
@@ -379,8 +378,15 @@ impl Validator {
     }
 }
 
-/// Used for snapshotting a validator prior to performing
-/// validations.
+impl crate::Validator for Validator {
+    type Record = model::OperatorRecord;
+    type Error = ValidationError;
+
+    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+        self.validate(record)
+    }
+}
+
 struct Snapshot {
     algorithm: Option<HashAlgorithm>,
     head: Option<Head>,

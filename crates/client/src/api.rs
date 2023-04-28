@@ -315,7 +315,10 @@ impl Client {
             let found = proof.evaluate_value(&log_data, leaf)?;
             let root = checkpoint.log_root.clone().try_into()?;
             if found != root {
-                return Err(anyhow!(ProofError::IncorrectProof { root, found }));
+                return Err(anyhow!(ProofError::IncorrectProof {
+                    root: checkpoint.log_root.clone(),
+                    found: found.into()
+                }));
             }
         }
 
@@ -331,7 +334,10 @@ impl Client {
             );
             let root = checkpoint.map_root.clone().try_into()?;
             if found != root {
-                return Err(anyhow!(ProofError::IncorrectProof { root, found }));
+                return Err(anyhow!(ProofError::IncorrectProof {
+                    root: checkpoint.map_root.clone(),
+                    found: found.into()
+                }));
             }
         }
 

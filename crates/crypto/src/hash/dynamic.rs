@@ -51,15 +51,15 @@ impl fmt::Debug for DynHash {
 }
 
 impl FromStr for DynHash {
-    type Err = DynHashParseError;
+    type Err = DynHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (algo_part, bytes_part) = s
             .split_once(':')
-            .ok_or_else(|| DynHashParseError::IncorrectStructure(s.matches(':').count() + 1))?;
+            .ok_or_else(|| DynHashError::IncorrectStructure(s.matches(':').count() + 1))?;
 
         if bytes_part.chars().any(|c| "ABCDEF".contains(c)) {
-            return Err(DynHashParseError::UppercaseHex);
+            return Err(DynHashError::UppercaseHex);
         }
 
         let algo = algo_part.parse::<HashAlgorithm>()?;
@@ -70,18 +70,18 @@ impl FromStr for DynHash {
 }
 
 #[derive(Error, Debug)]
-pub enum DynHashParseError {
+pub enum DynHashError {
     #[error("expected two parts for hash; found {0}")]
     IncorrectStructure(usize),
 
     #[error("unable to parse hash algorithm: {0}")]
-    HashAlgorithmParseError(#[from] Error),
+    InvalidHashAlgorithm(#[from] Error),
 
     #[error("hash contained uppercase hex values")]
     UppercaseHex,
 
     #[error("hexadecimal decode failed: {0}")]
-    HexDecodeError(#[from] hex::FromHexError),
+    InvalidHex(#[from] hex::FromHexError),
 }
 
 impl Serialize for DynHash {

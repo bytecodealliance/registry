@@ -1,12 +1,11 @@
+use crate::registry::RecordId;
 use core::fmt;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::{str::FromStr, time::SystemTime};
-
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 use warg_crypto::signing;
-
-use crate::registry::RecordId;
 
 /// A package record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +18,15 @@ pub struct PackageRecord {
     pub timestamp: SystemTime,
     /// The entries being published in this record
     pub entries: Vec<PackageEntry>,
+}
+
+impl crate::Record for PackageRecord {
+    fn contents(&self) -> HashSet<&DynHash> {
+        self.entries
+            .iter()
+            .filter_map(PackageEntry::content)
+            .collect()
+    }
 }
 
 /// Each permission represents the ability to use the specified entry
@@ -96,6 +104,16 @@ impl PackageEntry {
             Self::Init { .. } | Self::GrantFlat { .. } | Self::RevokeFlat { .. } => None,
             Self::Release { .. } => Some(Permission::Release),
             Self::Yank { .. } => Some(Permission::Yank),
+        }
+    }
+
+    /// Gets the content associated with the entry.
+    ///
+    /// Returns `None` if the entry does not have content.
+    pub fn content(&self) -> Option<&DynHash> {
+        match self {
+            Self::Release { content, .. } => Some(content),
+            _ => None,
         }
     }
 }

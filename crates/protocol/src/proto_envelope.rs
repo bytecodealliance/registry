@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 use std::fmt;
 use thiserror::Error;
-use warg_crypto::{hash::DynHashParseError, signing, Decode, Signable};
+use warg_crypto::{hash::DynHashError, signing, Decode, Signable};
 
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
@@ -100,16 +100,16 @@ impl<Content> AsRef<Content> for ProtoEnvelope<Content> {
 /// Errors that occur in the process of parsing an envelope from bytes
 #[derive(Error, Debug)]
 pub enum ParseEnvelopeError {
-    #[error("Failed to parse the outer envelope protobuf message")]
+    #[error("failed to parse the outer envelope protobuf message")]
     ProtobufEnvelope(#[from] prost::DecodeError),
 
-    #[error("Failed to parse envelope contents from bytes")]
+    #[error("failed to parse envelope contents from bytes")]
     Contents(#[from] Error),
 
-    #[error("Failed to parse envelope key id")]
-    KeyID(#[from] DynHashParseError),
+    #[error("failed to parse envelope key id")]
+    KeyID(#[from] DynHashError),
 
-    #[error("Failed to parse envelope signature")]
+    #[error("failed to parse envelope signature")]
     Signature(#[from] signing::SignatureParseError),
 }
 

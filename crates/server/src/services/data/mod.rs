@@ -5,6 +5,7 @@ use tokio::{
     sync::{mpsc::Receiver, RwLock},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::{Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf};
 
@@ -29,44 +30,45 @@ pub enum DataServiceError {
 }
 
 pub struct Input {
-    pub log_data: log::ProofData,
+    pub token: CancellationToken,
+    pub log_data: log::LogData,
     pub log_rx: Receiver<LogLeaf>,
     pub map_data: map::MapData,
     pub map_rx: Receiver<VerifiableMap>,
 }
 
 pub struct Output {
+    pub log_data: Arc<RwLock<log::LogData>>,
     pub map_data: Arc<RwLock<map::MapData>>,
-    pub log_data: Arc<RwLock<log::ProofData>>,
-
-    pub map_data_handle: JoinHandle<()>,
-    pub log_data_handle: JoinHandle<()>,
+    pub log_handle: JoinHandle<()>,
+    pub map_handle: JoinHandle<()>,
 }
 
-pub fn process(input: Input) -> Output {
+pub fn spawn(input: Input) -> Output {
     let Input {
+        token,
         log_data,
         log_rx,
         map_data,
         map_rx,
     } = input;
 
-    let log_input = log::Input {
+    let log = log::spawn(log::Input {
+        token: token.clone(),
         data: log_data,
         log_rx,
-    };
-    let log_output = log::process(log_input);
+    });
 
-    let map_input = map::Input {
+    let map = map::spawn(map::Input {
+        token,
         data: map_data,
         map_rx,
-    };
-    let map_output = map::process(map_input);
+    });
 
     Output {
-        log_data: log_output.data,
-        map_data: map_output.data,
-        log_data_handle: log_output.handle,
-        map_data_handle: map_output.handle,
+        log_data: log.data,
+        map_data: map.data,
+        log_handle: log.handle,
+        map_handle: map.handle,
     }
 }

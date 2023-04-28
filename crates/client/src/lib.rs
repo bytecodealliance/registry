@@ -167,7 +167,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             .await?;
 
         // Finally, update the checkpoint again post-publish
-        self.update_checkpoint(response.checkpoint.as_ref(), [&mut package])
+        self.update_checkpoint(&response.checkpoint, [&mut package])
             .await?;
 
         Ok(())
@@ -558,7 +558,7 @@ pub enum ClientError {
     },
 
     /// The package failed validation.
-    #[error("package `{package}` failed validation: {inner}.")]
+    #[error("package `{package}` failed validation: {inner}")]
     PackageValidationFailed {
         /// The package that failed validation.
         package: String,

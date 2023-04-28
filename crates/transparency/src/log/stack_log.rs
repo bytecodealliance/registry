@@ -21,6 +21,22 @@ where
     _value: PhantomData<V>,
 }
 
+impl<D, V> StackLog<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    /// Get the number of entries in the log.
+    pub fn length(&self) -> usize {
+        self.length
+    }
+
+    /// Check if the log is empty.
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+}
+
 impl<D, V> LogBuilder<D, V> for StackLog<D, V>
 where
     D: SupportedDigest,

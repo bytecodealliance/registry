@@ -1,500 +1,341 @@
+use super::{
+    data::log::LogData,
+    transparency::{VerifiableLog, VerifiableMap},
+    MapData,
+};
+use crate::{
+    datastore::{DataStore, DataStoreError, InitialLeaf, PackageLogEntry, RecordStatus},
+    services::{data, transparency},
+};
+use anyhow::Result;
+use futures::StreamExt;
 use std::{
-    collections::{HashMap, HashSet},
     sync::Arc,
+    time::{Duration, SystemTime},
 };
 use thiserror::Error;
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender},
-        oneshot, Mutex,
+        mpsc::{self, Sender},
+        oneshot, RwLock,
     },
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use warg_api::content::ContentSource;
-use warg_crypto::hash::{DynHash, Hash, Sha256};
+use warg_crypto::{
+    hash::{DynHash, Hash, HashAlgorithm, Sha256},
+    signing::PrivateKey,
+};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
+    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
+use warg_transparency::log::LogBuilder;
 
-#[derive(Clone, Debug)]
-pub struct State {
-    checkpoints: Vec<Arc<SerdeEnvelope<MapCheckpoint>>>,
-    checkpoint_index: HashMap<Hash<Sha256>, usize>,
-    operator_info: Arc<Mutex<OperatorInfo>>,
-    package_states: HashMap<LogId, Arc<Mutex<PackageInfo>>>,
-}
-
-impl State {
-    pub fn new(
-        init_checkpoint: SerdeEnvelope<MapCheckpoint>,
-        init_record: ProtoEnvelope<operator::OperatorRecord>,
-    ) -> Self {
-        let checkpoint_hash: Hash<Sha256> = Hash::of(init_checkpoint.as_ref());
-        let checkpoint = Arc::new(init_checkpoint);
-        let record = Arc::new(init_record);
-
-        let checkpoints = vec![checkpoint.clone()];
-
-        let mut validator = operator::Validator::default();
-        validator.validate(&record).unwrap();
-
-        let log = vec![record.clone()];
-
-        let mut records = HashMap::new();
-        let record_info = OperatorRecordInfo {
-            record: record.clone(),
-            state: RecordState::Published { checkpoint },
-        };
-        records.insert(RecordId::operator_record::<Sha256>(&record), record_info);
-        let checkpoint_indices = vec![0];
-
-        let operator_info = OperatorInfo {
-            validator,
-            log,
-            records,
-            checkpoint_indices,
-        };
-        Self {
-            checkpoints,
-            checkpoint_index: HashMap::from([(checkpoint_hash, 0)]),
-            operator_info: Arc::new(Mutex::new(operator_info)),
-            package_states: Default::default(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct OperatorInfo {
-    validator: operator::Validator,
-    log: Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>,
-    checkpoint_indices: Vec<usize>,
-    records: HashMap<RecordId, OperatorRecordInfo>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct OperatorRecordInfo {
-    record: Arc<ProtoEnvelope<operator::OperatorRecord>>,
-    state: RecordState,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct PackageInfo {
-    id: LogId,
-    name: String,
-    validator: package::Validator,
-    log: Vec<Arc<ProtoEnvelope<package::PackageRecord>>>,
-    checkpoint_indices: Vec<usize>,
-    records: HashMap<RecordId, PackageRecordInfo>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PackageRecordInfo {
-    pub record: Arc<ProtoEnvelope<package::PackageRecord>>,
-    pub content_sources: Arc<Vec<ContentSource>>,
-    pub state: RecordState,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RecordState {
-    Processing,
-    Published {
-        checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
-    },
-    Rejected {
-        reason: String,
-    },
+fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRecord> {
+    let init_record = operator::OperatorRecord {
+        prev: None,
+        version: 0,
+        timestamp: SystemTime::now(),
+        entries: vec![operator::OperatorEntry::Init {
+            hash_algorithm: HashAlgorithm::Sha256,
+            key: signing_key.public_key(),
+        }],
+    };
+    ProtoEnvelope::signed_contents(signing_key, init_record).unwrap()
 }
 
 #[derive(Debug, Error)]
 pub enum CoreServiceError {
-    #[error("checkpoint `{0}` not found")]
-    CheckpointNotFound(Hash<Sha256>),
-    #[error("package `{0}` not found")]
-    PackageNameNotFound(String),
-    #[error("package `{0}` not found")]
-    PackageNotFound(LogId),
-    #[error("package record `{0}` not found")]
-    PackageRecordNotFound(RecordId),
-    #[error("operator record `{0}` not found")]
-    OperatorRecordNotFound(RecordId),
-    #[error("invalid checkpoint: {0}")]
-    InvalidCheckpoint(anyhow::Error),
+    #[error("package log `{0}` was not found")]
+    PackageNotFound(String),
+
+    #[error(transparent)]
+    DataStore(#[from] DataStoreError),
 }
 
-pub struct CoreService {
-    mailbox: mpsc::Sender<Message>,
-    _handle: JoinHandle<State>,
+impl CoreServiceError {
+    fn with_package_name(self, name: &str) -> Self {
+        match self {
+            Self::DataStore(DataStoreError::LogNotFound(_)) => {
+                Self::PackageNotFound(name.to_string())
+            }
+            e => e,
+        }
+    }
+}
+
+/// Used to stop the core service.
+pub struct StopHandle {
+    token: CancellationToken,
+    join: Vec<JoinHandle<()>>,
+}
+
+impl StopHandle {
+    /// Stops the core service and waits for all tasks to complete.
+    pub async fn stop(self) {
+        self.token.cancel();
+        futures::future::join_all(self.join).await;
+    }
 }
 
 #[derive(Debug)]
-enum Message {
-    SubmitPackageRecord {
-        package_name: String,
-        record: Arc<ProtoEnvelope<package::PackageRecord>>,
-        content_sources: Vec<ContentSource>,
-        response: oneshot::Sender<RecordState>,
-    },
-    GetPackageRecordStatus {
-        package_id: LogId,
-        record_id: RecordId,
-        response: oneshot::Sender<Result<RecordState, CoreServiceError>>,
-    },
-    GetPackageRecordInfo {
-        package_id: LogId,
-        record_id: RecordId,
-        response: oneshot::Sender<Result<PackageRecordInfo, CoreServiceError>>,
-    },
-    NewCheckpoint {
-        checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
-        leaves: Vec<LogLeaf>,
-    },
-    FetchOperatorRecords {
-        root: Hash<Sha256>,
-        since: Option<RecordId>,
-        response: oneshot::Sender<
-            Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError>,
-        >,
-    },
-    FetchPackageRecords {
-        root: Hash<Sha256>,
-        package_name: String,
-        since: Option<RecordId>,
-        response: oneshot::Sender<
-            Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError>,
-        >,
-    },
-    GetLatestCheckpoint {
-        response: oneshot::Sender<Arc<SerdeEnvelope<MapCheckpoint>>>,
-    },
+struct NewPackageRecord {
+    package_name: String,
+    record: ProtoEnvelope<package::PackageRecord>,
+    content_sources: Vec<ContentSource>,
+    response: oneshot::Sender<Result<(), CoreServiceError>>,
+}
+
+#[derive(Default)]
+struct InitializationData {
+    log: VerifiableLog,
+    map: VerifiableMap,
+    log_data: LogData,
+    map_data: MapData,
+    leaves: Vec<LogLeaf>,
+}
+
+pub struct CoreService {
+    log: Arc<RwLock<LogData>>,
+    map: Arc<RwLock<MapData>>,
+    new_record_tx: Sender<NewPackageRecord>,
+    store: Box<dyn DataStore>,
 }
 
 impl CoreService {
-    pub fn start(initial_state: State, transparency_tx: Sender<LogLeaf>) -> Self {
-        let (mailbox, rx) = mpsc::channel::<Message>(4);
-        let _handle =
-            tokio::spawn(async move { Self::process(initial_state, rx, transparency_tx).await });
+    /// Spawn the core service with the given operator signing key.
+    pub async fn spawn(
+        signing_key: PrivateKey,
+        store: Box<dyn DataStore>,
+        checkpoint_interval: Duration,
+    ) -> Result<(Arc<Self>, StopHandle), CoreServiceError> {
+        let data = Self::initialize(&signing_key, store.as_ref()).await?;
+        let token = CancellationToken::new();
+        let (log_tx, log_rx) = mpsc::channel(4);
 
-        Self { mailbox, _handle }
-    }
+        // Spawn the transparency service
+        let transparency = transparency::spawn(transparency::Input {
+            token: token.clone(),
+            checkpoint_interval,
+            log: data.log,
+            map: data.map,
+            leaves: data.leaves,
+            signing_key,
+            log_rx,
+        });
 
-    async fn process(
-        initial_state: State,
-        mut rx: Receiver<Message>,
-        transparency_tx: Sender<LogLeaf>,
-    ) -> State {
-        let mut state = initial_state;
+        // Spawn the data service
+        let data = data::spawn(data::Input {
+            token: token.clone(),
+            log_data: data.log_data,
+            log_rx: transparency.log_rx,
+            map_data: data.map_data,
+            map_rx: transparency.map_rx,
+        });
 
-        while let Some(request) = rx.recv().await {
-            tracing::trace!(?request, "CoreService processing request");
-            match request {
-                Message::SubmitPackageRecord {
-                    package_name,
-                    record,
-                    content_sources,
-                    response,
-                } => {
-                    let package_id = LogId::package_log::<Sha256>(&package_name);
-                    let package_info = state
-                        .package_states
-                        .entry(package_id.clone())
-                        .or_insert_with(|| {
-                            Arc::new(Mutex::new(PackageInfo {
-                                id: package_id,
-                                name: package_name,
-                                validator: Default::default(),
-                                log: Default::default(),
-                                checkpoint_indices: Default::default(),
-                                records: Default::default(),
-                            }))
-                        })
-                        .clone();
-                    let transparency_tx = transparency_tx.clone();
-                    tokio::spawn(async move {
-                        new_record(
-                            package_info,
+        let (new_record_tx, mut new_record_rx) = mpsc::channel(4);
+        let core = Arc::new(Self {
+            log: data.log_data,
+            map: data.map_data,
+            new_record_tx,
+            store,
+        });
+
+        let spawn_token = token.clone();
+        let task_core = core.clone();
+        let mut signatures = transparency.signature_rx;
+        let handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = spawn_token.cancelled() => {
+                        break;
+                    }
+                    message = new_record_rx.recv() => {
+                        if let Some(NewPackageRecord {
+                            package_name,
                             record,
                             content_sources,
                             response,
-                            transparency_tx,
-                        )
-                        .await
-                    });
-                }
-                Message::GetPackageRecordStatus {
-                    package_id,
-                    record_id,
-                    response,
-                } => {
-                    if let Some(package_info) = state.package_states.get(&package_id).cloned() {
-                        tokio::spawn(async move {
-                            let info = package_info.as_ref().lock().await;
-                            if let Some(record_info) = info.records.get(&record_id) {
-                                response.send(Ok(record_info.state.clone())).unwrap();
-                            } else {
-                                response
-                                    .send(Err(CoreServiceError::PackageRecordNotFound(record_id)))
-                                    .unwrap();
+                        }) = message {
+                            let log_id = LogId::package_log::<Sha256>(&package_name);
+                            let record_id = RecordId::package_record::<Sha256>(&record);
+                            match task_core.store.store_package_record(&log_id, &package_name, &record_id, &record, &content_sources).await {
+                                Ok(()) => {
+                                    // Record saved successfully, so notify the client that the record is processing
+                                    response.send(Ok(())).unwrap();
+
+                                    // TODO: perform all policy checks on the record here
+
+                                    // Validate the package record
+                                    match task_core.store.validate_package_record(&log_id, &record_id).await {
+                                        Ok(()) => {
+                                            // Send the record to the transparency service to be included in the next checkpoint
+                                            let leaf = LogLeaf { log_id, record_id };
+                                            log_tx.send(leaf).await.unwrap();
+                                        }
+                                        Err(e) => match e {
+                                            DataStoreError::Rejection(_)
+                                            | DataStoreError::OperatorValidationFailed(_)
+                                            | DataStoreError::PackageValidationFailed(_) => {
+                                                // The record failed to validate and was rejected; do not include it in the next checkpoint
+                                            }
+                                            e => {
+                                                // TODO: this should be made more robust with a proper reliable message
+                                                // queue with retry logic
+                                                tracing::error!("failed to validate package record `{record_id}`: {e}");
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    response.send(Err(e.into())).unwrap();
+                                }
                             }
-                        });
-                    } else {
-                        response
-                            .send(Err(CoreServiceError::PackageNotFound(package_id)))
-                            .unwrap();
-                    }
-                }
-                Message::GetPackageRecordInfo {
-                    package_id,
-                    record_id,
-                    response,
-                } => {
-                    if let Some(package_info) = state.package_states.get(&package_id).cloned() {
-                        tokio::spawn(async move {
-                            let info = package_info.as_ref().lock().await;
-                            if let Some(record_info) = info.records.get(&record_id) {
-                                response.send(Ok(record_info.clone())).unwrap();
-                            } else {
-                                response
-                                    .send(Err(CoreServiceError::PackageRecordNotFound(record_id)))
-                                    .unwrap();
-                            }
-                        });
-                    } else {
-                        response
-                            .send(Err(CoreServiceError::PackageNotFound(package_id)))
-                            .unwrap();
-                    }
-                }
-                Message::NewCheckpoint { checkpoint, leaves } => {
-                    let checkpoint_index = state.checkpoints.len();
-                    state.checkpoints.push(checkpoint.clone());
-                    state
-                        .checkpoint_index
-                        .insert(Hash::of(checkpoint.as_ref().as_ref()), checkpoint_index);
-                    for leaf in leaves {
-                        let package_info = state.package_states.get(&leaf.log_id).unwrap().clone();
-                        let checkpoint_clone = checkpoint.clone();
-                        tokio::spawn(async move {
-                            mark_published(
-                                package_info,
-                                leaf.record_id,
-                                checkpoint_clone,
-                                checkpoint_index,
-                            )
-                            .await
-                        });
-                    }
-                }
-                Message::FetchOperatorRecords {
-                    root,
-                    since,
-                    response,
-                } => {
-                    if let Some(&checkpoint_index) = state.checkpoint_index.get(&root) {
-                        let operator_info = state.operator_info.clone();
-                        tokio::spawn(async move {
-                            response
-                                .send(
-                                    fetch_operator_records(operator_info, since, checkpoint_index)
-                                        .await,
-                                )
-                                .unwrap();
-                        });
-                    } else {
-                        response
-                            .send(Err(CoreServiceError::CheckpointNotFound(root)))
-                            .unwrap();
-                    }
-                }
-                Message::FetchPackageRecords {
-                    root,
-                    package_name,
-                    since,
-                    response,
-                } => {
-                    if let Some(&checkpoint_index) = state.checkpoint_index.get(&root) {
-                        let package_id = LogId::package_log::<Sha256>(&package_name);
-                        if let Some(package_info) = state.package_states.get(&package_id).cloned() {
-                            tokio::spawn(async move {
-                                response
-                                    .send(
-                                        fetch_package_records(
-                                            package_info,
-                                            since,
-                                            checkpoint_index,
-                                        )
-                                        .await,
-                                    )
-                                    .unwrap();
-                            });
                         } else {
-                            response
-                                .send(Err(CoreServiceError::PackageNameNotFound(package_name)))
-                                .unwrap();
+                            break;
                         }
-                    } else {
-                        response
-                            .send(Err(CoreServiceError::CheckpointNotFound(root)))
-                            .unwrap();
+                    }
+                    signature = signatures.recv() => {
+                        if let Some(signature) = signature {
+                            let checkpoint_id = Hash::<Sha256>::of(signature.envelope.as_ref()).into();
+                            task_core.store.store_checkpoint(&checkpoint_id, signature.envelope, &signature.leaves).await.unwrap();
+                        } else {
+                            break;
+                        }
                     }
                 }
-                Message::GetLatestCheckpoint { response } => response
-                    .send(state.checkpoints.last().unwrap().clone())
-                    .unwrap(),
             }
-            tracing::trace!(?state, "Processing complete");
+        });
+
+        tracing::debug!("core service is running");
+
+        let join = vec![
+            transparency.log_handle,
+            transparency.map_handle,
+            transparency.sign_handle,
+            data.log_handle,
+            data.map_handle,
+            handle,
+        ];
+
+        Ok((core, StopHandle { token, join }))
+    }
+
+    /// Get the log data associated with the core service.
+    pub fn log_data(&self) -> &Arc<RwLock<LogData>> {
+        &self.log
+    }
+
+    /// Get the map data associated with the core service.
+    pub fn map_data(&self) -> &Arc<RwLock<MapData>> {
+        &self.map
+    }
+
+    async fn initialize(
+        signing_key: &PrivateKey,
+        store: &dyn DataStore,
+    ) -> Result<InitializationData, CoreServiceError> {
+        tracing::debug!("initializing core service");
+        let mut data = InitializationData::default();
+        let mut last_checkpoint = None;
+        let mut initial = store.get_initial_leaves().await?;
+        while let Some(res) = initial.next().await {
+            let InitialLeaf { leaf, checkpoint } = res?;
+            data.log.push(&leaf);
+
+            data.map = data.map.insert(
+                leaf.log_id.clone(),
+                MapLeaf {
+                    record_id: leaf.record_id.clone(),
+                },
+            );
+
+            match checkpoint {
+                Some(checkpoint) => {
+                    if last_checkpoint.as_ref() != Some(&checkpoint) {
+                        data.map_data.insert(data.map.clone());
+                        last_checkpoint = Some(checkpoint);
+                    }
+                }
+                None => data.leaves.push(leaf.clone()),
+            }
+
+            data.log_data.push(leaf);
         }
 
-        state
+        if data.log.is_empty() {
+            return Self::init_operator_log(signing_key, store).await;
+        }
+
+        tracing::debug!("core service initialized");
+        Ok(data)
+    }
+
+    async fn init_operator_log(
+        signing_key: &PrivateKey,
+        store: &dyn DataStore,
+    ) -> Result<InitializationData, CoreServiceError> {
+        let init = init_envelope(signing_key);
+        let log_id = LogId::operator_log::<Sha256>();
+        let record_id = RecordId::operator_record::<Sha256>(&init);
+
+        store
+            .store_operator_record(&log_id, &record_id, &init)
+            .await?;
+
+        // TODO: ensure the operator record passes all policy checks
+
+        store.validate_operator_record(&log_id, &record_id).await?;
+
+        let leaf = LogLeaf { log_id, record_id };
+        let mut data = InitializationData::default();
+        data.log.push(&leaf);
+
+        data.map = data.map.insert(
+            leaf.log_id.clone(),
+            MapLeaf {
+                record_id: leaf.record_id.clone(),
+            },
+        );
+
+        data.log_data.push(leaf.clone());
+        data.map_data.insert(data.map.clone());
+
+        let checkpoint = data.log.checkpoint();
+        let log_root: DynHash = checkpoint.root().into();
+        let log_length = checkpoint.length() as u32;
+
+        let checkpoint = MapCheckpoint {
+            log_root,
+            log_length,
+            map_root: data.map.root().clone().into(),
+        };
+
+        let checkpoint = SerdeEnvelope::signed_contents(signing_key, checkpoint).unwrap();
+        let checkpoint_id = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        store
+            .store_checkpoint(&checkpoint_id, checkpoint, &[leaf])
+            .await?;
+
+        Ok(data)
     }
 }
 
-async fn new_record(
-    package_info: Arc<Mutex<PackageInfo>>,
-    record: Arc<ProtoEnvelope<package::PackageRecord>>,
-    content_sources: Vec<ContentSource>,
-    response: oneshot::Sender<RecordState>,
-    transparency_tx: Sender<LogLeaf>,
-) {
-    let mut info = package_info.as_ref().lock().await;
-    let record_id = RecordId::package_record::<Sha256>(&record);
-    let snapshot = info.validator.snapshot();
-    match info.validator.validate(&record) {
-        Ok(contents) => {
-            let provided_contents: HashSet<DynHash> = content_sources
-                .iter()
-                .map(|source| source.digest.clone())
-                .collect();
-            for needed_content in contents {
-                if !provided_contents.contains(&needed_content) {
-                    let state = RecordState::Rejected {
-                        reason: format!("Needed content {} but not provided", needed_content),
-                    };
-                    response.send(state).unwrap();
-                    info.validator.rollback(snapshot);
-                    return;
-                }
-            }
-
-            let state = RecordState::Processing;
-            let record_info = PackageRecordInfo {
-                record: record.clone(),
-                content_sources: Arc::new(content_sources),
-                state: state.clone(),
-            };
-
-            transparency_tx
-                .send(LogLeaf {
-                    log_id: info.id.clone(),
-                    record_id: record_id.clone(),
-                })
-                .await
-                .unwrap();
-
-            info.log.push(record);
-            info.records.insert(record_id, record_info);
-
-            response.send(state).unwrap();
-        }
-        Err(error) => {
-            let reason = error.to_string();
-            let state = RecordState::Rejected { reason };
-            let record_info = PackageRecordInfo {
-                record,
-                content_sources: Arc::new(content_sources),
-                state: state.clone(),
-            };
-            info.records.insert(record_id, record_info);
-
-            response.send(state).unwrap();
-        }
-    };
-}
-
-async fn mark_published(
-    package_info: Arc<Mutex<PackageInfo>>,
-    record_id: RecordId,
-    checkpoint: Arc<SerdeEnvelope<MapCheckpoint>>,
-    checkpoint_index: usize,
-) {
-    let mut info = package_info.as_ref().lock().await;
-
-    info.records.get_mut(&record_id).unwrap().state = RecordState::Published { checkpoint };
-    // Requires publishes to be marked in order for correctness
-    info.checkpoint_indices.push(checkpoint_index);
-}
-
-async fn fetch_operator_records(
-    operator_info: Arc<Mutex<OperatorInfo>>,
-    since: Option<RecordId>,
-    checkpoint_index: usize,
-) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError> {
-    let info = operator_info.as_ref().lock().await;
-
-    let start = match since {
-        Some(hash) => get_operator_record_index(&info.log, hash)? + 1,
-        None => 0,
-    };
-    let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let result = info.log[start..end].to_vec();
-    Ok(result)
-}
-
-async fn fetch_package_records(
-    package_info: Arc<Mutex<PackageInfo>>,
-    since: Option<RecordId>,
-    checkpoint_index: usize,
-) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError> {
-    let info = package_info.as_ref().lock().await;
-
-    let start = match since {
-        Some(hash) => get_package_record_index(&info.log, hash)? + 1,
-        None => 0,
-    };
-    let end = get_records_before_checkpoint(&info.checkpoint_indices, checkpoint_index);
-    let result = info.log[start..end].to_vec();
-    Ok(result)
-}
-
-fn get_package_record_index(
-    log: &[Arc<ProtoEnvelope<package::PackageRecord>>],
-    hash: RecordId,
-) -> Result<usize, CoreServiceError> {
-    log.iter()
-        .map(|env| RecordId::package_record::<Sha256>(env.as_ref()))
-        .position(|found| found == hash)
-        .ok_or_else(|| CoreServiceError::PackageRecordNotFound(hash))
-}
-
-fn get_operator_record_index(
-    log: &[Arc<ProtoEnvelope<operator::OperatorRecord>>],
-    hash: RecordId,
-) -> Result<usize, CoreServiceError> {
-    log.iter()
-        .map(|env| RecordId::operator_record::<Sha256>(env.as_ref()))
-        .position(|found| found == hash)
-        .ok_or_else(|| CoreServiceError::OperatorRecordNotFound(hash))
-}
-
-fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> usize {
-    indices
-        .iter()
-        .filter(|index| **index <= checkpoint_index)
-        .count()
-}
-
 impl CoreService {
+    /// Submits a package record to be processed.
     pub async fn submit_package_record(
         &self,
-        package_name: String,
-        record: Arc<ProtoEnvelope<package::PackageRecord>>,
+        name: &str,
+        record: ProtoEnvelope<package::PackageRecord>,
         content_sources: Vec<ContentSource>,
-    ) -> RecordState {
+    ) -> Result<(), CoreServiceError> {
         let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::SubmitPackageRecord {
-                package_name,
+        self.new_record_tx
+            .send(NewPackageRecord {
+                package_name: name.to_string(),
                 record,
                 content_sources,
                 response: tx,
@@ -502,110 +343,58 @@ impl CoreService {
             .await
             .unwrap();
 
-        rx.await.unwrap()
+        rx.await.unwrap().map_err(|e| e.with_package_name(name))
     }
 
-    pub async fn get_package_record_status(
+    /// Gets a record status.
+    pub async fn get_record_status(
         &self,
-        package_id: LogId,
-        record_id: RecordId,
-    ) -> Result<RecordState, CoreServiceError> {
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::GetPackageRecordStatus {
-                package_id,
-                record_id,
-                response: tx,
-            })
-            .await
-            .unwrap();
-
-        rx.await.unwrap()
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<RecordStatus, CoreServiceError> {
+        Ok(self.store.get_record_status(log_id, record_id).await?)
     }
 
-    pub async fn get_package_record_info(
+    /// Gets a package log entry.
+    pub async fn get_package_log_entry(
         &self,
-        package_id: LogId,
-        record_id: RecordId,
-    ) -> Result<PackageRecordInfo, CoreServiceError> {
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::GetPackageRecordInfo {
-                package_id,
-                record_id,
-                response: tx,
-            })
-            .await
-            .unwrap();
-
-        rx.await.unwrap()
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<PackageLogEntry, CoreServiceError> {
+        Ok(self.store.get_package_log_entry(log_id, record_id).await?)
     }
 
-    pub async fn new_checkpoint(
+    /// Gets the latest checkpoint.
+    pub async fn get_latest_checkpoint(
         &self,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
-        leaves: Vec<LogLeaf>,
-    ) {
-        self.mailbox
-            .send(Message::NewCheckpoint {
-                checkpoint: Arc::new(checkpoint),
-                leaves,
-            })
-            .await
-            .unwrap();
+    ) -> Result<SerdeEnvelope<MapCheckpoint>, CoreServiceError> {
+        Ok(self.store.get_latest_checkpoint().await?)
     }
 
+    /// Fetches all operator records up until the given registry root.
     pub async fn fetch_operator_records(
         &self,
-        root: DynHash,
-        since: Option<RecordId>,
-    ) -> Result<Vec<Arc<ProtoEnvelope<operator::OperatorRecord>>>, CoreServiceError> {
-        let root = root
-            .try_into()
-            .map_err(CoreServiceError::InvalidCheckpoint)?;
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::FetchOperatorRecords {
-                root,
-                since,
-                response: tx,
-            })
-            .await
-            .unwrap();
-
-        rx.await.unwrap()
+        root: &DynHash,
+        since: Option<&RecordId>,
+    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, CoreServiceError> {
+        let log_id = LogId::operator_log::<Sha256>();
+        Ok(self
+            .store
+            .get_operator_records(&log_id, root, since)
+            .await?)
     }
 
+    /// Fetches all package records up until the given registry root.
     pub async fn fetch_package_records(
         &self,
-        root: DynHash,
-        package_name: String,
-        since: Option<RecordId>,
-    ) -> Result<Vec<Arc<ProtoEnvelope<package::PackageRecord>>>, CoreServiceError> {
-        let root = root
-            .try_into()
-            .map_err(CoreServiceError::InvalidCheckpoint)?;
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::FetchPackageRecords {
-                root,
-                package_name,
-                since,
-                response: tx,
-            })
+        name: &str,
+        root: &DynHash,
+        since: Option<&RecordId>,
+    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, CoreServiceError> {
+        let log_id = LogId::package_log::<Sha256>(name);
+        self.store
+            .get_package_records(&log_id, root, since)
             .await
-            .unwrap();
-
-        rx.await.unwrap()
-    }
-
-    pub async fn get_latest_checkpoint(&self) -> Arc<SerdeEnvelope<MapCheckpoint>> {
-        let (tx, rx) = oneshot::channel();
-        self.mailbox
-            .send(Message::GetLatestCheckpoint { response: tx })
-            .await
-            .unwrap();
-
-        rx.await.unwrap()
+            .map_err(|e| CoreServiceError::from(e).with_package_name(name))
     }
 }

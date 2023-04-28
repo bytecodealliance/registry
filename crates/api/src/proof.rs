@@ -4,7 +4,7 @@ use crate::FromError;
 use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 use thiserror::Error;
-use warg_crypto::hash::{DynHash, Hash, Sha256};
+use warg_crypto::hash::DynHash;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
 
 /// Represents a consistency proof request.
@@ -71,7 +71,7 @@ pub enum ProofError {
     #[error("root `{root}` was not found")]
     RootNotFound {
         /// The root that was not found.
-        root: Hash<Sha256>,
+        root: DynHash,
     },
     /// The provided log leaf was not found.
     #[error("log leaf `{}:{}` was not found", .leaf.log_id, .leaf.record_id)]
@@ -95,13 +95,13 @@ pub enum ProofError {
     #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
     IncorrectProof {
         /// The provided root.
-        root: Hash<Sha256>,
+        root: DynHash,
         /// The found root.
-        found: Hash<Sha256>,
+        found: DynHash,
     },
-    /// An error occurred while performing the requested operation.
-    #[error("an error occurred while performing the requested operation: {message}")]
-    Operation {
+    /// An error with a message occurred.
+    #[error("{message}")]
+    Message {
         /// The error message.
         message: String,
     },
@@ -109,7 +109,7 @@ pub enum ProofError {
 
 impl From<String> for ProofError {
     fn from(message: String) -> Self {
-        Self::Operation { message }
+        Self::Message { message }
     }
 }
 

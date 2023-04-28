@@ -4,7 +4,7 @@ use crate::FromError;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use warg_crypto::hash::{DynHash, Hash, Sha256};
+use warg_crypto::hash::DynHash;
 use warg_protocol::{
     registry::{LogId, MapCheckpoint, RecordId},
     ProtoEnvelopeBody, SerdeEnvelope,
@@ -19,6 +19,7 @@ pub struct FetchRequest {
     /// The last known operator record.
     pub operator: Option<RecordId>,
     /// The map of packages to last known record ids.
+    #[serde(default)]
     pub packages: IndexMap<String, Option<RecordId>>,
 }
 
@@ -29,6 +30,7 @@ pub struct FetchResponse {
     /// The operator records appended since the last known operator record.
     pub operator: Vec<ProtoEnvelopeBody>,
     /// The package records appended since last known package record ids.
+    #[serde(default)]
     pub packages: IndexMap<String, Vec<ProtoEnvelopeBody>>,
 }
 
@@ -45,45 +47,36 @@ pub struct CheckpointResponse {
 #[derive(Debug, Error, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum FetchError {
-    /// The provided checkpoint as not found.
-    #[error("checkpoint `{checkpoint}` not found")]
+    /// The provided checkpoint was not found.
+    #[error("checkpoint `{checkpoint}` was not found")]
     CheckpointNotFound {
         /// The missing checkpoint.
-        checkpoint: Hash<Sha256>,
+        checkpoint: DynHash,
+    },
+    /// The log was not found.
+    #[error("log `{log_id}` was not found")]
+    LogNotFound {
+        /// The missing log id.
+        log_id: LogId,
     },
     /// The provided package name was not found.
-    #[error("package `{name}` not found")]
-    PackageNameNotFound {
+    #[error("package `{name}` was not found")]
+    PackageNotFound {
         /// The missing package name.
         name: String,
     },
-    /// The provided package was not found.
-    #[error("package `{id}` not found")]
-    PackageNotFound {
-        /// The id of the missing package log.
-        id: LogId,
-    },
-    /// The provided package record was not found.
-    #[error("package record `{id}` not found")]
-    PackageRecordNotFound {
-        /// The id of the missing package record.
-        id: RecordId,
-    },
-    /// The provided operator record was not found.
-    #[error("operator record `{id}` not found")]
-    OperatorRecordNotFound {
-        /// The id of the missing operator record.
-        id: RecordId,
-    },
-    /// The provided checkpoint was invalid.
-    #[error("invalid checkpoint: {message}")]
-    InvalidCheckpoint {
-        /// The validation error message.
-        message: String,
+    /// The provided record was not found.
+    #[error("record `{record_id}` was not found")]
+    RecordNotFound {
+        /// The id of the missing record.
+        record_id: RecordId,
     },
     /// An error occurred while performing the requested operation.
-    #[error("an error occurred while performing the requested operation: {message}")]
-    Operation {
+    #[error("an error occurred while performing the requested operation")]
+    Operation,
+    /// An error with a message occurred.
+    #[error("{message}")]
+    Message {
         /// The error message.
         message: String,
     },
@@ -91,7 +84,7 @@ pub enum FetchError {
 
 impl From<String> for FetchError {
     fn from(message: String) -> Self {
-        Self::Operation { message }
+        Self::Message { message }
     }
 }
 

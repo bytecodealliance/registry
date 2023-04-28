@@ -1,15 +1,17 @@
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
+use thiserror::Error;
 
 mod dynamic;
 mod r#static;
 
 pub use digest::{Digest, Output};
+pub use dynamic::{DynHash, DynHashError};
+pub use r#static::Hash;
 pub use sha2::Sha256;
 
-pub use dynamic::{DynHash, DynHashParseError};
-pub use r#static::Hash;
+use self::r#static::IncorrectLengthError;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -61,15 +63,41 @@ impl<D: SupportedDigest> From<Hash<D>> for DynHash {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum HashError {
+    #[error("mismatched hash algorithm: expected {expected}, got {actual}")]
+    MismatchedAlgorithms {
+        expected: HashAlgorithm,
+        actual: HashAlgorithm,
+    },
+
+    #[error("expected {expected} bytes for hash algorithm {algo}, got {actual}")]
+    IncorrectLength {
+        expected: usize,
+        algo: HashAlgorithm,
+        actual: usize,
+    },
+}
+
 impl<D: SupportedDigest> TryFrom<DynHash> for Hash<D> {
-    type Error = Error;
+    type Error = HashError;
 
     fn try_from(value: DynHash) -> Result<Self, Self::Error> {
         if value.algorithm() == D::ALGORITHM {
-            let hash = Hash::try_from(value.bytes)?;
-            Ok(hash)
+            let len = value.bytes.len();
+            match Hash::try_from(value.bytes) {
+                Ok(hash) => Ok(hash),
+                Err(IncorrectLengthError) => Err(HashError::IncorrectLength {
+                    expected: <D as Digest>::output_size(),
+                    algo: D::ALGORITHM,
+                    actual: len,
+                }),
+            }
         } else {
-            Err(Error::msg("Mismatched algorithms"))
+            Err(HashError::MismatchedAlgorithms {
+                expected: D::ALGORITHM,
+                actual: value.algorithm(),
+            })
         }
     }
 }

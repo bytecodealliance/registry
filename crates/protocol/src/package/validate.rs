@@ -1,73 +1,71 @@
 use super::{model, PACKAGE_RECORD_VERSION};
+use crate::registry::RecordId;
+use crate::ProtoEnvelope;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-
 use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
-use crate::registry::RecordId;
-use crate::ProtoEnvelope;
-
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("The first entry of the log is not \"init\"")]
+    #[error("the first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
-    #[error("The initial record is empty and does not \"init\"")]
+    #[error("the initial record is empty and does not \"init\"")]
     InitialRecordDoesNotInit,
 
-    #[error("The Key ID used to sign this envelope is not known to this package log")]
+    #[error("the Key ID used to sign this envelope is not known to this package log")]
     KeyIDNotRecognized { key_id: signing::KeyID },
 
-    #[error("A second \"init\" entry was found")]
+    #[error("a second \"init\" entry was found")]
     InitialEntryAfterBeginning,
 
-    #[error("The key with ID {key_id} did not have required permission {needed_permission}")]
+    #[error("the key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
         key_id: signing::KeyID,
         needed_permission: model::Permission,
     },
 
-    #[error("Attempted to remove permission {permission} from key {key_id} which did not have it")]
+    #[error("attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
         permission: model::Permission,
         key_id: signing::KeyID,
     },
 
-    #[error("An entry attempted to release already released version {version}")]
+    #[error("an entry attempted to release version {version} which is already released")]
     ReleaseOfReleased { version: Version },
 
-    #[error("An entry attempted to yank version {version} which had not yet been released")]
+    #[error("an entry attempted to yank version {version} which had not yet been released")]
     YankOfUnreleased { version: Version },
 
-    #[error("An entry attempted to yank already yanked version {version}")]
+    #[error("an entry attempted to yank version {version} which is already yanked")]
     YankOfYanked { version: Version },
 
-    #[error("Unable to verify signature")]
+    #[error("unable to verify signature")]
     SignatureError(#[from] signing::SignatureError),
 
-    #[error("Record hash uses {found} algorithm but {expected} was expected")]
+    #[error("record hash uses {found} algorithm but {expected} was expected")]
     IncorrectHashAlgorithm {
         found: HashAlgorithm,
         expected: HashAlgorithm,
     },
 
-    #[error("Previous record hash does not match")]
+    #[error("previous record hash does not match")]
     RecordHashDoesNotMatch,
 
-    #[error("The first record contained a previous hash value")]
+    #[error("the first record contained a previous hash value")]
     PreviousHashOnFirstRecord,
 
-    #[error("Non-initial record contained no previous hash")]
+    #[error("non-initial record contained no previous hash")]
     NoPreviousHashAfterInit,
 
-    #[error("Protocol version {version} not allowed")]
+    #[error("protocol version {version} not allowed")]
     ProtocolVersionNotAllowed { version: u32 },
 
-    #[error("Record has lower timestamp than previous")]
+    #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
 }
 
@@ -177,11 +175,11 @@ impl Validator {
     /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
-        envelope: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<Vec<DynHash>, ValidationError> {
+        record: &ProtoEnvelope<model::PackageRecord>,
+    ) -> Result<(), ValidationError> {
         let snapshot = self.snapshot();
 
-        let result = self.validate_envelope(envelope);
+        let result = self.validate_record(record);
         if result.is_err() {
             self.rollback(snapshot);
         }
@@ -227,10 +225,10 @@ impl Validator {
         self.algorithm.is_some()
     }
 
-    fn validate_envelope(
+    fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<Vec<DynHash>, ValidationError> {
+    ) -> Result<(), ValidationError> {
         let record = envelope.as_ref();
 
         // Validate previous hash
@@ -243,8 +241,7 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        let contents =
-            self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+        self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
 
         // At this point the digest algorithm must be set via an init entry
         let _algorithm = self
@@ -267,7 +264,7 @@ impl Validator {
             timestamp: record.timestamp,
         });
 
-        Ok(contents)
+        Ok(())
     }
 
     fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
@@ -323,9 +320,7 @@ impl Validator {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         entries: &[model::PackageEntry],
-    ) -> Result<Vec<DynHash>, ValidationError> {
-        let mut contents = Vec::new();
-
+    ) -> Result<(), ValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
@@ -355,7 +350,6 @@ impl Validator {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
                 model::PackageEntry::Release { version, content } => {
-                    contents.push(content.clone());
                     self.validate_release_entry(signer_key_id, timestamp, version, content)?
                 }
                 model::PackageEntry::Yank { version } => {
@@ -364,7 +358,7 @@ impl Validator {
             }
         }
 
-        Ok(contents)
+        Ok(())
     }
 
     fn validate_init_entry(
@@ -504,7 +498,7 @@ impl Validator {
         })
     }
 
-    pub fn snapshot(&self) -> Snapshot {
+    fn snapshot(&self) -> Snapshot {
         let Self {
             algorithm,
             head,
@@ -522,7 +516,7 @@ impl Validator {
         }
     }
 
-    pub fn rollback(&mut self, snapshot: Snapshot) {
+    fn rollback(&mut self, snapshot: Snapshot) {
         let Snapshot {
             algorithm,
             head,
@@ -539,9 +533,16 @@ impl Validator {
     }
 }
 
-/// Used for snapshotting a validator prior to performing
-/// validations.
-pub struct Snapshot {
+impl crate::Validator for Validator {
+    type Record = model::PackageRecord;
+    type Error = ValidationError;
+
+    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+        self.validate(record)
+    }
+}
+
+struct Snapshot {
     algorithm: Option<HashAlgorithm>,
     head: Option<Head>,
     releases: usize,

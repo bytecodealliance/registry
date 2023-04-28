@@ -5,11 +5,13 @@ use tokio::{
     sync::{mpsc::Receiver, RwLock},
     task::JoinHandle,
 };
+use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::{Hash, Sha256};
-use warg_protocol::registry::{LogId, LogLeaf, MapLeaf};
+use warg_protocol::registry::{LogLeaf, MapLeaf};
 use warg_transparency::map::MapProofBundle;
 
 pub struct Input {
+    pub token: CancellationToken,
     pub data: MapData,
     pub map_rx: Receiver<VerifiableMap>,
 }
@@ -25,12 +27,8 @@ pub struct MapData {
 }
 
 impl MapData {
-    pub fn new(init: MapLeaf) -> Self {
-        let map = VerifiableMap::default();
-        let map = map.insert(LogId::operator_log::<Sha256>(), init);
-        let mut map_index = HashMap::default();
-        map_index.insert(map.root().clone(), map);
-        Self { map_index }
+    pub fn insert(&mut self, map: VerifiableMap) {
+        self.map_index.insert(map.root().clone(), map);
     }
 
     pub fn inclusion(
@@ -65,18 +63,28 @@ impl MapData {
     }
 }
 
-pub fn process(input: Input) -> Output {
-    let Input { data, mut map_rx } = input;
+pub fn spawn(input: Input) -> Output {
+    let Input {
+        token,
+        data,
+        mut map_rx,
+    } = input;
     let data = Arc::new(RwLock::new(data));
     let processor_data = data.clone();
 
     let handle = tokio::spawn(async move {
-        let data = processor_data;
-
-        while let Some(map) = map_rx.recv().await {
-            let mut data = data.as_ref().write().await;
-            data.map_index.insert(map.root().clone(), map);
-            drop(data);
+        loop {
+            tokio::select! {
+                map = map_rx.recv() => {
+                    if let Some(map) = map {
+                        let mut data = processor_data.as_ref().write().await;
+                        data.map_index.insert(map.root().clone(), map);
+                    } else {
+                        break;
+                    }
+                }
+                _ = token.cancelled() => break,
+            }
         }
     });
 

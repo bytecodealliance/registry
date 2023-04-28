@@ -1,25 +1,27 @@
+use super::log;
 use std::time::Duration;
-
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
 use warg_transparency::map::Map;
 
-use super::log;
-
 pub type VerifiableMap = Map<Sha256, LogId, MapLeaf>;
 
 pub struct Input {
+    pub token: CancellationToken,
+    pub checkpoint_interval: Duration,
     pub map: VerifiableMap,
-    pub map_rx: Receiver<log::Summary>,
+    pub leaves: Vec<LogLeaf>,
+    pub log_summary_rx: Receiver<log::Summary>,
 }
 
 pub struct Output {
-    pub summary_rx: Receiver<Summary>,
-    pub map_data_rx: Receiver<VerifiableMap>,
-    pub handle: JoinHandle<VerifiableMap>,
+    pub map_summary_rx: Receiver<Summary>,
+    pub map_rx: Receiver<VerifiableMap>,
+    pub handle: JoinHandle<()>,
 }
 
 #[derive(Debug)]
@@ -28,31 +30,31 @@ pub struct Summary {
     pub checkpoint: MapCheckpoint,
 }
 
-pub fn process(input: Input) -> Output {
-    let (summary_tx, summary_rx) = mpsc::channel::<Summary>(4);
-    let (map_data_tx, map_data_rx) = mpsc::channel::<VerifiableMap>(4);
-
-    let mut interval = time::interval(Duration::from_secs(5));
-
+pub fn spawn(input: Input) -> Output {
+    let (map_summary_tx, map_summary_rx) = mpsc::channel::<Summary>(4);
+    let (map_tx, map_rx) = mpsc::channel::<VerifiableMap>(4);
     let handle = tokio::spawn(async move {
         let Input {
+            token,
+            checkpoint_interval,
             mut map,
-            mut map_rx,
+            mut leaves,
+            mut log_summary_rx,
         } = input;
         let mut current = None;
-        let mut leaves = Vec::new();
+        let mut interval = time::interval(checkpoint_interval);
 
         loop {
             tokio::select! {
-                message = map_rx.recv() => {
-                    if let Some(message) = message {
-                        let leaf = message.leaf;
+                summary = log_summary_rx.recv() => {
+                    if let Some(summary) = summary {
+                        let leaf = summary.leaf;
                         map = map.insert(leaf.log_id.clone(), MapLeaf { record_id: leaf.record_id.clone() });
                         leaves.push(leaf);
 
                         current = Some(MapCheckpoint {
-                            log_root: message.log_root,
-                            log_length: message.log_length,
+                            log_root: summary.log_root,
+                            log_length: summary.log_length,
                             map_root: map.root().clone().into(),
                         });
                     } else {
@@ -61,29 +63,31 @@ pub fn process(input: Input) -> Output {
                 },
                 _ = interval.tick() => {
                     if let Some(checkpoint) = current {
-                        map_data_tx.send(map.clone()).await.unwrap();
-                        summary_tx.send(Summary { leaves, checkpoint }).await.unwrap();
+                        tracing::debug!("creating checkpoint with {len} new leaves", len = leaves.len());
+                        map_tx.send(map.clone()).await.unwrap();
+                        map_summary_tx.send(Summary { leaves, checkpoint }).await.unwrap();
                         leaves = Vec::new();
                         current = None;
                     }
+                }
+                _ = token.cancelled() => {
+                    break;
                 }
             }
         }
 
         if let Some(checkpoint) = current {
-            map_data_tx.send(map.clone()).await.unwrap();
-            summary_tx
+            map_tx.send(map.clone()).await.unwrap();
+            map_summary_tx
                 .send(Summary { leaves, checkpoint })
                 .await
                 .unwrap();
         }
-
-        map
     });
 
     Output {
-        summary_rx,
-        map_data_rx,
+        map_summary_rx,
+        map_rx,
         handle,
     }
 }
