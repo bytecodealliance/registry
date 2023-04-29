@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proofs;
+package warg.transparency;
 
 message MapProofBundle {
     repeated MapInclusionProof proofs = 1;

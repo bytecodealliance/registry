@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package warg;
+package warg.protocol;
 
 message Envelope {
     bytes contents = 1;
