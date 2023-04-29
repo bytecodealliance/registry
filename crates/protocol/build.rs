@@ -1,9 +1,9 @@
 use std::{env, io::Result, path::PathBuf};
 
 fn main() -> Result<()> {
-    let warg_proto = PathBuf::from("src/warg.proto");
+    let warg_proto = PathBuf::from("../../proto/warg/protocol/warg.proto");
     let proto_files = vec![warg_proto];
-    let root = PathBuf::from("src/");
+    let root = PathBuf::from("../../proto");
 
     // Tell cargo to recompile if any of these proto files are changed
     for proto_file in &proto_files {
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     let descriptor_set = std::fs::read(descriptor_path)?;
     pbjson_build::Builder::new()
         .register_descriptors(&descriptor_set)?
-        .build(&[".warg"])?;
+        .build(&[".warg.protocol"])?;
 
     Ok(())
 }
