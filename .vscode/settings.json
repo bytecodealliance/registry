@@ -1,5 +1,9 @@
 {
     "rust-analyzer.check.command": "clippy",
+    
+    "rust-analyzer.cargo.features": [
+        "grpc", // DO NOT SUBMIT
+      ],
     "protoc": {
         "options": [
             "--proto_path=${workspaceFolder}/proto",

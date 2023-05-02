@@ -30,7 +30,8 @@ wit-component = "0.8.1"
 wit-parser = "0.7.0"
 
 [features]
-default = []
+# DO NOT SUBMIT
+default = ["grpc"]
 postgres = ["warg-server/postgres"]
 grpc = []
 
