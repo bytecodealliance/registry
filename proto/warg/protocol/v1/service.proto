@@ -1,0 +1,276 @@
+syntax = "proto3";
+
+package warg.protocol.v1;
+
+// NOTE: Checked by protoc-gen-openapiv2 but not used nor Go package made yet.
+option go_package = "github.com.com/bytecodealliance/registry/protocol/service_pb";
+
+import "google/api/annotations.proto";
+import "google/rpc/http.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "warg/protocol/v1/warg.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {version: "1.0"};
+  external_docs: {
+    url: "https://github.com/bytecodealliance/registry";
+    description: "An implementation of the Warg protocol, client, and server for distributing WebAssembly components.";
+  };
+  schemes: HTTPS;
+  consumes: "application/json";
+  produces: "application/json";
+};
+
+// Errors are returned use the standard mechanism in gRPC: google.rpc.Status.
+// When available its details will contain an google.rpc.ErrorInfo with domain
+// "github.com/bytecodealliance/registry" and reason defined by the keys in
+// ErrorReason.
+//
+// NOTE: Follows current axios API as closely as possible, but makes some style
+// changes to reasonably fit proto/api style guide.
+service Warg {
+  // Request that a new package be published.
+  //
+  // NOTE: Current axios API has PublishRequest => PendingRecordResponse
+  rpc PublishPackage (PublishPackageRequest) returns (PublishPackageResponse) {
+    option (google.api.http) = {
+      post : "/package"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      tags: "Package"
+    };
+  };
+
+  // Used for polling while package is being in the processed of publishing.
+  //
+  // NOTE: This is a substitute for /package/{package_id}/pending/{record_id}
+  // which seemed superfluous.
+  rpc GetPackage (GetPackageRequest) returns (GetPackageResponse) {
+    option (google.api.http) = {
+      get : "/package/{package_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      tags: "Package"
+    };
+  }
+
+  // Get a specific record within a package.
+  rpc GetPackageRecord (GetPackageRecordRequest) returns (Record) {
+    option (google.api.http) = {
+      get : "/package/{package_id}/records/{record_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      tags: "Package"
+    };
+  }
+
+  // Fetches logs for a requested package.
+  //
+  // NOTE: Current axios API uses /fetch/logs
+  rpc FetchLogs (FetchLogsRequest) returns (FetchLogsResponse) {
+    option (google.api.http) = {
+      post : "/logs/fetch"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      tags: "Logs"
+    };
+  }
+
+  // Fetches logs for a root.
+  //
+  // NOTE: Current axios API uses /fetch/checkpoint
+  rpc FetchCheckpoint (FetchCheckpointRequest)
+      returns (FetchCheckpointResponse) {
+    option (google.api.http) = {
+      post : "/checkpoint/fetch"
+    };
+  }
+
+  // Proves consistency between an old root and a new one.
+  //
+  // NOTE: Current axios API uses /proof/consistency
+  rpc ProveConsistency(ProveConsistencyRequest)
+      returns (ProveConsistencyResponse) {
+    option (google.api.http) = {
+      post : "/prove/consistency"
+    };
+  }
+
+  // Proves inclusion between a log and a map.
+  //
+  // NOTE: Current axios API uses /proof/inclusion
+  rpc ProveInclusion(ProveInclusionRequest) returns (ProveInclusionResponse) {
+    option (google.api.http) = {
+      post : "/prove/inclusion"
+    };
+  }
+}
+
+// PublishPackageRequest summary...
+//
+// PublishPackageRequest description...
+message PublishPackageRequest {
+  string name = 1;
+  warg.protocol.v1.Envelope record = 2;
+  repeated warg.protocol.v1.ContentSource content_sources = 3;
+}
+
+// PublishPackageResponse summary...
+//
+// PublishPackageResponse description...
+message PublishPackageResponse { Package package = 1; }
+
+message GetPackageRequest {
+  string package_id = 1;
+  // IDEA: Could add field mask to return more details like records.
+}
+
+// GetPackageResponse summary...
+//
+// GetPackageResponse description...
+message GetPackageResponse { Package package = 1; }
+
+// Package summary...
+// 
+// NOTE: Replaces PendingRecordResponse from axios API
+// NOTE: Records could optionally be added if field mask added to get API call
+message Package {
+  string package_id = 1;
+  PackageStatusCode status_code = 2;
+  string status_message = 3;
+}
+
+// PackageStatusCode summary...
+//
+// PackageStatusCode description...
+enum PackageStatusCode {
+  // Used when package status is unknown
+  PACKAGE_STATUS_CODE_UNKNOWN = 0;
+  // Used when package publish is still pending.
+  PACKAGE_STATUS_CODE_PENDING = 1;
+  // Used when package is published and active.
+  PACKAGE_STATUS_CODE_PUBLISHED = 2;
+}
+
+// GetPackageRecordRequest summary...
+//
+// GetPackageRecordRequest description...
+message GetPackageRecordRequest {
+  string package_id = 1;
+  string record_id = 2;
+}
+
+// Record summary...
+//
+// QUESTION: Why axios structure different than PackageRecord message?
+message Record {
+  string package_id = 1;
+  string record_id = 2;
+  warg.protocol.v1.Envelope record = 3;
+  repeated warg.protocol.v1.ContentSource content_sources = 4;
+}
+
+// FetchLogsRequest summary...
+//
+// FetchLogsRequest description...
+message FetchLogsRequest {
+  warg.protocol.v1.DynHash root = 1;
+  // Operator RecordId
+  optional warg.protocol.v1.DynHash operator = 2;
+  // Ordered by iteration order of IndexMap<String, Option<RecordId>>
+  // QUESTION: How is generic client to know iteration order?
+  repeated warg.protocol.v1.PackageRecordId packages = 3;
+}
+
+// FetchLogsResponse summary...
+//
+// FetchLogsResponse description...
+message FetchLogsResponse {
+  repeated warg.protocol.v1.Envelope operator_records = 1;
+  // Ordered by iteration order of IndexMap<String, Option<RecordId>>
+  repeated warg.protocol.v1.PackageRecordId packages = 2;
+}
+
+// Requests latest checkpoint if no fields are set.
+message FetchCheckpointRequest {}
+
+// FetchCheckpointResponse summary...
+//
+// FetchCheckpointResponse description...
+message FetchCheckpointResponse { warg.protocol.v1.MapCheckpoint checkpoint = 1; }
+
+// ProveConsistencyRequest summary...
+//
+// ProveConsistencyRequest description...
+message ProveConsistencyRequest {
+  // The old root to check for consistency.
+  warg.protocol.v1.DynHash old_root = 1;
+  // The new root to check for consistency.
+  warg.protocol.v1.DynHash new_root = 2;
+}
+
+// ProveConsistencyResponse summary...
+//
+// ProveConsistencyResponse description...
+message ProveConsistencyResponse {
+  // The kind of log to prove consistency.
+  oneof log_kind {
+    // TODO: Create formal definition of proof in cross-platform proto
+    bytes encoded_log_bundle = 1;
+  }
+}
+
+// ProveInclusionRequest summary...
+//
+// ProveInclusionRequest description...
+message ProveInclusionRequest {
+  warg.protocol.v1.MapCheckpoint checkpoint = 1;
+  repeated warg.protocol.v1.LogLeaf heads = 2;
+}
+
+// ProveInclusionResponse summary...
+//
+// ProveInclusionResponse description...
+message ProveInclusionResponse {
+  // The kind of log to prove inclusion.
+  oneof log_kind {
+    // TODO: Create formal definition of proof in cross-platform proto
+    bytes encoded_log_bundle = 1;
+  }
+  // The kind of map to prove inclusion.
+  oneof map_kind {
+    // TODO: Create formal definition of proof in cross-platform proto
+    bytes encoded_map_bundle = 2;
+  }
+}
+
+// Errors are defined in Rust and are mapped to google.rpc.ErrorInfo with
+// domain github.com/bytecodealliance/registry.
+// 
+// The reasons and key names are
+// defined by the following enums. Custom error message types should be created
+// when a client should programmatically attempt to retry with certain details.
+enum ErrorReason {
+  ERROR_REASON_UNKNOWN = 0;
+  ERROR_REASON_GENERAL = 1;
+  ERROR_REASON_INVALID_PACKAGE_ID = 3;
+  ERROR_REASON_INVALID_RECORD_ID = 4;
+  ERROR_REASON_INVALID_RECORD = 5;
+  ERROR_REASON_PACKAGE_ID_NOT_FOUND = 6;
+  ERROR_REASON_PACKAGE_NOT_FOUND = 7;
+  ERROR_REASON_PACKAGE_RECORD_NOT_FOUND = 8;
+  ERROR_REASON_FAILED_TO_FETCH_CONTENT = 9;
+  ERROR_REASON_CONTENT_URL_INVALID = 10;
+  ERROR_REASON_OPERATION_INVOCATION_FAILED = 11;
+}
+
+// ContentFetchFailure summary...
+//
+// ContentFetchFailure description...
+message ContentFetchFailure {
+  oneof kind {
+    // Only status (code) is guaranteed to be set. Others may be set based on
+    // server-configured options.
+    google.rpc.HttpResponse http_response = 1;
+  }
+}

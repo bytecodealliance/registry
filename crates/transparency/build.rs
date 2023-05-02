@@ -1,7 +1,7 @@
 use std::{env, io::Result, path::PathBuf};
 
 fn main() -> Result<()> {
-    let proofs_proto = PathBuf::from("../../proto/warg/transparency/proofs.proto");
+    let proofs_proto = PathBuf::from("../../proto/warg/transparency/v1/proofs.proto");
     let proto_files = vec![proofs_proto];
     let root = PathBuf::from("../../proto");
 
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     let descriptor_set = std::fs::read(descriptor_path)?;
     pbjson_build::Builder::new()
         .register_descriptors(&descriptor_set)?
-        .build(&[".warg.transparency"])?;
+        .build(&[".warg.transparency.v1"])?;
 
     Ok(())
 }

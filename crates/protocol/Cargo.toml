@@ -20,6 +20,9 @@ base64 = { workspace = true }
 serde_with = { workspace = true }
 semver = { workspace = true }
 indexmap = { workspace = true }
+tonic = { workspace = true, optional = true }
+prost-wkt-build = { workspace = true, optional = true }
+prost-wkt-types = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
@@ -28,3 +31,7 @@ serde_json = { workspace = true }
 [build-dependencies]
 prost-build = { workspace = true }
 pbjson-build = { workspace = true }
+tonic-build = { workspace = true }
+
+[features]
+grpc = ["tonic", "prost-wkt-build", "prost-wkt-types"]

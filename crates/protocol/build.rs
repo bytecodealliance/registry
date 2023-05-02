@@ -1,7 +1,7 @@
 use std::{env, io::Result, path::PathBuf};
 
 fn main() -> Result<()> {
-    let warg_proto = PathBuf::from("../../proto/warg/protocol/warg.proto");
+    let warg_proto = PathBuf::from("../../proto/warg/protocol/v1/warg.proto");
     let proto_files = vec![warg_proto];
     let root = PathBuf::from("../../proto");
 
@@ -24,7 +24,49 @@ fn main() -> Result<()> {
     let descriptor_set = std::fs::read(descriptor_path)?;
     pbjson_build::Builder::new()
         .register_descriptors(&descriptor_set)?
-        .build(&[".warg.protocol"])?;
+        .build(&[".warg.protocol.v1"])?;
+
+    // NOTE: Multiple compiles to work around tonic_build issue.
+    // SEE: https://github.com/hyperium/tonic/issues/259
+
+    #[cfg(feature = "grpc")]
+    tonic_build::configure()
+        .emit_rerun_if_changed(true)
+        .extern_path(".google.protobuf.Any", "::prost_wkt_types::Any")
+        .extern_path(".google.protobuf.Duration", "::prost_wkt_types::Duration")
+        .extern_path(".google.protobuf.Timestamp", "::prost_wkt_types::Timestamp")
+        .type_attribute(".", "#[serde_with::serde_as]")
+        .type_attribute(".", "#[derive(serde::Serialize,serde::Deserialize)]")
+        .type_attribute(".", "#[serde(rename_all = \"camelCase\")]")
+        .out_dir("src/gen")
+        .extern_path(".google.api", "crate::google_pb")
+        .extern_path(".google.rpc", "crate::google_pb")
+        .compile(
+            &[
+                "../../proto/warg/protocol/v1/service.proto",
+                "../../proto/warg/protocol/v1/warg.proto",
+            ],
+            &["../../proto"],
+        )?;
+
+    #[cfg(feature = "grpc")]
+    tonic_build::configure()
+        .emit_rerun_if_changed(true)
+        .extern_path(".google.protobuf.Any", "::prost_wkt_types::Any")
+        .extern_path(".google.protobuf.Duration", "::prost_wkt_types::Duration")
+        .extern_path(".google.protobuf.Timestamp", "::prost_wkt_types::Timestamp")
+        .type_attribute(".", "#[serde_with::serde_as]")
+        .type_attribute(".", "#[derive(serde::Serialize,serde::Deserialize)]")
+        .type_attribute(".", "#[serde(rename_all = \"camelCase\")]")
+        .out_dir("src/gen")
+        .compile(
+            &[
+                "../../proto/google/api/annotations.proto",
+                "../../proto/google/api/http.proto",
+                "../../proto/google/rpc/http.proto",
+            ],
+            &["../../proto"],
+        )?;
 
     Ok(())
 }

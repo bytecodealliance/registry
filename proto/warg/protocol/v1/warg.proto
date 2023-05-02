@@ -2,7 +2,10 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package warg.protocol;
+package warg.protocol.v1;
+
+// NOTE: Checked by protoc-gen-openapiv2 but not used nor Go package made yet.
+option go_package = "github.com.com/bytecodealliance/registry/service/warg_pb";
 
 message Envelope {
     bytes contents = 1;
@@ -109,4 +112,45 @@ message PackageRelease {
 
 message PackageYank {
     string version = 1;
+}
+
+message ContentSource {
+    DynHash digest = 1;
+    ContentSourceKind kind = 2;
+}
+
+message DynHash {
+    HashAlgorithm algo = 1;
+    bytes bytes = 2;
+}
+
+message ContentSourceKind {
+    oneof kind {
+        HttpAnonymousContentSource http_anonymous = 1;
+    }
+}
+
+message HttpAnonymousContentSource {
+    string url = 1;
+}
+
+enum HashAlgorithm {
+    HASH_ALGORITHM_UNKNOWN = 0;
+    HASH_ALGORITHM_SHA256 = 1;
+}
+
+message PackageRecordId {
+    string name = 1;
+    DynHash record_id = 2;
+}
+
+message MapCheckpoint {
+    DynHash log_root = 1;
+    uint32 log_length = 2;
+    DynHash map_root = 3;
+}
+
+message LogLeaf {
+    DynHash log_id = 1;
+    DynHash record_id = 2;
 }
