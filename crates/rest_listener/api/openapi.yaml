@@ -1,0 +1,581 @@
+openapi: 3.0.1
+info:
+  title: warg/protocol/v1/service.proto
+  version: "1.0"
+externalDocs:
+  description: "An implementation of the Warg protocol, client, and server for distributing\
+    \ WebAssembly components."
+  url: https://github.com/bytecodealliance/registry
+servers:
+- url: /
+tags:
+- name: Warg
+paths:
+  /checkpoint/fetch:
+    post:
+      description: "NOTE: Current axios API uses /fetch/checkpoint"
+      operationId: Warg_FetchCheckpoint
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1FetchCheckpointResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Fetches logs for a root.
+      tags:
+      - Warg
+  /logs/fetch:
+    post:
+      description: "NOTE: Current axios API uses /fetch/logs"
+      operationId: Warg_FetchLogs
+      parameters:
+      - in: query
+        name: root.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: root.bytes
+        schema:
+          format: byte
+          type: string
+      - in: query
+        name: operator.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: operator.bytes
+        schema:
+          format: byte
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1FetchLogsResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Fetches logs for a requested package.
+      tags:
+      - Logs
+  /package:
+    post:
+      description: "NOTE: Current axios API has PublishRequest => PendingRecordResponse"
+      operationId: Warg_PublishPackage
+      parameters:
+      - in: query
+        name: name
+        schema:
+          type: string
+      - in: query
+        name: record.contents
+        schema:
+          format: byte
+          type: string
+      - in: query
+        name: record.keyId
+        schema:
+          type: string
+      - in: query
+        name: record.signature
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1PublishPackageResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Request that a new package be published.
+      tags:
+      - Package
+  /package/{packageId}:
+    get:
+      description: |-
+        NOTE: This is a substitute for /package/{package_id}/pending/{record_id}
+        which seemed superfluous.
+      operationId: Warg_GetPackage
+      parameters:
+      - description: "IDEA: Could add field mask to return more details like records."
+        in: path
+        name: packageId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1GetPackageResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Used for polling while package is being in the processed of publishing.
+      tags:
+      - Package
+  /package/{packageId}/records/{recordId}:
+    get:
+      operationId: Warg_GetPackageRecord
+      parameters:
+      - in: path
+        name: packageId
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: recordId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1Record'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Get a specific record within a package.
+      tags:
+      - Package
+  /prove/consistency:
+    post:
+      description: "NOTE: Current axios API uses /proof/consistency"
+      operationId: Warg_ProveConsistency
+      parameters:
+      - in: query
+        name: oldRoot.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: oldRoot.bytes
+        schema:
+          format: byte
+          type: string
+      - in: query
+        name: newRoot.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: newRoot.bytes
+        schema:
+          format: byte
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1ProveConsistencyResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Proves consistency between an old root and a new one.
+      tags:
+      - Warg
+  /prove/inclusion:
+    post:
+      description: "NOTE: Current axios API uses /proof/inclusion"
+      operationId: Warg_ProveInclusion
+      parameters:
+      - in: query
+        name: checkpoint.logRoot.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: checkpoint.logRoot.bytes
+        schema:
+          format: byte
+          type: string
+      - in: query
+        name: checkpoint.logLength
+        schema:
+          format: int64
+          type: integer
+      - in: query
+        name: checkpoint.mapRoot.algo
+        schema:
+          default: HASH_ALGORITHM_UNKNOWN
+          enum:
+          - HASH_ALGORITHM_UNKNOWN
+          - HASH_ALGORITHM_SHA256
+          type: string
+      - in: query
+        name: checkpoint.mapRoot.bytes
+        schema:
+          format: byte
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1ProveInclusionResponse'
+          description: A successful response.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rpcStatus'
+          description: An unexpected error response.
+      summary: Proves inclusion between a log and a map.
+      tags:
+      - Warg
+components:
+  schemas:
+    protobufAny:
+      additionalProperties:
+        type: object
+      properties:
+        '@type':
+          type: string
+      type: object
+    rpcStatus:
+      properties:
+        code:
+          format: int32
+          type: integer
+        message:
+          type: string
+        details:
+          items:
+            $ref: '#/components/schemas/protobufAny'
+          type: array
+      type: object
+    v1ContentSource:
+      example:
+        kind:
+          httpAnonymous:
+            url: url
+        digest:
+          bytes: bytes
+          algo: null
+      properties:
+        digest:
+          $ref: '#/components/schemas/v1DynHash'
+        kind:
+          $ref: '#/components/schemas/v1ContentSourceKind'
+      type: object
+    v1ContentSourceKind:
+      example:
+        httpAnonymous:
+          url: url
+      properties:
+        httpAnonymous:
+          $ref: '#/components/schemas/v1HttpAnonymousContentSource'
+      type: object
+    v1DynHash:
+      example:
+        bytes: bytes
+        algo: null
+      properties:
+        algo:
+          $ref: '#/components/schemas/v1HashAlgorithm'
+        bytes:
+          format: byte
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          type: string
+      type: object
+    v1Envelope:
+      example:
+        contents: contents
+        signature: signature
+        keyId: keyId
+      properties:
+        contents:
+          format: byte
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          type: string
+        keyId:
+          type: string
+        signature:
+          type: string
+      type: object
+    v1FetchCheckpointResponse:
+      description: |-
+        FetchCheckpointResponse summary...
+
+        FetchCheckpointResponse description...
+      example:
+        checkpoint:
+          mapRoot:
+            bytes: bytes
+            algo: null
+          logRoot:
+            bytes: bytes
+            algo: null
+          logLength: 0
+      properties:
+        checkpoint:
+          $ref: '#/components/schemas/v1MapCheckpoint'
+      type: object
+    v1FetchLogsResponse:
+      description: |-
+        FetchLogsResponse summary...
+
+        FetchLogsResponse description...
+      example:
+        operatorRecords:
+        - contents: contents
+          signature: signature
+          keyId: keyId
+        - contents: contents
+          signature: signature
+          keyId: keyId
+        packages:
+        - recordId:
+            bytes: bytes
+            algo: null
+          name: name
+        - recordId:
+            bytes: bytes
+            algo: null
+          name: name
+      properties:
+        operatorRecords:
+          items:
+            $ref: '#/components/schemas/v1Envelope'
+          type: array
+        packages:
+          items:
+            $ref: '#/components/schemas/v1PackageRecordId'
+          title: "Ordered by iteration order of IndexMap<String, Option<RecordId>>"
+          type: array
+      type: object
+    v1GetPackageResponse:
+      description: |-
+        GetPackageResponse summary...
+
+        GetPackageResponse description...
+      example:
+        package:
+          packageId: packageId
+          statusMessage: statusMessage
+          statusCode: null
+      properties:
+        package:
+          $ref: '#/components/schemas/v1Package'
+      type: object
+    v1HashAlgorithm:
+      default: HASH_ALGORITHM_UNKNOWN
+      enum:
+      - HASH_ALGORITHM_UNKNOWN
+      - HASH_ALGORITHM_SHA256
+      type: string
+    v1HttpAnonymousContentSource:
+      example:
+        url: url
+      properties:
+        url:
+          type: string
+      type: object
+    v1LogLeaf:
+      properties:
+        logId:
+          $ref: '#/components/schemas/v1DynHash'
+        recordId:
+          $ref: '#/components/schemas/v1DynHash'
+      type: object
+    v1MapCheckpoint:
+      example:
+        mapRoot:
+          bytes: bytes
+          algo: null
+        logRoot:
+          bytes: bytes
+          algo: null
+        logLength: 0
+      properties:
+        logRoot:
+          $ref: '#/components/schemas/v1DynHash'
+        logLength:
+          format: int64
+          type: integer
+        mapRoot:
+          $ref: '#/components/schemas/v1DynHash'
+      type: object
+    v1Package:
+      description: |-
+        Package summary...
+
+        NOTE: Replaces PendingRecordResponse from axios API
+        NOTE: Records could optionally be added if field mask added to get API call
+      example:
+        packageId: packageId
+        statusMessage: statusMessage
+        statusCode: null
+      properties:
+        packageId:
+          type: string
+        statusCode:
+          $ref: '#/components/schemas/v1PackageStatusCode'
+        statusMessage:
+          type: string
+      type: object
+    v1PackageRecordId:
+      example:
+        recordId:
+          bytes: bytes
+          algo: null
+        name: name
+      properties:
+        name:
+          type: string
+        recordId:
+          $ref: '#/components/schemas/v1DynHash'
+      type: object
+    v1PackageStatusCode:
+      default: PACKAGE_STATUS_CODE_UNKNOWN
+      description: |-
+        PackageStatusCode summary...
+
+        PackageStatusCode description...
+
+         - PACKAGE_STATUS_CODE_UNKNOWN: Used when package status is unknown
+         - PACKAGE_STATUS_CODE_PENDING: Used when package publish is still pending.
+         - PACKAGE_STATUS_CODE_PUBLISHED: Used when package is published and active.
+      enum:
+      - PACKAGE_STATUS_CODE_UNKNOWN
+      - PACKAGE_STATUS_CODE_PENDING
+      - PACKAGE_STATUS_CODE_PUBLISHED
+      type: string
+    v1ProveConsistencyResponse:
+      description: |-
+        ProveConsistencyResponse summary...
+
+        ProveConsistencyResponse description...
+      example:
+        encodedLogBundle: encodedLogBundle
+      properties:
+        encodedLogBundle:
+          format: byte
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          title: "TODO: Create formal definition of proof in cross-platform proto"
+          type: string
+      type: object
+    v1ProveInclusionResponse:
+      description: |-
+        ProveInclusionResponse summary...
+
+        ProveInclusionResponse description...
+      example:
+        encodedLogBundle: encodedLogBundle
+        encodedMapBundle: encodedMapBundle
+      properties:
+        encodedLogBundle:
+          format: byte
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          title: "TODO: Create formal definition of proof in cross-platform proto"
+          type: string
+        encodedMapBundle:
+          format: byte
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          title: "TODO: Create formal definition of proof in cross-platform proto"
+          type: string
+      type: object
+    v1PublishPackageResponse:
+      description: |-
+        PublishPackageResponse summary...
+
+        PublishPackageResponse description...
+      example:
+        package:
+          packageId: packageId
+          statusMessage: statusMessage
+          statusCode: null
+      properties:
+        package:
+          $ref: '#/components/schemas/v1Package'
+      type: object
+    v1Record:
+      description: |-
+        Record summary...
+
+        QUESTION: Why axios structure different than PackageRecord message?
+      example:
+        recordId: recordId
+        contentSources:
+        - kind:
+            httpAnonymous:
+              url: url
+          digest:
+            bytes: bytes
+            algo: null
+        - kind:
+            httpAnonymous:
+              url: url
+          digest:
+            bytes: bytes
+            algo: null
+        record:
+          contents: contents
+          signature: signature
+          keyId: keyId
+        packageId: packageId
+      properties:
+        packageId:
+          type: string
+        recordId:
+          type: string
+        record:
+          $ref: '#/components/schemas/v1Envelope'
+        contentSources:
+          items:
+            $ref: '#/components/schemas/v1ContentSource'
+          type: array
+      type: object
+x-original-swagger-version: "2.0"
+
