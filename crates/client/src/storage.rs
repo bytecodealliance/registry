@@ -36,6 +36,12 @@ pub trait PackageStorage: Send + Sync {
     /// Stores the package information in the storage.
     async fn store_package(&self, info: &PackageInfo) -> Result<()>;
 
+    ///  Loads most recent checkpoint
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
+
+    ///  Stores most recent checkpoint
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+
     /// Loads information about a pending publish operation.
     ///
     /// Returns `Ok(None)` if the information is not present.

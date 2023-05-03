@@ -10,7 +10,10 @@ use warg_api::{
     content::{ContentError, ContentResult, ContentSource},
     fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse, FetchResult},
     package::{PackageError, PackageResult, PendingRecordResponse, PublishRequest, RecordResponse},
-    proof::{InclusionRequest, InclusionResponse, ProofError, ProofResult},
+    proof::{
+        ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
+        ProofResult,
+    },
     FromError,
 };
 use warg_crypto::hash::{DynHash, Sha256};
@@ -219,9 +222,19 @@ impl Client {
         old_root: DynHash,
         new_root: DynHash,
     ) -> ProofResult<()> {
-        dbg!(old_root);
-        dbg!(new_root);
-        todo!()
+        let request = ConsistencyRequest { old_root, new_root };
+        let url = self.url.join("proof/consistency").unwrap();
+        let response = into_result::<ConsistencyResponse, ProofError>(
+            self.client
+                .post(url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(ProofError::from_error)?,
+        )
+        .await?;
+        let proof = response.proof;
+        Ok(())
     }
 
     /// Uploads package content to the registry.

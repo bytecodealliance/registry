@@ -369,6 +369,14 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             self.packages.store_package(package).await?;
         }
 
+        let old_checkpoint = self.packages.load_checkpoint().await?;
+        if let Some(cp) = old_checkpoint {
+            let old_root = cp.as_ref().clone().log_root;
+            let new_root = checkpoint.as_ref().clone().log_root;
+            self.api.prove_log_consistency(old_root, new_root).await?;
+        }
+        self.packages.store_checkpoint(checkpoint.clone()).await?;
+
         Ok(())
     }
 

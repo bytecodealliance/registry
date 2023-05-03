@@ -18,7 +18,10 @@ use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
 use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
-use warg_protocol::registry::LogId;
+use warg_protocol::{
+    registry::{LogId, MapCheckpoint},
+    SerdeEnvelope,
+};
 
 const TEMP_DIRECTORY: &str = "temp";
 const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
@@ -116,6 +119,16 @@ impl PackageStorage for FileSystemPackageStorage {
 
     async fn store_package(&self, info: &PackageInfo) -> Result<()> {
         store(&self.package_path(&info.name), info).await
+    }
+
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+        let checkpoint = load(&self.package_path("checkpoint")).await?;
+        Ok(checkpoint)
+    }
+
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+        store(&self.package_path("checkpoint"), checkpoint).await?;
+        Ok(())
     }
 
     async fn load_publish(&self) -> Result<Option<PublishInfo>> {
