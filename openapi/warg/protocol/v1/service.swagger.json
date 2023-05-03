@@ -1,0 +1,616 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "warg/protocol/v1/service.proto",
+    "version": "1.0"
+  },
+  "tags": [
+    {
+      "name": "Warg"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/checkpoint/fetch": {
+      "post": {
+        "summary": "Fetches logs for a root.",
+        "description": "NOTE: Current axios API uses /fetch/checkpoint",
+        "operationId": "Warg_FetchCheckpoint",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FetchCheckpointResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Warg"
+        ]
+      }
+    },
+    "/logs/fetch": {
+      "post": {
+        "summary": "Fetches logs for a requested package.",
+        "description": "NOTE: Current axios API uses /fetch/logs",
+        "operationId": "Warg_FetchLogs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FetchLogsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "root.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "root.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          },
+          {
+            "name": "operator.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "operator.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          }
+        ],
+        "tags": [
+          "Logs"
+        ]
+      }
+    },
+    "/package": {
+      "post": {
+        "summary": "Request that a new package be published.",
+        "description": "NOTE: Current axios API has PublishRequest =\u003e PendingRecordResponse",
+        "operationId": "Warg_PublishPackage",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1PublishPackageResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "record.contents",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          },
+          {
+            "name": "record.keyId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "record.signature",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Package"
+        ]
+      }
+    },
+    "/package/{packageId}": {
+      "get": {
+        "summary": "Used for polling while package is being in the processed of publishing.",
+        "description": "NOTE: This is a substitute for /package/{package_id}/pending/{record_id}\nwhich seemed superfluous.",
+        "operationId": "Warg_GetPackage",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetPackageResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "packageId",
+            "description": "IDEA: Could add field mask to return more details like records.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Package"
+        ]
+      }
+    },
+    "/package/{packageId}/records/{recordId}": {
+      "get": {
+        "summary": "Get a specific record within a package.",
+        "operationId": "Warg_GetPackageRecord",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Record"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "packageId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Package"
+        ]
+      }
+    },
+    "/prove/consistency": {
+      "post": {
+        "summary": "Proves consistency between an old root and a new one.",
+        "description": "NOTE: Current axios API uses /proof/consistency",
+        "operationId": "Warg_ProveConsistency",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ProveConsistencyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "oldRoot.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "oldRoot.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          },
+          {
+            "name": "newRoot.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "newRoot.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          }
+        ],
+        "tags": [
+          "Warg"
+        ]
+      }
+    },
+    "/prove/inclusion": {
+      "post": {
+        "summary": "Proves inclusion between a log and a map.",
+        "description": "NOTE: Current axios API uses /proof/inclusion",
+        "operationId": "Warg_ProveInclusion",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ProveInclusionResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "checkpoint.logRoot.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "checkpoint.logRoot.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          },
+          {
+            "name": "checkpoint.logLength",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "checkpoint.mapRoot.algo",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "HASH_ALGORITHM_UNKNOWN",
+              "HASH_ALGORITHM_SHA256"
+            ],
+            "default": "HASH_ALGORITHM_UNKNOWN"
+          },
+          {
+            "name": "checkpoint.mapRoot.bytes",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "byte"
+          }
+        ],
+        "tags": [
+          "Warg"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1ContentSource": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "$ref": "#/definitions/v1DynHash"
+        },
+        "kind": {
+          "$ref": "#/definitions/v1ContentSourceKind"
+        }
+      }
+    },
+    "v1ContentSourceKind": {
+      "type": "object",
+      "properties": {
+        "httpAnonymous": {
+          "$ref": "#/definitions/v1HttpAnonymousContentSource"
+        }
+      }
+    },
+    "v1DynHash": {
+      "type": "object",
+      "properties": {
+        "algo": {
+          "$ref": "#/definitions/v1HashAlgorithm"
+        },
+        "bytes": {
+          "type": "string",
+          "format": "byte"
+        }
+      }
+    },
+    "v1Envelope": {
+      "type": "object",
+      "properties": {
+        "contents": {
+          "type": "string",
+          "format": "byte"
+        },
+        "keyId": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        }
+      }
+    },
+    "v1FetchCheckpointResponse": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "$ref": "#/definitions/v1MapCheckpoint"
+        }
+      },
+      "description": "FetchCheckpointResponse summary...\n\nFetchCheckpointResponse description..."
+    },
+    "v1FetchLogsResponse": {
+      "type": "object",
+      "properties": {
+        "operatorRecords": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Envelope"
+          }
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1PackageRecordId"
+          },
+          "title": "Ordered by iteration order of IndexMap\u003cString, Option\u003cRecordId\u003e\u003e"
+        }
+      },
+      "description": "FetchLogsResponse summary...\n\nFetchLogsResponse description..."
+    },
+    "v1GetPackageResponse": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "$ref": "#/definitions/v1Package"
+        }
+      },
+      "description": "GetPackageResponse summary...\n\nGetPackageResponse description..."
+    },
+    "v1HashAlgorithm": {
+      "type": "string",
+      "enum": [
+        "HASH_ALGORITHM_UNKNOWN",
+        "HASH_ALGORITHM_SHA256"
+      ],
+      "default": "HASH_ALGORITHM_UNKNOWN"
+    },
+    "v1HttpAnonymousContentSource": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "v1LogLeaf": {
+      "type": "object",
+      "properties": {
+        "logId": {
+          "$ref": "#/definitions/v1DynHash"
+        },
+        "recordId": {
+          "$ref": "#/definitions/v1DynHash"
+        }
+      }
+    },
+    "v1MapCheckpoint": {
+      "type": "object",
+      "properties": {
+        "logRoot": {
+          "$ref": "#/definitions/v1DynHash"
+        },
+        "logLength": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "mapRoot": {
+          "$ref": "#/definitions/v1DynHash"
+        }
+      }
+    },
+    "v1Package": {
+      "type": "object",
+      "properties": {
+        "packageId": {
+          "type": "string"
+        },
+        "statusCode": {
+          "$ref": "#/definitions/v1PackageStatusCode"
+        },
+        "statusMessage": {
+          "type": "string"
+        }
+      },
+      "description": "Package summary...\n\nNOTE: Replaces PendingRecordResponse from axios API\nNOTE: Records could optionally be added if field mask added to get API call"
+    },
+    "v1PackageRecordId": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "recordId": {
+          "$ref": "#/definitions/v1DynHash"
+        }
+      }
+    },
+    "v1PackageStatusCode": {
+      "type": "string",
+      "enum": [
+        "PACKAGE_STATUS_CODE_UNKNOWN",
+        "PACKAGE_STATUS_CODE_PENDING",
+        "PACKAGE_STATUS_CODE_PUBLISHED"
+      ],
+      "default": "PACKAGE_STATUS_CODE_UNKNOWN",
+      "description": "PackageStatusCode summary...\n\nPackageStatusCode description...\n\n - PACKAGE_STATUS_CODE_UNKNOWN: Used when package status is unknown\n - PACKAGE_STATUS_CODE_PENDING: Used when package publish is still pending.\n - PACKAGE_STATUS_CODE_PUBLISHED: Used when package is published and active."
+    },
+    "v1ProveConsistencyResponse": {
+      "type": "object",
+      "properties": {
+        "encodedLogBundle": {
+          "type": "string",
+          "format": "byte",
+          "title": "TODO: Create formal definition of proof in cross-platform proto"
+        }
+      },
+      "description": "ProveConsistencyResponse summary...\n\nProveConsistencyResponse description..."
+    },
+    "v1ProveInclusionResponse": {
+      "type": "object",
+      "properties": {
+        "encodedLogBundle": {
+          "type": "string",
+          "format": "byte",
+          "title": "TODO: Create formal definition of proof in cross-platform proto"
+        },
+        "encodedMapBundle": {
+          "type": "string",
+          "format": "byte",
+          "title": "TODO: Create formal definition of proof in cross-platform proto"
+        }
+      },
+      "description": "ProveInclusionResponse summary...\n\nProveInclusionResponse description..."
+    },
+    "v1PublishPackageResponse": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "$ref": "#/definitions/v1Package"
+        }
+      },
+      "description": "PublishPackageResponse summary...\n\nPublishPackageResponse description..."
+    },
+    "v1Record": {
+      "type": "object",
+      "properties": {
+        "packageId": {
+          "type": "string"
+        },
+        "recordId": {
+          "type": "string"
+        },
+        "record": {
+          "$ref": "#/definitions/v1Envelope"
+        },
+        "contentSources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ContentSource"
+          }
+        }
+      },
+      "description": "Record summary...\n\nQUESTION: Why axios structure different than PackageRecord message?"
+    }
+  },
+  "externalDocs": {
+    "description": "An implementation of the Warg protocol, client, and server for distributing WebAssembly components.",
+    "url": "https://github.com/bytecodealliance/registry"
+  }
+}
