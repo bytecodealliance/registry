@@ -28,3 +28,4 @@ serde_json = { workspace = true }
 [build-dependencies]
 prost-build = { workspace = true }
 pbjson-build = { workspace = true }
+regex = { workspace = true }
