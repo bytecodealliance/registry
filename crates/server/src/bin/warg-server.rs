@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
         DataStoreKind::Postgres => {
             use anyhow::Context;
             use warg_server::datastore::PostgresDataStore;
-            tracing::debug!("using PostgreSQL data store");
+            tracing::info!("using postgres data store");
             config = config.with_data_store(PostgresDataStore::new(
                 std::env::var("DATABASE_URL").context(
                     "failed to get the PostgreSQL database URL from the `DATABASE_URL` environment variable",
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
             )?);
         }
         DataStoreKind::Memory => {
-            tracing::debug!("using default data store");
+            tracing::info!("using memory data store");
         }
     }
 
