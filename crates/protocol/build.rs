@@ -1,6 +1,8 @@
-use std::{env, io::Result, path::PathBuf};
+use std::{env, io::Result, path::PathBuf, process::Command};
+use regex::Regex;
 
 fn main() -> Result<()> {
+    check_protoc_version()?;
     let warg_proto = PathBuf::from("../../proto/warg/protocol/warg.proto");
     let proto_files = vec![warg_proto];
     let root = PathBuf::from("../../proto");
@@ -28,3 +30,24 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+fn check_protoc_version() -> Result<()> {
+    let protoc_path = prost_build::protoc_from_env();
+    let protoc_version_output = Command::new(protoc_path).args(["--version"]).output()?;
+    let protoc_version = String::from_utf8(protoc_version_output.stdout)
+        .unwrap();
+    // semver.org recommended regex, modified for optional patch capture group to accomodate libprotoc's versioning scheme and lib name
+    let re = Regex::new(r"^libprotoc (?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.?(?P<patch>0|[1-9]\d*)?(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$").unwrap();
+    let caps = re.captures(protoc_version.trim()).unwrap();
+    let major = caps.name("major").unwrap().as_str().parse::<u32>().unwrap();
+    let minor = caps.name("minor").unwrap().as_str().parse::<u32>().unwrap();
+
+    if major < 3 || (major == 3 && minor < 15) {
+        panic!(
+            "Building this crate requires a version of protoc (libprotoc) >=3.15, found: {}",
+            protoc_version.trim()
+        )
+    }
+    Ok(())
+}
+
