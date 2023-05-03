@@ -224,8 +224,6 @@ impl Client {
         &self,
         old_root: DynHash,
         new_root: DynHash,
-        old_length: u32,
-        new_length: u32,
     ) -> ProofResult<()> {
         let old = old_root.clone();
         let new = new_root.clone();
@@ -240,14 +238,35 @@ impl Client {
                 .map_err(ProofError::from_error)?,
         )
         .await?;
-        let proof = ProofBundle::<Sha256, [u8; 32]>::decode(&response.proof).unwrap();
-        let unbundled = proof.unbundle().0;
-        let consistency_proof =
-            unbundled.prove_consistency(old_length as usize, new_length as usize);
-        let (found_old, found_new) = consistency_proof.evaluate(&unbundled).unwrap();
-        assert_eq!(old, DynHash::from(found_old));
-        assert_eq!(new, DynHash::from(found_new));
-        Ok(())
+        let proof = ProofBundle::<Sha256, LogLeaf>::decode(&response.proof).unwrap();
+        let (log_data, consistencies, inclusions) = proof.unbundle();
+        if !inclusions.is_empty() {
+            return Err(ProofError::BundleFailure {
+                message: "Expected no inclusion proofs".into(),
+            });
+        }
+        if consistencies.len() != 1 {
+            return Err(ProofError::BundleFailure {
+                message: "Expected exactly one consistency proof".into(),
+            });
+        }
+        let (old_hash, new_hash) =
+            consistencies
+                .first()
+                .unwrap()
+                .evaluate(&log_data)
+                .map_err(|_| ProofError::LogNotConsistent {
+                    old_root: old.clone(),
+                    new_root: new.clone(),
+                })?;
+        if old == DynHash::from(old_hash) && new == DynHash::from(new_hash) {
+            Ok(())
+        } else {
+            Err(ProofError::LogNotConsistent {
+                old_root: old,
+                new_root: new,
+            })
+        }
     }
 
     /// Uploads package content to the registry.

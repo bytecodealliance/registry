@@ -374,12 +374,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             let old_cp = cp.as_ref().clone();
             let new_cp = checkpoint.as_ref().clone();
             self.api
-                .prove_log_consistency(
-                    old_cp.log_root,
-                    new_cp.log_root,
-                    old_cp.log_length,
-                    new_cp.log_length,
-                )
+                .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
         self.packages.store_checkpoint(checkpoint.clone()).await?;
