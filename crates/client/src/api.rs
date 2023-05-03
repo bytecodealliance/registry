@@ -21,7 +21,10 @@ use warg_protocol::{
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
     ProtoEnvelopeBody,
 };
-use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
+use warg_transparency::{
+    log::{LogData, LogProofBundle, ProofBundle, VecLog},
+    map::MapProofBundle,
+};
 
 async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, String> {
     let status = response.status();
@@ -221,7 +224,11 @@ impl Client {
         &self,
         old_root: DynHash,
         new_root: DynHash,
+        old_length: u32,
+        new_length: u32,
     ) -> ProofResult<()> {
+        let old = old_root.clone();
+        let new = new_root.clone();
         let request = ConsistencyRequest { old_root, new_root };
         let url = self.url.join("proof/consistency").unwrap();
         let response = into_result::<ConsistencyResponse, ProofError>(
@@ -233,7 +240,13 @@ impl Client {
                 .map_err(ProofError::from_error)?,
         )
         .await?;
-        let proof = response.proof;
+        let proof = ProofBundle::<Sha256, [u8; 32]>::decode(&response.proof).unwrap();
+        let unbundled = proof.unbundle().0;
+        let consistency_proof =
+            unbundled.prove_consistency(old_length as usize, new_length as usize);
+        let (found_old, found_new) = consistency_proof.evaluate(&unbundled).unwrap();
+        assert_eq!(old, DynHash::from(found_old));
+        assert_eq!(new, DynHash::from(found_new));
         Ok(())
     }
 
