@@ -1,4 +1,4 @@
-use super::schema::{checkpoints, logs, records, sources};
+use super::schema::{checkpoints, contents, logs, records};
 use chrono::{DateTime, Utc};
 use diesel::{
     deserialize::{self, FromSql},
@@ -22,12 +22,6 @@ pub enum RecordStatus {
     Pending,
     Rejected,
     Validated,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, diesel_derive_enum::DbEnum)]
-#[ExistingTypePath = "crate::datastore::postgres::schema::sql_types::SourceKind"]
-pub enum SourceKind {
-    Http,
 }
 
 #[derive(FromSqlRow, AsExpression, Debug)]
@@ -94,15 +88,6 @@ pub struct NewCheckpoint<'a> {
     pub signature: TextRef<'a, Signature>,
 }
 
-#[derive(Insertable)]
-#[diesel(table_name = sources)]
-pub struct NewSource<'a> {
-    pub record_id: i32,
-    pub digest: TextRef<'a, DynHash>,
-    pub kind: SourceKind,
-    pub url: Option<&'a str>,
-}
-
 #[derive(Queryable)]
 #[diesel(table_name = checkpoints)]
 pub struct Checkpoint {
@@ -117,14 +102,30 @@ pub struct Checkpoint {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Queryable)]
-#[diesel(table_name = sources)]
-pub struct Source {
-    pub id: i32,
+/// Selects only the record content and status
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = records)]
+pub struct RecordContent {
+    pub status: RecordStatus,
+    pub reason: Option<String>,
+    pub content: Vec<u8>,
+}
+
+/// Selects only the relevant checkpoint data from the checkpoints table.
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = checkpoints)]
+pub struct CheckpointData {
+    pub log_root: ParsedText<DynHash>,
+    pub log_length: i64,
+    pub map_root: ParsedText<DynHash>,
+    pub key_id: Text<KeyID>,
+    pub signature: ParsedText<Signature>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = contents)]
+pub struct NewContent<'a> {
     pub record_id: i32,
-    pub digest: ParsedText<DynHash>,
-    pub kind: SourceKind,
-    pub url: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub digest: TextRef<'a, DynHash>,
+    pub missing: bool,
 }

@@ -33,7 +33,7 @@ pub trait RegistryStorage: Send + Sync {
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
 
     /// Stores most recent checkpoint
-    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+    async fn store_checkpoint(&self, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()>;
 
     /// Loads the operator information from the storage.
     ///
@@ -168,8 +168,7 @@ impl PublishInfo {
         self,
         signing_key: &signing::PrivateKey,
         head: Option<RecordId>,
-    ) -> Result<(ProtoEnvelope<PackageRecord>, Vec<DynHash>)> {
-        let mut contents = Vec::new();
+    ) -> Result<ProtoEnvelope<PackageRecord>> {
         let mut entries = Vec::with_capacity(self.entries.len());
         for entry in self.entries {
             match entry {
@@ -180,7 +179,6 @@ impl PublishInfo {
                     });
                 }
                 PublishEntry::Release { version, content } => {
-                    contents.push(content.clone());
                     entries.push(package::PackageEntry::Release { version, content });
                 }
             }
@@ -196,9 +194,6 @@ impl PublishInfo {
             entries,
         };
 
-        Ok((
-            ProtoEnvelope::signed_contents(signing_key, record)?,
-            contents,
-        ))
+        Ok(ProtoEnvelope::signed_contents(signing_key, record)?)
     }
 }

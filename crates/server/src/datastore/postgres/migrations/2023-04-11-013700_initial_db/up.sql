@@ -43,18 +43,18 @@ CREATE TABLE records (
 
 SELECT diesel_manage_updated_at('records');
 
-CREATE TYPE source_kind AS ENUM ('http');
-
--- Represents content sources associated with a record.
--- Currently it is expected there is only a "http" kind of source.
-CREATE TABLE sources (
+-- Represents record contents.
+-- Note that while digests may be repeated here (as these are per-record),
+-- only one copy of the content matching the digest is ever stored.
+CREATE TABLE contents (
   id SERIAL PRIMARY KEY,
   record_id INTEGER NOT NULL REFERENCES records(id),
   digest TEXT NOT NULL,
-  kind source_kind NOT NULL,
-  url TEXT,
+  missing BOOLEAN NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-SELECT diesel_manage_updated_at('sources');
+CREATE UNIQUE INDEX contents_digest_record_id_idx ON contents (record_id, digest);
+
+SELECT diesel_manage_updated_at('contents');

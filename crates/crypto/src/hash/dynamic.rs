@@ -1,11 +1,36 @@
+use super::{Digest, HashAlgorithm, Sha256};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, str::FromStr};
 use thiserror::Error;
 
-use super::{Digest, HashAlgorithm, Sha256};
+pub enum Hasher {
+    Sha256(Sha256),
+}
+
+impl Hasher {
+    pub fn update(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Sha256(d) => d.update(bytes),
+        }
+    }
+
+    pub fn finalize(self) -> DynHash {
+        let (algo, bytes) = match self {
+            Self::Sha256(d) => (HashAlgorithm::Sha256, d.finalize().deref().into()),
+        };
+
+        DynHash { algo, bytes }
+    }
+}
 
 impl HashAlgorithm {
+    pub fn hasher(&self) -> Hasher {
+        match self {
+            HashAlgorithm::Sha256 => Hasher::Sha256(Sha256::new()),
+        }
+    }
+
     pub fn digest(&self, content_bytes: &[u8]) -> DynHash {
         let hash_bytes: Vec<u8> = match self {
             HashAlgorithm::Sha256 => {

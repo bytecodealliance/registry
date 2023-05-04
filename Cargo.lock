@@ -3815,7 +3815,6 @@ dependencies = [
 name = "warg-api"
 version = "0.1.0"
 dependencies = [
- "indexmap",
  "serde",
  "serde_with",
  "thiserror",
@@ -3950,6 +3949,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

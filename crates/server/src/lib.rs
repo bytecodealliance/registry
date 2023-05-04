@@ -1,6 +1,5 @@
-use crate::datastore::MemoryDataStore;
+use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
-use axum::{body::Body, http::Request, Router};
 use datastore::DataStore;
 use futures::Future;
 use services::CoreService;
@@ -9,20 +8,14 @@ use std::{
     net::{SocketAddr, TcpListener},
     path::PathBuf,
     pin::Pin,
-    sync::Arc,
     time::Duration,
 };
-use tower_http::{
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
-};
-use tracing::{Level, Span};
 use warg_crypto::signing::PrivateKey;
 
 pub mod api;
 pub mod args;
 pub mod datastore;
-mod policy;
+pub mod policy;
 pub mod services;
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
@@ -33,7 +26,7 @@ pub struct Config {
     operator_key: PrivateKey,
     addr: Option<SocketAddr>,
     data_store: Option<Box<dyn datastore::DataStore>>,
-    content_dir: Option<PathBuf>,
+    content_dir: PathBuf,
     shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
     checkpoint_interval: Option<Duration>,
 }
@@ -56,12 +49,12 @@ impl std::fmt::Debug for Config {
 
 impl Config {
     /// Creates a new server configuration.
-    pub fn new(operator_key: PrivateKey) -> Self {
+    pub fn new(operator_key: PrivateKey, content_dir: PathBuf) -> Self {
         Self {
             operator_key,
             addr: None,
             data_store: None,
-            content_dir: None,
+            content_dir,
             shutdown: None,
             checkpoint_interval: None,
         }
@@ -86,16 +79,6 @@ impl Config {
     /// If this is not specified, the server will use an in-memory data store.
     pub fn with_boxed_data_store(mut self, store: Box<dyn DataStore>) -> Self {
         self.data_store = Some(store);
-        self
-    }
-
-    /// Specify the path to the directory where content will be stored.
-    ///
-    /// If the directory does not exist, it will be created.
-    ///
-    /// This enables the content API in the server.
-    pub fn with_content_dir(mut self, path: impl Into<PathBuf>) -> Self {
-        self.content_dir = Some(path.into());
         self
     }
 
@@ -181,14 +164,25 @@ impl Server {
         )
         .await?;
 
-        let server = axum::Server::from_tcp(listener)?.serve(
-            Self::create_router(
-                format!("http://{addr}", addr = self.config.addr.unwrap()),
-                self.config.content_dir,
-                core,
-            )?
-            .into_make_service(),
-        );
+        let temp_dir = self.config.content_dir.join("tmp");
+        fs::create_dir_all(&temp_dir).with_context(|| {
+            format!(
+                "failed to create content temp directory `{path}`",
+                path = temp_dir.display()
+            )
+        })?;
+
+        let files_dir = self.config.content_dir.join("files");
+        fs::create_dir_all(&files_dir).with_context(|| {
+            format!(
+                "failed to create content files directory `{path}`",
+                path = files_dir.display()
+            )
+        })?;
+
+        let base_url = format!("http://{addr}", addr = self.config.addr.unwrap());
+        let server = axum::Server::from_tcp(listener)?
+            .serve(create_router(base_url, core, temp_dir, files_dir.clone()).into_make_service());
 
         tracing::info!("listening on {addr}", addr = self.config.addr.unwrap());
 
@@ -207,46 +201,5 @@ impl Server {
         tracing::info!("server shutdown complete");
 
         Ok(())
-    }
-
-    fn create_router(
-        base_url: String,
-        content_dir: Option<PathBuf>,
-        core: Arc<CoreService>,
-    ) -> Result<Router> {
-        let proof_config =
-            api::proof::Config::new(core.log_data().clone(), core.map_data().clone());
-        let package_config = api::package::Config::new(core.clone(), base_url);
-        let fetch_config = api::fetch::Config::new(core);
-
-        let mut router = Router::new();
-        if let Some(content_dir) = content_dir {
-            fs::create_dir_all(&content_dir).with_context(|| {
-                format!(
-                    "failed to create content directory `{path}`",
-                    path = content_dir.display()
-                )
-            })?;
-
-            let config = api::content::Config::new(content_dir);
-            router = router.nest("/content", config.build_router());
-        }
-
-        Ok(router
-            .nest("/package", package_config.into_router())
-            .nest("/fetch", fetch_config.into_router())
-            .nest("/proof", proof_config.into_router())
-            .layer(
-                TraceLayer::new_for_http()
-                    .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                    .on_request(|request: &Request<Body>, _span: &Span| {
-                        tracing::info!("starting {} {}", request.method(), request.uri().path())
-                    })
-                    .on_response(
-                        DefaultOnResponse::new()
-                            .level(Level::INFO)
-                            .latency_unit(LatencyUnit::Micros),
-                    ),
-            ))
     }
 }

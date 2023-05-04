@@ -1,7 +1,6 @@
 use futures::Stream;
-use std::pin::Pin;
+use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
-use warg_api::content::ContentSource;
 use warg_crypto::hash::DynHash;
 use warg_protocol::{
     operator, package,
@@ -34,7 +33,7 @@ pub enum DataStoreError {
     #[error("record `{0}` cannot be validated as it is not in a pending state")]
     RecordNotPending(RecordId),
 
-    #[error("record contents for log `{record_id}` are invalid: {message}")]
+    #[error("contents for record `{record_id}` are invalid: {message}")]
     InvalidRecordContents {
         record_id: RecordId,
         message: String,
@@ -60,36 +59,43 @@ pub enum DataStoreError {
 
 /// Represents a leaf used to initialize the core service.
 pub struct InitialLeaf {
+    /// The log leaf.
     pub leaf: LogLeaf,
+    /// The checkpoint of the leaf.
+    ///
+    /// A value of `None` indicates the leaf needs to be included in the
+    /// next checkpoint.
     pub checkpoint: Option<DynHash>,
 }
 
 /// Represents the status of a record.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordStatus {
+    /// The record is pending with missing content.
+    MissingContent(Vec<DynHash>),
+    /// The record is pending with all content present.
     Pending,
+    /// The record was rejected.
     Rejected(String),
+    /// The record has been validated.
     Validated,
-    InCheckpoint,
+    /// The record was published (i.e. included in a registry checkpoint).
+    Published,
 }
 
-/// Represents an approved entry in an operator log.
-pub struct OperatorLogEntry {
-    /// The operator record.
-    pub record: ProtoEnvelope<operator::OperatorRecord>,
+/// Represents a record in a log.
+pub struct Record<T>
+where
+    T: Clone,
+{
+    /// The status of the record.
+    pub status: RecordStatus,
+    /// The envelope containing the record contents.
+    pub envelope: ProtoEnvelope<T>,
     /// The checkpoint of the record.
-    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
-}
-
-/// Represents an approved entry in a package log.
-#[derive(Debug, Clone)]
-pub struct PackageLogEntry {
-    /// The package record.
-    pub record: ProtoEnvelope<package::PackageRecord>,
-    /// The related sources.
-    pub sources: Vec<ContentSource>,
-    /// The checkpoint of the record.
-    pub checkpoint: SerdeEnvelope<MapCheckpoint>,
+    ///
+    /// This is `None` if the record is not published.
+    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
 }
 
 /// Implemented by data stores.
@@ -135,13 +141,16 @@ pub trait DataStore: Send + Sync {
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
+    ///
+    /// The `missing` set is the set of content digests that are currently
+    /// missing from data storage.
     async fn store_package_record(
         &self,
         log_id: &LogId,
         name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        sources: &[ContentSource],
+        missing: &HashSet<&DynHash>,
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given package record.
@@ -165,6 +174,31 @@ pub trait DataStore: Send + Sync {
         record_id: &RecordId,
     ) -> Result<(), DataStoreError>;
 
+    /// Determines if the given content digest is missing for the record.
+    ///
+    /// The record must be in a pending state.
+    async fn is_content_missing(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError>;
+
+    /// Sets the present flag for the given record and content digest.
+    ///
+    /// The record must be in a pending state.
+    ///
+    /// Returns true if the record has all of its content present as a
+    /// result of this update.
+    ///
+    /// Returns false if the given digest was already marked present.
+    async fn set_content_present(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError>;
+
     /// Stores a new checkpoint.
     async fn store_checkpoint(
         &self,
@@ -182,6 +216,7 @@ pub trait DataStore: Send + Sync {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
 
     /// Gets the package records for the given registry root.
@@ -190,26 +225,20 @@ pub trait DataStore: Send + Sync {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
 
-    /// Gets the status of a record.
-    async fn get_record_status(
+    /// Gets an operator record.
+    async fn get_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<RecordStatus, DataStoreError>;
+    ) -> Result<Record<operator::OperatorRecord>, DataStoreError>;
 
-    /// Gets an entry in an operator log.
-    async fn get_operator_log_entry(
+    /// Gets a package record.
+    async fn get_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<OperatorLogEntry, DataStoreError>;
-
-    /// Gets an entry in a package log.
-    async fn get_package_log_entry(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-    ) -> Result<PackageLogEntry, DataStoreError>;
+    ) -> Result<Record<package::PackageRecord>, DataStoreError>;
 }

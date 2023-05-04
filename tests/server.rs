@@ -20,25 +20,25 @@ fn create_client(config: &Config) -> Result<FileSystemClient> {
 async fn validate_initial_checkpoint(config: Config) -> Result<()> {
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
 
-    let response = client.latest_checkpoint().await?;
+    let checkpoint = client.latest_checkpoint().await?;
 
     // There should be only a single log entry (the initial operator log entry)
     // As the log leaf differs every time because it contains a timestamp,
     // the log root and map root can't be compared to a baseline value.
-    assert_eq!(response.checkpoint.as_ref().log_length, 1);
+    assert_eq!(checkpoint.as_ref().log_length, 1);
 
     // Ensure the response was signed with the operator key
     let operator_key = PrivateKey::from_str(test_operator_key())?;
     assert_eq!(
-        response.checkpoint.key_id().to_string(),
+        checkpoint.key_id().to_string(),
         operator_key.public_key().fingerprint().to_string()
     );
 
     // Ensure the signature matches the response
     warg_protocol::registry::MapCheckpoint::verify(
         &operator_key.public_key(),
-        &response.checkpoint.as_ref().encode(),
-        response.checkpoint.signature(),
+        &checkpoint.as_ref().encode(),
+        checkpoint.signature(),
     )?;
 
     Ok(())
@@ -149,8 +149,8 @@ async fn it_publishes_a_component() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let response = client.latest_checkpoint().await?;
-    assert_eq!(response.checkpoint.as_ref().log_length, 2);
+    let checkpoint = client.latest_checkpoint().await?;
+    assert_eq!(checkpoint.as_ref().log_length, 2);
 
     Ok(())
 }
@@ -165,8 +165,8 @@ async fn it_publishes_a_wit_package() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let response = client.latest_checkpoint().await?;
-    assert_eq!(response.checkpoint.as_ref().log_length, 2);
+    let checkpoint = client.latest_checkpoint().await?;
+    assert_eq!(checkpoint.as_ref().log_length, 2);
 
     Ok(())
 }

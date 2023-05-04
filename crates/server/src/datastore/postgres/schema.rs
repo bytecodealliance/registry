@@ -4,10 +4,6 @@ pub mod sql_types {
     #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "record_status"))]
     pub struct RecordStatus;
-
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "source_kind"))]
-    pub struct SourceKind;
 }
 
 diesel::table! {
@@ -19,6 +15,17 @@ diesel::table! {
         map_root -> Text,
         key_id -> Text,
         signature -> Text,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    contents (id) {
+        id -> Int4,
+        record_id -> Int4,
+        digest -> Text,
+        missing -> Bool,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }
@@ -52,23 +59,8 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    use diesel::sql_types::*;
-    use super::sql_types::SourceKind;
-
-    sources (id) {
-        id -> Int4,
-        record_id -> Int4,
-        digest -> Text,
-        kind -> SourceKind,
-        url -> Nullable<Text>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
+diesel::joinable!(contents -> records (record_id));
 diesel::joinable!(records -> checkpoints (checkpoint_id));
 diesel::joinable!(records -> logs (log_id));
-diesel::joinable!(sources -> records (record_id));
 
-diesel::allow_tables_to_appear_in_same_query!(checkpoints, logs, records, sources,);
+diesel::allow_tables_to_appear_in_same_query!(checkpoints, contents, logs, records,);

@@ -27,11 +27,11 @@ pub struct InclusionProof<D: SupportedDigest, V: VisitBytes> {
 pub enum InclusionProofError {
     /// Indicates that the leaf is too new to be present at
     /// the given point in the log history.
-    #[error("Leaf newer than when it should be included")]
+    #[error("leaf newer than when it should be included")]
     LeafTooNew,
     /// Indicates that certain hashes weren't known that are
     /// needed to perform proof validation.
-    #[error("Required hash for proof is not available")]
+    #[error("required hash for proof is not available")]
     HashNotKnown,
 }
 
@@ -243,16 +243,16 @@ where
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ConsistencyProofError {
     /// Happens when old_length > new_length
-    #[error("Tries to prove later value comes before earlier")]
+    #[error("tries to prove later value comes before earlier")]
     PointsOutOfOrder,
     /// Happens when hashes required for evaluation were not present
-    #[error("A hash needed for evaluation was not available")]
+    #[error("a hash needed for evaluation was not available")]
     HashNotKnown,
     /// Happens when an inclusion proof is evaluated and has an error
-    #[error("Constituent inclusion proof failed")]
+    #[error("constituent inclusion proof failed")]
     InclusionError(#[from] InclusionProofError),
     /// Happens when two inclusion proofs are evaluated and produce different roots
-    #[error("Constituent inclusion proofs diverge produce different roots")]
+    #[error("constituent inclusion proofs diverge produce different roots")]
     DivergingRoots,
 }
 

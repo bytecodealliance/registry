@@ -8,6 +8,7 @@ use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 use warg_crypto::prefix::VisitPrefixEncode;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MapCheckpoint {
     pub log_root: DynHash,
     pub log_length: u32,
@@ -54,6 +55,7 @@ impl VisitBytes for MapLeaf {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LogLeaf {
     pub log_id: LogId,
     pub record_id: RecordId,
