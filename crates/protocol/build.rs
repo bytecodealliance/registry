@@ -1,8 +1,8 @@
-use std::{env, io::Result, path::PathBuf, process::Command};
 use regex::Regex;
+use std::{env, io::Result, path::PathBuf, process::Command};
 
 fn main() -> Result<()> {
-    check_protoc_version()?;
+    verify_protoc_version(15, 0);
     let warg_proto = PathBuf::from("../../proto/warg/protocol/warg.proto");
     let proto_files = vec![warg_proto];
     let root = PathBuf::from("../../proto");
@@ -31,23 +31,31 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn check_protoc_version() -> Result<()> {
+// NB: protoc changed versioning schemes with v3.20 (removed major version), see https://protobuf.dev/support/version-support/
+// This means that after 3.20.x came 21.x - the major and minor version arguments here refer to the new scheme and would have previously been minor and patch versions respectively.
+fn verify_protoc_version(min_major: u32, min_minor: u32) {
     let protoc_path = prost_build::protoc_from_env();
-    let protoc_version_output = Command::new(protoc_path).args(["--version"]).output()?;
-    let protoc_version = String::from_utf8(protoc_version_output.stdout)
+    let protoc_version_output = Command::new(protoc_path)
+        .args(["--version"])
+        .output()
         .unwrap();
-    // semver.org recommended regex, modified for optional patch capture group to accomodate libprotoc's versioning scheme and lib name
+    let protoc_version = String::from_utf8(protoc_version_output.stdout).unwrap();
+
+    // based on semver.org's recommended regex, modified for lib name and optional patch capture group to accomodate libprotoc's versioning scheme
     let re = Regex::new(r"^libprotoc (?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.?(?P<patch>0|[1-9]\d*)?(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$").unwrap();
     let caps = re.captures(protoc_version.trim()).unwrap();
     let major = caps.name("major").unwrap().as_str().parse::<u32>().unwrap();
     let minor = caps.name("minor").unwrap().as_str().parse::<u32>().unwrap();
+    let version_match = if let Some(patch) = caps.name("patch") {
+        let patch = patch.as_str().parse::<u32>().unwrap();
+        major > 3 || (major == 3 && minor > min_major && patch > min_minor)
+    } else {
+        major > min_major || (major == min_major && minor > min_minor)
+    };
 
-    if major < 3 || (major == 3 && minor < 15) {
+    if !version_match {
         panic!(
-            "Building this crate requires a version of protoc (libprotoc) >=3.15, found: {}",
-            protoc_version.trim()
-        )
+                "Building this crate requires a version of protoc (libprotoc) >={min_major}.{min_minor}, found: {protoc_version}\nPlease install a suitable version of protobuf (see https://github.com/protocolbuffers/protobuf for downloads and instructions as well as https://protobuf.dev/support/version-support/ for info on protobuf's versioning schema)"
+            )
     }
-    Ok(())
 }
-
