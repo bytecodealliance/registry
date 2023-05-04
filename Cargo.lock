@@ -3282,6 +3282,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "warg-args-util"
+version = "0.1.0"
+
+[[package]]
 name = "warg-cli"
 version = "0.1.0"
 dependencies = [
