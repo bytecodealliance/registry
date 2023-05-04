@@ -44,7 +44,6 @@ rust-version = "1.66.0"
 
 [workspace.dependencies]
 warg-api = { path = "crates/api" }
-warg-args-util = { path = "crates/args-util" }
 warg-client = { path = "crates/client" }
 warg-crypto = { path = "crates/crypto" }
 warg-protocol = { path = "crates/protocol" }

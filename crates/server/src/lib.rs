@@ -20,6 +20,7 @@ use tracing::{Level, Span};
 use warg_crypto::signing::PrivateKey;
 
 pub mod api;
+pub mod args;
 pub mod datastore;
 mod policy;
 pub mod services;

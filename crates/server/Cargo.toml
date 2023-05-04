@@ -7,7 +7,6 @@ rust-version = { workspace = true }
 
 [dependencies]
 warg-api = { workspace = true }
-warg-args-util = { workspace = true }
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-transparency = { workspace = true }
