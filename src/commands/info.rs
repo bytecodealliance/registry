@@ -27,14 +27,14 @@ impl InfoCommand {
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
-                if let Some(info) = client.packages().load_package("dogfood", &package).await? {
+                if let Some(info) = client.registry().load_package(&package).await? {
                     Self::print_package_info(&info);
                 }
             }
             None => {
                 client
-                    .packages()
-                    .load_packages("dogfood")
+                    .registry()
+                    .load_packages()
                     .await?
                     .iter()
                     .for_each(Self::print_package_info);

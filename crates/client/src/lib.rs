@@ -34,18 +34,18 @@ pub mod storage;
 pub use self::config::*;
 
 /// A client for a Warg registry.
-pub struct Client<P, C> {
-    packages: P,
+pub struct Client<R, C> {
+    registry: R,
     content: C,
     api: api::Client,
 }
 
-impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
+impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Creates a new client for the given URL, package storage, and
     /// content storage.
-    pub fn new(url: impl IntoUrl, packages: P, content: C) -> ClientResult<Self> {
+    pub fn new(url: impl IntoUrl, registry: R, content: C) -> ClientResult<Self> {
         Ok(Self {
-            packages,
+            registry,
             content,
             api: api::Client::new(url)?,
         })
@@ -57,8 +57,8 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
     }
 
     /// Gets the package storage used by the client.
-    pub fn packages(&self) -> &P {
-        &self.packages
+    pub fn registry(&self) -> &R {
+        &self.registry
     }
 
     /// Gets the content storage used by the client.
@@ -71,13 +71,13 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
     /// If there's no publishing information in client storage, an error is returned.
     pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<()> {
         let info = self
-            .packages
-            .load_publish("dogfood")
+            .registry
+            .load_publish()
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
         let res = self.publish_with_info(signing_key, info).await;
-        self.packages.store_publish("dogfood", None).await?;
+        self.registry.store_publish(None).await?;
         res
     }
 
@@ -104,8 +104,8 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
         );
 
         let mut package = self
-            .packages
-            .load_package("dogfood", &info.package)
+            .registry
+            .load_package(&info.package)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.package.clone()));
 
@@ -178,7 +178,7 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
     pub async fn update(&self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
 
-        let mut updating = self.packages.load_packages("dogfood").await?;
+        let mut updating = self.registry.load_packages().await?;
         self.update_checkpoint(
             &self.api.latest_checkpoint().await?.checkpoint,
             &mut updating,
@@ -196,8 +196,8 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
         let mut updating = Vec::with_capacity(packages.len());
         for package in packages {
             updating.push(
-                self.packages
-                    .load_package("dogfood", package)
+                self.registry
+                    .load_package(package)
                     .await?
                     .unwrap_or_else(|| PackageInfo::new(*package)),
             );
@@ -367,10 +367,10 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            self.packages.store_package("dogfood", package).await?;
+            self.registry.store_package(package).await?;
         }
 
-        let old_checkpoint = self.packages.load_checkpoint("dogfood").await?;
+        let old_checkpoint = self.registry.load_checkpoint().await?;
         if let Some(cp) = old_checkpoint {
             let old_cp = cp.as_ref().clone();
             let new_cp = checkpoint.as_ref().clone();
@@ -378,15 +378,13 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
-        self.packages
-            .store_checkpoint("dogfood", checkpoint.clone())
-            .await?;
+        self.registry.store_checkpoint(checkpoint.clone()).await?;
 
         Ok(())
     }
 
     async fn fetch_package(&self, name: &str) -> Result<PackageInfo, ClientError> {
-        match self.packages.load_package("dogfood", name).await? {
+        match self.registry.load_package(name).await? {
             Some(info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
@@ -479,14 +477,18 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        } = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
-            FileSystemPackageStorage::try_lock(packages_dir.clone())?,
+            FileSystemPackageStorage::try_lock(registries_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
         ) {
             (Some(packages), Some(content)) => (packages, content),
-            (None, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
+            (None, _) => return Ok(StorageLockResult::NotAcquired(registries_dir)),
             (_, None) => return Ok(StorageLockResult::NotAcquired(content_dir)),
         };
 
@@ -502,10 +504,14 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        } = config.storage_paths_for_url(url)?;
         Self::new(
             url,
-            FileSystemPackageStorage::lock(packages_dir)?,
+            FileSystemPackageStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )
     }

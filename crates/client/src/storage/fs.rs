@@ -65,45 +65,38 @@ impl FileSystemPackageStorage {
         })
     }
 
-    fn package_path(&self, registry: &str, name: &str) -> PathBuf {
-        self.base_dir.join(registry).join(
+    fn package_path(&self, name: &str) -> PathBuf {
+        self.base_dir.join(
             LogId::package_log::<Sha256>(name)
                 .to_string()
                 .replace(':', "/"),
         )
     }
 
-    fn pending_publish_path(&self, registry: &str) -> PathBuf {
-        self.base_dir.join(registry).join(PENDING_PUBLISH_FILE)
+    fn pending_publish_path(&self) -> PathBuf {
+        self.base_dir.join(PENDING_PUBLISH_FILE)
     }
 }
 
 #[async_trait]
 impl RegistryStorage for FileSystemPackageStorage {
-    async fn load_checkpoint(
-        &self,
-        registry: &str,
-    ) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
-        let contents = load(&self.base_dir.join(registry).join("latest")).await;
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+        let contents = load(&self.base_dir.join("checkpoint")).await;
         contents
     }
 
-    async fn store_checkpoint(
-        &self,
-        registry: &str,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
-    ) -> Result<()> {
-        store(&self.base_dir.join(registry).join("latest"), checkpoint).await;
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+        store(&self.base_dir.join("checkpoint"), checkpoint).await;
         Ok(())
     }
-    async fn load_packages(&self, registry: &str) -> Result<Vec<PackageInfo>> {
+    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();
 
-        for entry in WalkDir::new(&self.base_dir.join(registry)) {
+        for entry in WalkDir::new(&self.base_dir) {
             let entry = entry.with_context(|| {
                 anyhow!(
                     "failed to walk directory `{path}`",
-                    path = self.base_dir.join(registry).display()
+                    path = self.base_dir.display()
                 )
             })?;
 
@@ -129,24 +122,22 @@ impl RegistryStorage for FileSystemPackageStorage {
         Ok(packages)
     }
 
-    async fn load_package(&self, registry: &str, package: &str) -> Result<Option<PackageInfo>> {
-        Ok(load(&self.package_path(registry, package)).await?)
+    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {
+        Ok(load(&self.package_path(package)).await?)
     }
 
-    async fn store_package(&self, registry: &str, info: &PackageInfo) -> Result<()> {
-        store(&self.package_path(registry, &info.name), info).await
+    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
+        store(&self.package_path(&info.name), info).await
     }
 
-    async fn load_publish(&self, registry: &str) -> Result<Option<PublishInfo>> {
-        Ok(
-            load(&self.base_dir.join(registry).join(PENDING_PUBLISH_FILE))
-                .await?
-                .unwrap_or_default(),
-        )
+    async fn load_publish(&self) -> Result<Option<PublishInfo>> {
+        Ok(load(&self.base_dir.join(PENDING_PUBLISH_FILE))
+            .await?
+            .unwrap_or_default())
     }
 
-    async fn store_publish(&self, registry: &str, info: Option<&PublishInfo>) -> Result<()> {
-        let path = self.pending_publish_path(registry);
+    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()> {
+        let path = self.pending_publish_path();
         match info {
             Some(info) => store(&path, info).await,
             None => delete(&path).await,

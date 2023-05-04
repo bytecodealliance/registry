@@ -60,6 +60,15 @@ fn normalize_path(path: &Path) -> PathBuf {
     ret
 }
 
+/// Paths used for storage
+pub struct StoragePaths {
+    /// url path
+    pub url: Url,
+    /// registries path
+    pub registries_dir: PathBuf,
+    /// content path
+    pub content_dir: PathBuf,
+}
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,9 +76,6 @@ pub struct Config {
     /// The default Warg registry server URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_url: Option<String>,
-
-    /// List of registries
-    pub registries: Vec<String>,
 
     /// The path to the directory where per-registry packages are stored.
     ///
@@ -149,7 +155,6 @@ impl Config {
 
         let config = Config {
             default_url: self.default_url.clone(),
-            registries: self.registries.clone(),
             registries_dir: self.registries_dir.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
@@ -213,7 +218,7 @@ impl Config {
             .unwrap_or_else(|| {
                 CACHE_DIR
                     .as_ref()
-                    .map(|p| p.join("warg/packages"))
+                    .map(|p| p.join("warg/registries"))
                     .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
             })
     }
@@ -235,7 +240,7 @@ impl Config {
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
-    ) -> Result<(Url, PathBuf, PathBuf), ClientError> {
+    ) -> Result<StoragePaths, ClientError> {
         let url = api::Client::validate_url(
             url.or(self.default_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
@@ -244,6 +249,10 @@ impl Config {
         let host = url.host().unwrap().to_string().to_ascii_lowercase();
         let registries_dir = self.registries_dir()?.join(host);
         let content_dir = self.content_dir()?;
-        Ok((url, registries_dir, content_dir))
+        Ok(StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        })
     }
 }

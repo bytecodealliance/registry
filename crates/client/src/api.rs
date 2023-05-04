@@ -22,7 +22,7 @@ use warg_protocol::{
     ProtoEnvelopeBody,
 };
 use warg_transparency::{
-    log::{LogData, LogProofBundle, ProofBundle, VecLog},
+    log::{LogProofBundle, ProofBundle},
     map::MapProofBundle,
 };
 

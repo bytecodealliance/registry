@@ -56,11 +56,8 @@ impl ConfigCommand {
         // `write_to_file` will handle normalizing the paths to be relative to
         // the configuration file's directory.
         let cwd = std::env::current_dir().context("failed to determine current directory")?;
-        let mut registries = Vec::new();
-        registries.push(String::from("dogfood"));
         let config = Config {
             default_url,
-            registries,
             registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
         };

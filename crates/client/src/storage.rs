@@ -19,43 +19,41 @@ use warg_protocol::{
 mod fs;
 pub use fs::*;
 
-/// Trait for package storage implementations.
+/// Trait for registry storage implementations.
 ///
-/// Package storage data must be synchronized if shared between
+/// Stores information such as package/operator logs and checkpoints
+/// on a per-registry basis.
+///
+/// Registry storage data must be synchronized if shared between
 /// multiple threads and processes.
 #[async_trait]
 pub trait RegistryStorage: Send + Sync {
     ///  Loads most recent checkpoint
-    async fn load_checkpoint(&self, registry: &str)
-        -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
 
     ///  Stores most recent checkpoint
-    async fn store_checkpoint(
-        &self,
-        registry: &str,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
-    ) -> Result<()>;
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
-    async fn load_packages(&self, registry: &str) -> Result<Vec<PackageInfo>>;
+    async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
 
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package(&self, registry: &str, package: &str) -> Result<Option<PackageInfo>>;
+    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
-    async fn store_package(&self, registry: &str, info: &PackageInfo) -> Result<()>;
+    async fn store_package(&self, info: &PackageInfo) -> Result<()>;
 
     /// Loads information about a pending publish operation.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_publish(&self, registry: &str) -> Result<Option<PublishInfo>>;
+    async fn load_publish(&self) -> Result<Option<PublishInfo>>;
 
     /// Stores information about a pending publish operation.
     ///
     /// If the info is `None`, the any existing publish information is deleted.
-    async fn store_publish(&self, registry: &str, info: Option<&PublishInfo>) -> Result<()>;
+    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()>;
 }
 
 /// Trait for content storage implementations.
