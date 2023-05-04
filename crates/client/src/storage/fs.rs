@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, PackageStorage, PublishInfo};
+use super::{ContentStorage, PackageInfo, PackageStorage, CheckpointStorage, PublishInfo};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -26,6 +26,58 @@ use warg_protocol::{
 const TEMP_DIRECTORY: &str = "temp";
 const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
 const LOCK_FILE_NAME: &str = ".lock";
+
+/// Represents a checkpoint storage using the local file system
+pub struct FileSystemCheckpointStorage {
+  _lock: FileLock,
+  base_dir: PathBuf
+}
+
+impl FileSystemCheckpointStorage {
+/// Locks a new checkpoint storage at the given base directory.
+  ///
+  /// The base directory will be created if it does not exist.
+  ///
+  /// If the lock cannot be immediately acquired, this function
+  /// will block.
+  pub fn try_lock(base_dir: impl Into<PathBuf>) -> Result<Option<Self>> {
+    let base_dir = base_dir.into();
+    match FileLock::try_open_rw(base_dir.join(LOCK_FILE_NAME))? {
+        Some(lock) => Ok(Some(Self {
+            _lock: lock,
+            base_dir,
+        })),
+        None => Ok(None),
+    }
+  }
+  /// Locks a new checkpoint storage at the given base directory.
+    ///
+    /// The base directory will be created if it does not exist.
+    ///
+    /// If the lock cannot be immediately acquired, this function
+    /// will block.
+    pub fn lock(base_dir: impl Into<PathBuf>) -> Result<Self> {
+      let base_dir = base_dir.into();
+      let lock = FileLock::open_rw(base_dir.join(LOCK_FILE_NAME))?;
+      Ok(Self {
+          _lock: lock,
+          base_dir,
+      })
+  }
+}
+
+#[async_trait]
+impl CheckpointStorage for FileSystemCheckpointStorage {
+  async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+    let contents = load(&self.base_dir.join("latest")).await;
+    contents
+  }
+
+  async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>{
+    store(&self.base_dir.join("latest"), checkpoint).await;
+    Ok(())
+  }
+}
 
 /// Represents a package storage using the local file system.
 pub struct FileSystemPackageStorage {
@@ -119,16 +171,6 @@ impl PackageStorage for FileSystemPackageStorage {
 
     async fn store_package(&self, info: &PackageInfo) -> Result<()> {
         store(&self.package_path(&info.name), info).await
-    }
-
-    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
-        let checkpoint = load(&self.package_path("checkpoint")).await?;
-        Ok(checkpoint)
-    }
-
-    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
-        store(&self.package_path("checkpoint"), checkpoint).await?;
-        Ok(())
     }
 
     async fn load_publish(&self) -> Result<Option<PublishInfo>> {

@@ -18,6 +18,10 @@ pub struct ConfigCommand {
     #[clap(long, value_name = "CONTENT")]
     pub content_dir: Option<PathBuf>,
 
+    /// The path to the content directory to use.
+    #[clap(long, value_name = "CHECKPOINT")]
+    pub checkpoint_path: Option<PathBuf>,
+
     /// Overwrite the existing configuration file.
     #[clap(long)]
     pub overwrite: bool,
@@ -61,6 +65,7 @@ impl ConfigCommand {
             default_url,
             packages_dir: self.packages_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
+            checkpoint_path: self.checkpoint_path.map(|p| cwd.join(p)),
         };
 
         config.write_to_file(&path)?;

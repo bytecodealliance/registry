@@ -97,6 +97,7 @@ pub async fn spawn_server(
         default_url: Some(format!("http://{addr}")),
         packages_dir: Some(root.join("packages")),
         content_dir: Some(root.join("content")),
+        checkpoint_path: Some(root.join("checkpoint")),
     };
 
     Ok((instance, config))

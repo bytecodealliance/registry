@@ -7,7 +7,7 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PackageStorage, PublishInfo,
+    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, FileSystemCheckpointStorage, PackageStorage, CheckpointStorage, PublishInfo,
 };
 use thiserror::Error;
 use warg_api::{
@@ -33,20 +33,22 @@ pub mod storage;
 pub use self::config::*;
 
 /// A client for a Warg registry.
-pub struct Client<P, C> {
+pub struct Client<P, C, T> {
     packages: P,
     content: C,
     api: api::Client,
+    checkpoint: T
 }
 
-impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
+impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T> {
     /// Creates a new client for the given URL, package storage, and
     /// content storage.
-    pub fn new(url: impl IntoUrl, packages: P, content: C) -> ClientResult<Self> {
+    pub fn new(url: impl IntoUrl, packages: P, content: C, checkpoint: T) -> ClientResult<Self> {
         Ok(Self {
             packages,
             content,
             api: api::Client::new(url)?,
+            checkpoint
         })
     }
 
@@ -369,7 +371,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
             self.packages.store_package(package).await?;
         }
 
-        let old_checkpoint = self.packages.load_checkpoint().await?;
+        let old_checkpoint = self.checkpoint.load_checkpoint().await?;
         if let Some(cp) = old_checkpoint {
             let old_cp = cp.as_ref().clone();
             let new_cp = checkpoint.as_ref().clone();
@@ -377,7 +379,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
-        self.packages.store_checkpoint(checkpoint.clone()).await?;
+        self.checkpoint.store_checkpoint(checkpoint.clone()).await?;
 
         Ok(())
     }
@@ -453,7 +455,7 @@ impl<P: PackageStorage, C: ContentStorage> Client<P, C> {
 
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
-pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage>;
+pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage, FileSystemCheckpointStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -476,19 +478,21 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir, checkpoint_path) = config.storage_paths_for_url(url)?;
 
-        let (packages, content) = match (
+        let (packages, content, checkpoint) = match (
             FileSystemPackageStorage::try_lock(packages_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
+            FileSystemCheckpointStorage::try_lock(checkpoint_path.clone())?,
         ) {
-            (Some(packages), Some(content)) => (packages, content),
-            (None, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
-            (_, None) => return Ok(StorageLockResult::NotAcquired(content_dir)),
+            (Some(packages), Some(content), Some(checkpoint)) => (packages, content, checkpoint),
+            (None, _, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
+            (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
+            (_, _, None) => return Ok(StorageLockResult::NotAcquired(checkpoint_path)),
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content,
+            url, packages, content, checkpoint
         )?))
     }
 
@@ -499,11 +503,12 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir, checkpoint_path) = config.storage_paths_for_url(url)?;
         Self::new(
             url,
             FileSystemPackageStorage::lock(packages_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
+            FileSystemCheckpointStorage::lock(checkpoint_path)?
         )
     }
 }

@@ -85,6 +85,15 @@ pub struct Config {
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_dir: Option<PathBuf>,
+
+    /// The path to the directory where package content is stored.
+    ///
+    /// This path is expected to be relative to the configuration file.
+    ///
+    /// If `None`, the default of `$CACHE_DIR/warg/checkpoint` is used, where
+    /// `$CACHE_DIR` is the platform-specific cache directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_path: Option<PathBuf>
 }
 
 impl Config {
@@ -105,6 +114,7 @@ impl Config {
         if let Some(parent) = path.parent() {
             config.packages_dir = config.packages_dir.map(|p| parent.join(p));
             config.content_dir = config.content_dir.map(|p| parent.join(p));
+            config.checkpoint_path = config.checkpoint_path.map(|p| parent.join(p));
         }
 
         Ok(config)
@@ -156,6 +166,7 @@ impl Config {
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
+            checkpoint_path: Some(self.checkpoint_path().unwrap())
         };
 
         serde_json::to_writer_pretty(
@@ -228,10 +239,24 @@ impl Config {
             })
     }
 
+    /// Gets the path to the file where the previously fetched checkpoint is stored
+    pub fn checkpoint_path(&self) -> Result<PathBuf> {
+      self.checkpoint_path
+        .as_ref()
+        .cloned()
+        .map(Ok)
+        .unwrap_or_else(|| {
+        CACHE_DIR
+            .as_ref()
+            .map(|p| p.join("warg/checkpoint"))
+            .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
+        })
+    }
+
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
-    ) -> Result<(Url, PathBuf, PathBuf), ClientError> {
+    ) -> Result<(Url, PathBuf, PathBuf, PathBuf), ClientError> {
         let url = api::Client::validate_url(
             url.or(self.default_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
@@ -240,6 +265,7 @@ impl Config {
         let host = url.host().unwrap().to_string().to_ascii_lowercase();
         let packages_dir = self.packages_dir()?.join(host);
         let content_dir = self.content_dir()?;
-        Ok((url, packages_dir, content_dir))
+        let checkpoint_path: PathBuf = self.checkpoint_path()?;
+        Ok((url, packages_dir, content_dir, checkpoint_path))
     }
 }
