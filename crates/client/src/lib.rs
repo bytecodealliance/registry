@@ -7,8 +7,8 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    ContentStorage, FileSystemContentStorage,
-    FileSystemPackageStorage, RegistryStorage, PublishInfo,
+    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PublishInfo,
+    RegistryStorage,
 };
 use thiserror::Error;
 use warg_api::{
@@ -378,7 +378,9 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
-        self.packages.store_checkpoint("dogfood", checkpoint.clone()).await?;
+        self.packages
+            .store_checkpoint("dogfood", checkpoint.clone())
+            .await?;
 
         Ok(())
     }
@@ -454,8 +456,7 @@ impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
 
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
-pub type FileSystemClient =
-    Client<FileSystemPackageStorage, FileSystemContentStorage>;
+pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -478,8 +479,7 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir ) =
-            config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
             FileSystemPackageStorage::try_lock(packages_dir.clone())?,
@@ -491,7 +491,7 @@ impl FileSystemClient {
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content
+            url, packages, content,
         )?))
     }
 
@@ -502,8 +502,7 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir) =
-            config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
         Self::new(
             url,
             FileSystemPackageStorage::lock(packages_dir)?,

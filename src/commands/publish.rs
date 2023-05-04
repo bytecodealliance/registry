@@ -6,7 +6,7 @@ use std::{env, future::Future, path::PathBuf};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
-    storage::{ContentStorage as _, RegistryStorage as _, PublishEntry, PublishInfo},
+    storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
     FileSystemClient,
 };
 use warg_crypto::signing;
@@ -50,7 +50,10 @@ where
             }
 
             info.entries.push(entry);
-            client.packages().store_publish("dogfood", Some(&info)).await?;
+            client
+                .packages()
+                .store_publish("dogfood", Some(&info))
+                .await?;
             Ok(None)
         }
         None => Ok(Some(entry(client).await?)),

@@ -26,10 +26,15 @@ pub use fs::*;
 #[async_trait]
 pub trait RegistryStorage: Send + Sync {
     ///  Loads most recent checkpoint
-    async fn load_checkpoint(&self, registry: &str) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
-    
+    async fn load_checkpoint(&self, registry: &str)
+        -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
+
     ///  Stores most recent checkpoint
-    async fn store_checkpoint(&self, registry: &str, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+    async fn store_checkpoint(
+        &self,
+        registry: &str,
+        checkpoint: SerdeEnvelope<MapCheckpoint>,
+    ) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
     async fn load_packages(&self, registry: &str) -> Result<Vec<PackageInfo>>;

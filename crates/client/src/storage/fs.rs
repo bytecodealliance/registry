@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, RegistryStorage, PublishInfo};
+use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -80,12 +80,19 @@ impl FileSystemPackageStorage {
 
 #[async_trait]
 impl RegistryStorage for FileSystemPackageStorage {
-    async fn load_checkpoint(&self, registry: &str) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+    async fn load_checkpoint(
+        &self,
+        registry: &str,
+    ) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
         let contents = load(&self.base_dir.join(registry).join("latest")).await;
         contents
     }
 
-    async fn store_checkpoint(&self, registry: &str, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+    async fn store_checkpoint(
+        &self,
+        registry: &str,
+        checkpoint: SerdeEnvelope<MapCheckpoint>,
+    ) -> Result<()> {
         store(&self.base_dir.join(registry).join("latest"), checkpoint).await;
         Ok(())
     }
@@ -131,9 +138,11 @@ impl RegistryStorage for FileSystemPackageStorage {
     }
 
     async fn load_publish(&self, registry: &str) -> Result<Option<PublishInfo>> {
-        Ok(load(&self.base_dir.join(registry).join(PENDING_PUBLISH_FILE))
-            .await?
-            .unwrap_or_default())
+        Ok(
+            load(&self.base_dir.join(registry).join(PENDING_PUBLISH_FILE))
+                .await?
+                .unwrap_or_default(),
+        )
     }
 
     async fn store_publish(&self, registry: &str, info: Option<&PublishInfo>) -> Result<()> {
