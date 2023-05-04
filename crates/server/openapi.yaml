@@ -90,7 +90,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /fetch/checkpoint:
     get:
-      summary: Get latest registry checkpoint
+      summary: Fetch latest registry checkpoint
       operationId: getCheckpoint
       security: []
       tags:
@@ -103,47 +103,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FetchCheckpointResponse"
-        default:
-          description: An error occurred when processing the request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /package:
-    post:
-      summary: Create a package log.
-      operationId: createPackageLog
-      security: []
-      tags:
-        - package
-      description: |
-        Creates a new empty package log.
-
-        The signature must be from a key that is authorized to create a package log for the given name.
-
-        The signature is of the package name; the package metadata is not signed.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreatePackageLogRequest"
-      responses:
-        "200":
-          description: A new package log was created.
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/PackageLog"
-        "303":
-          description: The package log already exists.
-          headers:
-            Location:
-              description: The URL of the existing package log.
-              schema:
-                type: string
-                format: uri
-                example: https://example.com/package/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
         default:
           description: An error occurred when processing the request.
           content:
@@ -202,44 +161,6 @@ paths:
                     "$ref": "#/components/schemas/AnyHash"
                     description: |
                       The identifier of the entity that was not found.
-        default:
-          description: An error occurred when processing the request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    patch:
-      summary: Update the information of a package log.
-      operationId: updatePackageLog
-      security: []
-      tags:
-        - package
-      description: |
-        Updates the information of a package log.
-
-        The signature must be from a key that is authorized to update the package log.
-
-        The signature is of the package log identifier; the package metadata is not signed.
-      parameters:
-        - name: logId
-          in: path
-          description: The package log identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdatePackageLogRequest"
-      responses:
-        "200":
-          description: The package log information was updated.
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/PackageLog"
         default:
           description: An error occurred when processing the request.
           content:
@@ -674,11 +595,11 @@ components:
       description: A request to fetch logs from the registrsy.
       additionalProperties: false
       required:
-        - root
+        - checkpoint
       properties:
-        root:
+        checkpoint:
           $ref: "#/components/schemas/AnyHash"
-          description: The root checkpoint of the registry.
+          description: The checkpoint of the registry to fetch from.
         maximumRecords:
           type: integer
           description: The maximum number of operator or package records to return.
@@ -720,7 +641,7 @@ components:
           example: false
         operator:
           type: array
-          description: The operator log records for the given root checkpoint since the last known record.
+          description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
             $ref: "#/components/schemas/EnvelopeBody"
@@ -730,7 +651,7 @@ components:
           patternProperties:
             "^sha256:[a-f0-9]{64,64}$":
               type: array
-              description: The package log records for the given root checkpoint since the last known record.
+              description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
                 $ref: "#/components/schemas/EnvelopeBody"
@@ -761,33 +682,6 @@ components:
                 contents:
                   $ref: "#/components/schemas/MapCheckpoint"
             - $ref: "#/components/schemas/Signature"
-    CreatePackageLogRequest:
-      type: object
-      description: A request to create a new package log.
-      allOf:
-        - type: object
-          required:
-            - name
-          properties:
-            name:
-              type: string
-              description: The name of the package log.
-              maxLength: 128
-              example: wasi:http
-            metadata:
-              "$ref": "#/components/schemas/PackageMetadata"
-              description: The metadata for the package log.
-        - $ref: "#/components/schemas/Signature"
-    UpdatePackageLogRequest:
-      type: object
-      description: A request to update information for a package log.
-      allOf:
-        - type: object
-          properties:
-            metadata:
-              "$ref": "#/components/schemas/PackageMetadata"
-              description: The metadata to update for the package log.
-        - $ref: "#/components/schemas/Signature"
     AppendPackageRecordRequest:
       type: object
       description: A request to append a record to a package log.
@@ -823,7 +717,6 @@ components:
       description: Information of a package log.
       additionalProperties: false
       required:
-        - name
         - id
       properties:
         name:
