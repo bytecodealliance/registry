@@ -3425,6 +3425,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "rand",
+ "regex",
  "serde",
  "serde_bytes",
  "sha2",
