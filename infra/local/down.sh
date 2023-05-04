@@ -25,3 +25,4 @@ docker-compose --env-file "$SCRIPT_DIR/.env" \
   down --remove-orphans --volumes
 
 find "$SCRIPT_DIR" -type f -name '*.local.*' -exec rm -f '{}' \;
+rm -rf "$SCRIPT_DIR/.secrets"

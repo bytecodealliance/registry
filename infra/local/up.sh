@@ -22,6 +22,11 @@ fi
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/locals.inc.sh"
 
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/secrets.inc.sh"
+
+generate_secrets
+
 docker-compose --env-file "$SCRIPT_DIR/.env" \
   -f "$REPO_DIR/docker-compose.yaml" \
   -f "$REPO_DIR/docker-compose.postgres.yaml" \

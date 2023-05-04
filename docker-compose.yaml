@@ -2,19 +2,13 @@
 version: '3'
 name: bytecodealliance-registry
 services:
-  operator-key:
-    container_name: operator-key
+  import-secrets:
+    container_name: import-secrets
     image: debian:bullseye-slim
-    # TODO: generate operator-key at runtime
-    command:
-      - /bin/bash
-      - -c
-      - >-
-        if [[ ! -f /var/secrets/warg/operator-key ]]; then
-          echo -n "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" >/var/secrets/warg/operator-key
-        fi
+    command: ["cp", "-v", "-R", "-T", "/src/secrets/warg", "/var/secrets/warg"]
     volumes:
       - warg-secrets:/var/secrets/warg:rw
+      - ./infra/local/.secrets:/src/secrets/warg:ro
   warg-registry:
     build:
       target: warg-server
@@ -22,16 +16,19 @@ services:
         - FEATURES=postgres
     ports:
       - '${WARG_SERVER_LISTEN_ADDRESS?e.g., 127.0.0.1:17513}:8090'
+    # Set the base settings with environment variables.
+    # NOTE: Test for cli environment variables support.
     environment:
-      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator-key
-    command: 
-      - --content-dir
-      - /var/run/warg/server-content
+      - CONTENT_DIR=/var/run/warg/server-content
+      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
     volumes:
       - warg-server-content:/var/run/warg/server-content:rw
       - warg-secrets:/var/secrets/warg:ro
     networks:
       - infra
+    depends_on:
+      import-secrets:
+        condition: service_completed_successfully
 volumes:
   warg-server-content:
   warg-secrets:

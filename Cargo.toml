@@ -50,7 +50,7 @@ warg-crypto = { path = "crates/crypto" }
 warg-protocol = { path = "crates/protocol" }
 warg-transparency = { path = "crates/transparency" }
 warg-server = { path = "crates/server" }
-clap = { version = "4.1.8", features = ["derive"] }
+clap = { version = "4.1.8", features = ["derive", "env"] }
 thiserror = "1.0.39"
 anyhow = "1.0.69"
 serde = { version = "1.0.156", features = ["derive", "rc"] }
