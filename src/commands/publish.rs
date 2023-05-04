@@ -6,7 +6,7 @@ use std::{env, future::Future, path::PathBuf};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
-    storage::{ContentStorage as _, PackageStorage as _, PublishEntry, PublishInfo},
+    storage::{ContentStorage as _, RegistryStorage as _, PublishEntry, PublishInfo},
     FileSystemClient,
 };
 use warg_crypto::signing;
@@ -31,7 +31,7 @@ async fn enqueue<'a, T>(
 where
     T: Future<Output = Result<PublishEntry>> + 'a,
 {
-    match client.packages().load_publish().await? {
+    match client.packages().load_publish("dogfood").await? {
         Some(mut info) => {
             if info.package != name {
                 bail!(
@@ -50,7 +50,7 @@ where
             }
 
             info.entries.push(entry);
-            client.packages().store_publish(Some(&info)).await?;
+            client.packages().store_publish("dogfood", Some(&info)).await?;
             Ok(None)
         }
         None => Ok(Some(entry(client).await?)),
@@ -238,10 +238,10 @@ impl PublishStartCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match client.packages().load_publish().await? {
+        match client.packages().load_publish("dogfood").await? {
             Some(info) => bail!("a publish is already in progress for package `{package}`; use `publish abort` to abort the current publish", package = info.package),
             None => {
-                client.packages().store_publish(Some(&PublishInfo {
+                client.packages().store_publish("dogfood", Some(&PublishInfo {
                     package: self.name.clone(),
                     entries: Default::default(),
                 }))
@@ -271,7 +271,7 @@ impl PublishListCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match client.packages().load_publish().await? {
+        match client.packages().load_publish("dogfood").await? {
             Some(info) => {
                 println!(
                     "publishing package `{package}` with {count} record(s) to publish\n",
@@ -312,9 +312,9 @@ impl PublishAbortCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match client.packages().load_publish().await? {
+        match client.packages().load_publish("dogfood").await? {
             Some(info) => {
-                client.packages().store_publish(None).await?;
+                client.packages().store_publish("dogfood", None).await?;
                 println!(
                     "aborted the pending publish for package `{package}`",
                     package = info.package
@@ -341,7 +341,7 @@ impl PublishSubmitCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match client.packages().load_publish().await? {
+        match client.packages().load_publish("dogfood").await? {
             Some(info) => {
                 println!(
                     "submitting publish for package `{package}`...",
@@ -350,7 +350,7 @@ impl PublishSubmitCommand {
 
                 submit(&client, info.clone()).await?;
 
-                client.packages().store_publish(None).await?;
+                client.packages().store_publish("dogfood", None).await?;
 
                 for entry in &info.entries {
                     match entry {

@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{CheckpointStorage, ContentStorage, PackageInfo, PackageStorage, PublishInfo};
+use super::{ContentStorage, PackageInfo, RegistryStorage, PublishInfo};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -26,58 +26,6 @@ use warg_protocol::{
 const TEMP_DIRECTORY: &str = "temp";
 const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
 const LOCK_FILE_NAME: &str = ".lock";
-
-/// Represents a checkpoint storage using the local file system
-pub struct FileSystemCheckpointStorage {
-    _lock: FileLock,
-    base_dir: PathBuf,
-}
-
-impl FileSystemCheckpointStorage {
-    /// Locks a new checkpoint storage at the given base directory.
-    ///
-    /// The base directory will be created if it does not exist.
-    ///
-    /// If the lock cannot be immediately acquired, this function
-    /// will block.
-    pub fn try_lock(base_dir: impl Into<PathBuf>) -> Result<Option<Self>> {
-        let base_dir = base_dir.into();
-        match FileLock::try_open_rw(base_dir.join(LOCK_FILE_NAME))? {
-            Some(lock) => Ok(Some(Self {
-                _lock: lock,
-                base_dir,
-            })),
-            None => Ok(None),
-        }
-    }
-    /// Locks a new checkpoint storage at the given base directory.
-    ///
-    /// The base directory will be created if it does not exist.
-    ///
-    /// If the lock cannot be immediately acquired, this function
-    /// will block.
-    pub fn lock(base_dir: impl Into<PathBuf>) -> Result<Self> {
-        let base_dir = base_dir.into();
-        let lock = FileLock::open_rw(base_dir.join(LOCK_FILE_NAME))?;
-        Ok(Self {
-            _lock: lock,
-            base_dir,
-        })
-    }
-}
-
-#[async_trait]
-impl CheckpointStorage for FileSystemCheckpointStorage {
-    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
-        let contents = load(&self.base_dir.join("latest")).await;
-        contents
-    }
-
-    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
-        store(&self.base_dir.join("latest"), checkpoint).await;
-        Ok(())
-    }
-}
 
 /// Represents a package storage using the local file system.
 pub struct FileSystemPackageStorage {
@@ -117,29 +65,38 @@ impl FileSystemPackageStorage {
         })
     }
 
-    fn package_path(&self, name: &str) -> PathBuf {
-        self.base_dir.join(
+    fn package_path(&self, registry: &str, name: &str) -> PathBuf {
+        self.base_dir.join(registry).join(
             LogId::package_log::<Sha256>(name)
                 .to_string()
                 .replace(':', "/"),
         )
     }
 
-    fn pending_publish_path(&self) -> PathBuf {
-        self.base_dir.join(PENDING_PUBLISH_FILE)
+    fn pending_publish_path(&self, registry: &str) -> PathBuf {
+        self.base_dir.join(registry).join(PENDING_PUBLISH_FILE)
     }
 }
 
 #[async_trait]
-impl PackageStorage for FileSystemPackageStorage {
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
+impl RegistryStorage for FileSystemPackageStorage {
+    async fn load_checkpoint(&self, registry: &str) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+        let contents = load(&self.base_dir.join(registry).join("latest")).await;
+        contents
+    }
+
+    async fn store_checkpoint(&self, registry: &str, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+        store(&self.base_dir.join(registry).join("latest"), checkpoint).await;
+        Ok(())
+    }
+    async fn load_packages(&self, registry: &str) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();
 
-        for entry in WalkDir::new(&self.base_dir) {
+        for entry in WalkDir::new(&self.base_dir.join(registry)) {
             let entry = entry.with_context(|| {
                 anyhow!(
                     "failed to walk directory `{path}`",
-                    path = self.base_dir.display()
+                    path = self.base_dir.join(registry).display()
                 )
             })?;
 
@@ -165,22 +122,22 @@ impl PackageStorage for FileSystemPackageStorage {
         Ok(packages)
     }
 
-    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {
-        Ok(load(&self.package_path(package)).await?)
+    async fn load_package(&self, registry: &str, package: &str) -> Result<Option<PackageInfo>> {
+        Ok(load(&self.package_path(registry, package)).await?)
     }
 
-    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
-        store(&self.package_path(&info.name), info).await
+    async fn store_package(&self, registry: &str, info: &PackageInfo) -> Result<()> {
+        store(&self.package_path(registry, &info.name), info).await
     }
 
-    async fn load_publish(&self) -> Result<Option<PublishInfo>> {
-        Ok(load(&self.base_dir.join(PENDING_PUBLISH_FILE))
+    async fn load_publish(&self, registry: &str) -> Result<Option<PublishInfo>> {
+        Ok(load(&self.base_dir.join(registry).join(PENDING_PUBLISH_FILE))
             .await?
             .unwrap_or_default())
     }
 
-    async fn store_publish(&self, info: Option<&PublishInfo>) -> Result<()> {
-        let path = self.pending_publish_path();
+    async fn store_publish(&self, registry: &str, info: Option<&PublishInfo>) -> Result<()> {
+        let path = self.pending_publish_path(registry);
         match info {
             Some(info) => store(&path, info).await,
             None => delete(&path).await,

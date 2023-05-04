@@ -7,8 +7,8 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    CheckpointStorage, ContentStorage, FileSystemCheckpointStorage, FileSystemContentStorage,
-    FileSystemPackageStorage, PackageStorage, PublishInfo,
+    ContentStorage, FileSystemContentStorage,
+    FileSystemPackageStorage, RegistryStorage, PublishInfo,
 };
 use thiserror::Error;
 use warg_api::{
@@ -34,22 +34,20 @@ pub mod storage;
 pub use self::config::*;
 
 /// A client for a Warg registry.
-pub struct Client<P, C, T> {
+pub struct Client<P, C> {
     packages: P,
     content: C,
     api: api::Client,
-    checkpoint: T,
 }
 
-impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T> {
+impl<P: RegistryStorage, C: ContentStorage> Client<P, C> {
     /// Creates a new client for the given URL, package storage, and
     /// content storage.
-    pub fn new(url: impl IntoUrl, packages: P, content: C, checkpoint: T) -> ClientResult<Self> {
+    pub fn new(url: impl IntoUrl, packages: P, content: C) -> ClientResult<Self> {
         Ok(Self {
             packages,
             content,
             api: api::Client::new(url)?,
-            checkpoint,
         })
     }
 
@@ -74,12 +72,12 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
     pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<()> {
         let info = self
             .packages
-            .load_publish()
+            .load_publish("dogfood")
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
         let res = self.publish_with_info(signing_key, info).await;
-        self.packages.store_publish(None).await?;
+        self.packages.store_publish("dogfood", None).await?;
         res
     }
 
@@ -107,7 +105,7 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
 
         let mut package = self
             .packages
-            .load_package(&info.package)
+            .load_package("dogfood", &info.package)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.package.clone()));
 
@@ -180,7 +178,7 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
     pub async fn update(&self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
 
-        let mut updating = self.packages.load_packages().await?;
+        let mut updating = self.packages.load_packages("dogfood").await?;
         self.update_checkpoint(
             &self.api.latest_checkpoint().await?.checkpoint,
             &mut updating,
@@ -199,7 +197,7 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
         for package in packages {
             updating.push(
                 self.packages
-                    .load_package(package)
+                    .load_package("dogfood", package)
                     .await?
                     .unwrap_or_else(|| PackageInfo::new(*package)),
             );
@@ -369,10 +367,10 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            self.packages.store_package(package).await?;
+            self.packages.store_package("dogfood", package).await?;
         }
 
-        let old_checkpoint = self.checkpoint.load_checkpoint().await?;
+        let old_checkpoint = self.packages.load_checkpoint("dogfood").await?;
         if let Some(cp) = old_checkpoint {
             let old_cp = cp.as_ref().clone();
             let new_cp = checkpoint.as_ref().clone();
@@ -380,13 +378,13 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
-        self.checkpoint.store_checkpoint(checkpoint.clone()).await?;
+        self.packages.store_checkpoint("dogfood", checkpoint.clone()).await?;
 
         Ok(())
     }
 
     async fn fetch_package(&self, name: &str) -> Result<PackageInfo, ClientError> {
-        match self.packages.load_package(name).await? {
+        match self.packages.load_package("dogfood", name).await? {
             Some(info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
@@ -457,7 +455,7 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
 pub type FileSystemClient =
-    Client<FileSystemPackageStorage, FileSystemContentStorage, FileSystemCheckpointStorage>;
+    Client<FileSystemPackageStorage, FileSystemContentStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -480,22 +478,20 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir, checkpoint_path) =
+        let (url, packages_dir, content_dir ) =
             config.storage_paths_for_url(url)?;
 
-        let (packages, content, checkpoint) = match (
+        let (packages, content) = match (
             FileSystemPackageStorage::try_lock(packages_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
-            FileSystemCheckpointStorage::try_lock(checkpoint_path.clone())?,
         ) {
-            (Some(packages), Some(content), Some(checkpoint)) => (packages, content, checkpoint),
-            (None, _, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
-            (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
-            (_, _, None) => return Ok(StorageLockResult::NotAcquired(checkpoint_path)),
+            (Some(packages), Some(content)) => (packages, content),
+            (None, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
+            (_, None) => return Ok(StorageLockResult::NotAcquired(content_dir)),
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content, checkpoint,
+            url, packages, content
         )?))
     }
 
@@ -506,13 +502,12 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir, checkpoint_path) =
+        let (url, packages_dir, content_dir) =
             config.storage_paths_for_url(url)?;
         Self::new(
             url,
             FileSystemPackageStorage::lock(packages_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
-            FileSystemCheckpointStorage::lock(checkpoint_path)?,
         )
     }
 }

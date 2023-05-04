@@ -93,11 +93,13 @@ pub async fn spawn_server(
         shutdown,
     };
 
+    let mut registries = Vec::new();
+    registries.push(String::from("dogfood"));
     let config = warg_client::Config {
         default_url: Some(format!("http://{addr}")),
-        packages_dir: Some(root.join("packages")),
+        registries,
+        registries_dir: Some(root.join("registries")),
         content_dir: Some(root.join("content")),
-        checkpoint_path: Some(root.join("checkpoint")),
     };
 
     Ok((instance, config))
