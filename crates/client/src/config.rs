@@ -60,6 +60,15 @@ fn normalize_path(path: &Path) -> PathBuf {
     ret
 }
 
+/// Paths used for storage
+pub struct StoragePaths {
+    /// url path
+    pub url: Url,
+    /// registries path
+    pub registries_dir: PathBuf,
+    /// content path
+    pub content_dir: PathBuf,
+}
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -235,7 +244,7 @@ impl Config {
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
-    ) -> Result<(Url, PathBuf, PathBuf), ClientError> {
+    ) -> Result<StoragePaths, ClientError> {
         let url = api::Client::validate_url(
             url.or(self.default_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
@@ -244,6 +253,10 @@ impl Config {
         let host = url.host().unwrap().to_string().to_ascii_lowercase();
         let registries_dir = self.registries_dir()?.join(host);
         let content_dir = self.content_dir()?;
-        Ok((url, registries_dir, content_dir))
+        Ok(StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        })
     }
 }

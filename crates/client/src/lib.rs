@@ -479,14 +479,18 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        } = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
-            FileSystemPackageStorage::try_lock(packages_dir.clone())?,
+            FileSystemPackageStorage::try_lock(registries_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
         ) {
             (Some(packages), Some(content)) => (packages, content),
-            (None, _) => return Ok(StorageLockResult::NotAcquired(packages_dir)),
+            (None, _) => return Ok(StorageLockResult::NotAcquired(registries_dir)),
             (_, None) => return Ok(StorageLockResult::NotAcquired(content_dir)),
         };
 
@@ -502,10 +506,14 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir) = config.storage_paths_for_url(url)?;
+        let StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        } = config.storage_paths_for_url(url)?;
         Self::new(
             url,
-            FileSystemPackageStorage::lock(packages_dir)?,
+            FileSystemPackageStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )
     }
