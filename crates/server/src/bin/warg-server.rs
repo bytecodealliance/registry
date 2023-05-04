@@ -3,9 +3,8 @@ use clap::{Parser, ValueEnum};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
-use warg_args_util::get_opt_content;
 use warg_crypto::signing::PrivateKey;
-use warg_server::{Config, Server};
+use warg_server::{args::get_opt_content, Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
