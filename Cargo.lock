@@ -3409,6 +3409,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "warg-api",
+ "warg-args-util",
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",

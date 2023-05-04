@@ -1,13 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use std::{
-    fs::File,
-    io::prelude::Read,
-    net::SocketAddr,
-    path::{Path, PathBuf},
-};
+use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
+use warg_args_util::get_opt_content;
 use warg_crypto::signing::PrivateKey;
 use warg_server::{Config, Server};
 
@@ -22,20 +18,47 @@ enum DataStoreKind {
 #[derive(Parser, Debug)]
 struct Args {
     /// Use verbose output
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    #[arg(short, long, env = "VERBOSE", action = clap::ArgAction::Count)]
     verbose: u8,
 
     /// Address to listen to
-    #[arg(short, long, default_value = "127.0.0.1:8090")]
+    #[arg(short, long, env = "LISTEN", default_value = "127.0.0.1:8090")]
     listen: SocketAddr,
 
     /// Enable content service, with storage in the given directory
-    #[arg(long)]
+    #[arg(long, env = "CONTENT_DIR")]
     content_dir: Option<PathBuf>,
 
     /// The data store to use for the server.
-    #[arg(long, default_value = "memory")]
+    #[arg(long, env = "DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
+
+    /// The database connection URL if data-store is set to postgres.
+    ///
+    /// Prefer using database-url-file, or environment variable variation,
+    /// to avoid exposing sensitive information.
+    #[cfg(feature = "postgres")]
+    #[arg(long, env = "DATABASE_URL")]
+    database_url: Option<String>,
+
+    /// The path to the operator key.
+    ///
+    /// Takes precedence over database-url.
+    #[cfg(feature = "postgres")]
+    #[arg(long, env = "DATABASE_URL_FILE")]
+    database_url_file: Option<PathBuf>,
+
+    /// The operator key.
+    ///
+    /// Prefer using warg-operator-key-file, or environment variable variation.
+    #[arg(long, env = "WARG_OPERATOR_KEY")]
+    warg_operator_key: Option<String>,
+
+    /// The path to the operator key.
+    ///
+    /// Takes precedence over warg-operator-key.
+    #[arg(long, env = "WARG_OPERATOR_KEY_FILE")]
+    warg_operator_key_file: Option<PathBuf>,
 }
 
 impl Args {
@@ -57,28 +80,8 @@ async fn main() -> Result<()> {
     args.init_tracing();
     tracing::debug!("args: {args:?}");
 
-    // TODO: pull the signing key from the system keyring
-    // TODO: Add --warg-operator-key[-file] and others cli options
-    let operator_key: PrivateKey = match std::env::var("WARG_OPERATOR_KEY_FILE") {
-        Ok(path_env) => {
-            let path = Path::new(&path_env);
-            let mut file = match File::open(path) {
-                Err(why) => panic!("couldn't open {}: {}", path.display(), why),
-                Ok(file) => file,
-            };
-            let mut s = String::new();
-            match file.read_to_string(&mut s) {
-                Err(why) => panic!("couldn't read {}: {}", path.display(), why),
-                Ok(_) => s,
-            }
-        },
-        Err(_) => {
-            match std::env::var("WARG_OPERATOR_KEY") {
-                Ok(key) => key,
-                Err(_) => panic!("either WARG_OPERATOR_KEY_FILE or WARG_OPERATOR_KEY environment variable needs to be set"),
-            }
-        },
-    }.parse()?;
+    let operator_key = get_operator_key(&args);
+
     let mut config = Config::new(operator_key)
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
@@ -90,14 +93,11 @@ async fn main() -> Result<()> {
     match args.data_store {
         #[cfg(feature = "postgres")]
         DataStoreKind::Postgres => {
-            use anyhow::Context;
             use warg_server::datastore::PostgresDataStore;
             tracing::info!("using postgres data store");
-            config = config.with_data_store(PostgresDataStore::new(
-                std::env::var("DATABASE_URL").context(
-                    "failed to get the PostgreSQL database URL from the `DATABASE_URL` environment variable",
-                )?,
-            )?);
+            let database_url =
+                get_opt_content("database-url", &args.database_url_file, &args.database_url);
+            config = config.with_data_store(PostgresDataStore::new(database_url)?);
         }
         DataStoreKind::Memory => {
             tracing::info!("using memory data store");
@@ -105,6 +105,22 @@ async fn main() -> Result<()> {
     }
 
     Server::new(config).run().await
+}
+
+/// Returns the operator key from the supplied `args` or panics.
+///
+/// TODO: pull the signing key from the system keyring
+fn get_operator_key(args: &Args) -> PrivateKey {
+    return match get_opt_content(
+        "warg-operator-key",
+        &args.warg_operator_key_file,
+        &args.warg_operator_key,
+    )
+    .parse()
+    {
+        Ok(operator_key) => operator_key,
+        Err(why) => panic!("couldn't parse warg-operator-key: {}", why),
+    };
 }
 
 async fn shutdown_signal() {
