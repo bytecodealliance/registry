@@ -1,4 +1,4 @@
-use super::{DataStore, DataStoreError, InitialLeaf, OperatorLogEntry, PackageLogEntry};
+use super::{DataStore, DataStoreError, InitialLeaf};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
@@ -7,16 +7,14 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use warg_api::content::ContentSource;
 use warg_crypto::hash::DynHash;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
-    ProtoEnvelope, Record as _, SerdeEnvelope,
+    ProtoEnvelope, SerdeEnvelope,
 };
 
 struct Log<V, R> {
-    name: Option<String>,
     validator: V,
     entries: Vec<ProtoEnvelope<R>>,
     checkpoint_indices: Vec<usize>,
@@ -28,7 +26,6 @@ where
 {
     fn default() -> Self {
         Self {
-            name: None,
             validator: V::default(),
             entries: Vec::new(),
             checkpoint_indices: Vec::new(),
@@ -41,8 +38,6 @@ struct Record {
     index: usize,
     /// Index in the checkpoints map.
     checkpoint_index: Option<usize>,
-    /// The related content sources (if there are any).
-    sources: Vec<ContentSource>,
 }
 
 enum PendingRecord {
@@ -50,15 +45,25 @@ enum PendingRecord {
         record: Option<ProtoEnvelope<operator::OperatorRecord>>,
     },
     Package {
-        name: String,
         record: Option<ProtoEnvelope<package::PackageRecord>>,
-        sources: Vec<ContentSource>,
+        missing: HashSet<DynHash>,
+    },
+}
+
+enum RejectedRecord {
+    Operator {
+        record: ProtoEnvelope<operator::OperatorRecord>,
+        reason: String,
+    },
+    Package {
+        record: ProtoEnvelope<package::PackageRecord>,
+        reason: String,
     },
 }
 
 enum RecordStatus {
     Pending(PendingRecord),
-    Rejected(String),
+    Rejected(RejectedRecord),
     Validated(Record),
 }
 
@@ -134,18 +139,24 @@ impl DataStore for MemoryDataStore {
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
-        match state
+        let status = state
             .records
             .get_mut(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
             .get_mut(record_id)
-        {
-            Some(s @ RecordStatus::Pending(PendingRecord::Operator { .. })) => {
-                *s = RecordStatus::Rejected(reason.to_string());
-                Ok(())
-            }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
-        }
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+
+        let record = match status {
+            RecordStatus::Pending(PendingRecord::Operator { record }) => record.take().unwrap(),
+            _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),
+        };
+
+        *status = RecordStatus::Rejected(RejectedRecord::Operator {
+            record,
+            reason: reason.to_string(),
+        });
+
+        Ok(())
     }
 
     async fn validate_operator_record(
@@ -165,53 +176,58 @@ impl DataStore for MemoryDataStore {
             .get_mut(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let res = match status {
+        match status {
             RecordStatus::Pending(PendingRecord::Operator { record }) => {
                 let record = record.take().unwrap();
                 let log = operators.entry(log_id.clone()).or_default();
-                log.validator
+                match log
+                    .validator
                     .validate(&record)
-                    .map(|_| {
+                    .map_err(DataStoreError::from)
+                {
+                    Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(record);
-                        Record {
+                        *status = RecordStatus::Validated(Record {
                             index,
                             checkpoint_index: None,
-                            sources: Default::default(),
-                        }
-                    })
-                    .map_err(Into::into)
+                        });
+                        Ok(())
+                    }
+                    Err(e) => {
+                        *status = RecordStatus::Rejected(RejectedRecord::Operator {
+                            record,
+                            reason: e.to_string(),
+                        });
+                        Err(e)
+                    }
+                }
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
-        };
-
-        match res {
-            Ok(record) => {
-                *status = RecordStatus::Validated(record);
-                Ok(())
-            }
-            Err(e) => {
-                *status = RecordStatus::Rejected(e.to_string());
-                Err(e)
-            }
         }
     }
 
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        name: &str,
+        _name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        sources: &[ContentSource],
+        missing: &HashSet<&DynHash>,
     ) -> Result<(), DataStoreError> {
+        // Ensure the set of missing hashes is a subset of the record contents.
+        debug_assert!({
+            use warg_protocol::Record;
+            let contents = record.as_ref().contents();
+            missing.is_subset(&contents)
+        });
+
         let mut state = self.0.write().await;
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {
-                name: name.to_string(),
                 record: Some(record.clone()),
-                sources: sources.to_vec(),
+                missing: missing.iter().map(|&d| d.clone()).collect(),
             }),
         );
 
@@ -227,18 +243,24 @@ impl DataStore for MemoryDataStore {
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
-        match state
+        let status = state
             .records
             .get_mut(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
             .get_mut(record_id)
-        {
-            Some(s @ RecordStatus::Pending(PendingRecord::Package { .. })) => {
-                *s = RecordStatus::Rejected(reason.to_string());
-                Ok(())
-            }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
-        }
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+
+        let record = match status {
+            RecordStatus::Pending(PendingRecord::Package { record, .. }) => record.take().unwrap(),
+            _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),
+        };
+
+        *status = RecordStatus::Rejected(RejectedRecord::Package {
+            record,
+            reason: reason.to_string(),
+        });
+
+        Ok(())
     }
 
     async fn validate_package_record(
@@ -258,58 +280,96 @@ impl DataStore for MemoryDataStore {
             .get_mut(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let res = match status {
-            RecordStatus::Pending(PendingRecord::Package {
-                name,
-                record,
-                sources,
-            }) => {
+        match status {
+            RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
-                log.name.get_or_insert_with(|| name.to_string());
-
-                let needed = record.as_ref().contents();
-                let provided = sources
-                    .iter()
-                    .map(|source| &source.digest)
-                    .collect::<HashSet<_>>();
-
-                if let Some(missing) = needed.difference(&provided).next() {
-                    Err(DataStoreError::Rejection(format!(
-                        "a content source for digest `{missing}` was not provided"
-                    )))
-                } else if let Some(extra) = provided.difference(&needed).next() {
-                    Err(DataStoreError::Rejection(format!(
-                        "a content source for digest `{extra}` was provided but not needed",
-                    )))
-                } else {
-                    drop(needed);
-                    log.validator
-                        .validate(&record)
-                        .map(|_| {
-                            let index = log.entries.len();
-                            log.entries.push(record);
-                            Record {
-                                index,
-                                checkpoint_index: None,
-                                sources: sources.to_vec(),
-                            }
-                        })
-                        .map_err(Into::into)
+                match log
+                    .validator
+                    .validate(&record)
+                    .map_err(DataStoreError::from)
+                {
+                    Ok(_) => {
+                        let index = log.entries.len();
+                        log.entries.push(record);
+                        *status = RecordStatus::Validated(Record {
+                            index,
+                            checkpoint_index: None,
+                        });
+                        Ok(())
+                    }
+                    Err(e) => {
+                        *status = RecordStatus::Rejected(RejectedRecord::Package {
+                            record,
+                            reason: e.to_string(),
+                        });
+                        Err(e)
+                    }
                 }
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
-        };
+        }
+    }
 
-        match res {
-            Ok(record) => {
-                *status = RecordStatus::Validated(record);
-                Ok(())
+    async fn is_content_missing(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError> {
+        let state = self.0.read().await;
+        let log = state
+            .records
+            .get(log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
+
+        let status = log
+            .get(record_id)
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+
+        match status {
+            RecordStatus::Pending(PendingRecord::Operator { .. }) => {
+                // Operator records have no content
+                Ok(false)
             }
-            Err(e) => {
-                *status = RecordStatus::Rejected(e.to_string());
-                Err(e)
+            RecordStatus::Pending(PendingRecord::Package { missing, .. }) => {
+                Ok(missing.contains(digest))
             }
+            _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),
+        }
+    }
+
+    async fn set_content_present(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError> {
+        let mut state = self.0.write().await;
+        let log = state
+            .records
+            .get_mut(log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
+
+        let status = log
+            .get_mut(record_id)
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+
+        match status {
+            RecordStatus::Pending(PendingRecord::Operator { .. }) => {
+                // Operator records have no content, so conceptually already present
+                Ok(false)
+            }
+            RecordStatus::Pending(PendingRecord::Package { missing, .. }) => {
+                if missing.is_empty() {
+                    return Ok(false);
+                }
+
+                // Return true if this was the last missing content
+                missing.remove(digest);
+                Ok(missing.is_empty())
+            }
+            _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),
         }
     }
 
@@ -363,6 +423,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
@@ -379,8 +440,9 @@ impl DataStore for MemoryDataStore {
                 },
                 None => 0,
             };
+
             let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
-            Ok(log.entries[start..end].to_vec())
+            Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
         } else {
             Err(DataStoreError::CheckpointNotFound(root.clone()))
         }
@@ -391,6 +453,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
@@ -407,91 +470,111 @@ impl DataStore for MemoryDataStore {
                 },
                 None => 0,
             };
+
             let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
-            Ok(log.entries[start..end].to_vec())
+            Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
         } else {
             Err(DataStoreError::CheckpointNotFound(root.clone()))
         }
     }
 
-    async fn get_record_status(
+    async fn get_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<super::RecordStatus, DataStoreError> {
+    ) -> Result<super::Record<operator::OperatorRecord>, DataStoreError> {
         let state = self.0.read().await;
-        let log = state
+        let status = state
             .records
             .get(log_id)
-            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
-
-        let status = log
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        match status {
-            RecordStatus::Pending(_) => Ok(super::RecordStatus::Pending),
-            RecordStatus::Rejected(reason) => Ok(super::RecordStatus::Rejected(reason.clone())),
-            RecordStatus::Validated(r) => Ok(if r.checkpoint_index.is_some() {
-                super::RecordStatus::InCheckpoint
-            } else {
-                super::RecordStatus::Validated
-            }),
-        }
-    }
-
-    async fn get_operator_log_entry(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-    ) -> Result<OperatorLogEntry, DataStoreError> {
-        let state = self.0.read().await;
-        let statuses = state
-            .records
-            .get(log_id)
-            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
-
-        match statuses.get(record_id) {
-            Some(RecordStatus::Validated(r)) => {
+        let (status, envelope, checkpoint) = match status {
+            RecordStatus::Pending(PendingRecord::Operator { record, .. }) => {
+                (super::RecordStatus::Pending, record.clone().unwrap(), None)
+            }
+            RecordStatus::Rejected(RejectedRecord::Operator { record, reason }) => (
+                super::RecordStatus::Rejected(reason.into()),
+                record.clone(),
+                None,
+            ),
+            RecordStatus::Validated(r) => {
                 let log = state
                     .operators
                     .get(log_id)
                     .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-                Ok(OperatorLogEntry {
-                    record: log.entries[r.index].clone(),
-                    checkpoint: state.checkpoints[r.checkpoint_index.unwrap()].clone(),
-                })
+                let checkpoint = r.checkpoint_index.map(|i| state.checkpoints[i].clone());
+
+                (
+                    if checkpoint.is_some() {
+                        super::RecordStatus::Published
+                    } else {
+                        super::RecordStatus::Validated
+                    },
+                    log.entries[r.index].clone(),
+                    checkpoint,
+                )
             }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
-        }
+            _ => return Err(DataStoreError::RecordNotFound(record_id.clone())),
+        };
+
+        Ok(super::Record {
+            status,
+            envelope,
+            checkpoint,
+        })
     }
 
-    async fn get_package_log_entry(
+    async fn get_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<PackageLogEntry, DataStoreError> {
+    ) -> Result<super::Record<package::PackageRecord>, DataStoreError> {
         let state = self.0.read().await;
-        let statuses = state
+        let status = state
             .records
             .get(log_id)
-            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
+            .get(record_id)
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        match statuses.get(record_id) {
-            Some(RecordStatus::Validated(r)) => {
+        let (status, envelope, checkpoint) = match status {
+            RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
+                (super::RecordStatus::Pending, record.clone().unwrap(), None)
+            }
+            RecordStatus::Rejected(RejectedRecord::Package { record, reason }) => (
+                super::RecordStatus::Rejected(reason.into()),
+                record.clone(),
+                None,
+            ),
+            RecordStatus::Validated(r) => {
                 let log = state
                     .packages
                     .get(log_id)
                     .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-                Ok(PackageLogEntry {
-                    record: log.entries[r.index].clone(),
-                    sources: r.sources.clone(),
-                    checkpoint: state.checkpoints[r.checkpoint_index.unwrap()].clone(),
-                })
+                let checkpoint = r.checkpoint_index.map(|i| state.checkpoints[i].clone());
+
+                (
+                    if checkpoint.is_some() {
+                        super::RecordStatus::Published
+                    } else {
+                        super::RecordStatus::Validated
+                    },
+                    log.entries[r.index].clone(),
+                    checkpoint,
+                )
             }
-            _ => Err(DataStoreError::RecordNotFound(record_id.clone())),
-        }
+            _ => return Err(DataStoreError::RecordNotFound(record_id.clone())),
+        };
+
+        Ok(super::Record {
+            status,
+            envelope,
+            checkpoint,
+        })
     }
 }

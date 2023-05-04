@@ -20,7 +20,7 @@ services:
     # NOTE: Test for cli environment variables support.
     environment:
       - CONTENT_DIR=/var/run/warg/server-content
-      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
+      - OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
     volumes:
       - warg-server-content:/var/run/warg/server-content:rw
       - warg-secrets:/var/secrets/warg:ro

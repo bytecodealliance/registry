@@ -63,6 +63,7 @@ pub enum ValidationError {
 ///
 /// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct Head {
     /// The digest of the last validated record.
     pub digest: RecordId,
@@ -73,7 +74,7 @@ pub struct Head {
 
 /// A validator for operator records.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Validator {
     /// The hash algorithm used by the operator log.
     /// This is `None` until the first (i.e. init) record is validated.

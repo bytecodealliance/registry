@@ -3,29 +3,26 @@
 #![deny(missing_docs)]
 
 use crate::storage::PackageInfo;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use reqwest::{Body, IntoUrl};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
 use thiserror::Error;
-use tracing::error;
-use warg_api::{
-    content::{ContentError, ContentSource, ContentSourceKind},
-    fetch::{FetchError, FetchRequest, FetchResponse},
-    package::{PackageError, PendingRecordResponse, RecordResponse},
-    proof::ProofError,
+use warg_api::v1::{
+    fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
+    package::{PackageError, PackageRecord, PackageRecordState, PublishRecordRequest},
+    proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
     hash::{DynHash, Hash, Sha256},
     signing,
 };
 use warg_protocol::{
-    operator,
-    package::{self},
-    registry::{LogId, LogLeaf, MapCheckpoint},
+    operator, package,
+    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
@@ -43,7 +40,7 @@ pub struct Client<R, C> {
 }
 
 impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
-    /// Creates a new client for the given URL, package storage, and
+    /// Creates a new client for the given URL, registry storage, and
     /// content storage.
     pub fn new(url: impl IntoUrl, registry: R, content: C) -> ClientResult<Self> {
         Ok(Self {
@@ -113,11 +110,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         // If we're not initializing the package, update it to the latest checkpoint to get the current head
         if !initializing {
-            self.update_checkpoint(
-                &self.api.latest_checkpoint().await?.checkpoint,
-                [&mut package],
-            )
-            .await?;
+            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
+                .await?;
         }
 
         match (initializing, package.state.head().is_some()) {
@@ -134,44 +128,66 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             _ => (),
         }
 
-        let (record, contents) = info.finalize(
+        let record = info.finalize(
             signing_key,
             package.state.head().as_ref().map(|h| h.digest.clone()),
         )?;
 
-        let mut sources = Vec::with_capacity(contents.len());
-        for content in contents {
-            // Upload the content
-            let url = self
-                .api
-                .upload_content(
-                    &content,
-                    Body::wrap_stream(self.content.load_content(&content).await?.ok_or_else(
-                        || ClientError::ContentNotFound {
-                            digest: content.clone(),
-                        },
-                    )?),
-                )
-                .await?;
+        let log_id = LogId::package_log::<Sha256>(&package.name);
+        let mut record = self
+            .api
+            .publish_package_record(
+                &log_id,
+                PublishRecordRequest {
+                    name: Cow::Borrowed(&package.name),
+                    record: Cow::Owned(record.into()),
+                    content_sources: Default::default(),
+                },
+            )
+            .await
+            .map_err(|e| {
+                ClientError::translate_log_not_found(e, |id| {
+                    if id == &log_id {
+                        Some(package.name.clone())
+                    } else {
+                        None
+                    }
+                })
+            })?;
 
-            sources.push(ContentSource {
-                digest: content.clone(),
-                kind: ContentSourceKind::HttpAnonymous { url },
-            });
+        let missing = record.missing_content();
+        if !missing.is_empty() {
+            // Upload the missing content
+            // TODO: parallelize this
+            for digest in record.missing_content() {
+                self.api
+                    .upload_content(
+                        &log_id,
+                        &record.id,
+                        digest,
+                        Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
+                            || ClientError::ContentNotFound {
+                                digest: digest.clone(),
+                            },
+                        )?),
+                    )
+                    .await?;
+            }
+
+            // After all the content is uploaded, get the record again
+            record = self.api.get_package_record(&log_id, &record.id).await?;
         }
 
-        let response = self
-            .wait_for_publish(
-                &package.name,
-                self.api
-                    .publish(&package.name, record.into(), sources)
-                    .await?,
-            )
+        let record = self
+            .wait_for_publish(&log_id, &package.name, record)
             .await?;
 
         // Finally, update the checkpoint again post-publish
-        self.update_checkpoint(&response.checkpoint, [&mut package])
-            .await?;
+        self.update_checkpoint(
+            record.checkpoint().expect("record must be published"),
+            [&mut package],
+        )
+        .await?;
 
         Ok(())
     }
@@ -181,11 +197,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         tracing::info!("updating all packages to latest checkpoint");
 
         let mut updating = self.registry.load_packages().await?;
-        self.update_checkpoint(
-            &self.api.latest_checkpoint().await?.checkpoint,
-            &mut updating,
-        )
-        .await?;
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
@@ -205,11 +218,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             );
         }
 
-        self.update_checkpoint(
-            &self.api.latest_checkpoint().await?.checkpoint,
-            &mut updating,
-        )
-        .await?;
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
@@ -234,6 +244,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     ) -> Result<Option<PackageDownload>, ClientError> {
         tracing::info!("downloading package `{package}` with requirement `{requirement}`");
         let info = self.fetch_package(package).await?;
+        let log_id = LogId::package_log::<Sha256>(&info.name);
 
         match info
             .state
@@ -243,14 +254,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     return None;
                 }
 
-                Some((&r.version, r.content()?))
+                Some((&r.record_id, &r.version, r.content()?))
             })
-            .max_by(|(a, ..), (b, ..)| a.cmp(b))
+            .max_by(|(_, a, ..), (_, b, ..)| a.cmp(b))
         {
-            Some((version, digest)) => Ok(Some(PackageDownload {
+            Some((record_id, version, digest)) => Ok(Some(PackageDownload {
                 version: version.clone(),
                 digest: digest.clone(),
-                path: self.download_content(digest).await?,
+                path: self.download_content(&log_id, record_id, digest).await?,
             })),
             None => Ok(None),
         }
@@ -272,6 +283,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     ) -> Result<PackageDownload, ClientError> {
         tracing::info!("downloading version {version} of package `{package}`");
         let info = self.fetch_package(package).await?;
+        let log_id = LogId::package_log::<Sha256>(&info.name);
 
         let release =
             info.state
@@ -291,7 +303,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(PackageDownload {
             version: version.clone(),
             digest: digest.clone(),
-            path: self.download_content(digest).await?,
+            path: self
+                .download_content(&log_id, &release.record_id, digest)
+                .await?,
         })
     }
 
@@ -300,97 +314,137 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        tracing::info!(
-            "updating to checkpoint `{log_root}|{map_root}`",
-            log_root = checkpoint.as_ref().log_root,
-            map_root = checkpoint.as_ref().map_root
-        );
+        let root: DynHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        tracing::info!("updating to checkpoint `{root}`");
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
 
+        // Map package identifiers to package logs that need to be updated
         let mut packages = packages
             .into_iter()
             .filter_map(|p| match &p.checkpoint {
+                // Don't bother updating if the package is already at the specified checkpoint
                 Some(c) if c == checkpoint => None,
-                _ => Some((p.name.clone(), p)),
+                _ => Some((LogId::package_log::<Sha256>(&p.name), p)),
             })
-            .inspect(|(n, _)| tracing::info!("log of package `{n}` will be updated"))
+            .inspect(|(_, p)| tracing::info!("package log `{name}` will be updated", name = p.name))
             .collect::<HashMap<_, _>>();
 
         if packages.is_empty() {
             return Ok(());
         }
 
-        let response: FetchResponse = self
-            .api
-            .fetch_logs(FetchRequest {
-                root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
-                operator: operator.state.head().as_ref().map(|h| h.digest.clone()),
-                packages: packages
-                    .iter()
-                    .map(|(name, package)| {
-                        (
-                            name.to_string(),
-                            package.state.head().as_ref().map(|h| h.digest.clone()),
-                        )
-                    })
-                    .collect(),
+        let mut last_known = packages
+            .iter()
+            .map(|(id, p)| {
+                (
+                    id.clone(),
+                    p.state.head().as_ref().map(|h| h.digest.clone()),
+                )
             })
-            .await?;
+            .collect::<HashMap<_, _>>();
 
-        let mut heads = Vec::with_capacity(packages.len());
-        for (name, records) in response.packages {
-            match packages.get_mut(&name) {
-                Some(package) => {
-                    for record in records {
-                        let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
-                        package.state.validate(&record).map_err(|inner| {
-                            ClientError::PackageValidationFailed {
-                                package: name.clone(),
-                                inner,
-                            }
-                        })?;
-                    }
+        let mut leafs = Vec::with_capacity(packages.len() + 1 /* for operator */);
 
-                    if let Some(head) = package.state.head() {
-                        heads.push(LogLeaf {
-                            log_id: LogId::package_log::<Sha256>(&name),
+        loop {
+            let response: FetchLogsResponse = self
+                .api
+                .fetch_logs(FetchLogsRequest {
+                    root: Cow::Borrowed(&root),
+                    operator: operator
+                        .state
+                        .head()
+                        .as_ref()
+                        .map(|h| Cow::Borrowed(&h.digest)),
+                    limit: None,
+                    packages: Cow::Borrowed(&last_known),
+                })
+                .await
+                .map_err(|e| {
+                    ClientError::translate_log_not_found(e, |id| {
+                        packages.get(id).map(|p| p.name.clone())
+                    })
+                })?;
+
+            let has_operator_records = !response.operator.is_empty();
+            for record in response.operator {
+                let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+                operator
+                    .state
+                    .validate(&record)
+                    .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+            }
+
+            if has_operator_records {
+                if let Some(head) = operator.state.head() {
+                    leafs.push(LogLeaf {
+                        log_id: LogId::operator_log::<Sha256>(),
+                        record_id: head.digest.clone(),
+                    });
+                }
+            }
+
+            for (log_id, records) in response.packages {
+                let package = packages.get_mut(&log_id).ok_or_else(|| {
+                    anyhow!("received records for unknown package log `{log_id}`")
+                })?;
+
+                let has_package_records = !records.is_empty();
+                for record in records {
+                    let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
+                    package.state.validate(&record).map_err(|inner| {
+                        ClientError::PackageValidationFailed {
+                            package: package.name.clone(),
+                            inner,
+                        }
+                    })?;
+                }
+
+                if let Some(head) = package.state.head() {
+                    // Only do an inclusion proof if new records were received
+                    if has_package_records {
+                        leafs.push(LogLeaf {
+                            log_id: log_id.clone(),
                             record_id: head.digest.clone(),
                         });
-                    } else {
-                        return Err(ClientError::PackageLogEmpty {
-                            package: name.clone(),
-                        });
                     }
+                } else {
+                    return Err(ClientError::PackageLogEmpty {
+                        package: package.name.clone(),
+                    });
                 }
-                None => continue,
+            }
+
+            if !leafs.is_empty() {
+                self.api
+                    .prove_inclusion(InclusionRequest {
+                        checkpoint: Cow::Borrowed(checkpoint.as_ref()),
+                        leafs: Cow::Borrowed(&leafs),
+                    })
+                    .await?;
+
+                leafs.clear();
+            }
+
+            if !response.more {
+                break;
+            }
+
+            // Update the last known record ids for each package log
+            for (id, record_id) in last_known.iter_mut() {
+                *record_id = packages[id].state.head().as_ref().map(|h| h.digest.clone());
             }
         }
 
-        let old_checkpoint = self.registry.load_checkpoint().await?;
-        if let Some(cp) = old_checkpoint {
-            let old_cp = cp.as_ref().clone();
-            let new_cp = checkpoint.as_ref().clone();
+        if let Some(from) = self.registry.load_checkpoint().await? {
             self.api
-                .prove_log_consistency(old_cp.log_root, new_cp.log_root)
+                .prove_log_consistency(ConsistencyRequest {
+                    from: Cow::Borrowed(&from.as_ref().log_root),
+                    to: Cow::Borrowed(&checkpoint.as_ref().log_root),
+                })
                 .await?;
         }
 
-        let operator_records = response.operator;
-        for record in operator_records {
-            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-            operator
-                .state
-                .validate(&record)
-                .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
-            if let Some(head) = operator.state.head() {
-                heads.push(LogLeaf {
-                    log_id: LogId::operator_log::<Sha256>(),
-                    record_id: head.digest.clone(),
-                })
-            }
-        }
-        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
         self.registry.store_operator(operator).await?;
 
         for package in packages.values_mut() {
@@ -398,7 +452,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             self.registry.store_package(package).await?;
         }
 
-        self.registry.store_checkpoint(checkpoint.clone()).await?;
+        self.registry.store_checkpoint(checkpoint).await?;
 
         Ok(())
     }
@@ -411,28 +465,29 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             }
             None => {
                 let mut info = PackageInfo::new(name);
-                self.update_checkpoint(
-                    &self.api.latest_checkpoint().await?.checkpoint,
-                    [&mut info],
-                )
-                .await?;
+                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
+                    .await?;
 
                 Ok(info)
             }
         }
     }
 
-    async fn download_content(&self, digest: &DynHash) -> Result<PathBuf, ClientError> {
+    async fn download_content(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
                 Ok(path)
             }
             None => {
-                tracing::info!("downloading content for digest `{digest}`");
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(digest).await?),
+                        Box::pin(self.api.download_content(log_id, record_id, digest).await?),
                         Some(digest),
                     )
                     .await?;
@@ -448,24 +503,28 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
     async fn wait_for_publish(
         &self,
+        log_id: &LogId,
         name: &str,
-        mut response: PendingRecordResponse,
-    ) -> ClientResult<RecordResponse> {
+        mut current: PackageRecord,
+    ) -> ClientResult<PackageRecord> {
         loop {
-            match response {
-                PendingRecordResponse::Published { record_url } => {
-                    return Ok(self.api.get_package_record(&record_url).await?);
+            match current.state {
+                PackageRecordState::Sourcing { .. } => {
+                    return Err(ClientError::PackageMissingContent);
                 }
-                PendingRecordResponse::Rejected { reason } => {
+                PackageRecordState::Published { .. } => {
+                    return Ok(current);
+                }
+                PackageRecordState::Rejected { reason } => {
                     return Err(ClientError::PublishRejected {
                         package: name.to_string(),
                         reason,
                     });
                 }
-                PendingRecordResponse::Processing { status_url } => {
+                PackageRecordState::Processing => {
                     // TODO: make the wait configurable
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                    response = self.api.get_pending_package_record(&status_url).await?;
+                    current = self.api.get_package_record(log_id, &current.id).await?;
                 }
             }
         }
@@ -634,25 +693,36 @@ pub enum ClientError {
         reason: String,
     },
 
-    /// An error occurred while communicating with the content service.
-    #[error(transparent)]
-    Content(#[from] ContentError),
+    /// The package is still missing content.
+    #[error("the package is still missing content after all content was uploaded")]
+    PackageMissingContent,
 
-    /// An error occurred while communicating with the fetch service.
+    /// An error occurred during an API operation.
     #[error(transparent)]
-    Fetch(#[from] FetchError),
-
-    /// An error occurred while communicating with the package service.
-    #[error(transparent)]
-    Package(#[from] PackageError),
-
-    /// An error occurred while communicating with the proof service.
-    #[error(transparent)]
-    Proof(#[from] ProofError),
+    Api(#[from] api::ClientError),
 
     /// An error occurred while performing a client operation.
     #[error("{0:?}")]
     Other(#[from] anyhow::Error),
+}
+
+impl ClientError {
+    fn translate_log_not_found(
+        e: api::ClientError,
+        lookup: impl Fn(&LogId) -> Option<String>,
+    ) -> Self {
+        match &e {
+            api::ClientError::Fetch(FetchError::LogNotFound(id))
+            | api::ClientError::Package(PackageError::LogNotFound(id)) => {
+                if let Some(package) = lookup(id) {
+                    return Self::PackageDoesNotExist { package };
+                }
+            }
+            _ => {}
+        }
+
+        Self::Api(e)
+    }
 }
 
 /// Represents the result of a client operation.

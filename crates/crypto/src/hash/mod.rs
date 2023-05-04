@@ -14,7 +14,7 @@ pub use sha2::Sha256;
 use self::r#static::IncorrectLengthError;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum HashAlgorithm {
     Sha256,

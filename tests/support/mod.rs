@@ -71,9 +71,8 @@ pub async fn spawn_server(
     data_store: Option<Box<dyn DataStore>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
     let shutdown = CancellationToken::new();
-    let mut config = Config::new(test_operator_key().parse()?)
+    let mut config = Config::new(test_operator_key().parse()?, root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
-        .with_content_dir(root.join("server"))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100));
 

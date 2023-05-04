@@ -124,7 +124,7 @@ impl<D: SupportedDigest> TryFrom<Vec<u8>> for Hash<D> {
 }
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
-#[error("The provided vector was not the correct length")]
+#[error("the provided vector was not the correct length")]
 pub struct IncorrectLengthError;
 
 impl<D: SupportedDigest> Serialize for Hash<D> {

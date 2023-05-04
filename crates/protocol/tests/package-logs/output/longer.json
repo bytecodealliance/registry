@@ -14,6 +14,7 @@
     },
     "releases": {
       "1.0.0": {
+        "recordId": "sha256:a1b99a9b53d9616ab78c32d6983f277017878350532320abc4b9419d5afd41bb",
         "version": "1.0.0",
         "by": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
         "timestamp": "1671221120.153436500",

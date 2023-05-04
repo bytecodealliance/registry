@@ -79,7 +79,7 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
 }
 
 #[derive(Error, Debug)]
-#[error("No content in entry")]
+#[error("no content in entry")]
 struct EmptyContentError;
 
 impl TryFrom<i32> for model::Permission {
@@ -98,7 +98,7 @@ impl TryFrom<i32> for model::Permission {
 }
 
 #[derive(Error, Debug)]
-#[error("The value {value} could not be parsed as a permission")]
+#[error("the value {value} could not be parsed as a permission")]
 struct PermissionParseError {
     value: i32,
 }

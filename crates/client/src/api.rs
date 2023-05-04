@@ -3,57 +3,119 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
-use reqwest::{Body, IntoUrl, Response, Url};
+use reqwest::{Body, IntoUrl, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
+use thiserror::Error;
 use url::Host;
-use warg_api::{
-    content::{ContentError, ContentResult, ContentSource},
-    fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse, FetchResult},
-    package::{PackageError, PackageResult, PendingRecordResponse, PublishRequest, RecordResponse},
+use warg_api::v1::{
+    fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
+    package::{
+        ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+    },
+    paths,
     proof::{
         ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
-        ProofResult,
     },
-    FromError,
 };
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{DynHash, HashError, Sha256};
 use warg_protocol::{
-    registry::{LogLeaf, MapCheckpoint, MapLeaf},
-    ProtoEnvelopeBody,
+    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
+    SerdeEnvelope,
 };
 use warg_transparency::{
-    log::{LogProofBundle, ProofBundle},
+    log::{ConsistencyProofError, InclusionProofError, LogProofBundle, ProofBundle},
     map::MapProofBundle,
 };
 
-async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, String> {
+/// Represents an error that occurred while communicating with the registry.
+#[derive(Debug, Error)]
+pub enum ClientError {
+    /// An error was returned from the fetch API.
+    #[error(transparent)]
+    Fetch(#[from] FetchError),
+    /// An error was returned from the package API.
+    #[error(transparent)]
+    Package(#[from] PackageError),
+    /// An error was returned from the proof API.
+    #[error(transparent)]
+    Proof(#[from] ProofError),
+    /// An error occurred while communicating with the registry.
+    #[error("failed to send request to registry server: {0}")]
+    Communication(#[from] reqwest::Error),
+    /// An unexpected response was received from the server.
+    #[error("{message} (status code: {status})")]
+    UnexpectedResponse {
+        /// The response from the server.
+        status: StatusCode,
+        /// The error message.
+        message: String,
+    },
+    /// The provided root for a consistency proof was incorrect.
+    #[error(
+        "the client failed to prove consistency: found root `{found}` but was given root `{root}`"
+    )]
+    IncorrectConsistencyProof {
+        /// The provided root.
+        root: DynHash,
+        /// The found root.
+        found: DynHash,
+    },
+    /// A hash returned from the server was incorrect.
+    #[error("the server returned an invalid hash: {0}")]
+    Hash(#[from] HashError),
+    /// The client failed a consistency proof.
+    #[error("the client failed a consistency proof: {0}")]
+    ConsistencyProof(#[from] ConsistencyProofError),
+    /// The client failed an inclusion proof.
+    #[error("the client failed an inclusion proof: {0}")]
+    InclusionProof(#[from] InclusionProofError),
+    /// The record was not published.
+    #[error("record `{0}` has not been published")]
+    RecordNotPublished(RecordId),
+    /// Could not find a source for the given content digest.
+    #[error("no download location could be found for content digest `{0}`")]
+    NoSourceForContent(DynHash),
+    /// All sources for the given content digest returned an error response.
+    #[error("all sources for content digest `{0}` returned an error response")]
+    AllSourcesFailed(DynHash),
+    /// An other error occurred during the requested operation.
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, ClientError> {
     let status = response.status();
     match response.headers().get("content-type") {
         Some(content_type) if content_type == "application/json" => {
             match response.json::<T>().await {
                 Ok(e) => Ok(e),
-                Err(e) => Err(format!(
-                    "failed to deserialize JSON response: {e} (status code: {status})"
-                )),
+                Err(e) => Err(ClientError::UnexpectedResponse {
+                    status,
+                    message: format!("failed to deserialize JSON response: {e}"),
+                }),
             }
         }
-        Some(ty) => Err(format!(
-            "the server returned an unsupported content type of `{ty}` (status code: {status})",
-            ty = ty.to_str().unwrap_or("")
-        )),
-        None => Err(format!(
-            "the server did not return a content type (status code: {status})"
-        )),
+        Some(ty) => Err(ClientError::UnexpectedResponse {
+            status,
+            message: format!(
+                "the server returned an unsupported content type of `{ty}`",
+                ty = ty.to_str().unwrap_or("")
+            ),
+        }),
+        None => Err(ClientError::UnexpectedResponse {
+            status,
+            message: "the server response did not include a content type header".into(),
+        }),
     }
 }
 
-async fn into_result<T: DeserializeOwned, E: DeserializeOwned + From<String>>(
+async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError>>(
     response: Response,
-) -> Result<T, E> {
+) -> Result<T, ClientError> {
     if response.status().is_success() {
-        Ok(deserialize::<T>(response).await.map_err(E::from)?)
+        deserialize::<T>(response).await
     } else {
-        Err(deserialize::<E>(response).await.map_err(E::from)?)
+        Err(deserialize::<E>(response).await?.into())
     }
 }
 
@@ -123,246 +185,218 @@ impl Client {
     }
 
     /// Gets the latest checkpoint from the registry.
-    pub async fn latest_checkpoint(&self) -> FetchResult<CheckpointResponse> {
-        let url = self.url.join("fetch/checkpoint").unwrap();
+    pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, ClientError> {
+        let url = self.url.join(paths::fetch_checkpoint()).unwrap();
         tracing::debug!("getting latest checkpoint at `{url}`");
-        into_result(reqwest::get(url).await.map_err(FetchError::from_error)?).await
+        into_result::<_, FetchError>(reqwest::get(url).await?).await
     }
 
     /// Fetches package log entries from the registry.
-    pub async fn fetch_logs(&self, request: FetchRequest) -> FetchResult<FetchResponse> {
-        let response = self
-            .client
-            .post(self.url.join("fetch/logs").unwrap())
-            .json(&request)
-            .send()
-            .await
-            .map_err(FetchError::from_error)?;
+    pub async fn fetch_logs(
+        &self,
+        request: FetchLogsRequest<'_>,
+    ) -> Result<FetchLogsResponse, ClientError> {
+        let url = self.url.join(paths::fetch_logs()).unwrap();
+        tracing::debug!("fetching logs at `{url}`");
 
-        into_result(response).await
+        let response = self.client.post(url).json(&request).send().await?;
+        into_result::<_, FetchError>(response).await
     }
 
-    /// Publishes a new package record to the registry.
-    pub async fn publish(
+    /// Publish a new record to a package log.
+    pub async fn publish_package_record(
         &self,
-        package_name: &str,
-        record: ProtoEnvelopeBody,
-        content_sources: Vec<ContentSource>,
-    ) -> PackageResult<PendingRecordResponse> {
-        let request = PublishRequest {
-            name: package_name.to_string(),
-            record,
-            content_sources,
+        log_id: &LogId,
+        request: PublishRecordRequest<'_>,
+    ) -> Result<PackageRecord, ClientError> {
+        let url = self
+            .url
+            .join(&paths::publish_package_record(log_id))
+            .unwrap();
+        tracing::debug!(
+            "appending record to package `{name}` at `{url}`",
+            name = request.name
+        );
+
+        let response = self.client.post(url).json(&request).send().await?;
+        into_result::<_, PackageError>(response).await
+    }
+
+    /// Gets a package record from the registry.
+    pub async fn get_package_record(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<PackageRecord, ClientError> {
+        let url = self
+            .url
+            .join(&paths::package_record(log_id, record_id))
+            .unwrap();
+        tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
+
+        let response = reqwest::get(url).await?;
+        into_result::<_, PackageError>(response).await
+    }
+
+    /// Downloads the content associated with a given record.
+    pub async fn download_content(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
+        tracing::debug!("fetching record `{record_id}` for package `{log_id}`");
+
+        let record = self.get_package_record(log_id, record_id).await?;
+        let sources = match &record.state {
+            PackageRecordState::Published {
+                content_sources, ..
+            } => content_sources
+                .get(digest)
+                .ok_or_else(|| ClientError::NoSourceForContent(digest.clone()))?,
+            _ => {
+                return Err(ClientError::RecordNotPublished(record_id.clone()));
+            }
         };
 
-        let url = self.url.join("package").unwrap();
-        tracing::debug!("publishing package `{package_name}` to `{url}`");
-        into_result(
-            self.client
-                .post(url)
-                .json(&request)
-                .send()
-                .await
-                .map_err(PackageError::from_error)?,
-        )
-        .await
-    }
+        for source in sources {
+            let url = match source {
+                ContentSource::Http { url } => url,
+            };
 
-    /// Gets the pending package record from the registry.
-    pub async fn get_pending_package_record(
-        &self,
-        route: &str,
-    ) -> PackageResult<PendingRecordResponse> {
-        let url = self.url.join(route).unwrap();
-        tracing::debug!("getting pending package record from `{url}`");
-        into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
-            .await
-    }
+            tracing::debug!("downloading content `{digest}` from `{url}`");
 
-    /// Gets the package record from the registry.
-    pub async fn get_package_record(&self, route: &str) -> PackageResult<RecordResponse> {
-        let url = self.url.join(route).unwrap();
-        tracing::debug!("getting package record from `{url}`");
-        into_result::<_, PackageError>(reqwest::get(url).await.map_err(PackageError::from_error)?)
-            .await
+            let response = reqwest::get(url).await?;
+            if !response.status().is_success() {
+                tracing::debug!(
+                    "failed to download content `{digest}` from `{url}`: {status}",
+                    status = response.status()
+                );
+                continue;
+            }
+
+            return Ok(response.bytes_stream().map_err(|e| anyhow!(e)));
+        }
+
+        Err(ClientError::AllSourcesFailed(digest.clone()))
     }
 
     /// Proves the inclusion of the given package log heads in the registry.
-    pub async fn prove_inclusion(
-        &self,
-        checkpoint: &MapCheckpoint,
-        heads: Vec<LogLeaf>,
-    ) -> ProofResult<()> {
-        let request = InclusionRequest {
-            checkpoint: checkpoint.clone(),
-            heads: heads.clone(),
-        };
+    pub async fn prove_inclusion(&self, request: InclusionRequest<'_>) -> Result<(), ClientError> {
+        let url = self.url.join(paths::prove_inclusion()).unwrap();
+        tracing::debug!("proving checkpoint inclusion at `{url}`");
 
-        let url = self.url.join("proof/inclusion").unwrap();
-        tracing::debug!("proving checkpoint inclusion from `{url}`");
         let response = into_result::<InclusionResponse, ProofError>(
-            self.client
-                .post(url)
-                .json(&request)
-                .send()
-                .await
-                .map_err(ProofError::from_error)?,
+            self.client.post(url).json(&request).send().await?,
         )
         .await?;
 
-        match Self::validate_inclusion_response(response, checkpoint, &heads) {
-            Ok(()) => Ok(()),
-            Err(e) => match e.downcast::<ProofError>() {
-                Ok(e) => Err(e),
-                Err(e) => Err(ProofError::from(e.to_string())),
-            },
-        }
+        Self::validate_inclusion_response(
+            response,
+            request.checkpoint.as_ref(),
+            request.leafs.as_ref(),
+        )
     }
 
-    /// Proves consistency of a new checkpoint with a previously known checkpoint.
+    /// Proves consistency between two log roots.
     pub async fn prove_log_consistency(
         &self,
-        old_root: DynHash,
-        new_root: DynHash,
-    ) -> ProofResult<()> {
-        let old = old_root.clone();
-        let new = new_root.clone();
-        let request = ConsistencyRequest { old_root, new_root };
-        let url = self.url.join("proof/consistency").unwrap();
+        request: ConsistencyRequest<'_>,
+    ) -> Result<(), ClientError> {
+        let url = self.url.join(paths::prove_consistency()).unwrap();
         let response = into_result::<ConsistencyResponse, ProofError>(
-            self.client
-                .post(url)
-                .json(&request)
-                .send()
-                .await
-                .map_err(ProofError::from_error)?,
+            self.client.post(url).json(&request).send().await?,
         )
         .await?;
+
         let proof = ProofBundle::<Sha256, LogLeaf>::decode(&response.proof).unwrap();
         let (log_data, consistencies, inclusions) = proof.unbundle();
         if !inclusions.is_empty() {
-            return Err(ProofError::BundleFailure {
-                message: "Expected no inclusion proofs".into(),
-            });
+            return Err(ClientError::Proof(ProofError::BundleFailure(
+                "expected no inclusion proofs".into(),
+            )));
         }
+
         if consistencies.len() != 1 {
-            return Err(ProofError::BundleFailure {
-                message: "Expected exactly one consistency proof".into(),
+            return Err(ClientError::Proof(ProofError::BundleFailure(
+                "expected exactly one consistency proof".into(),
+            )));
+        }
+
+        let (from, to) = consistencies
+            .first()
+            .unwrap()
+            .evaluate(&log_data)
+            .map(|(from, to)| (DynHash::from(from), DynHash::from(to)))?;
+
+        if request.from.as_ref() != &from {
+            return Err(ClientError::IncorrectConsistencyProof {
+                root: request.from.into_owned(),
+                found: from,
             });
         }
-        let (old_hash, new_hash) =
-            consistencies
-                .first()
-                .unwrap()
-                .evaluate(&log_data)
-                .map_err(|_| ProofError::LogNotConsistent {
-                    old_root: old.clone(),
-                    new_root: new.clone(),
-                })?;
-        if old == DynHash::from(old_hash) && new == DynHash::from(new_hash) {
-            Ok(())
-        } else {
-            Err(ProofError::LogNotConsistent {
-                old_root: old,
-                new_root: new,
-            })
+
+        if request.to.as_ref() != &to {
+            return Err(ClientError::IncorrectConsistencyProof {
+                root: request.to.into_owned(),
+                found: to,
+            });
         }
+
+        Ok(())
     }
 
     /// Uploads package content to the registry.
     pub async fn upload_content(
         &self,
+        log_id: &LogId,
+        record_id: &RecordId,
         digest: &DynHash,
         content: impl Into<Body>,
-    ) -> ContentResult<String> {
-        let url = self.content_url(digest);
-        tracing::debug!("checking if content exists at `{url}`");
-        if self
-            .client
-            .head(&url)
-            .send()
-            .await
-            .map_err(ContentError::from_error)?
-            .status()
-            .is_success()
-        {
-            return Ok(url);
-        }
-
+    ) -> Result<String, ClientError> {
+        let url = self
+            .url
+            .join(&paths::package_record_content(log_id, record_id, digest))
+            .unwrap();
         tracing::debug!("uploading content to `{url}`");
 
-        let url = self.url.join("content").unwrap();
-        let response = self
-            .client
-            .post(url)
-            .body(content)
-            .send()
-            .await
-            .map_err(ContentError::from_error)?;
+        let response = self.client.post(url).body(content).send().await?;
         if !response.status().is_success() {
-            return Err(deserialize::<ContentError>(response).await?);
+            return Err(ClientError::Package(
+                deserialize::<PackageError>(response).await?,
+            ));
         }
 
-        let location = response
+        Ok(response
             .headers()
             .get("location")
-            .ok_or_else(|| {
-                ContentError::from("server did not return a location header".to_string())
+            .ok_or_else(|| ClientError::UnexpectedResponse {
+                status: response.status(),
+                message: "location header missing from response".into(),
             })?
             .to_str()
-            .map_err(|_| {
-                ContentError::from("returned location header was not UTF-8".to_string())
-            })?;
-
-        Ok(self
-            .url
-            .join(location)
-            .map_err(|_| {
-                ContentError::from("returned location header was not relative".to_string())
+            .map_err(|_| ClientError::UnexpectedResponse {
+                status: response.status(),
+                message: "returned location header was not UTF-8".into(),
             })?
             .to_string())
-    }
-
-    /// Downloads package content from the registry.
-    pub async fn download_content(
-        &self,
-        digest: &DynHash,
-    ) -> ContentResult<impl Stream<Item = Result<Bytes>>> {
-        let url = self.content_url(digest);
-
-        tracing::debug!("downloading content from `{url}`");
-
-        let response = reqwest::get(url).await.map_err(ContentError::from_error)?;
-        if !response.status().is_success() {
-            return Err(deserialize::<ContentError>(response).await?);
-        }
-
-        Ok(response.bytes_stream().map_err(|e| anyhow!(e)))
-    }
-
-    fn content_url(&self, digest: &DynHash) -> String {
-        format!(
-            "{base}/{digest}",
-            base = self.url.join("content").unwrap(),
-            digest = digest.to_string().replace(':', "-")
-        )
     }
 
     fn validate_inclusion_response(
         response: InclusionResponse,
         checkpoint: &MapCheckpoint,
-        heads: &[LogLeaf],
-    ) -> Result<()> {
+        leafs: &[LogLeaf],
+    ) -> Result<(), ClientError> {
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(response.log.as_slice())?;
         let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
-        for (leaf, proof) in heads.iter().zip(log_inclusions.iter()) {
+        for (leaf, proof) in leafs.iter().zip(log_inclusions.iter()) {
             let found = proof.evaluate_value(&log_data, leaf)?;
             let root = checkpoint.log_root.clone().try_into()?;
             if found != root {
-                return Err(anyhow!(ProofError::IncorrectProof {
+                return Err(ClientError::Proof(ProofError::IncorrectProof {
                     root: checkpoint.log_root.clone(),
-                    found: found.into()
+                    found: found.into(),
                 }));
             }
         }
@@ -370,7 +404,7 @@ impl Client {
         let map_proof_bundle: MapProofBundle<Sha256, MapLeaf> =
             MapProofBundle::decode(response.map.as_slice())?;
         let map_inclusions = map_proof_bundle.unbundle();
-        for (leaf, proof) in heads.iter().zip(map_inclusions.iter()) {
+        for (leaf, proof) in leafs.iter().zip(map_inclusions.iter()) {
             let found = proof.evaluate(
                 &leaf.log_id,
                 &MapLeaf {
@@ -379,9 +413,9 @@ impl Client {
             );
             let root = checkpoint.map_root.clone().try_into()?;
             if found != root {
-                return Err(anyhow!(ProofError::IncorrectProof {
+                return Err(ClientError::Proof(ProofError::IncorrectProof {
                     root: checkpoint.map_root.clone(),
-                    found: found.into()
+                    found: found.into(),
                 }));
             }
         }

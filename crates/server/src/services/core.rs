@@ -4,7 +4,7 @@ use super::{
     MapData,
 };
 use crate::{
-    datastore::{DataStore, DataStoreError, InitialLeaf, PackageLogEntry, RecordStatus},
+    datastore::{DataStore, DataStoreError, InitialLeaf},
     services::{data, transparency},
 };
 use anyhow::Result;
@@ -13,22 +13,20 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use thiserror::Error;
 use tokio::{
     sync::{
         mpsc::{self, Sender},
-        oneshot, RwLock,
+        RwLock,
     },
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
-use warg_api::content::ContentSource;
 use warg_crypto::{
     hash::{DynHash, Hash, HashAlgorithm, Sha256},
     signing::PrivateKey,
 };
 use warg_protocol::{
-    operator, package,
+    operator,
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
@@ -47,26 +45,6 @@ fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRe
     ProtoEnvelope::signed_contents(signing_key, init_record).unwrap()
 }
 
-#[derive(Debug, Error)]
-pub enum CoreServiceError {
-    #[error("package log `{0}` was not found")]
-    PackageNotFound(String),
-
-    #[error(transparent)]
-    DataStore(#[from] DataStoreError),
-}
-
-impl CoreServiceError {
-    fn with_package_name(self, name: &str) -> Self {
-        match self {
-            Self::DataStore(DataStoreError::LogNotFound(_)) => {
-                Self::PackageNotFound(name.to_string())
-            }
-            e => e,
-        }
-    }
-}
-
 /// Used to stop the core service.
 pub struct StopHandle {
     token: CancellationToken,
@@ -82,11 +60,9 @@ impl StopHandle {
 }
 
 #[derive(Debug)]
-struct NewPackageRecord {
-    package_name: String,
-    record: ProtoEnvelope<package::PackageRecord>,
-    content_sources: Vec<ContentSource>,
-    response: oneshot::Sender<Result<(), CoreServiceError>>,
+struct SubmitPackageRecord {
+    log_id: LogId,
+    record_id: RecordId,
 }
 
 #[derive(Default)]
@@ -101,7 +77,7 @@ struct InitializationData {
 pub struct CoreService {
     log: Arc<RwLock<LogData>>,
     map: Arc<RwLock<MapData>>,
-    new_record_tx: Sender<NewPackageRecord>,
+    submit_record_tx: Sender<SubmitPackageRecord>,
     store: Box<dyn DataStore>,
 }
 
@@ -111,7 +87,7 @@ impl CoreService {
         signing_key: PrivateKey,
         store: Box<dyn DataStore>,
         checkpoint_interval: Duration,
-    ) -> Result<(Arc<Self>, StopHandle), CoreServiceError> {
+    ) -> Result<(Arc<Self>, StopHandle), DataStoreError> {
         let data = Self::initialize(&signing_key, store.as_ref()).await?;
         let token = CancellationToken::new();
         let (log_tx, log_rx) = mpsc::channel(4);
@@ -136,11 +112,11 @@ impl CoreService {
             map_rx: transparency.map_rx,
         });
 
-        let (new_record_tx, mut new_record_rx) = mpsc::channel(4);
+        let (submit_record_tx, mut submit_record_rx) = mpsc::channel(4);
         let core = Arc::new(Self {
             log: data.log_data,
             map: data.map_data,
-            new_record_tx,
+            submit_record_tx,
             store,
         });
 
@@ -153,51 +129,35 @@ impl CoreService {
                     _ = spawn_token.cancelled() => {
                         break;
                     }
-                    message = new_record_rx.recv() => {
-                        if let Some(NewPackageRecord {
-                            package_name,
-                            record,
-                            content_sources,
-                            response,
-                        }) = message {
-                            let log_id = LogId::package_log::<Sha256>(&package_name);
-                            let record_id = RecordId::package_record::<Sha256>(&record);
-                            match task_core.store.store_package_record(&log_id, &package_name, &record_id, &record, &content_sources).await {
+                    message = submit_record_rx.recv() => match message {
+                        Some(SubmitPackageRecord {
+                            log_id, record_id
+                        }) => {
+                            // TODO: perform all policy checks on the record here
+
+                            // Validate the package record
+                            match task_core.store.validate_package_record(&log_id, &record_id).await {
                                 Ok(()) => {
-                                    // Record saved successfully, so notify the client that the record is processing
-                                    response.send(Ok(())).unwrap();
-
-                                    // TODO: perform all policy checks on the record here
-
-                                    // Validate the package record
-                                    match task_core.store.validate_package_record(&log_id, &record_id).await {
-                                        Ok(()) => {
-                                            // Send the record to the transparency service to be included in the next checkpoint
-                                            let leaf = LogLeaf { log_id, record_id };
-                                            log_tx.send(leaf).await.unwrap();
-                                        }
-                                        Err(e) => match e {
-                                            DataStoreError::Rejection(_)
-                                            | DataStoreError::OperatorValidationFailed(_)
-                                            | DataStoreError::PackageValidationFailed(_) => {
-                                                // The record failed to validate and was rejected; do not include it in the next checkpoint
-                                            }
-                                            e => {
-                                                // TODO: this should be made more robust with a proper reliable message
-                                                // queue with retry logic
-                                                tracing::error!("failed to validate package record `{record_id}`: {e}");
-                                            }
-                                        }
+                                    // Send the record to the transparency service to be included in the next checkpoint
+                                    let leaf = LogLeaf { log_id, record_id };
+                                    log_tx.send(leaf).await.unwrap();
+                                }
+                                Err(e) => match e {
+                                    DataStoreError::Rejection(_)
+                                    | DataStoreError::OperatorValidationFailed(_)
+                                    | DataStoreError::PackageValidationFailed(_) => {
+                                        // The record failed to validate and was rejected; do not include it in the next checkpoint
+                                    }
+                                    e => {
+                                        // TODO: this should be made more robust with a proper reliable message
+                                        // queue with retry logic
+                                        tracing::error!("failed to validate package record `{record_id}`: {e}");
                                     }
                                 }
-                                Err(e) => {
-                                    response.send(Err(e.into())).unwrap();
-                                }
                             }
-                        } else {
-                            break;
                         }
-                    }
+                        None => break,
+                    },
                     signature = signatures.recv() => {
                         if let Some(signature) = signature {
                             let checkpoint_id = Hash::<Sha256>::of(signature.envelope.as_ref()).into();
@@ -237,7 +197,7 @@ impl CoreService {
     async fn initialize(
         signing_key: &PrivateKey,
         store: &dyn DataStore,
-    ) -> Result<InitializationData, CoreServiceError> {
+    ) -> Result<InitializationData, DataStoreError> {
         tracing::debug!("initializing core service");
         let mut data = InitializationData::default();
         let mut last_checkpoint = None;
@@ -277,7 +237,7 @@ impl CoreService {
     async fn init_operator_log(
         signing_key: &PrivateKey,
         store: &dyn DataStore,
-    ) -> Result<InitializationData, CoreServiceError> {
+    ) -> Result<InitializationData, DataStoreError> {
         let init = init_envelope(signing_key);
         let log_id = LogId::operator_log::<Sha256>();
         let record_id = RecordId::operator_record::<Sha256>(&init);
@@ -325,76 +285,16 @@ impl CoreService {
 }
 
 impl CoreService {
+    /// Gets the data store associated with the core service.
+    pub fn store(&self) -> &dyn DataStore {
+        self.store.as_ref()
+    }
+
     /// Submits a package record to be processed.
-    pub async fn submit_package_record(
-        &self,
-        name: &str,
-        record: ProtoEnvelope<package::PackageRecord>,
-        content_sources: Vec<ContentSource>,
-    ) -> Result<(), CoreServiceError> {
-        let (tx, rx) = oneshot::channel();
-        self.new_record_tx
-            .send(NewPackageRecord {
-                package_name: name.to_string(),
-                record,
-                content_sources,
-                response: tx,
-            })
+    pub async fn submit_package_record(&self, log_id: LogId, record_id: RecordId) {
+        self.submit_record_tx
+            .send(SubmitPackageRecord { log_id, record_id })
             .await
             .unwrap();
-
-        rx.await.unwrap().map_err(|e| e.with_package_name(name))
-    }
-
-    /// Gets a record status.
-    pub async fn get_record_status(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-    ) -> Result<RecordStatus, CoreServiceError> {
-        Ok(self.store.get_record_status(log_id, record_id).await?)
-    }
-
-    /// Gets a package log entry.
-    pub async fn get_package_log_entry(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-    ) -> Result<PackageLogEntry, CoreServiceError> {
-        Ok(self.store.get_package_log_entry(log_id, record_id).await?)
-    }
-
-    /// Gets the latest checkpoint.
-    pub async fn get_latest_checkpoint(
-        &self,
-    ) -> Result<SerdeEnvelope<MapCheckpoint>, CoreServiceError> {
-        Ok(self.store.get_latest_checkpoint().await?)
-    }
-
-    /// Fetches all operator records up until the given registry root.
-    pub async fn fetch_operator_records(
-        &self,
-        root: &DynHash,
-        since: Option<&RecordId>,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, CoreServiceError> {
-        let log_id = LogId::operator_log::<Sha256>();
-        Ok(self
-            .store
-            .get_operator_records(&log_id, root, since)
-            .await?)
-    }
-
-    /// Fetches all package records up until the given registry root.
-    pub async fn fetch_package_records(
-        &self,
-        name: &str,
-        root: &DynHash,
-        since: Option<&RecordId>,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, CoreServiceError> {
-        let log_id = LogId::package_log::<Sha256>(name);
-        self.store
-            .get_package_records(&log_id, root, since)
-            .await
-            .map_err(|e| CoreServiceError::from(e).with_package_name(name))
     }
 }

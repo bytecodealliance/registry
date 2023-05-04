@@ -53,8 +53,8 @@ async fn test() -> Result<()> {
 
         // There should be two log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let response = client.latest_checkpoint().await?;
-        assert_eq!(response.checkpoint.as_ref().log_length, 2);
+        let checkpoint = client.latest_checkpoint().await?;
+        assert_eq!(checkpoint.as_ref().log_length, 2);
 
         Ok(())
     })
@@ -67,8 +67,8 @@ async fn test() -> Result<()> {
 
         // There should be two log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let response = client.latest_checkpoint().await?;
-        assert_eq!(response.checkpoint.as_ref().log_length, 2);
+        let checkpoint = client.latest_checkpoint().await?;
+        assert_eq!(checkpoint.as_ref().log_length, 2);
 
         Ok(())
     })
@@ -82,8 +82,8 @@ async fn test() -> Result<()> {
 
         // There should be three log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let response = client.latest_checkpoint().await?;
-        assert_eq!(response.checkpoint.as_ref().log_length, 3);
+        let checkpoint = client.latest_checkpoint().await?;
+        assert_eq!(checkpoint.as_ref().log_length, 3);
 
         Ok(())
     })
@@ -96,8 +96,8 @@ async fn test() -> Result<()> {
 
         // There should be three log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let response = client.latest_checkpoint().await?;
-        assert_eq!(response.checkpoint.as_ref().log_length, 3);
+        let checkpoint = client.latest_checkpoint().await?;
+        assert_eq!(checkpoint.as_ref().log_length, 3);
 
         Ok(())
     })

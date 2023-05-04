@@ -13,7 +13,7 @@ pub use semver::{Version, VersionReq};
 pub use serde_envelope::SerdeEnvelope;
 
 /// Trait implemented by the record types.
-pub trait Record: Decode + Send + Sync {
+pub trait Record: Clone + Decode + Send + Sync {
     /// Gets the set of content hashes associated with the record.
     ///
     /// An empty set indicates that the record has no associated content.

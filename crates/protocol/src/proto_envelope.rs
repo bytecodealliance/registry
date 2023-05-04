@@ -115,6 +115,7 @@ pub enum ParseEnvelopeError {
 
 #[serde_as]
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProtoEnvelopeBody {
     /// The serialized representation of the content
     #[serde_as(as = "Base64")]

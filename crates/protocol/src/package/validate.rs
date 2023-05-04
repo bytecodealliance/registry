@@ -71,7 +71,7 @@ pub enum ValidationError {
 
 /// Represents the current state of a release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "status", rename_all = "lowercase")]
+#[serde(tag = "status", rename_all = "camelCase")]
 pub enum ReleaseState {
     /// The release is currently available.
     Released {
@@ -90,7 +90,10 @@ pub enum ReleaseState {
 
 /// Represents information about a release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Release {
+    /// The id of the record that released the package.
+    pub record_id: RecordId,
     /// The version of the release.
     pub version: Version,
     /// The key id that released the package.
@@ -123,6 +126,7 @@ impl Release {
 ///
 /// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct Head {
     /// The digest of the last validated record.
     pub digest: RecordId,
@@ -133,7 +137,7 @@ pub struct Head {
 
 /// A validator for package records.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Validator {
     /// The hash algorithm used by the package log.
     /// This is `None` until the first (i.e. init) record is validated.
@@ -230,6 +234,7 @@ impl Validator {
         envelope: &ProtoEnvelope<model::PackageRecord>,
     ) -> Result<(), ValidationError> {
         let record = envelope.as_ref();
+        let record_id = RecordId::package_record::<Sha256>(envelope);
 
         // Validate previous hash
         self.validate_record_hash(record)?;
@@ -241,7 +246,12 @@ impl Validator {
         self.validate_record_timestamp(record)?;
 
         // Validate entries
-        self.validate_record_entries(envelope.key_id(), record.timestamp, &record.entries)?;
+        self.validate_record_entries(
+            &record_id,
+            envelope.key_id(),
+            record.timestamp,
+            &record.entries,
+        )?;
 
         // At this point the digest algorithm must be set via an init entry
         let _algorithm = self
@@ -260,7 +270,7 @@ impl Validator {
 
         // Update the validator head
         self.head = Some(Head {
-            digest: RecordId::package_record::<Sha256>(envelope),
+            digest: record_id,
             timestamp: record.timestamp,
         });
 
@@ -317,6 +327,7 @@ impl Validator {
 
     fn validate_record_entries(
         &mut self,
+        record_id: &RecordId,
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         entries: &[model::PackageEntry],
@@ -349,9 +360,13 @@ impl Validator {
                 model::PackageEntry::RevokeFlat { key_id, permission } => {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
-                model::PackageEntry::Release { version, content } => {
-                    self.validate_release_entry(signer_key_id, timestamp, version, content)?
-                }
+                model::PackageEntry::Release { version, content } => self.validate_release_entry(
+                    record_id,
+                    signer_key_id,
+                    timestamp,
+                    version,
+                    content,
+                )?,
                 model::PackageEntry::Yank { version } => {
                     self.validate_yank_entry(signer_key_id, timestamp, version)?
                 }
@@ -428,6 +443,7 @@ impl Validator {
 
     fn validate_release_entry(
         &mut self,
+        record_id: &RecordId,
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         version: &Version,
@@ -442,6 +458,7 @@ impl Validator {
             Entry::Vacant(e) => {
                 let version = e.key().clone();
                 e.insert(Release {
+                    record_id: record_id.clone(),
                     version,
                     by: signer_key_id.clone(),
                     timestamp,
@@ -640,12 +657,14 @@ mod tests {
         };
 
         let envelope1 = ProtoEnvelope::signed_contents(&bob_priv, record1).unwrap();
+        let record_id1 = RecordId::package_record::<Sha256>(&envelope1);
         validator.validate(&envelope1).unwrap();
 
         // At this point, the validator should consider 1.1.0 released
         assert_eq!(
             validator.find_latest_release(&"~1".parse().unwrap()),
             Some(&Release {
+                record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
@@ -660,6 +679,7 @@ mod tests {
         assert_eq!(
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
+                record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
@@ -693,6 +713,7 @@ mod tests {
         assert_eq!(
             validator.releases().collect::<Vec<_>>(),
             vec![&Release {
+                record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
@@ -721,6 +742,7 @@ mod tests {
                 releases: IndexMap::from([(
                     Version::new(1, 1, 0),
                     Release {
+                        record_id: record_id1,
                         version: Version::new(1, 1, 0),
                         by: bob_id.clone(),
                         timestamp: timestamp1,

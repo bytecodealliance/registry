@@ -1,8 +1,8 @@
 use self::models::{
-    NewCheckpoint, NewSource, ParsedText, RecordStatus, Source, SourceKind, Text, TextRef,
+    Checkpoint, CheckpointData, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText,
+    RecordContent, RecordStatus, TextRef,
 };
-use super::{DataStore, DataStoreError, InitialLeaf, OperatorLogEntry, PackageLogEntry};
-use crate::datastore::postgres::models::{Checkpoint, NewLog, NewRecord};
+use super::{DataStore, DataStoreError, InitialLeaf, Record};
 use anyhow::Result;
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
@@ -13,12 +13,7 @@ use diesel_async::{
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
 use std::{collections::HashSet, pin::Pin};
-use warg_api::content::{ContentSource, ContentSourceKind};
-use warg_crypto::{
-    hash::DynHash,
-    signing::{KeyID, Signature},
-    Decode,
-};
+use warg_crypto::{hash::DynHash, Decode};
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
@@ -33,6 +28,7 @@ async fn get_records<R: Decode>(
     log_id: i32,
     root: &DynHash,
     since: Option<&RecordId>,
+    limit: i64,
 ) -> Result<Vec<ProtoEnvelope<R>>, DataStoreError> {
     let checkpoint_id = schema::checkpoints::table
         .select(schema::checkpoints::id)
@@ -46,6 +42,7 @@ async fn get_records<R: Decode>(
         .into_boxed()
         .select((schema::records::record_id, schema::records::content))
         .order_by(schema::records::id.asc())
+        .limit(limit)
         .filter(
             schema::records::log_id
                 .eq(log_id)
@@ -84,13 +81,14 @@ async fn insert_record<V>(
     name: Option<&str>,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
-    sources: &[ContentSource],
+    missing: &HashSet<&DynHash>,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
     <V as Validator>::Error: ToString + Send + Sync,
     DataStoreError: From<<V as Validator>::Error>,
 {
+    let contents = record.as_ref().contents();
     conn.transaction::<_, DataStoreError, _>(|conn| {
         async move {
             // Unfortunately, this cannot be done with an ON CONFLICT DO NOTHING clause as
@@ -121,7 +119,7 @@ where
                     })?,
             };
 
-            let id = diesel::insert_into(schema::records::table)
+            let record_id = diesel::insert_into(schema::records::table)
                 .values(NewRecord {
                     log_id,
                     record_id: TextRef(record_id),
@@ -137,27 +135,21 @@ where
                     e => e.into(),
                 })?;
 
-            diesel::insert_into(schema::sources::table)
-                .values(
-                    &sources
-                        .iter()
-                        .map(|s| {
-                            let (kind, url) = match &s.kind {
-                                ContentSourceKind::HttpAnonymous { url } => {
-                                    (SourceKind::Http, Some(url.as_str()))
-                                }
-                            };
-                            NewSource {
-                                record_id: id,
-                                digest: TextRef(&s.digest),
-                                kind,
-                                url,
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .execute(conn)
-                .await?;
+            if !contents.is_empty() {
+                diesel::insert_into(schema::contents::table)
+                    .values(
+                        &contents
+                            .iter()
+                            .map(|s| NewContent {
+                                record_id,
+                                digest: TextRef(s),
+                                missing: missing.contains(s),
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .execute(conn)
+                    .await?;
+            }
 
             Ok(())
         }
@@ -232,29 +224,6 @@ where
                 }
             })?;
 
-            let sources: Vec<_> = schema::sources::table
-                .select(schema::sources::digest)
-                .filter(schema::sources::record_id.eq(id))
-                .load::<ParsedText<DynHash>>(conn)
-                .await?
-                .into_iter()
-                .collect();
-
-            let needed = record.as_ref().contents();
-            let provided = sources.iter().map(|s| &s.0).collect::<HashSet<_>>();
-
-            if let Some(missing) = needed.difference(&provided).next() {
-                return Err(DataStoreError::Rejection(format!(
-                    "a content source for digest `{missing}` was not provided"
-                )));
-            }
-
-            if let Some(extra) = provided.difference(&needed).next() {
-                return Err(DataStoreError::Rejection(format!(
-                    "a content source for digest `{extra}` was provided but not needed",
-                )));
-            }
-
             // Validate the record
             validator.validate(&record).map_err(Into::into)?;
 
@@ -283,14 +252,7 @@ async fn get_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: &LogId,
     record_id: &RecordId,
-) -> Result<
-    (
-        ProtoEnvelope<V::Record>,
-        Vec<ContentSource>,
-        SerdeEnvelope<MapCheckpoint>,
-    ),
-    DataStoreError,
->
+) -> Result<Record<V::Record>, DataStoreError>
 where
     V: Validator + 'static,
     <V as Validator>::Error: ToString + Send + Sync,
@@ -304,69 +266,72 @@ where
         .optional()?
         .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-    let (id, content, log_root, log_length, map_root, key_id, signature) = schema::records::table
-        .inner_join(schema::checkpoints::table)
+    let (record, checkpoint) = schema::records::table
+        .left_join(schema::checkpoints::table)
         .select((
-            schema::records::id,
-            schema::records::content,
-            schema::checkpoints::log_root,
-            schema::checkpoints::log_length,
-            schema::checkpoints::map_root,
-            schema::checkpoints::key_id,
-            schema::checkpoints::signature,
+            RecordContent::as_select(),
+            Option::<CheckpointData>::as_select(),
         ))
         .filter(
             schema::records::record_id
                 .eq(TextRef(record_id))
-                .and(schema::records::log_id.eq(log_id))
-                .and(schema::records::status.eq(RecordStatus::Validated)),
+                .and(schema::records::log_id.eq(log_id)),
         )
-        .first::<(
-            i32,
-            Vec<u8>,
-            ParsedText<DynHash>,
-            i64,
-            ParsedText<DynHash>,
-            Text<KeyID>,
-            ParsedText<Signature>,
-        )>(conn)
+        .first::<(RecordContent, Option<CheckpointData>)>(conn)
         .await
         .optional()?
         .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-    let sources = schema::sources::table
-        .filter(schema::sources::record_id.eq(id))
-        .load::<Source>(conn)
-        .await?
-        .into_iter()
-        .map(|s| ContentSource {
-            kind: match s.kind {
-                SourceKind::Http => ContentSourceKind::HttpAnonymous {
-                    url: s.url.unwrap_or_default(),
-                },
-            },
-            digest: s.digest.0,
-        })
-        .collect::<Vec<_>>();
+    Ok(Record {
+        status: match record.status {
+            RecordStatus::Pending => {
+                // Get the missing content
+                let missing = schema::contents::table
+                    .inner_join(schema::records::table)
+                    .select(schema::contents::digest)
+                    .filter(
+                        schema::records::record_id
+                            .eq(TextRef(record_id))
+                            .and(schema::contents::missing.eq(true)),
+                    )
+                    .load::<ParsedText<DynHash>>(conn)
+                    .await?;
 
-    Ok((
-        ProtoEnvelope::from_protobuf(content).map_err(|e| {
+                if missing.is_empty() {
+                    super::RecordStatus::Pending
+                } else {
+                    super::RecordStatus::MissingContent(missing.into_iter().map(|d| d.0).collect())
+                }
+            }
+            RecordStatus::Validated => {
+                if checkpoint.is_some() {
+                    super::RecordStatus::Published
+                } else {
+                    super::RecordStatus::Validated
+                }
+            }
+            RecordStatus::Rejected => {
+                super::RecordStatus::Rejected(record.reason.unwrap_or_default())
+            }
+        },
+        envelope: ProtoEnvelope::from_protobuf(record.content).map_err(|e| {
             DataStoreError::InvalidRecordContents {
                 record_id: record_id.clone(),
                 message: e.to_string(),
             }
         })?,
-        sources,
-        SerdeEnvelope::from_parts_unchecked(
-            MapCheckpoint {
-                log_root: log_root.0,
-                log_length: log_length as u32,
-                map_root: map_root.0,
-            },
-            key_id.0,
-            signature.0,
-        ),
-    ))
+        checkpoint: checkpoint.map(|c| {
+            SerdeEnvelope::from_parts_unchecked(
+                MapCheckpoint {
+                    log_root: c.log_root.0,
+                    log_length: c.log_length as u32,
+                    map_root: c.map_root.0,
+                },
+                c.key_id.0,
+                c.signature.0,
+            )
+        }),
+    })
 }
 
 pub struct PostgresDataStore(Pool<AsyncPgConnection>);
@@ -431,8 +396,15 @@ impl DataStore for PostgresDataStore {
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<operator::Validator>(conn.as_mut(), log_id, None, record_id, record, &[])
-            .await
+        insert_record::<operator::Validator>(
+            conn.as_mut(),
+            log_id,
+            None,
+            record_id,
+            record,
+            &Default::default(),
+        )
+        .await
     }
 
     async fn reject_operator_record(
@@ -467,7 +439,13 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        validate_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
+        match validate_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
+                Err(e)
+            }
+        }
     }
 
     async fn store_package_record(
@@ -476,7 +454,7 @@ impl DataStore for PostgresDataStore {
         name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        sources: &[ContentSource],
+        missing: &HashSet<&DynHash>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
         insert_record::<package::Validator>(
@@ -485,7 +463,7 @@ impl DataStore for PostgresDataStore {
             Some(name),
             record_id,
             record,
-            sources,
+            missing,
         )
         .await
     }
@@ -529,6 +507,92 @@ impl DataStore for PostgresDataStore {
                 Err(e)
             }
         }
+    }
+
+    async fn is_content_missing(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError> {
+        let mut conn = self.0.get().await?;
+        schema::contents::table
+            .inner_join(schema::records::table)
+            .inner_join(schema::logs::table.on(schema::logs::id.eq(schema::records::log_id)))
+            .select(schema::contents::missing)
+            .filter(
+                schema::records::status
+                    .eq(RecordStatus::Pending)
+                    .and(schema::logs::log_id.eq(TextRef(log_id)))
+                    .and(schema::records::record_id.eq(TextRef(record_id)))
+                    .and(schema::contents::digest.eq(TextRef(digest))),
+            )
+            .first::<bool>(conn.as_mut())
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::RecordNotPending(record_id.clone()))
+    }
+
+    async fn set_content_present(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        digest: &DynHash,
+    ) -> Result<bool, DataStoreError> {
+        let mut conn = self.0.get().await?;
+        conn.transaction::<_, DataStoreError, _>(|conn| {
+            // Diesel currently doesn't support joins for updates
+            // See: https://github.com/diesel-rs/diesel/issues/1478
+            // So we select the record id first and then update the content
+            async move {
+                let record_id = schema::records::table
+                    .inner_join(schema::logs::table)
+                    .select(schema::records::id)
+                    .filter(
+                        schema::records::status
+                            .eq(RecordStatus::Pending)
+                            .and(schema::logs::log_id.eq(TextRef(log_id)))
+                            .and(schema::records::record_id.eq(TextRef(record_id))),
+                    )
+                    .first::<i32>(conn.as_mut())
+                    .await
+                    .optional()?
+                    .ok_or_else(|| DataStoreError::RecordNotPending(record_id.clone()))?;
+
+                // If the row was already updated, return false since this update
+                // didn't change anything
+                if diesel::update(schema::contents::table)
+                    .filter(
+                        schema::contents::record_id
+                            .eq(record_id)
+                            .and(schema::contents::digest.eq(TextRef(digest))),
+                    )
+                    .set(schema::contents::missing.eq(false))
+                    .execute(conn.as_mut())
+                    .await?
+                    == 0
+                {
+                    return Ok(false);
+                }
+
+                // Finally, check if all contents are present; if so, return true
+                // to indicate that this record is ready to be processed
+                let missing = schema::contents::table
+                    .select(schema::contents::id)
+                    .filter(
+                        schema::contents::record_id
+                            .eq(record_id)
+                            .and(schema::contents::missing.eq(true)),
+                    )
+                    .first::<i32>(conn.as_mut())
+                    .await
+                    .optional()?;
+
+                Ok(missing.is_none())
+            }
+            .scope_boxed()
+        })
+        .await
     }
 
     async fn store_checkpoint(
@@ -613,6 +677,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
         let mut conn = self.0.get().await?;
         let log_id = schema::logs::table
@@ -623,7 +688,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, root, since).await
+        get_records(&mut conn, log_id, root, since, limit as i64).await
     }
 
     async fn get_package_records(
@@ -631,6 +696,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         root: &DynHash,
         since: Option<&RecordId>,
+        limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
         let mut conn = self.0.get().await?;
         let log_id = schema::logs::table
@@ -641,78 +707,24 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, root, since).await
+        get_records(&mut conn, log_id, root, since, limit as i64).await
     }
 
-    async fn get_record_status(
+    async fn get_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<super::RecordStatus, DataStoreError> {
+    ) -> Result<Record<operator::OperatorRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-
-        let log_id = schema::logs::table
-            .select(schema::logs::id)
-            .filter(schema::logs::log_id.eq(TextRef(log_id)))
-            .first::<i32>(conn.as_mut())
-            .await
-            .optional()?
-            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
-
-        let (status, reason, checkpoint_id) = schema::records::table
-            .select((
-                schema::records::status,
-                schema::records::reason,
-                schema::records::checkpoint_id.nullable(),
-            ))
-            .filter(
-                schema::records::record_id
-                    .eq(TextRef(record_id))
-                    .and(schema::records::log_id.eq(log_id)),
-            )
-            .first::<(RecordStatus, Option<String>, Option<i32>)>(&mut conn)
-            .await
-            .optional()?
-            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
-
-        Ok(match status {
-            RecordStatus::Pending => super::RecordStatus::Pending,
-            RecordStatus::Rejected => super::RecordStatus::Rejected(reason.unwrap_or_default()),
-            RecordStatus::Validated => {
-                if checkpoint_id.is_some() {
-                    super::RecordStatus::InCheckpoint
-                } else {
-                    super::RecordStatus::Validated
-                }
-            }
-        })
+        get_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
     }
 
-    async fn get_operator_log_entry(
+    async fn get_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<OperatorLogEntry, DataStoreError> {
+    ) -> Result<Record<package::PackageRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-        let (record, _, checkpoint) =
-            get_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await?;
-
-        Ok(OperatorLogEntry { record, checkpoint })
-    }
-
-    async fn get_package_log_entry(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-    ) -> Result<PackageLogEntry, DataStoreError> {
-        let mut conn = self.0.get().await?;
-        let (record, sources, checkpoint) =
-            get_record::<package::Validator>(conn.as_mut(), log_id, record_id).await?;
-
-        Ok(PackageLogEntry {
-            record,
-            sources,
-            checkpoint,
-        })
+        get_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
     }
 }

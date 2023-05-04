@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use warg_crypto::{signing, Signable};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SerdeEnvelope<Contents> {
     /// The content represented by content_bytes
     contents: Contents,
