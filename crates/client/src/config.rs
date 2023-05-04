@@ -93,7 +93,7 @@ pub struct Config {
     /// If `None`, the default of `$CACHE_DIR/warg/checkpoint` is used, where
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint_path: Option<PathBuf>
+    pub checkpoint_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -166,7 +166,7 @@ impl Config {
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
-            checkpoint_path: Some(self.checkpoint_path().unwrap())
+            checkpoint_path: Some(self.checkpoint_path().unwrap()),
         };
 
         serde_json::to_writer_pretty(
@@ -241,16 +241,16 @@ impl Config {
 
     /// Gets the path to the file where the previously fetched checkpoint is stored
     pub fn checkpoint_path(&self) -> Result<PathBuf> {
-      self.checkpoint_path
-        .as_ref()
-        .cloned()
-        .map(Ok)
-        .unwrap_or_else(|| {
-        CACHE_DIR
+        self.checkpoint_path
             .as_ref()
-            .map(|p| p.join("warg/checkpoint"))
-            .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
-        })
+            .cloned()
+            .map(Ok)
+            .unwrap_or_else(|| {
+                CACHE_DIR
+                    .as_ref()
+                    .map(|p| p.join("warg/checkpoint"))
+                    .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
+            })
     }
 
     pub(crate) fn storage_paths_for_url(

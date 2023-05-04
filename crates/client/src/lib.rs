@@ -7,7 +7,8 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, FileSystemCheckpointStorage, PackageStorage, CheckpointStorage, PublishInfo,
+    CheckpointStorage, ContentStorage, FileSystemCheckpointStorage, FileSystemContentStorage,
+    FileSystemPackageStorage, PackageStorage, PublishInfo,
 };
 use thiserror::Error;
 use warg_api::{
@@ -37,7 +38,7 @@ pub struct Client<P, C, T> {
     packages: P,
     content: C,
     api: api::Client,
-    checkpoint: T
+    checkpoint: T,
 }
 
 impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T> {
@@ -48,7 +49,7 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
             packages,
             content,
             api: api::Client::new(url)?,
-            checkpoint
+            checkpoint,
         })
     }
 
@@ -455,7 +456,8 @@ impl<P: PackageStorage, C: ContentStorage, T: CheckpointStorage> Client<P, C, T>
 
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
-pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage, FileSystemCheckpointStorage>;
+pub type FileSystemClient =
+    Client<FileSystemPackageStorage, FileSystemContentStorage, FileSystemCheckpointStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -478,7 +480,8 @@ impl FileSystemClient {
         url: Option<&str>,
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
-        let (url, packages_dir, content_dir, checkpoint_path) = config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir, checkpoint_path) =
+            config.storage_paths_for_url(url)?;
 
         let (packages, content, checkpoint) = match (
             FileSystemPackageStorage::try_lock(packages_dir.clone())?,
@@ -492,7 +495,7 @@ impl FileSystemClient {
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content, checkpoint
+            url, packages, content, checkpoint,
         )?))
     }
 
@@ -503,12 +506,13 @@ impl FileSystemClient {
     ///
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
-        let (url, packages_dir, content_dir, checkpoint_path) = config.storage_paths_for_url(url)?;
+        let (url, packages_dir, content_dir, checkpoint_path) =
+            config.storage_paths_for_url(url)?;
         Self::new(
             url,
             FileSystemPackageStorage::lock(packages_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
-            FileSystemCheckpointStorage::lock(checkpoint_path)?
+            FileSystemCheckpointStorage::lock(checkpoint_path)?,
         )
     }
 }

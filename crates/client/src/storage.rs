@@ -27,7 +27,6 @@ pub trait CheckpointStorage {
 
     ///  Stores most recent checkpoint
     async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
-
 }
 /// Trait for package storage implementations.
 ///
