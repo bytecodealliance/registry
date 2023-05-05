@@ -687,8 +687,14 @@ components:
       description: A request to append a record to a package log.
       additionalProperties: false
       required:
+        - name
         - record
       properties:
+        name:
+          type: string
+          description: The name of the package log being appended to.
+          maxLength: 128
+          example: wasi:http
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record being appended to the log.
