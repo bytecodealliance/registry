@@ -32,7 +32,7 @@ pub trait RegistryStorage: Send + Sync {
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
 
     /// Stores most recent checkpoint
-    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>);
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
