@@ -708,6 +708,9 @@ components:
       type: object
       description: A response containing the accepted package record.
       additionalProperties: false
+      required:
+        - recordUrl
+        - record
       properties:
         recordUrl:
           type: string
