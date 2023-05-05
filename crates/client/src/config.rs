@@ -66,7 +66,7 @@ pub struct StoragePaths {
     pub url: Url,
     /// The path to the registry storage directory.
     pub registries_dir: PathBuf,
-    /// content path
+    /// The path to the content storage directory.
     pub content_dir: PathBuf,
 }
 /// Represents the Warg client configuration.
