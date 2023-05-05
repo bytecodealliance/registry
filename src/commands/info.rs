@@ -1,7 +1,7 @@
 use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
-use warg_client::storage::{PackageInfo, PackageStorage};
+use warg_client::storage::{PackageInfo, RegistryStorage};
 use warg_crypto::hash::DynHash;
 use warg_protocol::Version;
 
@@ -27,13 +27,13 @@ impl InfoCommand {
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
-                if let Some(info) = client.packages().load_package(&package).await? {
+                if let Some(info) = client.registry().load_package(&package).await? {
                     Self::print_package_info(&info);
                 }
             }
             None => {
                 client
-                    .packages()
+                    .registry()
                     .load_packages()
                     .await?
                     .iter()

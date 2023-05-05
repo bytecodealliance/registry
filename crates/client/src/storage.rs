@@ -19,12 +19,21 @@ use warg_protocol::{
 mod fs;
 pub use fs::*;
 
-/// Trait for package storage implementations.
+/// Trait for registry storage implementations.
 ///
-/// Package storage data must be synchronized if shared between
+/// Stores information such as package/operator logs and checkpoints
+/// on a per-registry basis.
+///
+/// Registry storage data must be synchronized if shared between
 /// multiple threads and processes.
 #[async_trait]
-pub trait PackageStorage: Send + Sync {
+pub trait RegistryStorage: Send + Sync {
+    /// Loads most recent checkpoint
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
+
+    /// Stores most recent checkpoint
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+
     /// Loads the package information for all packages in the storage.
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
 

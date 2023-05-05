@@ -60,6 +60,16 @@ fn normalize_path(path: &Path) -> PathBuf {
     ret
 }
 
+/// Paths used for storage
+pub struct StoragePaths {
+    /// The registry URL relating to the storage paths.
+    pub url: Url,
+    /// The path to the registry storage directory.
+    pub registries_dir: PathBuf,
+    /// The path to the content storage directory.
+    pub content_dir: PathBuf,
+}
+
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,14 +78,14 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_url: Option<String>,
 
-    /// The path to the directory where per-registry packages are stored.
+    /// The path to the top-level directory where per-registry information is stored.
     ///
     /// This path is expected to be relative to the configuration file.
     ///
-    /// If `None`, the default of `$CACHE_DIR/warg/packages` is used, where
+    /// If `None`, the default of `$CACHE_DIR/warg/registries` is used, where
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub packages_dir: Option<PathBuf>,
+    pub registries_dir: Option<PathBuf>,
 
     /// The path to the directory where package content is stored.
     ///
@@ -103,7 +113,7 @@ impl Config {
         })?;
 
         if let Some(parent) = path.parent() {
-            config.packages_dir = config.packages_dir.map(|p| parent.join(p));
+            config.registries_dir = config.registries_dir.map(|p| parent.join(p));
             config.content_dir = config.content_dir.map(|p| parent.join(p));
         }
 
@@ -146,7 +156,7 @@ impl Config {
 
         let config = Config {
             default_url: self.default_url.clone(),
-            packages_dir: self.packages_dir.as_ref().map(|p| {
+            registries_dir: self.registries_dir.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
@@ -201,15 +211,15 @@ impl Config {
     }
 
     /// Gets the path to the directory where per-registry packages are stored.
-    pub fn packages_dir(&self) -> Result<PathBuf> {
-        self.packages_dir
+    pub fn registries_dir(&self) -> Result<PathBuf> {
+        self.registries_dir
             .as_ref()
             .cloned()
             .map(Ok)
             .unwrap_or_else(|| {
                 CACHE_DIR
                     .as_ref()
-                    .map(|p| p.join("warg/packages"))
+                    .map(|p| p.join("warg/registries"))
                     .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
             })
     }
@@ -231,15 +241,19 @@ impl Config {
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
-    ) -> Result<(Url, PathBuf, PathBuf), ClientError> {
+    ) -> Result<StoragePaths, ClientError> {
         let url = api::Client::validate_url(
             url.or(self.default_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
         )?;
 
         let host = url.host().unwrap().to_string().to_ascii_lowercase();
-        let packages_dir = self.packages_dir()?.join(host);
+        let registries_dir = self.registries_dir()?.join(host);
         let content_dir = self.content_dir()?;
-        Ok((url, packages_dir, content_dir))
+        Ok(StoragePaths {
+            url,
+            registries_dir,
+            content_dir,
+        })
     }
 }

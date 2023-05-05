@@ -10,7 +10,10 @@ use warg_api::{
     content::{ContentError, ContentResult, ContentSource},
     fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse, FetchResult},
     package::{PackageError, PackageResult, PendingRecordResponse, PublishRequest, RecordResponse},
-    proof::{InclusionRequest, InclusionResponse, ProofError, ProofResult},
+    proof::{
+        ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
+        ProofResult,
+    },
     FromError,
 };
 use warg_crypto::hash::{DynHash, Sha256};
@@ -18,7 +21,10 @@ use warg_protocol::{
     registry::{LogLeaf, MapCheckpoint, MapLeaf},
     ProtoEnvelopeBody,
 };
-use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
+use warg_transparency::{
+    log::{LogProofBundle, ProofBundle},
+    map::MapProofBundle,
+};
 
 async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, String> {
     let status = response.status();
@@ -219,9 +225,48 @@ impl Client {
         old_root: DynHash,
         new_root: DynHash,
     ) -> ProofResult<()> {
-        dbg!(old_root);
-        dbg!(new_root);
-        todo!()
+        let old = old_root.clone();
+        let new = new_root.clone();
+        let request = ConsistencyRequest { old_root, new_root };
+        let url = self.url.join("proof/consistency").unwrap();
+        let response = into_result::<ConsistencyResponse, ProofError>(
+            self.client
+                .post(url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(ProofError::from_error)?,
+        )
+        .await?;
+        let proof = ProofBundle::<Sha256, LogLeaf>::decode(&response.proof).unwrap();
+        let (log_data, consistencies, inclusions) = proof.unbundle();
+        if !inclusions.is_empty() {
+            return Err(ProofError::BundleFailure {
+                message: "Expected no inclusion proofs".into(),
+            });
+        }
+        if consistencies.len() != 1 {
+            return Err(ProofError::BundleFailure {
+                message: "Expected exactly one consistency proof".into(),
+            });
+        }
+        let (old_hash, new_hash) =
+            consistencies
+                .first()
+                .unwrap()
+                .evaluate(&log_data)
+                .map_err(|_| ProofError::LogNotConsistent {
+                    old_root: old.clone(),
+                    new_root: new.clone(),
+                })?;
+        if old == DynHash::from(old_hash) && new == DynHash::from(new_hash) {
+            Ok(())
+        } else {
+            Err(ProofError::LogNotConsistent {
+                old_root: old,
+                new_root: new,
+            })
+        }
     }
 
     /// Uploads package content to the registry.

@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, PackageStorage, PublishInfo};
+use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -18,7 +18,10 @@ use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
 use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
-use warg_protocol::registry::LogId;
+use warg_protocol::{
+    registry::{LogId, MapCheckpoint},
+    SerdeEnvelope,
+};
 
 const TEMP_DIRECTORY: &str = "temp";
 const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
@@ -76,7 +79,14 @@ impl FileSystemPackageStorage {
 }
 
 #[async_trait]
-impl PackageStorage for FileSystemPackageStorage {
+impl RegistryStorage for FileSystemPackageStorage {
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+        load(&self.base_dir.join("checkpoint")).await
+    }
+
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+        store(&self.base_dir.join("checkpoint"), checkpoint).await
+    }
     async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();
 

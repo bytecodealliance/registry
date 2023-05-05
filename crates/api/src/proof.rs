@@ -91,6 +91,15 @@ pub enum ProofError {
         /// The id of the package.
         id: LogId,
     },
+
+    /// Failed to prove consistency of the registry between two checkpoints.
+    #[error("failed to prove consistency of `{old_root}` with `{new_root}`")]
+    LogNotConsistent {
+        /// Old Root
+        old_root: DynHash,
+        /// New Root
+        new_root: DynHash,
+    },
     /// The provided root for an inclusion proof was incorrect.
     #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
     IncorrectProof {

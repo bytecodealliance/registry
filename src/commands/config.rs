@@ -10,9 +10,9 @@ pub struct ConfigCommand {
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
 
-    /// The path to the packages directory to use.
-    #[clap(long, value_name = "PACKAGES")]
-    pub packages_dir: Option<PathBuf>,
+    /// The path to the registries directory to use.
+    #[clap(long, value_name = "REGISTRIES")]
+    pub registries_dir: Option<PathBuf>,
 
     /// The path to the content directory to use.
     #[clap(long, value_name = "CONTENT")]
@@ -56,10 +56,9 @@ impl ConfigCommand {
         // `write_to_file` will handle normalizing the paths to be relative to
         // the configuration file's directory.
         let cwd = std::env::current_dir().context("failed to determine current directory")?;
-
         let config = Config {
             default_url,
-            packages_dir: self.packages_dir.map(|p| cwd.join(p)),
+            registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
         };
 
