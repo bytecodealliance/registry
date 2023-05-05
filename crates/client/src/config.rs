@@ -77,7 +77,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_url: Option<String>,
 
-    /// The path to the directory where per-registry packages are stored.
+    /// The path to the top-level directory where per-registry information is stored.
     ///
     /// This path is expected to be relative to the configuration file.
     ///

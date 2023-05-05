@@ -56,7 +56,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         self.api.url()
     }
 
-    /// Gets the package storage used by the client.
+    /// Gets the registry storage used by the client.
     pub fn registry(&self) -> &R {
         &self.registry
     }
