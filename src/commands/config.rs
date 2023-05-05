@@ -11,7 +11,7 @@ pub struct ConfigCommand {
     pub registry: Option<String>,
 
     /// The path to the registries directory to use.
-    #[clap(long, value_name = "PACKAGES")]
+    #[clap(long, value_name = "REGISTRIES")]
     pub registries_dir: Option<PathBuf>,
 
     /// The path to the content directory to use.
