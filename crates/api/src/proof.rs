@@ -92,7 +92,7 @@ pub enum ProofError {
         id: LogId,
     },
 
-    /// Failed to prove consistency of a package.
+    /// Failed to prove consistency of the registry between two checkpoints.
     #[error("failed to prove consistency of `{old_root}` with `{new_root}`")]
     LogNotConsistent {
         /// Old Root

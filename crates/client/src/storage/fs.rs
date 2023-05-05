@@ -81,13 +81,11 @@ impl FileSystemPackageStorage {
 #[async_trait]
 impl RegistryStorage for FileSystemPackageStorage {
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
-        let contents = load(&self.base_dir.join("checkpoint")).await;
-        contents
+        load(&self.base_dir.join("checkpoint")).await
     }
 
-    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()> {
+    async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) {
         store(&self.base_dir.join("checkpoint"), checkpoint).await;
-        Ok(())
     }
     async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();

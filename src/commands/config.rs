@@ -10,7 +10,7 @@ pub struct ConfigCommand {
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
 
-    /// The path to the packages directory to use.
+    /// The path to the registries directory to use.
     #[clap(long, value_name = "PACKAGES")]
     pub registries_dir: Option<PathBuf>,
 

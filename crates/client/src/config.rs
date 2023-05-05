@@ -69,6 +69,7 @@ pub struct StoragePaths {
     /// The path to the content storage directory.
     pub content_dir: PathBuf,
 }
+
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
