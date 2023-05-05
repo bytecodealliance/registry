@@ -1083,13 +1083,19 @@ components:
       type: object
       additionalProperties: false
       required:
+        - status
         - reason
         - logId
       properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
         reason:
           type: string
           description: The reason why the bundle could not be generated.
           enum: [packageNotIncluded]
+          example: packageNotIncluded
         logId:
           "$ref": "#/components/schemas/AnyHash"
           description: The identifier of the log that was not included.
@@ -1097,14 +1103,20 @@ components:
       type: object
       additionalProperties: false
       required:
+        - status
         - reason
         - root
         - found
       properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
         reason:
           type: string
           description: The reason why the bundle could not be generated.
           enum: [incorrectProof]
+          example: incorrectProof
         root:
           "$ref": "#/components/schemas/AnyHash"
           description: The map or log root hash from the checkpoint that was provided.
@@ -1115,13 +1127,19 @@ components:
       type: object
       additionalProperties: false
       required:
+        - status
         - reason
         - message
       properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
         reason:
           type: string
           description: The reason why the bundle could not be generated.
           enum: [failure]
+          example: failure
         message:
           type: string
           description: The failure error message.
