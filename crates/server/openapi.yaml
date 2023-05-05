@@ -1143,3 +1143,4 @@ components:
         message:
           type: string
           description: The failure error message.
+          example: bundle must contain proofs for the same root
