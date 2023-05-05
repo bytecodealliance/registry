@@ -503,6 +503,18 @@ paths:
                     "$ref": "#/components/schemas/AnyHash"
                     description: |
                       The identifier of the entity that was not found.
+        "422":
+          description: The proof bundle could not be generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                oneOf:
+                  - "$ref": "#/components/schemas/BundleFailureError"
+                discriminator:
+                  propertyName: reason
+                  mapping:
+                    failure: "#/components/schemas/BundleFailureError"
         default:
           description: An error occurred when processing the request.
           content:
@@ -553,12 +565,30 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [checkpoint, log, record]
+                    enum: [checkpoint, leaf]
                     example: checkpoint
                   id:
                     "$ref": "#/components/schemas/AnyHash"
                     description: |
                       The identifier of the entity that was not found.
+
+                      For leafs, the format is `<logId>|<recordId>`.
+        "422":
+          description: The proof bundle could not be generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                oneOf:
+                  - "$ref": "#/components/schemas/PackageNotIncludedError"
+                  - "$ref": "#/components/schemas/IncorrectProofError"
+                  - "$ref": "#/components/schemas/BundleFailureError"
+                discriminator:
+                  propertyName: reason
+                  mapping:
+                    packageNotIncluded: "#/components/schemas/PackageNotIncludedError"
+                    incorrectProof: "#/components/schemas/IncorrectProofError"
+                    failure: "#/components/schemas/BundleFailureError"
         default:
           description: An error occurred when processing the request.
           content:
@@ -592,14 +622,14 @@ components:
       maxLength: 71
     FetchLogsRequest:
       type: object
-      description: A request to fetch logs from the registrsy.
+      description: A request to fetch logs from the registry.
       additionalProperties: false
       required:
         - checkpoint
       properties:
         checkpoint:
           $ref: "#/components/schemas/AnyHash"
-          description: The checkpoint of the registry to fetch from.
+          description: The registry checkpoint hash to fetch from.
         maximumRecords:
           type: integer
           description: The maximum number of operator or package records to return.
@@ -780,10 +810,10 @@ components:
       properties:
         from:
           $ref: "#/components/schemas/AnyHash"
-          description: The starting checkpoint.
+          description: The starting checkpoint hash.
         to:
           $ref: "#/components/schemas/AnyHash"
-          description: The ending checkpoint.
+          description: The ending checkpoint hash.
     ProveConsistencyResponse:
       type: object
       description: A response containing the consistency proof bundle.
@@ -1049,3 +1079,49 @@ components:
           description: The URL of the content.
           example: https://example.com/contents.wasm
           format: uri
+    PackageNotIncludedError:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+        - logId
+      properties:
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [packageNotIncluded]
+        logId:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The identifier of the log that was not included.
+    IncorrectProofError:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+        - root
+        - found
+      properties:
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [incorrectProof]
+        root:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The map or log root hash from the checkpoint that was provided.
+        found:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The hash that was found in the proof.
+    BundleFailureError:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+        - message
+      properties:
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [failure]
+        message:
+          type: string
+          description: The failure error message.
