@@ -64,7 +64,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 pub struct StoragePaths {
     /// The registry URL relating to the storage paths.
     pub url: Url,
-    /// registries path
+    /// The path to the registry storage directory.
     pub registries_dir: PathBuf,
     /// content path
     pub content_dir: PathBuf,
