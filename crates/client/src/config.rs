@@ -81,7 +81,7 @@ pub struct Config {
     ///
     /// This path is expected to be relative to the configuration file.
     ///
-    /// If `None`, the default of `$CACHE_DIR/warg/packages` is used, where
+    /// If `None`, the default of `$CACHE_DIR/warg/registries` is used, where
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registries_dir: Option<PathBuf>,
