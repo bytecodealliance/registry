@@ -169,17 +169,17 @@ paths:
                 $ref: "#/components/schemas/Error"
   /package/{logId}/record:
     post:
-      summary: Append a new package log record.
-      operationId: appendPackageRecord
+      summary: Publish a new record to a package log.
+      operationId: publishPackageRecord
       security: []
       tags:
         - package
       description: |
-        Attempts to append a new record to a package log.
+        Attempts to publish a new record to a package log.
 
-        Appending package records is an asynchronous operation.
+        Publishing package records is an asynchronous operation.
 
-        The record must be signed by a key that is authorized to append records to the package log.
+        The record must be signed by a key that is authorized to modify the package log.
 
         TODO: document package record format.
       parameters:
@@ -194,14 +194,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AppendPackageRecordRequest"
+              $ref: "#/components/schemas/PublishPackageRecordRequest"
       responses:
         "202":
           description: The package record was accepted.
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AppendPackageRecordResponse"
+                "$ref": "#/components/schemas/PublishPackageRecordResponse"
         default:
           description: An error occurred when processing the request.
           content:
@@ -222,7 +222,7 @@ paths:
           * `sourcing`: The package record needs content sources.
           * `processing`: The package record is being processed.
           * `rejected`: The package record was rejected.
-          * `appended`: The package record was appended to the log.
+          * `published`: The package record was published to the log.
 
         TODO: document package record format.
       parameters:
@@ -712,9 +712,9 @@ components:
                 contents:
                   $ref: "#/components/schemas/MapCheckpoint"
             - $ref: "#/components/schemas/Signature"
-    AppendPackageRecordRequest:
+    PublishPackageRecordRequest:
       type: object
-      description: A request to append a record to a package log.
+      description: A request to publish a record to a package log.
       additionalProperties: false
       required:
         - name
@@ -722,19 +722,19 @@ components:
       properties:
         name:
           type: string
-          description: The name of the package log being appended to.
+          description: The name of the package log being published to.
           maxLength: 128
           example: wasi:http
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
-          description: The package record being appended to the log.
+          description: The package record being published to the log.
         contentSources:
           type: array
           description: The list of known content sources.
           maxItems: 128
           items:
             "$ref": "#/components/schemas/ContentSource"
-    AppendPackageRecordResponse:
+    PublishPackageRecordResponse:
       type: object
       description: A response containing the accepted package record.
       additionalProperties: false
@@ -777,14 +777,14 @@ components:
         - "$ref": "#/components/schemas/SourcingRecord"
         - "$ref": "#/components/schemas/ProcessingRecord"
         - "$ref": "#/components/schemas/RejectedRecord"
-        - "$ref": "#/components/schemas/AppendedRecord"
+        - "$ref": "#/components/schemas/PublishedRecord"
       discriminator:
         propertyName: state
         mapping:
           sourcing: "#/components/schemas/SourcingRecord"
           processing: "#/components/schemas/ProcessingRecord"
           rejected: "#/components/schemas/RejectedRecord"
-          appended: "#/components/schemas/AppendedRecord"
+          published: "#/components/schemas/PublishedRecord"
     PackageRecordContentSourcesRequest:
       type: object
       description: A request to set the content sources of a package record.
@@ -926,9 +926,9 @@ components:
           type: string
           description: The reason the package record was rejected.
           example: the first entry of the log is not `init`
-    AppendedRecord:
+    PublishedRecord:
       type: object
-      description: A record that has been appended to the log.
+      description: A record that has been published to the log.
       required:
         - state
         - checkpoint
@@ -937,8 +937,8 @@ components:
         state:
           type: string
           description: The state of the package record.
-          enum: [appended]
-          example: appended
+          enum: [published]
+          example: published
         checkpoint:
           description: The checkpoint of the record.
           allOf:
