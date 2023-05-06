@@ -201,7 +201,7 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PublishPackageRecordResponse"
+                "$ref": "#/components/schemas/PackageRecord"
         default:
           description: An error occurred when processing the request.
           content:
@@ -508,7 +508,6 @@ paths:
           content:
             application/json:
               schema:
-                type: object
                 oneOf:
                   - "$ref": "#/components/schemas/BundleFailureError"
                 discriminator:
@@ -578,7 +577,6 @@ paths:
           content:
             application/json:
               schema:
-                type: object
                 oneOf:
                   - "$ref": "#/components/schemas/PackageNotIncludedError"
                   - "$ref": "#/components/schemas/IncorrectProofError"
@@ -734,23 +732,6 @@ components:
           maxItems: 128
           items:
             "$ref": "#/components/schemas/ContentSource"
-    PublishPackageRecordResponse:
-      type: object
-      description: A response containing the accepted package record.
-      additionalProperties: false
-      required:
-        - recordUrl
-        - record
-      properties:
-        recordUrl:
-          type: string
-          description: The URL of the package record.
-          example: https://example.com/package/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
-          format: uri
-        record:
-          "$ref": "#/components/schemas/PackageRecord"
-          description: |
-            The package record that was accepted and is awaiting processing by the registry.
     PackageLog:
       type: object
       description: Information of a package log.
@@ -771,20 +752,27 @@ components:
           "$ref": "#/components/schemas/PackageMetadata"
           description: The metadata for the package log.
     PackageRecord:
-      type: object
       description: A package log record.
-      oneOf:
-        - "$ref": "#/components/schemas/SourcingRecord"
-        - "$ref": "#/components/schemas/ProcessingRecord"
-        - "$ref": "#/components/schemas/RejectedRecord"
-        - "$ref": "#/components/schemas/PublishedRecord"
-      discriminator:
-        propertyName: state
-        mapping:
-          sourcing: "#/components/schemas/SourcingRecord"
-          processing: "#/components/schemas/ProcessingRecord"
-          rejected: "#/components/schemas/RejectedRecord"
-          published: "#/components/schemas/PublishedRecord"
+      allOf:
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              "$ref": "#/components/schemas/AnyHash"
+              description: The record identifier.
+        - oneOf:
+            - "$ref": "#/components/schemas/SourcingRecord"
+            - "$ref": "#/components/schemas/ProcessingRecord"
+            - "$ref": "#/components/schemas/RejectedRecord"
+            - "$ref": "#/components/schemas/PublishedRecord"
+          discriminator:
+            propertyName: state
+            mapping:
+              sourcing: "#/components/schemas/SourcingRecord"
+              processing: "#/components/schemas/ProcessingRecord"
+              rejected: "#/components/schemas/RejectedRecord"
+              published: "#/components/schemas/PublishedRecord"
     PackageRecordContentSourcesRequest:
       type: object
       description: A request to set the content sources of a package record.
@@ -877,6 +865,7 @@ components:
       description: The package record is sourcing content.
       required:
         - state
+        - uploadSupported
         - missingContent
       properties:
         state:
@@ -884,14 +873,10 @@ components:
           description: The state of the package record.
           enum: [sourcing]
           example: sourcing
-        contentUrl:
-          type: string
-          description: |
-            The URL for posting record content.
-
-            If this field is not present, clients should update the content sources of the package record.
-          example: https://example.com/package/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c/content
-          format: uri
+        uploadSupported:
+          type: boolean
+          description: Whether or not direct content uploading is supported by the registry.
+          example: true
         missingContent:
           type: array
           description: The array of content digests that are missing for the package record.
@@ -1054,7 +1039,6 @@ components:
           maxLength: 107
           example: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
     ContentSource:
-      type: object
       description: A known content source.
       oneOf:
         - "$ref": "#/components/schemas/HttpSource"
