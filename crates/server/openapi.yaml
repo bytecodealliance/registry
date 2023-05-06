@@ -783,10 +783,10 @@ components:
       properties:
         from:
           $ref: "#/components/schemas/AnyHash"
-          description: The starting checkpoint hash.
+          description: The starting log root hash.
         to:
           $ref: "#/components/schemas/AnyHash"
-          description: The ending checkpoint hash.
+          description: The ending log root hash.
     ProveConsistencyResponse:
       type: object
       description: A response containing the consistency proof bundle.
