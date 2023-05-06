@@ -102,7 +102,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FetchCheckpointResponse"
+                $ref: "#/components/schemas/SignedMapCheckpoint"
         default:
           description: An error occurred when processing the request.
           content:
@@ -695,21 +695,6 @@ components:
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
-    FetchCheckpointResponse:
-      type: object
-      description: A response containing the latest registry checkpoint.
-      additionalProperties: false
-      properties:
-        checkpoint:
-          description: The latest checkpoint of the registry.
-          allOf:
-            - type: object
-              required:
-                - contents
-              properties:
-                contents:
-                  $ref: "#/components/schemas/MapCheckpoint"
-            - $ref: "#/components/schemas/Signature"
     PublishPackageRecordRequest:
       type: object
       description: A request to publish a record to a package log.
@@ -925,15 +910,8 @@ components:
           enum: [published]
           example: published
         checkpoint:
+          "$ref": "#/components/schemas/SignedMapCheckpoint"
           description: The checkpoint of the record.
-          allOf:
-            - type: object
-              required:
-                - contents
-              properties:
-                contents:
-                  $ref: "#/components/schemas/MapCheckpoint"
-            - $ref: "#/components/schemas/Signature"
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record.
@@ -1003,6 +981,16 @@ components:
         mapRoot:
           $ref: "#/components/schemas/AnyHash"
           description: The map root hash of the checkpoint.
+    SignedMapCheckpoint:
+      description: A signed registry checkpoint.
+      allOf:
+        - type: object
+          required:
+            - contents
+          properties:
+            contents:
+              $ref: "#/components/schemas/MapCheckpoint"
+        - $ref: "#/components/schemas/Signature"
     EnvelopeBody:
       description: A signed envelope body.
       allOf:
