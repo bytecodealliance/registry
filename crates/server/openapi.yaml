@@ -278,7 +278,7 @@ paths:
                 $ref: "#/components/schemas/Error"
     patch:
       summary: Update content sources of a package record.
-      operationId: addPackageRecordContentSources
+      operationId: updatePackageRecordContentSources
       security: []
       tags:
         - package
@@ -712,11 +712,8 @@ components:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record being published to the log.
         contentSources:
-          type: array
+          "$ref": "#/components/schemas/ContentSourceMap"
           description: The list of known content sources.
-          maxItems: 128
-          items:
-            "$ref": "#/components/schemas/ContentSource"
     PackageLog:
       type: object
       description: Information of a package log.
@@ -766,13 +763,8 @@ components:
         - contentSources
       properties:
         contentSources:
-          type: array
-          description: The list of known content sources.
-          minItems: 1
-          maxItems: 128
-          items:
-            "$ref": "#/components/schemas/ContentSource"
-        # TODO: sign the array entries so that only an accepted publisher can set the content sources?
+          "$ref": "#/components/schemas/ContentSourceMap"
+          description: The map of content digest to sources.
     ProveConsistencyRequest:
       type: object
       description: A request to prove the consistency of the registry.
@@ -916,11 +908,8 @@ components:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record.
         contentSources:
-          type: array
+          "$ref": "#/components/schemas/ContentSourceMap"
           description: The content sources for the package record.
-          maxItems: 128
-          items:
-            "$ref": "#/components/schemas/ContentSource"
     PackageMetadata:
       type: object
       additionalProperties: false
@@ -1026,6 +1015,21 @@ components:
           minLength: 107
           maxLength: 107
           example: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+    ContentSourceMap:
+      type: object
+      description: The map of content digest to sources.
+      patternProperties:
+        "^sha256:[a-f0-9]{64,64}$":
+          type: array
+          items:
+            "$ref": "#/components/schemas/ContentSource"
+          description: The array of sources for the content digest.
+          minItems: 1
+          maxItems: 128
+      example:
+        ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"
+        : - type: http
+            url: https://example.com/7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773
     ContentSource:
       description: A known content source.
       oneOf:
@@ -1043,9 +1047,6 @@ components:
           description: The type of content source.
           enum: [http]
           example: http
-        digest:
-          "$ref": "#/components/schemas/AnyHash"
-          description: The digest of the content.
         url:
           type: string
           description: The URL of the content.
