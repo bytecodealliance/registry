@@ -337,8 +337,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let operator_records = response.operator;
         for record in operator_records {
-          let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-          println!("THE OPERATOR RECORD {:?}", record);
+            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+            self.registry.store_operator(record).await?;
         }
         let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {

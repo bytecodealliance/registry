@@ -19,8 +19,9 @@ use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
 use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
 use warg_protocol::{
+    operator::OperatorRecord,
     registry::{LogId, MapCheckpoint},
-    SerdeEnvelope,
+    ProtoEnvelope, SerdeEnvelope,
 };
 
 const TEMP_DIRECTORY: &str = "temp";
@@ -118,6 +119,45 @@ impl RegistryStorage for FileSystemRegistryStorage {
         }
 
         Ok(packages)
+    }
+
+    async fn load_operator(&self) -> Result<Option<OperatorRecord>> {
+        let path = &self.base_dir.join("operator");
+        if !path.is_file() {
+            return Ok(None);
+        }
+
+        let contents = tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("failed to read `{path}`", path = path.display()))?;
+
+        serde_json::from_str(&contents).with_context(|| {
+            format!(
+                "failed to deserialize contents of `{path}`",
+                path = path.display()
+            )
+        })
+    }
+
+    async fn store_operator(&self, operator: ProtoEnvelope<OperatorRecord>) -> Result<()> {
+        let path = &self.base_dir.join("operator.log");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "failed to create parent directory for `{path}`",
+                    path = path.display()
+                )
+            })?;
+        }
+        let contents = serde_json::to_vec_pretty(&operator).with_context(|| {
+            format!(
+                "failed to serialize contents of `{path}`",
+                path = path.display()
+            )
+        })?;
+        tokio::fs::write(path, contents)
+            .await
+            .with_context(|| format!("failed to write `{path}`", path = path.display()))
     }
 
     async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {

@@ -11,6 +11,7 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
+    operator::OperatorRecord,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
     registry::{MapCheckpoint, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version,
@@ -33,6 +34,14 @@ pub trait RegistryStorage: Send + Sync {
 
     /// Stores most recent checkpoint
     async fn store_checkpoint(&self, checkpoint: SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+
+    /// Loads the operator information from the storage.
+    ///
+    /// Returns `Ok(None)` if the information is not present.
+    async fn load_operator(&self) -> Result<Option<OperatorRecord>>;
+
+    /// Stores the operator information in the storage.
+    async fn store_operator(&self, operator: ProtoEnvelope<OperatorRecord>) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
