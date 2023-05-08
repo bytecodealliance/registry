@@ -28,12 +28,12 @@ const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
 const LOCK_FILE_NAME: &str = ".lock";
 
 /// Represents a package storage using the local file system.
-pub struct FileSystemPackageStorage {
+pub struct FileSystemRegistryStorage {
     _lock: FileLock,
     base_dir: PathBuf,
 }
 
-impl FileSystemPackageStorage {
+impl FileSystemRegistryStorage {
     /// Attempts to lock the package storage.
     ///
     /// The base directory will be created if it does not exist.
@@ -79,7 +79,7 @@ impl FileSystemPackageStorage {
 }
 
 #[async_trait]
-impl RegistryStorage for FileSystemPackageStorage {
+impl RegistryStorage for FileSystemRegistryStorage {
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
         load(&self.base_dir.join("checkpoint")).await
     }

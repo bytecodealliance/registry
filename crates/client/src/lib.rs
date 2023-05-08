@@ -7,7 +7,7 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PublishInfo,
+    ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
 use thiserror::Error;
@@ -22,6 +22,7 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
+    operator,
     package::{self, ValidationError},
     registry::{LogId, LogLeaf, MapCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
@@ -334,6 +335,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             })
             .await?;
 
+        let operator_records = response.operator;
+        for record in operator_records {
+          let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+          println!("THE OPERATOR RECORD {:?}", record);
+        }
         let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {
             match packages.get_mut(&name) {
@@ -454,7 +460,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
-pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage>;
+pub type FileSystemClient = Client<FileSystemRegistryStorage, FileSystemContentStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -484,7 +490,7 @@ impl FileSystemClient {
         } = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
-            FileSystemPackageStorage::try_lock(registries_dir.clone())?,
+            FileSystemRegistryStorage::try_lock(registries_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
         ) {
             (Some(packages), Some(content)) => (packages, content),
@@ -511,7 +517,7 @@ impl FileSystemClient {
         } = config.storage_paths_for_url(url)?;
         Self::new(
             url,
-            FileSystemPackageStorage::lock(registries_dir)?,
+            FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )
     }
