@@ -4,7 +4,7 @@ use prost::Message;
 use thiserror::Error;
 use warg_crypto::{hash::DynHash, Decode, Encode, Signable};
 
-mod model;
+pub mod model;
 mod validate;
 
 pub use model::{OperatorEntry, OperatorRecord};

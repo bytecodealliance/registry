@@ -11,7 +11,7 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    operator::OperatorRecord,
+    operator::{self, OperatorRecord},
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
     registry::{MapCheckpoint, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version,
@@ -97,6 +97,28 @@ pub trait ContentStorage: Send + Sync {
         stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
         expected_digest: Option<&DynHash>,
     ) -> Result<DynHash>;
+}
+
+/// Represents information about a registry operator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorInfo {
+    /// The last known checkpoint of the package.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
+    /// The current validation state of the package.
+    #[serde(default)]
+    pub state: operator::Validator,
+}
+
+impl OperatorInfo {
+  /// Creates a new operator info for the given operator name and url.
+  pub fn default() -> Self {
+      Self {
+          checkpoint: None,
+          state: operator::Validator::default(),
+      }
+  }
 }
 
 /// Represents information about a registry package.
