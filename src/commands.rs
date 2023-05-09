@@ -8,6 +8,7 @@ use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 mod config;
 mod download;
 mod info;
+mod key;
 mod publish;
 mod run;
 mod update;
@@ -15,6 +16,7 @@ mod update;
 pub use self::config::*;
 pub use self::download::*;
 pub use self::info::*;
+pub use self::key::*;
 pub use self::publish::*;
 pub use self::run::*;
 pub use self::update::*;
@@ -25,6 +27,9 @@ pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
+    /// The name to use for the signing key.
+    #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
+    pub key_name: String,
     /// The path to the client configuration file to use.
     ///
     /// If not specified, the following locations are searched in order: `./warg-config.json`, `<system-config-dir>/warg/config.json`.
