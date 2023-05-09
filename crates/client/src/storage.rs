@@ -112,13 +112,13 @@ pub struct OperatorInfo {
 }
 
 impl OperatorInfo {
-  /// Creates a new operator info for the given operator name and url.
-  pub fn default() -> Self {
-      Self {
-          checkpoint: None,
-          state: operator::Validator::default(),
-      }
-  }
+    /// Creates a new operator info for the given operator name and url.
+    pub fn default() -> Self {
+        Self {
+            checkpoint: None,
+            state: operator::Validator::default(),
+        }
+    }
 }
 
 /// Represents information about a registry package.

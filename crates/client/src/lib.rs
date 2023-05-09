@@ -6,12 +6,12 @@ use crate::storage::PackageInfo;
 use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
-use tracing::error;
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
 use thiserror::Error;
+use tracing::error;
 use warg_api::{
     content::{ContentError, ContentSource, ContentSourceKind},
     fetch::{FetchError, FetchRequest, FetchResponse},
@@ -341,8 +341,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             let record: ProtoEnvelope<model::OperatorRecord> = record.try_into()?;
             let mut operator_info = storage::OperatorInfo::default();
             if let Err(error) = operator_info.state.validate(&record) {
-              error!("failed to validate: {}", error);
-            } 
+                error!("failed to validate: {}", error);
+            }
             self.registry.store_operator(record).await?;
         }
         let mut heads = Vec::with_capacity(packages.len());
