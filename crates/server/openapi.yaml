@@ -109,64 +109,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /package/{logId}:
-    get:
-      summary: Get package log information.
-      operationId: getPackageLogInformation
-      security: []
-      tags:
-        - package
-      description: |
-        Gets the information of a package log.
-
-        A package log identifier is a hash of the following concatenation:
-          * A prefix of the byte string `WARG-PACKAGE-LOG-ID-V0`
-          * The package name
-      parameters:
-        - name: logId
-          in: path
-          description: The package log identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
-      responses:
-        "200":
-          description: The package information.
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/PackageLog"
-        "404":
-          description: A requested entity was not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  type:
-                    type: string
-                    description: The type of entity that was not found.
-                    enum: [log]
-                    example: log
-                  id:
-                    "$ref": "#/components/schemas/AnyHash"
-                    description: |
-                      The identifier of the entity that was not found.
-        default:
-          description: An error occurred when processing the request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /package/{logId}/record:
     post:
       summary: Publish a new record to a package log.
@@ -714,25 +656,6 @@ components:
         contentSources:
           "$ref": "#/components/schemas/ContentSourceMap"
           description: The list of known content sources.
-    PackageLog:
-      type: object
-      description: Information of a package log.
-      additionalProperties: false
-      required:
-        - id
-      properties:
-        name:
-          type: string
-          description: The name of the package log.
-          format: package-name
-          maxLength: 128
-          example: wasi:http
-        id:
-          "$ref": "#/components/schemas/AnyHash"
-          description: The identifier of the package log.
-        metadata:
-          "$ref": "#/components/schemas/PackageMetadata"
-          description: The metadata for the package log.
     PackageRecord:
       description: A package log record.
       allOf:
@@ -910,39 +833,6 @@ components:
         contentSources:
           "$ref": "#/components/schemas/ContentSourceMap"
           description: The content sources for the package record.
-    PackageMetadata:
-      type: object
-      additionalProperties: false
-      description: The metadata for a registry package.
-      properties:
-        description:
-          type: string
-          description: The description of the package.
-          maxLength: 1024
-          example: A package for the WebAssembly System Interface (WASI) HTTP API.
-        homepage:
-          type: string
-          description: The URL of the package homepage.
-          format: uri
-          example: https://example.com/wasi/http
-        repository:
-          type: string
-          description: The URL of the package repository.
-          format: uri
-          example: https://example.com/wasi/http.git
-        license:
-          type: string
-          description: The SPDX license identifier of the package.
-          example: Apache-2.0
-        keywords:
-          type: array
-          description: The list of keywords for the package.
-          maxItems: 128
-          items:
-            type: string
-            description: A keyword for the package.
-            maxLength: 128
-            example: wasi
     MapCheckpoint:
       type: object
       description: |
