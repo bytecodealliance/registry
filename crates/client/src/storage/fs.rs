@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage, OperatorInfo};
+use super::{ContentStorage, OperatorInfo, PackageInfo, PublishInfo, RegistryStorage};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -21,7 +21,7 @@ use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
 use warg_protocol::{
     operator::OperatorRecord,
     registry::{LogId, MapCheckpoint},
-    ProtoEnvelope, SerdeEnvelope,
+    SerdeEnvelope,
 };
 
 const TEMP_DIRECTORY: &str = "temp";
