@@ -45,7 +45,7 @@ impl std::fmt::Debug for Config {
             .field("addr", &self.addr)
             .field(
                 "data_store",
-                &self.shutdown.as_ref().map(|_| "dyn DataStore"),
+                &self.data_store.as_ref().map(|_| "dyn DataStore"),
             )
             .field("content", &self.content_dir)
             .field("shutdown", &self.shutdown.as_ref().map(|_| "dyn Future"))
