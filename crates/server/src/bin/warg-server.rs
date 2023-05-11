@@ -4,7 +4,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use warg_crypto::signing::PrivateKey;
-use warg_server::{args::get_opt_content, Config, Server};
+use warg_server::{args::get_opt_content, monitoring::MonitoringKind, Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
@@ -31,6 +31,31 @@ struct Args {
     /// The data store to use for the server.
     #[arg(long, env = "DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
+
+    /// The amount of time to continue processing client requests after receiving an external
+    /// signal to terminate, e.g., `SIGTERM`.
+    ///
+    /// Use this option along with `HealthChecks` monitoring to support external draining of
+    /// clients by a load balancer.
+    #[arg(long, env = "GRACEFUL_SHUTDOWN_DURATION_SECONDS")]
+    graceful_shutdown_duration_seconds: Option<u16>,
+
+    /// The data store to use for the server.
+    #[arg(
+        long,
+        env = "MONITORING_ENABLED",
+        default_value = "",
+        use_value_delimiter = true,
+        value_delimiter = ','
+    )]
+    monitoring_enabled: Vec<MonitoringKind>,
+
+    /// Optional separate address to listen for monitoring if monitoring is enabled.
+    ///
+    /// Use this option to bind monitoring API routes to another port to avoid setting up firewall
+    /// rules to protect them from regular API traffic.
+    #[arg(short, long, env = "MONITORING_LISTEN")]
+    monitoring_listen: Option<SocketAddr>,
 
     /// The database connection URL if data-store is set to postgres.
     ///
@@ -83,6 +108,8 @@ async fn main() -> Result<()> {
 
     let mut config = Config::new(operator_key)
         .with_addr(args.listen)
+        .with_monitoring_enabled(args.monitoring_enabled)
+        .with_monitoring_addr(args.monitoring_listen)
         .with_shutdown(shutdown_signal());
 
     if let Some(content_dir) = args.content_dir {
@@ -103,7 +130,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    Server::new(config).run().await
+    let mut server = Server::new(config);
+    server.start().await?;
+    server.join().await
 }
 
 /// Returns the operator key from the supplied `args` or panics.
