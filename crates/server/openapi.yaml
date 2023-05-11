@@ -218,94 +218,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-    patch:
-      summary: Update content sources of a package record.
-      operationId: updatePackageRecordContentSources
-      security: []
-      tags:
-        - package
-      description: |
-        Updates the content sources for an existing package record.
-
-        The package record must be in the `sourcing` state.
-
-        Only missing content sources can be specified.
-      parameters:
-        - name: logId
-          in: path
-          description: The package log identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
-        - name: recordId
-          in: path
-          description: The record identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PackageRecordContentSourcesRequest"
-      responses:
-        "200":
-          description: The package record was updated.
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/PackageRecord"
-        "404":
-          description: A requested entity was not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  type:
-                    type: string
-                    description: The type of entity that was not found.
-                    enum: [log, record]
-                    example: log
-                  id:
-                    "$ref": "#/components/schemas/AnyHash"
-                    description: |
-                      The identifier of the entity that was not found.
-        "405":
-          description: The package record is not in the `sourcing` state.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                status: 405
-                message: the package record is not in the `sourcing` state
-        "501":
-          description: Updating package content sources is not supported.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                status: 501
-                message: adding content sources is not supported
-        default:
-          description: An error occurred when processing the request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /package/{logId}/record/{recordId}/content:
+  /package/{logId}/record/{recordId}/content/{digest}:
     post:
       summary: Post content for a package record.
       operationId: postPackageRecordContent
@@ -315,9 +228,8 @@ paths:
       description: |
         Posts package record content directly to the registry.
 
-        The package record must be in the `sourcing` state.
-
-        If an implementation does not support this endpoint, clients should update the content sources of the record.
+        The package record must be in the `sourcing` state and the digest of the uploaded
+        content must match the digest parameter.
       parameters:
         - name: logId
           in: path
@@ -328,6 +240,12 @@ paths:
         - name: recordId
           in: path
           description: The record identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+        - name: digest
+          in: path
+          description: The digest of the content being uploaded.
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
@@ -382,15 +300,6 @@ paths:
               example:
                 status: 405
                 message: the package record is not in the `sourcing` state
-        "501":
-          description: Uploading of package content is unsupported.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                status: 501
-                message: package content uploading is not supported
         default:
           description: An error occurred when processing the request.
           content:
@@ -651,9 +560,6 @@ components:
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record being published to the log.
-        contentSources:
-          "$ref": "#/components/schemas/ContentSourceMap"
-          description: The list of known content sources.
     PackageRecord:
       description: A package log record.
       allOf:
@@ -676,16 +582,6 @@ components:
               processing: "#/components/schemas/ProcessingRecord"
               rejected: "#/components/schemas/RejectedRecord"
               published: "#/components/schemas/PublishedRecord"
-    PackageRecordContentSourcesRequest:
-      type: object
-      description: A request to set the content sources of a package record.
-      additionalProperties: false
-      required:
-        - contentSources
-      properties:
-        contentSources:
-          "$ref": "#/components/schemas/ContentSourceMap"
-          description: The map of content digest to sources.
     ProveConsistencyRequest:
       type: object
       description: A request to prove the consistency of the registry.
@@ -763,7 +659,6 @@ components:
       description: The package record is sourcing content.
       required:
         - state
-        - uploadSupported
         - missingContent
       properties:
         state:
@@ -771,10 +666,6 @@ components:
           description: The state of the package record.
           enum: [sourcing]
           example: sourcing
-        uploadSupported:
-          type: boolean
-          description: Whether or not direct content uploading is supported by the registry.
-          example: true
         missingContent:
           type: array
           description: The array of content digests that are missing for the package record.
