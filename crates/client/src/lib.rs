@@ -343,7 +343,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             if let Err(error) = operator_info.state.validate(&record) {
                 error!("failed to validate: {}", error);
             }
-            self.registry.store_operator(record).await?;
+            self.registry.store_operator(operator_info).await?;
         }
         let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {

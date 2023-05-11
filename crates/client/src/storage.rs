@@ -41,7 +41,7 @@ pub trait RegistryStorage: Send + Sync {
     async fn load_operator(&self) -> Result<Option<OperatorRecord>>;
 
     /// Stores the operator information in the storage.
-    async fn store_operator(&self, operator: ProtoEnvelope<OperatorRecord>) -> Result<()>;
+    async fn store_operator(&self, operator: OperatorInfo) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;

@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage};
+use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage, OperatorInfo};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -139,7 +139,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
         })
     }
 
-    async fn store_operator(&self, operator: ProtoEnvelope<OperatorRecord>) -> Result<()> {
+    async fn store_operator(&self, operator: OperatorInfo) -> Result<()> {
         let path = &self.base_dir.join("operator.log");
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
