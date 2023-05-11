@@ -336,6 +336,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             })
             .await?;
 
+        let mut heads = Vec::with_capacity(packages.len());
         let operator_records = response.operator;
         for record in operator_records {
             let record: ProtoEnvelope<model::OperatorRecord> = record.try_into()?;
@@ -343,9 +344,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             if let Err(error) = operator_info.state.validate(&record) {
                 error!("failed to validate: {}", error);
             }
+            if let Some(head) = operator_info.state.head() {
+                heads.push(LogLeaf {
+                    log_id: LogId::operator_log::<Sha256>(),
+                    record_id: head.digest.clone(),
+                })
+            }
             self.registry.store_operator(operator_info).await?;
         }
-        let mut heads = Vec::with_capacity(packages.len());
         for (name, records) in response.packages {
             match packages.get_mut(&name) {
                 Some(package) => {
