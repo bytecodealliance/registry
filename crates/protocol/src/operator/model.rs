@@ -59,7 +59,7 @@ impl FromStr for Permission {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OperatorEntry {
     /// Initializes a operator log.
