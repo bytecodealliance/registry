@@ -343,21 +343,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .await?;
 
         let mut heads = Vec::with_capacity(packages.len());
-        let operator_records = response.operator;
-        for record in operator_records {
-            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-            let mut operator_info = storage::OperatorInfo::default();
-            if let Err(error) = operator_info.state.validate(&record) {
-                error!("failed to validate: {}", error);
-            }
-            if let Some(head) = operator_info.state.head() {
-                heads.push(LogLeaf {
-                    log_id: LogId::operator_log::<Sha256>(),
-                    record_id: head.digest.clone(),
-                })
-            }
-            self.registry.store_operator(operator_info).await?;
-        }
         for (name, records) in response.packages {
             match packages.get_mut(&name) {
                 Some(package) => {
@@ -386,13 +371,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             }
         }
 
-        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
-
-        for package in packages.values_mut() {
-            package.checkpoint = Some(checkpoint.clone());
-            self.registry.store_package(package).await?;
-        }
-
         let old_checkpoint = self.registry.load_checkpoint().await?;
         if let Some(cp) = old_checkpoint {
             let old_cp = cp.as_ref().clone();
@@ -401,6 +379,29 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
+
+        let operator_records = response.operator;
+        for record in operator_records {
+            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+            let mut operator_info = storage::OperatorInfo::default();
+            if let Err(error) = operator_info.state.validate(&record) {
+                error!("failed to validate: {}", error);
+            }
+            if let Some(head) = operator_info.state.head() {
+                heads.push(LogLeaf {
+                    log_id: LogId::operator_log::<Sha256>(),
+                    record_id: head.digest.clone(),
+                })
+            }
+            self.registry.store_operator(operator_info).await?;
+        }
+        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
+
+        for package in packages.values_mut() {
+            package.checkpoint = Some(checkpoint.clone());
+            self.registry.store_package(package).await?;
+        }
+
         self.registry.store_checkpoint(checkpoint.clone()).await?;
 
         Ok(())
