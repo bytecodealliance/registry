@@ -11,7 +11,7 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    operator::{self, OperatorRecord},
+    operator,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
     registry::{MapCheckpoint, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version,
@@ -38,7 +38,7 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads the operator information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_operator(&self) -> Result<Option<OperatorRecord>>;
+    async fn load_operator(&self) -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
     async fn store_operator(&self, operator: OperatorInfo) -> Result<()>;

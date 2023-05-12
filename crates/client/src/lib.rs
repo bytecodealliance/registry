@@ -23,7 +23,7 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    operator::model,
+    operator,
     package::{self, ValidationError},
     registry::{LogId, LogLeaf, MapCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
@@ -306,6 +306,12 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             map_root = checkpoint.as_ref().map_root
         );
 
+        let operator = self
+            .registry
+            .load_operator()
+            .await?
+            .map(|op| op.state.head().as_ref().map(|h| h.digest.clone()).unwrap());
+
         let mut packages = packages
             .into_iter()
             .filter_map(|p| match &p.checkpoint {
@@ -323,7 +329,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .api
             .fetch_logs(FetchRequest {
                 root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
-                operator: None,
+                operator,
                 packages: packages
                     .iter()
                     .map(|(name, package)| {
@@ -339,7 +345,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         let mut heads = Vec::with_capacity(packages.len());
         let operator_records = response.operator;
         for record in operator_records {
-            let record: ProtoEnvelope<model::OperatorRecord> = record.try_into()?;
+            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
             let mut operator_info = storage::OperatorInfo::default();
             if let Err(error) = operator_info.state.validate(&record) {
                 error!("failed to validate: {}", error);

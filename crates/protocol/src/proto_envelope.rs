@@ -11,7 +11,7 @@ use warg_crypto::{hash::DynHashError, signing, Decode, Signable};
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
 /// the serialization is not canonical.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtoEnvelope<Contents> {
     /// The content represented by content_bytes
     contents: Contents,
