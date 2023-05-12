@@ -144,7 +144,7 @@ impl Server {
         }
     }
 
-    /// Starts the server on the configured address.
+    /// Starts the server and binds its endpoint to the configured address.
     ///
     /// Returns the endpoints the server bound to.
     pub async fn start(&mut self) -> Result<Endpoints> {
@@ -244,7 +244,7 @@ impl Server {
         Ok(())
     }
 
-    /// Starts the server on the configured address and waits for completion.
+    /// Starts the server and waits for completion.
     pub async fn run(&mut self) -> Result<()> {
         self.start().await?;
         self.join().await?;
