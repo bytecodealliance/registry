@@ -6,7 +6,7 @@ use std::{str::FromStr, time::SystemTime};
 use warg_crypto::hash::{DynHash, HashAlgorithm};
 use warg_crypto::signing;
 
-/// A operator record is a collection of entries published together by the same author
+/// An operator record is a collection of entries published together by the same author
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorRecord {
     /// The hash of the previous operator record envelope

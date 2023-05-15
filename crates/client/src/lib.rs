@@ -306,11 +306,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             map_root = checkpoint.as_ref().map_root
         );
 
-        let operator = self
-            .registry
-            .load_operator()
-            .await?
-            .map(|op| op.state.head().as_ref().map(|h| h.digest.clone()).unwrap());
+        let mut operator = self.registry.load_operator().await?.unwrap_or_default();
 
         let mut packages = packages
             .into_iter()
@@ -329,7 +325,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .api
             .fetch_logs(FetchRequest {
                 root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
-                operator,
+                operator: operator.state.head().as_ref().map(|h| h.digest.clone()),
                 packages: packages
                     .iter()
                     .map(|(name, package)| {
@@ -383,19 +379,18 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         let operator_records = response.operator;
         for record in operator_records {
             let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-            let mut operator_info = storage::OperatorInfo::default();
-            if let Err(error) = operator_info.state.validate(&record) {
-                error!("failed to validate: {}", error);
+            if operator.state.validate(&record).is_err() {
+                return Err(ClientError::OperatorValidationFailed);
             }
-            if let Some(head) = operator_info.state.head() {
+            if let Some(head) = operator.state.head() {
                 heads.push(LogLeaf {
                     log_id: LogId::operator_log::<Sha256>(),
                     record_id: head.digest.clone(),
                 })
             }
-            self.registry.store_operator(operator_info).await?;
         }
         self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
+        self.registry.store_operator(operator).await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
@@ -559,6 +554,9 @@ pub enum ClientError {
     #[error("no default registry server URL is configured")]
     NoDefaultUrl,
 
+    /// The operator failed validation.
+    #[error("operator failed validation")]
+    OperatorValidationFailed,
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {

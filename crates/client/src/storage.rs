@@ -100,25 +100,12 @@ pub trait ContentStorage: Send + Sync {
 }
 
 /// Represents information about a registry operator.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct OperatorInfo {
-    /// The last known checkpoint of the package.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
-    /// The current validation state of the package.
+    /// The current validation state of the operator.
     #[serde(default)]
     pub state: operator::Validator,
-}
-
-impl OperatorInfo {
-    /// Creates a new operator info for the given operator name and url.
-    pub fn default() -> Self {
-        Self {
-            checkpoint: None,
-            state: operator::Validator::default(),
-        }
-    }
 }
 
 /// Represents information about a registry package.
