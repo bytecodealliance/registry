@@ -144,6 +144,14 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/PackageRecord"
+        "501":
+          description: |
+            The server does not support publishing package records with explicitly
+            specified content source locations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           description: An error occurred when processing the request.
           content:
@@ -477,9 +485,9 @@ components:
         checkpoint:
           $ref: "#/components/schemas/AnyHash"
           description: The registry checkpoint hash to fetch from.
-        maximumRecords:
+        limit:
           type: integer
-          description: The maximum number of operator or package records to return.
+          description: The limit of operator and packages records to return for the fetch request.
           example: 100
           default: 100
           minimum: 1
@@ -512,7 +520,7 @@ components:
           description: |
             Whether there may be more records available.
 
-            This occurs when the maximum number of records is returned for a log.
+            This occurs when the number of records returned for a log reaches the requested limit.
 
             If `true`, the client should make another request with the new last known record identifiers.
           example: false
@@ -560,6 +568,15 @@ components:
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record being published to the log.
+        contentSources:
+          "$ref": "#/components/schemas/ContentSourceMap"
+          description: |
+            The map of all content sources for the record.
+
+            A registry may not support specifying content sources for a record.
+
+            If a registry does not support content sources, a 501 will be returned
+            and content will need to be directly uploaded to the registry.
     PackageRecord:
       description: A package log record.
       allOf:
