@@ -24,7 +24,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator,
-    package::{self, ValidationError},
+    package::{self},
     registry::{LogId, LogLeaf, MapCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
@@ -379,9 +379,10 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         let operator_records = response.operator;
         for record in operator_records {
             let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-            if operator.state.validate(&record).is_err() {
-                return Err(ClientError::OperatorValidationFailed);
-            }
+            operator
+                .state
+                .validate(&record)
+                .map_err(|error| ClientError::OperatorValidationFailed { error })?;
             if let Some(head) = operator.state.head() {
                 heads.push(LogLeaf {
                     log_id: LogId::operator_log::<Sha256>(),
@@ -556,7 +557,10 @@ pub enum ClientError {
 
     /// The operator failed validation.
     #[error("operator failed validation")]
-    OperatorValidationFailed,
+    OperatorValidationFailed {
+        /// The validation error.
+        error: operator::ValidationError,
+    },
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
@@ -604,7 +608,7 @@ pub enum ClientError {
         /// The package that failed validation.
         package: String,
         /// The validation error.
-        inner: ValidationError,
+        inner: package::ValidationError,
     },
 
     /// Content was not found during a publish operation.
