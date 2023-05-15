@@ -382,7 +382,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             operator
                 .state
                 .validate(&record)
-                .map_err(|error| ClientError::OperatorValidationFailed { error })?;
+                .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
             if let Some(head) = operator.state.head() {
                 heads.push(LogLeaf {
                     log_id: LogId::operator_log::<Sha256>(),
@@ -559,7 +559,7 @@ pub enum ClientError {
     #[error("operator failed validation")]
     OperatorValidationFailed {
         /// The validation error.
-        error: operator::ValidationError,
+        inner: operator::ValidationError,
     },
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
