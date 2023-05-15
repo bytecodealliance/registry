@@ -1,6 +1,6 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, PackageInfo, PublishInfo, RegistryStorage};
+use super::{ContentStorage, OperatorInfo, PackageInfo, PublishInfo, RegistryStorage};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -28,12 +28,12 @@ const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
 const LOCK_FILE_NAME: &str = ".lock";
 
 /// Represents a package storage using the local file system.
-pub struct FileSystemPackageStorage {
+pub struct FileSystemRegistryStorage {
     _lock: FileLock,
     base_dir: PathBuf,
 }
 
-impl FileSystemPackageStorage {
+impl FileSystemRegistryStorage {
     /// Attempts to lock the package storage.
     ///
     /// The base directory will be created if it does not exist.
@@ -65,6 +65,10 @@ impl FileSystemPackageStorage {
         })
     }
 
+    fn operator_path(&self) -> PathBuf {
+        self.base_dir.join("operator.log")
+    }
+
     fn package_path(&self, name: &str) -> PathBuf {
         self.base_dir.join(
             LogId::package_log::<Sha256>(name)
@@ -79,7 +83,7 @@ impl FileSystemPackageStorage {
 }
 
 #[async_trait]
-impl RegistryStorage for FileSystemPackageStorage {
+impl RegistryStorage for FileSystemRegistryStorage {
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
         load(&self.base_dir.join("checkpoint")).await
     }
@@ -118,6 +122,14 @@ impl RegistryStorage for FileSystemPackageStorage {
         }
 
         Ok(packages)
+    }
+
+    async fn load_operator(&self) -> Result<Option<OperatorInfo>> {
+        Ok(load(&self.operator_path()).await?)
+    }
+
+    async fn store_operator(&self, info: OperatorInfo) -> Result<()> {
+        store(&self.operator_path(), info).await
     }
 
     async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>> {

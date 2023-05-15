@@ -7,10 +7,11 @@ use anyhow::Result;
 use reqwest::{Body, IntoUrl};
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
-    ContentStorage, FileSystemContentStorage, FileSystemPackageStorage, PublishInfo,
+    ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
 use thiserror::Error;
+use tracing::error;
 use warg_api::{
     content::{ContentError, ContentSource, ContentSourceKind},
     fetch::{FetchError, FetchRequest, FetchResponse},
@@ -22,7 +23,8 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    package::{self, ValidationError},
+    operator,
+    package::{self},
     registry::{LogId, LogLeaf, MapCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
@@ -304,6 +306,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             map_root = checkpoint.as_ref().map_root
         );
 
+        let mut operator = self.registry.load_operator().await?.unwrap_or_default();
+
         let mut packages = packages
             .into_iter()
             .filter_map(|p| match &p.checkpoint {
@@ -321,7 +325,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .api
             .fetch_logs(FetchRequest {
                 root: Hash::<Sha256>::of(checkpoint.as_ref()).into(),
-                operator: None,
+                operator: operator.state.head().as_ref().map(|h| h.digest.clone()),
                 packages: packages
                     .iter()
                     .map(|(name, package)| {
@@ -363,13 +367,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             }
         }
 
-        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
-
-        for package in packages.values_mut() {
-            package.checkpoint = Some(checkpoint.clone());
-            self.registry.store_package(package).await?;
-        }
-
         let old_checkpoint = self.registry.load_checkpoint().await?;
         if let Some(cp) = old_checkpoint {
             let old_cp = cp.as_ref().clone();
@@ -378,6 +375,29 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .prove_log_consistency(old_cp.log_root, new_cp.log_root)
                 .await?;
         }
+
+        let operator_records = response.operator;
+        for record in operator_records {
+            let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+            operator
+                .state
+                .validate(&record)
+                .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+            if let Some(head) = operator.state.head() {
+                heads.push(LogLeaf {
+                    log_id: LogId::operator_log::<Sha256>(),
+                    record_id: head.digest.clone(),
+                })
+            }
+        }
+        self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
+        self.registry.store_operator(operator).await?;
+
+        for package in packages.values_mut() {
+            package.checkpoint = Some(checkpoint.clone());
+            self.registry.store_package(package).await?;
+        }
+
         self.registry.store_checkpoint(checkpoint.clone()).await?;
 
         Ok(())
@@ -454,7 +474,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
-pub type FileSystemClient = Client<FileSystemPackageStorage, FileSystemContentStorage>;
+pub type FileSystemClient = Client<FileSystemRegistryStorage, FileSystemContentStorage>;
 
 /// A result of an attempt to lock client storage.
 pub enum StorageLockResult<T> {
@@ -484,7 +504,7 @@ impl FileSystemClient {
         } = config.storage_paths_for_url(url)?;
 
         let (packages, content) = match (
-            FileSystemPackageStorage::try_lock(registries_dir.clone())?,
+            FileSystemRegistryStorage::try_lock(registries_dir.clone())?,
             FileSystemContentStorage::try_lock(content_dir.clone())?,
         ) {
             (Some(packages), Some(content)) => (packages, content),
@@ -511,7 +531,7 @@ impl FileSystemClient {
         } = config.storage_paths_for_url(url)?;
         Self::new(
             url,
-            FileSystemPackageStorage::lock(registries_dir)?,
+            FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )
     }
@@ -535,6 +555,12 @@ pub enum ClientError {
     #[error("no default registry server URL is configured")]
     NoDefaultUrl,
 
+    /// The operator failed validation.
+    #[error("operator failed validation: {inner}")]
+    OperatorValidationFailed {
+        /// The validation error.
+        inner: operator::ValidationError,
+    },
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
@@ -582,7 +608,7 @@ pub enum ClientError {
         /// The package that failed validation.
         package: String,
         /// The validation error.
-        inner: ValidationError,
+        inner: package::ValidationError,
     },
 
     /// Content was not found during a publish operation.
