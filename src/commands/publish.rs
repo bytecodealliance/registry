@@ -1,24 +1,17 @@
 use super::CommonOptions;
+use crate::signing::get_signing_key;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
-use std::{env, future::Future, path::PathBuf};
+use std::{future::Future, path::PathBuf};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
+use url::Url;
 use warg_client::{
     storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
     FileSystemClient,
 };
-use warg_crypto::signing;
 use warg_protocol::Version;
-
-// TODO: convert this to proper CLI options.
-fn demo_signing_key() -> Result<signing::PrivateKey> {
-    env::var("WARG_DEMO_USER_KEY")
-        .context("WARG_DEMO_USER_KEY environment variable not set")?
-        .parse()
-        .context("failed to parse signing key")
-}
 
 /// Used to enqueue a publish entry if there is a pending publish.
 /// Returns `Ok(None)` if the entry was enqueued or `Ok(Some(entry))` if there
@@ -58,9 +51,22 @@ where
 }
 
 /// Submits a publish to the registry.
-async fn submit(client: &FileSystemClient, info: PublishInfo) -> Result<()> {
-    let signing_key = demo_signing_key()?;
+async fn submit(client: &FileSystemClient, info: PublishInfo, key_name: &str) -> Result<()> {
+    let registry_url = client.url();
+
+    let url: Url = client
+        .url()
+        .parse()
+        .with_context(|| format!("failed to parse registry URL `{registry_url}`"))?;
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("registry URL `{url}` has no host"))?;
+
+    let signing_key = get_signing_key(key_name, host)?;
+
     client.publish_with_info(&signing_key, info).await?;
+
     Ok(())
 }
 
@@ -125,6 +131,7 @@ impl PublishInitCommand {
                         package: self.name.clone(),
                         entries: vec![entry],
                     },
+                    &self.common.key_name,
                 )
                 .await?;
 
@@ -198,6 +205,7 @@ impl PublishReleaseCommand {
                         package: self.name.clone(),
                         entries: vec![entry],
                     },
+                    &self.common.key_name,
                 )
                 .await?;
 
@@ -348,7 +356,7 @@ impl PublishSubmitCommand {
                     package = info.package
                 );
 
-                submit(&client, info.clone()).await?;
+                submit(&client, info.clone(), &self.common.key_name).await?;
 
                 client.registry().store_publish(None).await?;
 

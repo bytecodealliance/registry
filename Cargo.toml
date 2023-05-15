@@ -18,6 +18,12 @@ futures = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
+p256 = { workspace = true }
+rand_core = { workspace = true }
+url = { workspace = true }
+keyring = "2.0.2"
+dialoguer = "0.10.4"
+rpassword = "7.2.0"
 
 # TODO: remove these demo-related dependencies
 wasmtime = "6.0"
