@@ -63,7 +63,7 @@ async fn submit(client: &FileSystemClient, info: PublishInfo, key_name: &str) ->
         .host_str()
         .ok_or_else(|| anyhow!("registry URL `{url}` has no host"))?;
 
-    let signing_key = get_signing_key(key_name, host)?;
+    let signing_key = get_signing_key(host, key_name)?;
 
     client.publish_with_info(&signing_key, info).await?;
 

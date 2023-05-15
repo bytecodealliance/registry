@@ -74,18 +74,6 @@ near future.**
 
 ### Setting up the client
 
-Before running the client, set the `WARG_DEMO_USER_KEY` environment variable:
-
-```
-export WARG_DEMO_USER_KEY="ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
-```
-
-`WARG_DEMO_USER_KEY` is the private key of the user that is used to sign 
-packages.
-
-Currently this is sourced through an environment variable, but soon this will 
-be sourced via command line arguments or integration with system key rings.
-
 Start by configuring the client to use the local server's URL:
 
 ```
@@ -98,6 +86,15 @@ the configuration file will specify the default registry URL to use so that the
 
 Data downloaded by the client is stored in [`$CACHE_DIR/warg`][cache_dir] by 
 default.
+
+Next, create a new signing key to publish packages with:
+
+```
+warg key new 127.0.0.1
+```
+
+The new signing key will be stored in your operating system's key store and
+used to sign package log entries when publishing to the registry.
 
 [config_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.config_dir.html
 [cache_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.cache_dir.html
