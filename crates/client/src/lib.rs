@@ -556,7 +556,7 @@ pub enum ClientError {
     NoDefaultUrl,
 
     /// The operator failed validation.
-    #[error("operator failed validation")]
+    #[error("operator failed validation: {inner}")]
     OperatorValidationFailed {
         /// The validation error.
         inner: operator::ValidationError,
