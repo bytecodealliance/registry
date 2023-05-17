@@ -65,17 +65,18 @@ impl<D: SupportedDigest> Node<D> {
             None => (Node::Leaf(leaf), matches!(self, Node::Fork(..))),
 
             // We are not at the end of the path. Recurse...
-            Some(index) => match self.clone() {
+            Some(side) => match self.clone() {
                 Node::Fork(mut fork) => {
                     // Choose the branch on the specified side.
-                    let node = fork[index]
+                    // TODO RENAME index to side
+                    let node = fork[side]
                         .as_ref()
                         .map(|link| link.node().clone())
                         .unwrap_or_default();
 
                     // Replace its value recursively.
                     let (node, new) = node.insert(path, leaf);
-                    fork[index] = Some(Arc::new(Link::new(node)));
+                    fork[side] = Some(Arc::new(Link::new(node)));
                     (Node::Fork(fork), new)
                 }
 

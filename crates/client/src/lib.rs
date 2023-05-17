@@ -390,6 +390,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })
             }
         }
+        dbg!("THE HEADS ", &heads);
         self.api.prove_inclusion(checkpoint.as_ref(), heads).await?;
         self.registry.store_operator(operator).await?;
 

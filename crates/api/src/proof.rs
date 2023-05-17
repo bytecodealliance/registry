@@ -34,7 +34,9 @@ pub struct InclusionRequest {
     /// The checkpoint to check for inclusion.
     pub checkpoint: MapCheckpoint,
     /// The heads to check for inclusion.
-    pub heads: Vec<LogLeaf>,
+    pub inclusions: Vec<LogLeaf>,
+    ///
+    pub exclusions: Vec<LogId>
 }
 
 /// Represents an inclusion proof response.

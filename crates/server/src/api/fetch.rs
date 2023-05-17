@@ -10,6 +10,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 use warg_api::fetch::{CheckpointResponse, FetchError, FetchRequest, FetchResponse};
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ impl Config {
         Router::new()
             .route("/logs", post(fetch_logs))
             .route("/checkpoint", get(fetch_checkpoint))
+            .layer(CorsLayer::permissive())
             .with_state(self)
     }
 }

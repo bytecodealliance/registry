@@ -14,7 +14,8 @@ where
     D: SupportedDigest,
     V: VisitBytes,
 {
-    proofs: Vec<Proof<D, V>>,
+    inclusion_proofs: Vec<Proof<D, V>>,
+    exclusion_proofs: Vec<Proof<D, V>>,
 }
 
 impl<D, V> ProofBundle<D, V>
@@ -22,14 +23,15 @@ where
     D: SupportedDigest,
     V: VisitBytes,
 {
-    /// Bundles inclusion proofs together
-    pub fn bundle(proofs: Vec<Proof<D, V>>) -> Self {
-        ProofBundle { proofs }
+    /// Bundles inclusion and exclusion proofs together
+    pub fn bundle(inclusion_proofs: Vec<Proof<D, V>>, exclusion_proofs: Vec<Proof<D, V>>) -> Self {
+        ProofBundle { inclusion_proofs, exclusion_proofs }
+        // include exclusion proofs
     }
 
     /// Splits a bundle into its constituent inclusion proofs
     pub fn unbundle(self) -> Vec<Proof<D, V>> {
-        self.proofs
+        self.inclusion_proofs
     }
 
     /// Turn a bundle into bytes using protobuf
@@ -52,7 +54,7 @@ where
     V: VisitBytes,
 {
     fn from(value: ProofBundle<D, V>) -> Self {
-        let proofs = value.proofs.into_iter().map(|proof| proof.into()).collect();
+        let proofs = value.inclusion_proofs.into_iter().map(|proof| proof.into()).collect();
         protobuf::MapProofBundle { proofs }
     }
 }
@@ -89,11 +91,12 @@ where
     type Error = Error;
 
     fn try_from(value: protobuf::MapProofBundle) -> Result<Self, Self::Error> {
-        let mut proofs = Vec::new();
+        let mut inclusion_proofs = Vec::new();
+        let exclusion_proofs = Vec::new();
         for entry in value.proofs {
-            proofs.push(entry.try_into()?);
+            inclusion_proofs.push(entry.try_into()?);
         }
-        let bundle = ProofBundle { proofs };
+        let bundle = ProofBundle { inclusion_proofs, exclusion_proofs };
         Ok(bundle)
     }
 }

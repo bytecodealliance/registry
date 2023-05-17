@@ -6,7 +6,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::{Hash, Sha256};
-use warg_protocol::registry::LogLeaf;
+use warg_protocol::registry::{LogLeaf, LogId};
 use warg_transparency::log::{LogBuilder, LogData as _, LogProofBundle, Node, VecLog};
 
 pub struct Input {
@@ -63,6 +63,7 @@ impl LogData {
         &self,
         root: &Hash<Sha256>,
         leaves: &[LogLeaf],
+        exclusions: &[LogId]
     ) -> Result<LogProofBundle<Sha256, LogLeaf>, DataServiceError> {
         let log_length = *self
             .root_index

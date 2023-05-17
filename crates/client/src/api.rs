@@ -195,7 +195,8 @@ impl Client {
     ) -> ProofResult<()> {
         let request = InclusionRequest {
             checkpoint: checkpoint.clone(),
-            heads: heads.clone(),
+            inclusions: heads.clone(),
+            exclusions: Vec::new()
         };
 
         let url = self.url.join("proof/inclusion").unwrap();

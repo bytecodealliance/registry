@@ -2,7 +2,9 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::Node;
 
+
 pub struct Link<D: SupportedDigest> {
+    /// This is the hash of the tree rooted at the node
     hash: Hash<D>,
     node: Node<D>,
 }

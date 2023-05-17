@@ -28,6 +28,8 @@ use super::{
 ///
 /// Third, since sparse peers are more likely at the bottom of the tree, we
 /// can omit all leading sparse peers. The verifier can dynamically reconstruct
+
+/// TODO:rename to inclusion proof
 pub struct Proof<D, V>
 where
     D: SupportedDigest,

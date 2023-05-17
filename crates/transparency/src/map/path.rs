@@ -7,7 +7,9 @@ use warg_crypto::{
 
 pub struct Path<D: SupportedDigest> {
     all: Hash<D>,
+    /// TODO: maybe rename to convey this represents number of untraversed nodes
     lhs: usize,
+    /// TODO: maybe rename to convey this represents number of traversed nodes
     rhs: usize,
 }
 

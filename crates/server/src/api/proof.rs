@@ -4,6 +4,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 use tokio::sync::RwLock;
 use warg_api::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
@@ -25,6 +26,7 @@ impl Config {
         Router::new()
             .route("/consistency", post(prove_consistency))
             .route("/inclusion", post(prove_inclusion))
+            .layer(CorsLayer::permissive())
             .with_state(self)
     }
 }
@@ -117,12 +119,12 @@ async fn prove_inclusion(
 
     let log_bundle = {
         let log = config.log.as_ref().read().await;
-        log.inclusion(&log_root, body.heads.as_slice())?
+        log.inclusion(&log_root, body.inclusions.as_slice(), body.exclusions.as_slice())?
     };
 
     let map_bundle = {
         let map = config.map.as_ref().read().await;
-        map.inclusion(&map_root, body.heads.as_slice())?
+        map.inclusion(&map_root, body.inclusions.as_slice(), body.exclusions.as_slice())?
     };
 
     Ok(Json(InclusionResponse {
