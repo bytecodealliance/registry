@@ -53,16 +53,15 @@ variable:
 export WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
 ```
 
-`WARG_OPERATOR_KEY` is the private key of the server operator. 
+`WARG_OPERATOR_KEY` is the private key of the server operator.
 
-Currently this is sourced through an environment variable, but soon this will 
-be sourced via command line arguments or integration with system key rings.
+Alternatively, you can specify a file containing the key using `--warg-operator-key-file <FILE>` or directly with `--warg-operator-key <KEY>`
 
-Use `cargo` to run the server:
+Prefer using a file or environment variable. At this moment, integration with system key rings is being considered.
 
 ```
 mkdir content
-cargo run -p warg-server -- --content-dir content
+warg-server --content-dir content
 ```
 
 The `content` directory created here is where the server will store package 
