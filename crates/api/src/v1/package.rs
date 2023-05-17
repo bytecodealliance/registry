@@ -111,6 +111,12 @@ pub enum PackageError {
     /// The record is not currently sourcing content.
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
+    /// The publish operation was not authorized by the registry.
+    #[error("registry did not authorize the request to publish: {message}")]
+    Unauthorized {
+        /// The error message.
+        message: String,
+    },
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]
     NotSupported(String),
@@ -128,6 +134,9 @@ impl PackageError {
     /// Returns the HTTP status code of the error.
     pub fn status(&self) -> u16 {
         match self {
+            // Note: this is 403 and not a 401 as the registry does not use
+            // HTTP authentication.
+            Self::Unauthorized { .. } => 403,
             Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
             Self::RecordNotSourcing => 405,
             Self::NotSupported(_) => 501,
@@ -150,6 +159,10 @@ where
     T: Clone + ToOwned,
     <T as ToOwned>::Owned: Serialize + for<'b> Deserialize<'b>,
 {
+    Unauthorized {
+        status: Status<403>,
+        message: Cow<'a, str>,
+    },
     NotFound {
         status: Status<404>,
         #[serde(rename = "type")]
@@ -172,6 +185,11 @@ where
 impl Serialize for PackageError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
+            Self::Unauthorized { message } => RawError::Unauthorized::<()> {
+                status: Status::<403>,
+                message: Cow::Borrowed(message),
+            }
+            .serialize(serializer),
             Self::LogNotFound(log_id) => RawError::NotFound {
                 status: Status::<404>,
                 ty: EntityType::Log,
@@ -208,6 +226,9 @@ impl<'de> Deserialize<'de> for PackageError {
         D: serde::Deserializer<'de>,
     {
         match RawError::<String>::deserialize(deserializer)? {
+            RawError::Unauthorized { status: _, message } => Ok(Self::Unauthorized {
+                message: message.into_owned(),
+            }),
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
                     id.parse::<DynHash>()
