@@ -144,6 +144,13 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/PackageRecord"
+        "403":
+          description: |
+            The key used to sign the record was not authorized to publish a record to the log.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "501":
           description: |
             The server does not support publishing package records with explicitly
