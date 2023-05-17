@@ -35,7 +35,7 @@ To install `warg`, first you'll want to install
 you'll execute to  install the subcommand:
 
 ```
-cargo install --git https://github.com/bytecodealliance/registry
+cargo install warg-cli warg-server --git https://github.com/bytecodealliance/registry
 ```
 
 The [currently published crate](https://crates.io/crates/warg-cli)
