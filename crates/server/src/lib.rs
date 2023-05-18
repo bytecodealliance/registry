@@ -130,6 +130,7 @@ pub struct Server {
 /// The bound endpoints for the warg registry server.
 #[derive(Clone)]
 pub struct Endpoints {
+    /// The address of the API endpoint.
     pub api: SocketAddr,
 }
 
@@ -144,7 +145,7 @@ impl Server {
         }
     }
 
-    /// Starts the server and binds its endpoint to the configured address.
+    /// Starts the server and binds its endpoints to the configured addresses.
     ///
     /// Returns the endpoints the server bound to.
     pub async fn start(&mut self) -> Result<Endpoints> {
