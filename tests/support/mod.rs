@@ -82,10 +82,10 @@ pub async fn spawn_server(
     }
 
     let mut server = Server::new(config);
-    let addr = server.bind()?;
+    let endpoints = server.start().await?;
 
     let task = tokio::spawn(async move {
-        server.run().await.unwrap();
+        server.join().await.unwrap();
     });
 
     let instance = ServerInstance {
@@ -94,7 +94,7 @@ pub async fn spawn_server(
     };
 
     let config = warg_client::Config {
-        default_url: Some(format!("http://{addr}")),
+        default_url: Some(format!("http://{addr}", addr = endpoints.api)),
         registries_dir: Some(root.join("registries")),
         content_dir: Some(root.join("content")),
     };
