@@ -175,7 +175,7 @@ impl Server {
         tracing::debug!("api endpoint bound to address `{addr}`");
 
         let endpoints = Endpoints { api: addr };
-        self.endpoints = Some(endpoints.to_owned());
+        self.endpoints = Some(endpoints.clone());
 
         let store = self
             .config
