@@ -4,7 +4,6 @@ use std::{fs, str::FromStr};
 use warg_client::{api, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::{signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
-
 mod support;
 
 #[cfg(feature = "postgres")]
