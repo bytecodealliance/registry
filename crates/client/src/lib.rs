@@ -68,7 +68,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Submits the publish information in client storage.
     ///
     /// If there's no publishing information in client storage, an error is returned.
-    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<()> {
+    ///
+    /// Returns the identifier of the record that was published.
+    ///
+    /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
+    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
         let info = self
             .registry
             .load_publish()
@@ -83,11 +87,15 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Submits the provided publish information.
     ///
     /// Any publish information in client storage is ignored.
+    ///
+    /// Returns the identifier of the record that was published.
+    ///
+    /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
     pub async fn publish_with_info(
         &self,
         signing_key: &signing::PrivateKey,
-        info: PublishInfo,
-    ) -> ClientResult<()> {
+        mut info: PublishInfo,
+    ) -> ClientResult<RecordId> {
         if info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
                 package: info.package.clone(),
@@ -108,13 +116,16 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.package.clone()));
 
-        // If we're not initializing the package, update it to the latest checkpoint to get the current head
-        if !initializing {
+        // If we're not initializing the package and a head was not explicitly specified,
+        // updated to the latest checkpoint to get the latest known head.
+        if !initializing && info.head.is_none() {
             self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
                 .await?;
+
+            info.head = package.state.head().as_ref().map(|h| h.digest.clone());
         }
 
-        match (initializing, package.state.head().is_some()) {
+        match (initializing, info.head.is_some()) {
             (true, true) => {
                 return Err(ClientError::CannotInitializePackage {
                     package: package.name,
@@ -128,13 +139,10 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             _ => (),
         }
 
-        let record = info.finalize(
-            signing_key,
-            package.state.head().as_ref().map(|h| h.digest.clone()),
-        )?;
+        let record = info.finalize(signing_key)?;
 
         let log_id = LogId::package_log::<Sha256>(&package.name);
-        let mut record = self
+        let record = self
             .api
             .publish_package_record(
                 &log_id,
@@ -173,23 +181,45 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     )
                     .await?;
             }
-
-            // After all the content is uploaded, get the record again
-            record = self.api.get_package_record(&log_id, &record.id).await?;
         }
 
-        let record = self
-            .wait_for_publish(&log_id, &package.name, record)
-            .await?;
+        Ok(record.id)
+    }
 
-        // Finally, update the checkpoint again post-publish
-        self.update_checkpoint(
-            record.checkpoint().expect("record must be published"),
-            [&mut package],
-        )
-        .await?;
+    /// Waits for a package record to transition to the `published` state.
+    ///
+    /// The `interval` is the amount of time to wait between checks.
+    ///
+    /// Returns an error if the package record was rejected.
+    pub async fn wait_for_publish(
+        &self,
+        package: &str,
+        record_id: &RecordId,
+        interval: Duration,
+    ) -> ClientResult<()> {
+        let log_id = LogId::package_log::<Sha256>(package);
+        let mut current = self.get_package_record(package, &log_id, record_id).await?;
 
-        Ok(())
+        loop {
+            match current.state {
+                PackageRecordState::Sourcing { .. } => {
+                    return Err(ClientError::PackageMissingContent);
+                }
+                PackageRecordState::Published { .. } => {
+                    return Ok(());
+                }
+                PackageRecordState::Rejected { reason } => {
+                    return Err(ClientError::PublishRejected {
+                        package: package.to_string(),
+                        reason,
+                    });
+                }
+                PackageRecordState::Processing => {
+                    tokio::time::sleep(interval).await;
+                    current = self.get_package_record(package, &log_id, record_id).await?;
+                }
+            }
+        }
     }
 
     /// Updates every package log in client storage to the latest registry checkpoint.
@@ -469,6 +499,28 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
     }
 
+    async fn get_package_record(
+        &self,
+        package: &str,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> ClientResult<PackageRecord> {
+        let record = self
+            .api
+            .get_package_record(log_id, record_id)
+            .await
+            .map_err(|e| {
+                ClientError::translate_log_not_found(e, |id| {
+                    if id == log_id {
+                        Some(package.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })?;
+        Ok(record)
+    }
+
     async fn download_content(
         &self,
         log_id: &LogId,
@@ -493,35 +545,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .ok_or_else(|| ClientError::ContentNotFound {
                         digest: digest.clone(),
                     })
-            }
-        }
-    }
-
-    async fn wait_for_publish(
-        &self,
-        log_id: &LogId,
-        name: &str,
-        mut current: PackageRecord,
-    ) -> ClientResult<PackageRecord> {
-        loop {
-            match current.state {
-                PackageRecordState::Sourcing { .. } => {
-                    return Err(ClientError::PackageMissingContent);
-                }
-                PackageRecordState::Published { .. } => {
-                    return Ok(current);
-                }
-                PackageRecordState::Rejected { reason } => {
-                    return Err(ClientError::PublishRejected {
-                        package: name.to_string(),
-                        reason,
-                    });
-                }
-                PackageRecordState::Processing => {
-                    // TODO: make the wait configurable
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    current = self.api.get_package_record(log_id, &current.id).await?;
-                }
             }
         }
     }
