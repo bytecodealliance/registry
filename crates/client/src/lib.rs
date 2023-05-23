@@ -344,8 +344,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             })
             .collect::<HashMap<_, _>>();
 
-        let mut leafs = Vec::with_capacity(packages.len() + 1 /* for operator */);
-
         loop {
             let response: FetchLogsResponse = self
                 .api
@@ -366,7 +364,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     })
                 })?;
 
-            let has_operator_records = !response.operator.is_empty();
             for record in response.operator {
                 let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
                 operator
@@ -375,21 +372,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
             }
 
-            if has_operator_records {
-                if let Some(head) = operator.state.head() {
-                    leafs.push(LogLeaf {
-                        log_id: LogId::operator_log::<Sha256>(),
-                        record_id: head.digest.clone(),
-                    });
-                }
-            }
-
             for (log_id, records) in response.packages {
                 let package = packages.get_mut(&log_id).ok_or_else(|| {
                     anyhow!("received records for unknown package log `{log_id}`")
                 })?;
 
-                let has_package_records = !records.is_empty();
                 for record in records {
                     let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
                     package.state.validate(&record).map_err(|inner| {
@@ -400,30 +387,12 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     })?;
                 }
 
-                if let Some(head) = package.state.head() {
-                    // Only do an inclusion proof if new records were received
-                    if has_package_records {
-                        leafs.push(LogLeaf {
-                            log_id: log_id.clone(),
-                            record_id: head.digest.clone(),
-                        });
-                    }
-                } else {
+                // At this point, the package log should not be empty
+                if package.state.head().is_none() {
                     return Err(ClientError::PackageLogEmpty {
                         package: package.name.clone(),
                     });
                 }
-            }
-
-            if !leafs.is_empty() {
-                self.api
-                    .prove_inclusion(InclusionRequest {
-                        checkpoint: Cow::Borrowed(checkpoint.as_ref()),
-                        leafs: Cow::Borrowed(&leafs),
-                    })
-                    .await?;
-
-                leafs.clear();
             }
 
             if !response.more {
@@ -434,6 +403,33 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             for (id, record_id) in last_known.iter_mut() {
                 *record_id = packages[id].state.head().as_ref().map(|h| h.digest.clone());
             }
+        }
+
+        // Prove inclusion for the current log heads
+        let mut leafs = Vec::with_capacity(packages.len() + 1 /* for operator */);
+        if let Some(head) = operator.state.head() {
+            leafs.push(LogLeaf {
+                log_id: LogId::operator_log::<Sha256>(),
+                record_id: head.digest.clone(),
+            });
+        }
+
+        for (log_id, package) in &packages {
+            if let Some(head) = package.state.head() {
+                leafs.push(LogLeaf {
+                    log_id: log_id.clone(),
+                    record_id: head.digest.clone(),
+                });
+            }
+        }
+
+        if !leafs.is_empty() {
+            self.api
+                .prove_inclusion(InclusionRequest {
+                    checkpoint: Cow::Borrowed(checkpoint.as_ref()),
+                    leafs: Cow::Borrowed(&leafs),
+                })
+                .await?;
         }
 
         if let Some(from) = self.registry.load_checkpoint().await? {
