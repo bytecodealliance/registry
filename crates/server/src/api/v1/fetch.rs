@@ -79,10 +79,10 @@ async fn fetch_logs(
     State(config): State<Config>,
     Json(body): Json<FetchLogsRequest<'static>>,
 ) -> Result<Json<FetchLogsResponse>, FetchApiError> {
-    let max = body.limit.unwrap_or(DEFAULT_RECORDS_LIMIT);
-    if max == 0 || max > MAX_RECORDS_LIMIT {
+    let limit = body.limit.unwrap_or(DEFAULT_RECORDS_LIMIT);
+    if limit == 0 || limit > MAX_RECORDS_LIMIT {
         return Err(FetchApiError::bad_request(format!(
-            "invalid maximum records value `{max}`: must be between 1 and {MAX_RECORDS_LIMIT}"
+            "invalid records limit value `{limit}`: must be between 1 and {MAX_RECORDS_LIMIT}"
         )));
     }
 
@@ -93,14 +93,14 @@ async fn fetch_logs(
             &LogId::operator_log::<Sha256>(),
             &body.root,
             body.operator.as_deref(),
-            max,
+            limit,
         )
         .await?
         .into_iter()
         .map(Into::into)
         .collect();
 
-    let mut more = operator.len() == max as usize;
+    let mut more = operator.len() == limit as usize;
 
     let mut map = HashMap::new();
     let packages = body.packages.into_owned();
@@ -108,12 +108,12 @@ async fn fetch_logs(
         let records: Vec<ProtoEnvelopeBody> = config
             .core_service
             .store()
-            .get_package_records(&id, &body.root, since.as_ref(), max)
+            .get_package_records(&id, &body.root, since.as_ref(), limit)
             .await?
             .into_iter()
             .map(Into::into)
             .collect();
-        more |= records.len() == max as usize;
+        more |= records.len() == limit as usize;
         map.insert(id, records);
     }
 

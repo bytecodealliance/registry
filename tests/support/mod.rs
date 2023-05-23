@@ -49,6 +49,14 @@ pub async fn root() -> Result<PathBuf> {
     path.pop(); // remove `deps`
     path.pop(); // remove `debug` or `release`
     path.push("tests");
+    path.push(
+        std::env::current_exe()
+            .context("failed to get process name")?
+            .file_name()
+            .context("failed to get process name")?
+            .to_str()
+            .context("failed to get process name")?,
+    );
     path.push(format!("{id}"));
 
     fs::remove_dir_all(&path).await.ok();
