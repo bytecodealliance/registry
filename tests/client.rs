@@ -1,6 +1,6 @@
 use self::support::*;
 use anyhow::{bail, Context, Result};
-use std::fs;
+use std::{fs, time::Duration};
 use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
@@ -17,9 +17,11 @@ fn create_client(config: &Config) -> Result<FileSystemClient> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn client_incrementally_fetches() -> Result<()> {
-    const PACKAGE_COUNT: usize = 2000;
+    const RELEASE_COUNT: usize = 300;
+    const PACKAGE_NAME: &str = "test:package";
 
     let (_server, config) = spawn_server(&root().await?, None).await?;
+
     let client = create_client(&config)?;
     let signing_key = support::test_signing_key().parse().unwrap();
 
@@ -34,27 +36,37 @@ async fn client_incrementally_fetches() -> Result<()> {
         )
         .await?;
 
-    // Initialize a new package log with releases of the same content
-    // As the number of packages exceeds the limit for fetching in a single request,
-    // this will guarantee that the later call to `upsert` fetches the package log incrementally
-    let mut entries = Vec::with_capacity(PACKAGE_COUNT + 1);
-    entries.push(PublishEntry::Init);
-
-    for i in 1..=PACKAGE_COUNT {
-        entries.push(PublishEntry::Release {
-            version: format!("0.{i}.0").parse().unwrap(),
-            content: digest.clone(),
-        });
-    }
-
-    client
+    // Here we don't wait for a single publish operation to complete, except for the last one
+    // If the last one is accepted, it implies that all the previous ones were accepted as well
+    let mut head = client
         .publish_with_info(
             &signing_key,
             PublishInfo {
-                package: "test:package".to_string(),
-                entries,
+                package: PACKAGE_NAME.to_string(),
+                head: None,
+                entries: vec![PublishEntry::Init],
             },
         )
+        .await?;
+
+    for i in 1..=RELEASE_COUNT {
+        head = client
+            .publish_with_info(
+                &signing_key,
+                PublishInfo {
+                    package: PACKAGE_NAME.to_string(),
+                    head: Some(head),
+                    entries: vec![PublishEntry::Release {
+                        version: format!("0.{i}.0").parse().unwrap(),
+                        content: digest.clone(),
+                    }],
+                },
+            )
+            .await?;
+    }
+
+    client
+        .wait_for_publish(PACKAGE_NAME, &head, Duration::from_millis(100))
         .await?;
 
     drop(client);
@@ -67,12 +79,12 @@ async fn client_incrementally_fetches() -> Result<()> {
     let client = create_client(&config)?;
 
     // Fetch the package log
-    client.upsert(&["test:package"]).await?;
+    client.upsert(&[PACKAGE_NAME]).await?;
 
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
-        .load_package("test:package")
+        .load_package(PACKAGE_NAME)
         .await?
         .context("package does not exist in client storage")?;
 
@@ -82,7 +94,7 @@ async fn client_incrementally_fetches() -> Result<()> {
         count += 1;
     }
 
-    assert_eq!(count, PACKAGE_COUNT);
+    assert_eq!(count, RELEASE_COUNT);
 
     Ok(())
 }

@@ -154,6 +154,11 @@ pub enum PublishEntry {
 pub struct PublishInfo {
     /// The name of the package being published.
     pub package: String,
+    /// The last known head of the package log to use.
+    ///
+    /// If `None` and the package is not being initialized,
+    /// the latest head of the package log will be fetched prior to publishing.
+    pub head: Option<RecordId>,
     /// The new record entries to publish.
     pub entries: Vec<PublishEntry>,
 }
@@ -167,7 +172,6 @@ impl PublishInfo {
     pub(crate) fn finalize(
         self,
         signing_key: &signing::PrivateKey,
-        head: Option<RecordId>,
     ) -> Result<ProtoEnvelope<PackageRecord>> {
         let mut entries = Vec::with_capacity(self.entries.len());
         for entry in self.entries {
@@ -185,7 +189,7 @@ impl PublishInfo {
         }
 
         let record = package::PackageRecord {
-            prev: head,
+            prev: self.head,
             version: PACKAGE_RECORD_VERSION,
             // TODO: this seems wrong to record the current time client-side
             // How can we guarantee that the timestamps are monotonic?

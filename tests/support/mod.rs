@@ -136,16 +136,21 @@ pub async fn publish_component(
         content: digest,
     });
 
-    client
+    let record_id = client
         .publish_with_info(
             &test_signing_key().parse().unwrap(),
             PublishInfo {
                 package: name.to_string(),
+                head: None,
                 entries,
             },
         )
         .await
         .context("failed to publish component")?;
+
+    client
+        .wait_for_publish(name, &record_id, Duration::from_secs(1))
+        .await?;
 
     Ok(())
 }
@@ -187,16 +192,21 @@ pub async fn publish_wit(
         content: digest,
     });
 
-    client
+    let record_id = client
         .publish_with_info(
             &test_signing_key().parse().unwrap(),
             PublishInfo {
                 package: name.to_string(),
+                head: None,
                 entries,
             },
         )
         .await
         .context("failed to publish wit component")?;
+
+    client
+        .wait_for_publish(name, &record_id, Duration::from_secs(1))
+        .await?;
 
     Ok(())
 }
