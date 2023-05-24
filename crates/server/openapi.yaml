@@ -315,6 +315,15 @@ paths:
               example:
                 status: 405
                 message: the package record is not in the `sourcing` state
+        "422":
+          description: The content was rejected by server policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                status: 422
+                message: the content is not valid WebAssembly
         default:
           description: An error occurred when processing the request.
           content:
