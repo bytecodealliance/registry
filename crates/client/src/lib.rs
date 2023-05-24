@@ -179,7 +179,16 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             },
                         )?),
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| match e {
+                        api::ClientError::Package(PackageError::ContentPolicyRejection(reason)) => {
+                            ClientError::ContentPolicyRejection {
+                                record_id: record.id.clone(),
+                                reason,
+                            }
+                        }
+                        _ => e.into(),
+                    })?;
             }
         }
 
@@ -639,6 +648,7 @@ pub enum ClientError {
         /// The validation error.
         inner: operator::ValidationError,
     },
+
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
@@ -694,6 +704,15 @@ pub enum ClientError {
     ContentNotFound {
         /// The digest of the missing content.
         digest: DynHash,
+    },
+
+    /// Content was rejected by server policy.
+    #[error("the content was rejected by server policy: {reason}")]
+    ContentPolicyRejection {
+        /// The record identifier for the record that was being published.
+        record_id: RecordId,
+        /// The reason the content was rejected.
+        reason: String,
     },
 
     /// The package log is empty and cannot be validated.

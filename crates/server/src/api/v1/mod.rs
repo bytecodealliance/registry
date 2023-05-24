@@ -1,4 +1,4 @@
-use crate::services::CoreService;
+use crate::{policy::content::ContentPolicy, services::CoreService};
 use anyhow::Result;
 use axum::{
     extract::{
@@ -90,9 +90,11 @@ pub fn create_router(
     core: Arc<CoreService>,
     temp_dir: PathBuf,
     files_dir: PathBuf,
+    content_policy: Option<Arc<dyn ContentPolicy>>,
 ) -> Router {
     let proof_config = proof::Config::new(core.log_data().clone(), core.map_data().clone());
-    let package_config = package::Config::new(core.clone(), base_url, files_dir, temp_dir);
+    let package_config =
+        package::Config::new(core.clone(), base_url, files_dir, temp_dir, content_policy);
     let fetch_config = fetch::Config::new(core);
 
     Router::new()

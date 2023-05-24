@@ -3934,6 +3934,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "bytes",
  "chrono",
  "clap 4.1.8",
  "diesel",
@@ -3957,6 +3958,7 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",
+ "wasmparser 0.106.0",
 ]
 
 [[package]]
@@ -4152,6 +4154,16 @@ name = "wasmparser"
 version = "0.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c437373cac5ea84f1113d648d51f71751ffbe3d90c00ae67618cf20d0b5ee7b"
+dependencies = [
+ "indexmap",
+ "url",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.106.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d014e33793cab91655fa6349b0bc974984de106b2e0f6b0dfe6f6594b260624d"
 dependencies = [
  "indexmap",
  "url",

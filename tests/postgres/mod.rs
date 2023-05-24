@@ -103,5 +103,12 @@ async fn test() -> Result<()> {
     })
     .await?;
 
+    // Validate content policy
+    run(&root, |config| async move {
+        let client = super::create_client(&config)?;
+        super::validate_content_policy(&client).await
+    })
+    .await?;
+
     Ok(())
 }
