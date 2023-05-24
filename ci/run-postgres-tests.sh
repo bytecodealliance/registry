@@ -23,4 +23,4 @@ echo setting up database
 diesel database setup --database-url postgres://postgres:password@localhost:5433/test-registry --migration-dir crates/server/src/datastore/postgres/migrations
 
 echo running tests
-DATABASE_URL=postgres://postgres:password@localhost:5433/test-registry cargo test --features postgres $@
+WARG_DATABASE_URL=postgres://postgres:password@localhost:5433/test-registry cargo test --features postgres $@

@@ -19,8 +19,8 @@ services:
     # Set the base settings with environment variables.
     # NOTE: Test for cli environment variables support.
     environment:
-      - CONTENT_DIR=/var/run/warg/server-content
-      - OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
+      - WARG_CONTENT_DIR=/var/run/warg/server-content
+      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
     volumes:
       - warg-server-content:/var/run/warg/server-content:rw
       - warg-secrets:/var/secrets/warg:ro

@@ -32,7 +32,7 @@ function generate_secrets {
     echo -n "postgres://postgres:$(<"$POSTGRES_CREDS_DIR/password")@db:5432/warg_registry" >"$POSTGRES_CREDS_DIR/database_url"
   fi
   if [[ ! -f "$POSTGRES_CREDS_DIR/database_url_env" ]]; then
-    echo "DATABASE_URL=$(<"$POSTGRES_CREDS_DIR/database_url")" >"$POSTGRES_CREDS_DIR/database_url_env"
+    echo "WARG_DATABASE_URL=$(<"$POSTGRES_CREDS_DIR/database_url")" >"$POSTGRES_CREDS_DIR/database_url_env"
   fi
 
   # TODO: generate operator-key dynamically

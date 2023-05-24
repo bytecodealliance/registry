@@ -17,19 +17,19 @@ enum DataStoreKind {
 #[derive(Parser)]
 struct Args {
     /// Use verbose output
-    #[arg(short, long, env = "VERBOSE", action = clap::ArgAction::Count)]
+    #[arg(short, long, env = "WARG_VERBOSE", action = clap::ArgAction::Count)]
     verbose: u8,
 
     /// Address to listen to
-    #[arg(short, long, env = "LISTEN", default_value = "127.0.0.1:8090")]
+    #[arg(short, long, env = "WARG_LISTEN", default_value = "127.0.0.1:8090")]
     listen: SocketAddr,
 
     /// The content storage directory to use.
-    #[arg(long, env = "CONTENT_DIR")]
+    #[arg(long, env = "WARG_CONTENT_DIR")]
     content_dir: PathBuf,
 
     /// The data store to use for the server.
-    #[arg(long, env = "DATA_STORE", default_value = "memory")]
+    #[arg(long, env = "WARG_DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
 
     /// The database connection URL if data-store is set to postgres.
@@ -37,22 +37,22 @@ struct Args {
     /// Prefer using `database-url-file`, or environment variable variation,
     /// to avoid exposing sensitive information.
     #[cfg(feature = "postgres")]
-    #[arg(long, env = "DATABASE_URL")]
+    #[arg(long, env = "WARG_DATABASE_URL")]
     database_url: Option<String>,
 
     /// The path to the operator key.
     #[cfg(feature = "postgres")]
-    #[arg(long, env = "DATABASE_URL_FILE", conflicts_with = "database_url")]
+    #[arg(long, env = "WARG_DATABASE_URL_FILE", conflicts_with = "database_url")]
     database_url_file: Option<PathBuf>,
 
     /// The operator key.
     ///
     /// Prefer using `operator-key-file`, or environment variable variation.
-    #[arg(long, env = "OPERATOR_KEY")]
+    #[arg(long, env = "WARG_OPERATOR_KEY")]
     operator_key: Option<String>,
 
     /// The path to the operator key.
-    #[arg(long, env = "OPERATOR_KEY_FILE", conflicts_with = "operator_key")]
+    #[arg(long, env = "WARG_OPERATOR_KEY_FILE", conflicts_with = "operator_key")]
     operator_key_file: Option<PathBuf>,
 }
 

@@ -46,14 +46,14 @@ updated to install the crates.io package once a proper release is made.
 
 ### Running the server
 
-Before running the server, set the `OPERATOR_KEY` environment
+Before running the server, set the `WARG_OPERATOR_KEY` environment
 variable:
 
 ```
-export OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
+export WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
 ```
 
-`OPERATOR_KEY` is the private key of the server operator.
+`WARG_OPERATOR_KEY` is the private key of the server operator.
 
 Currently this is sourced through an environment variable, but soon this will 
 be sourced via command line arguments or integration with system key rings.
