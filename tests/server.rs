@@ -158,7 +158,7 @@ async fn validate_content_policy(client: &FileSystemClient) -> Result<()> {
                     assert_eq!(package, PACKAGE_NAME);
                     assert_eq!(
                         reason,
-                        "content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
+                        "content with digest `sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` was rejected by policy: content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
                     );
                 }
                 _ => panic!("expected a content policy rejection error"),

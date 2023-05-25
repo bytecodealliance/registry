@@ -307,7 +307,11 @@ async fn upload_content(
         config
             .core_service
             .store()
-            .reject_package_record(&log_id, &record_id, reason)
+            .reject_package_record(
+                &log_id,
+                &record_id,
+                &format!("content with digest `{digest}` was rejected by policy: {reason}"),
+            )
             .await?;
     }
 
