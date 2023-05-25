@@ -50,34 +50,26 @@ where
     }
 
     pub(crate) fn push(&mut self, peer: Option<Hash<D>>) {
-        // This is an optimization. The size of a proof is always
-        // known: it is the number of bits in the digest. Therefore,
-        // we can skip all leading nodes with no peer. The validator,
-        // can reconstruct this.
-        if !self.peers.is_empty() || peer.is_some() {
-            self.peers.push(peer);
-        }
+        self.peers.push(peer);
     }
 
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.peers.len()
-    }
 
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
     pub fn evaluate<K: ?Sized + VisitBytes>(&self, key: &K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.
         let path = Path::<D>::new(key);
 
-        // Determine how many empty leading peers there will be.
-        let fill = repeat(None).take(path.len() - self.peers.len());
+        // // Determine how many empty leading peers there will be.
+        // let fill = repeat(None).take(path.len() - self.peers.len());
 
         // Calculate the leaf hash.
         let mut hash = hash_leaf(key, value);
 
-        // Loop over each side and peer.
-        let peers = fill.chain(self.peers.iter().cloned());
-        for (side, peer) in path.rev().zip(peers) {
+        // // Loop over each side and peer.
+        // let peers = fill.chain(
+        //   self.peers.iter().cloned()
+        // );
+        for (side, peer) in path.rev().zip(self.peers.clone()) {
             hash = match side {
                 Side::Left => hash_branch(Some(hash), peer),
                 Side::Right => hash_branch(peer, Some(hash)),

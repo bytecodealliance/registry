@@ -112,10 +112,8 @@ mod test {
             tree: &Map<D, K, V>,
             key: K,
             value: V,
-            peers: usize,
         ) {
             let proof = tree.prove(&key).unwrap();
-            assert_eq!(proof.len(), peers);
             assert_eq!(tree.root().clone(), proof.evaluate(&key, &value));
         }
 
@@ -125,13 +123,13 @@ mod test {
         assert!(first.prove(&"qux").is_none());
 
         let second = first.insert("foo", "bar");
-        check(&second, "foo", "bar", 0);
+        check(&second, "foo", "bar");
         assert!(second.prove(&"baz").is_none());
         assert!(second.prove(&"qux").is_none());
 
         let third = second.insert("baz", "bat");
-        check(&third, "foo", "bar", 1);
-        check(&third, "baz", "bat", 1);
+        check(&third, "foo", "bar");
+        check(&third, "baz", "bat");
         assert!(third.prove(&"qux").is_none());
     }
 }
