@@ -120,9 +120,9 @@ pub enum PackageError {
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]
     NotSupported(String),
-    /// The provided content was rejected by server policy.
-    #[error("the content was rejected by server policy: {0}")]
-    ContentPolicyRejection(String),
+    /// The package was rejected by the registry.
+    #[error("the package was rejected by the registry: {0}")]
+    Rejection(String),
     /// An error with a message occurred.
     #[error("{message}")]
     Message {
@@ -142,7 +142,7 @@ impl PackageError {
             Self::Unauthorized { .. } => 403,
             Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
             Self::RecordNotSourcing => 405,
-            Self::ContentPolicyRejection(_) => 422,
+            Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
             Self::Message { status, .. } => *status,
         }
@@ -176,7 +176,7 @@ where
     RecordNotSourcing {
         status: Status<405>,
     },
-    ContentPolicyRejection {
+    Rejection {
         status: Status<422>,
         message: Cow<'a, str>,
     },
@@ -214,7 +214,7 @@ impl Serialize for PackageError {
                 status: Status::<405>,
             }
             .serialize(serializer),
-            Self::ContentPolicyRejection(message) => RawError::ContentPolicyRejection::<()> {
+            Self::Rejection(message) => RawError::Rejection::<()> {
                 status: Status::<422>,
                 message: Cow::Borrowed(message),
             }
@@ -262,9 +262,7 @@ impl<'de> Deserialize<'de> for PackageError {
                 )),
             },
             RawError::RecordNotSourcing { status: _ } => Ok(Self::RecordNotSourcing),
-            RawError::ContentPolicyRejection { status: _, message } => {
-                Ok(Self::ContentPolicyRejection(message.into_owned()))
-            }
+            RawError::Rejection { status: _, message } => Ok(Self::Rejection(message.into_owned())),
             RawError::NotSupported { status: _, message } => {
                 Ok(Self::NotSupported(message.into_owned()))
             }

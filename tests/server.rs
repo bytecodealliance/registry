@@ -142,7 +142,12 @@ async fn validate_content_policy(client: &FileSystemClient) -> Result<()> {
         .expect_err("expected publish to fail")
         .downcast::<ClientError>()
     {
-        Ok(ClientError::ContentPolicyRejection { record_id, reason }) => {
+        Ok(ClientError::PublishRejected {
+            package,
+            record_id,
+            reason,
+        }) => {
+            assert_eq!(package, PACKAGE_NAME);
             assert_eq!(
                 reason,
                 "content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
@@ -154,8 +159,13 @@ async fn validate_content_policy(client: &FileSystemClient) -> Result<()> {
                 .await
                 .expect_err("expected wait for publish to fail")
             {
-                ClientError::PublishRejected { package, reason } => {
+                ClientError::PublishRejected {
+                    package,
+                    record_id: other,
+                    reason,
+                } => {
                     assert_eq!(package, PACKAGE_NAME);
+                    assert_eq!(record_id, other);
                     assert_eq!(
                         reason,
                         "content with digest `sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` was rejected by policy: content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"

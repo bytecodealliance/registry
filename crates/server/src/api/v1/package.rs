@@ -134,9 +134,7 @@ impl From<DataStoreError> for PackageApiError {
 impl From<ContentPolicyError> for PackageApiError {
     fn from(value: ContentPolicyError) -> Self {
         match value {
-            ContentPolicyError::Rejection(message) => {
-                Self(PackageError::ContentPolicyRejection(message))
-            }
+            ContentPolicyError::Rejection(message) => Self(PackageError::Rejection(message)),
         }
     }
 }
@@ -303,7 +301,7 @@ async fn upload_content(
     let res = process_content(&tmp_path, &digest, stream, config.content_policy.as_deref()).await;
 
     // If the error was a rejection, transition the record itself to rejected
-    if let Err(PackageApiError(PackageError::ContentPolicyRejection(reason))) = &res {
+    if let Err(PackageApiError(PackageError::Rejection(reason))) = &res {
         config
             .core_service
             .store()
