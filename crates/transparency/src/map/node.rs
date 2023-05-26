@@ -37,7 +37,7 @@ impl<D: SupportedDigest> Node<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
             Node::Fork(fork) => fork.hash(),
-            Node::Empty(height) => D::empty_tree_hash(*height)
+            Node::Empty(height) => D::empty_tree_hash(*height),
         }
     }
 
@@ -81,12 +81,12 @@ impl<D: SupportedDigest> Node<D> {
                 }
 
                 _ => {
-                  let mut fork = Fork::default();
-                  let node = fork[index].as_ref().node();
-                  let (node, new) = node.insert(path, leaf);
-                  fork[index] = Arc::new(Link::new(node));
-                  (Node::Fork(fork), new) 
-                },
+                    let mut fork = Fork::default();
+                    let node = fork[index].as_ref().node();
+                    let (node, new) = node.insert(path, leaf);
+                    fork[index] = Arc::new(Link::new(node));
+                    (Node::Fork(fork), new)
+                }
             },
         }
     }
