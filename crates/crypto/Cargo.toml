@@ -18,6 +18,7 @@ secrecy = { workspace = true }
 signature = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+once_cell.workspace = true
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
