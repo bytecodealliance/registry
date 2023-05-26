@@ -11,6 +11,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
     FileSystemClient,
 };
+use warg_crypto::hash::DynHash;
 use warg_server::{
     datastore::DataStore,
     policy::content::{ContentPolicyCollection, WasmContentPolicy},
@@ -124,7 +125,7 @@ pub async fn publish(
     version: &str,
     content: Vec<u8>,
     init: bool,
-) -> Result<()> {
+) -> Result<DynHash> {
     let digest = client
         .content()
         .store_content(
@@ -140,7 +141,7 @@ pub async fn publish(
     }
     entries.push(PublishEntry::Release {
         version: version.parse().unwrap(),
-        content: digest,
+        content: digest.clone(),
     });
 
     let record_id = client
@@ -159,7 +160,7 @@ pub async fn publish(
         .wait_for_publish(name, &record_id, Duration::from_millis(100))
         .await?;
 
-    Ok(())
+    Ok(digest)
 }
 
 pub async fn publish_component(
@@ -168,7 +169,7 @@ pub async fn publish_component(
     version: &str,
     wat: &str,
     init: bool,
-) -> Result<()> {
+) -> Result<DynHash> {
     publish(
         client,
         name,
@@ -185,7 +186,7 @@ pub async fn publish_wit(
     version: &str,
     wit: &str,
     init: bool,
-) -> Result<()> {
+) -> Result<DynHash> {
     let mut resolve = Resolve::new();
     let pkg = resolve
         .push(

@@ -2,7 +2,7 @@ use self::support::*;
 use anyhow::{bail, Context, Result};
 use std::{fs, str::FromStr, time::Duration};
 use warg_client::{api, ClientError, Config, FileSystemClient, StorageLockResult};
-use warg_crypto::{signing::PrivateKey, Encode, Signable};
+use warg_crypto::{hash::DynHash, signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
 
 mod support;
@@ -44,21 +44,22 @@ async fn validate_initial_checkpoint(config: Config) -> Result<()> {
     Ok(())
 }
 
-async fn publish_component_package(client: &FileSystemClient) -> Result<()> {
+async fn publish_component_package(client: &FileSystemClient) -> Result<DynHash> {
     publish_component(client, "component:foo", "0.1.0", "(component)", true).await
 }
 
-async fn validate_component_package(config: &Config, client: &FileSystemClient) -> Result<()> {
+async fn validate_component_package(
+    config: &Config,
+    client: &FileSystemClient,
+    expected_digest: &DynHash,
+) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["component:foo"]).await?;
     let download = client
         .download("component:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
-    assert_eq!(
-        download.digest.to_string(),
-        "sha256:24eaf3439a60c96764c4f2c92a0a81b52bd4fe5d5b91f090184a0f6486b1bf29"
-    );
+    assert_eq!(download.digest, *expected_digest);
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
         download.path,
@@ -67,7 +68,7 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("24eaf3439a60c96764c4f2c92a0a81b52bd4fe5d5b91f090184a0f6486b1bf29")
+            .join(download.digest.to_string().strip_prefix("sha256:").unwrap())
     );
 
     // Assert that it is a valid component
@@ -85,7 +86,7 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
     Ok(())
 }
 
-async fn publish_wit_package(client: &FileSystemClient) -> Result<()> {
+async fn publish_wit_package(client: &FileSystemClient) -> Result<DynHash> {
     publish_wit(
         client,
         "wit:foo",
@@ -96,17 +97,18 @@ async fn publish_wit_package(client: &FileSystemClient) -> Result<()> {
     .await
 }
 
-async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Result<()> {
+async fn validate_wit_package(
+    config: &Config,
+    client: &FileSystemClient,
+    expected_digest: &DynHash,
+) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["wit:foo"]).await?;
     let download = client
         .download("wit:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
-    assert_eq!(
-        download.digest.to_string(),
-        "sha256:9595160fdefed46d91492dea2c1072885fe11d936323e6aa981af263be93723d"
-    );
+    assert_eq!(download.digest, *expected_digest);
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
         download.path,
@@ -115,7 +117,7 @@ async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Res
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("9595160fdefed46d91492dea2c1072885fe11d936323e6aa981af263be93723d")
+            .join(download.digest.to_string().strip_prefix("sha256:").unwrap())
     );
 
     // Assert it is a valid wit package
@@ -193,8 +195,8 @@ async fn it_publishes_a_component() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None).await?;
     let client = create_client(&config)?;
 
-    publish_component_package(&client).await?;
-    validate_component_package(&config, &client).await?;
+    let digest = publish_component_package(&client).await?;
+    validate_component_package(&config, &client, &digest).await?;
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
@@ -209,8 +211,8 @@ async fn it_publishes_a_wit_package() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None).await?;
     let client = create_client(&config)?;
 
-    publish_wit_package(&client).await?;
-    validate_wit_package(&config, &client).await?;
+    let digest = publish_wit_package(&client).await?;
+    validate_wit_package(&config, &client, &digest).await?;
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
