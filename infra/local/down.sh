@@ -19,7 +19,7 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 2
 fi
 
-docker-compose --env-file "$SCRIPT_DIR/.env" \
+docker compose --env-file "$SCRIPT_DIR/.env" \
   -f "$REPO_DIR/docker-compose.yaml" \
   -f "$REPO_DIR/docker-compose.postgres.yaml" \
   down --remove-orphans --volumes
