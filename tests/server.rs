@@ -57,7 +57,7 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
         .context("failed to resolve package")?;
     assert_eq!(
         download.digest.to_string(),
-        "sha256:396bf81fe30c615180c31fc3ba964396241af472ace265f55609a3fcf12140f2"
+        "sha256:24eaf3439a60c96764c4f2c92a0a81b52bd4fe5d5b91f090184a0f6486b1bf29"
     );
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
@@ -67,14 +67,11 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("396bf81fe30c615180c31fc3ba964396241af472ace265f55609a3fcf12140f2")
+            .join("24eaf3439a60c96764c4f2c92a0a81b52bd4fe5d5b91f090184a0f6486b1bf29")
     );
 
     // Assert that it is a valid component
-    match wit_component::decode(
-        "foo",
-        &fs::read(download.path).context("failed to read component")?,
-    )? {
+    match wit_component::decode(&fs::read(download.path).context("failed to read component")?)? {
         DecodedWasm::Component(..) => {}
         _ => panic!("expected component"),
     }
@@ -89,7 +86,14 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
 }
 
 async fn publish_wit_package(client: &FileSystemClient) -> Result<()> {
-    publish_wit(client, "wit:foo", "0.1.0", "default world foo {}", true).await
+    publish_wit(
+        client,
+        "wit:foo",
+        "0.1.0",
+        "package wit:foo\nworld foo {}",
+        true,
+    )
+    .await
 }
 
 async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Result<()> {
@@ -101,7 +105,7 @@ async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Res
         .context("failed to resolve package")?;
     assert_eq!(
         download.digest.to_string(),
-        "sha256:eb83fbde29872c3c2da5a8485c60236b7a1ccaa461504cfb2ed52a6e9d9b2cfd"
+        "sha256:9595160fdefed46d91492dea2c1072885fe11d936323e6aa981af263be93723d"
     );
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
@@ -111,14 +115,11 @@ async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Res
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("eb83fbde29872c3c2da5a8485c60236b7a1ccaa461504cfb2ed52a6e9d9b2cfd")
+            .join("9595160fdefed46d91492dea2c1072885fe11d936323e6aa981af263be93723d")
     );
 
     // Assert it is a valid wit package
-    match wit_component::decode(
-        "foo",
-        &fs::read(download.path).context("failed to read WIT package")?,
-    )? {
+    match wit_component::decode(&fs::read(download.path).context("failed to read WIT package")?)? {
         DecodedWasm::WitPackage(..) => {}
         _ => panic!("expected WIT package"),
     }

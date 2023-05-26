@@ -191,7 +191,6 @@ pub async fn publish_wit(
         .push(
             UnresolvedPackage::parse(Path::new("foo.wit"), wit)
                 .context("failed to parse wit for publishing")?,
-            &Default::default(),
         )
         .context("failed to resolve wit for publishing")?;
 
