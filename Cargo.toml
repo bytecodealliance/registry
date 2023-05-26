@@ -28,6 +28,7 @@ rpassword = "7.2.0"
 # TODO: remove these demo-related dependencies
 wasmtime = "6.0"
 wasmtime-wasi = "6.0"
+lazy_static = "1.4.0"
 
 [dev-dependencies]
 warg-server = { workspace = true }

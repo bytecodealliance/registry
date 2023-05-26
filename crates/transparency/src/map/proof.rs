@@ -53,7 +53,6 @@ where
         self.peers.push(peer);
     }
 
-
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
     pub fn evaluate<K: ?Sized + VisitBytes>(&self, key: &K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.

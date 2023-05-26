@@ -12,7 +12,7 @@ use super::proof::Proof;
 pub enum Node<D: SupportedDigest> {
     Leaf(Hash<D>),
     Fork(Fork<D>),
-    Empty(u8)
+    Empty(u8),
 }
 
 impl<D: SupportedDigest> Clone for Node<D> {
@@ -20,7 +20,7 @@ impl<D: SupportedDigest> Clone for Node<D> {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
             Self::Fork(node) => Self::Fork(node.clone()),
-            Self::Empty(n) => Self::Empty(*n)
+            Self::Empty(n) => Self::Empty(*n),
         }
     }
 }
@@ -36,7 +36,7 @@ impl<D: SupportedDigest> Node<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
             Node::Fork(fork) => fork.hash(),
-            Node::Empty(n) => D::empty_hash_cache(n)
+            Node::Empty(n) => D::empty_hash_cache(n),
         }
     }
 
