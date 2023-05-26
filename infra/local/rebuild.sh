@@ -27,7 +27,7 @@ fi
 
 generate_secrets
 
-docker-compose --env-file "$SCRIPT_DIR/.env" \
+docker compose --env-file "$SCRIPT_DIR/.env" \
   -f "$REPO_DIR/docker-compose.yaml" \
   -f "$REPO_DIR/docker-compose.postgres.yaml" \
   up --build -d

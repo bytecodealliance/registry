@@ -17,7 +17,7 @@ function generate_locals {
   PSQL_FILE="$SCRIPT_DIR/psql.local.sh"
 
   # Extract the local randomly bound port number used for exposing postgres.
-  PGPORT=$(docker port bytecodealliance-registry-db-1 5432 | sed -e 's/.*://g')
+  PGPORT=$(docker port registry-db-1 5432 | sed -e 's/.*://g')
 
   PGPASS="localhost"
   PGPASS="$PGPASS:$PGPORT"
