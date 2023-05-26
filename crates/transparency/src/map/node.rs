@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+// use sha2::Sha256;
 use warg_crypto::hash::{Hash, SupportedDigest};
 use warg_crypto::VisitBytes;
 
@@ -12,7 +13,7 @@ use super::proof::Proof;
 pub enum Node<D: SupportedDigest> {
     Leaf(Hash<D>),
     Fork(Fork<D>),
-    Empty(u8),
+    Empty(usize),
 }
 
 impl<D: SupportedDigest> Clone for Node<D> {
@@ -20,7 +21,7 @@ impl<D: SupportedDigest> Clone for Node<D> {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
             Self::Fork(node) => Self::Fork(node.clone()),
-            Self::Empty(n) => Self::Empty(*n),
+            Self::Empty(height) => Self::Empty(*height),
         }
     }
 }
@@ -36,7 +37,7 @@ impl<D: SupportedDigest> Node<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
             Node::Fork(fork) => fork.hash(),
-            Node::Empty(n) => D::empty_hash_cache(n),
+            Node::Empty(height) => D::empty_tree_hash(*height)
         }
     }
 
@@ -65,7 +66,7 @@ impl<D: SupportedDigest> Node<D> {
     pub fn insert(&self, path: &mut Path<D>, leaf: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
-            None => (Node::Leaf(leaf), matches!(self, Node::Fork(..))),
+            None => (Node::Leaf(leaf), matches!(self, Node::Empty(0))),
 
             // We are not at the end of the path. Recurse...
             Some(index) => match self.clone() {
@@ -79,7 +80,13 @@ impl<D: SupportedDigest> Node<D> {
                     (Node::Fork(fork), new)
                 }
 
-                _ => unreachable!(),
+                _ => {
+                  let mut fork = Fork::default();
+                  let node = fork[index].as_ref().node();
+                  let (node, new) = node.insert(path, leaf);
+                  fork[index] = Arc::new(Link::new(node));
+                  (Node::Fork(fork), new) 
+                },
             },
         }
     }

@@ -234,10 +234,6 @@ where
     }
 }
 
-/// Hashes a leaf node
-/// ```hash
-/// H(0xff || H(<key>) || <value>)
-/// ```
 pub(crate) fn hash_leaf<D, K, V>(key: K, value: V) -> Hash<D>
 where
     D: SupportedDigest,
@@ -245,25 +241,12 @@ where
     V: VisitBytes,
 {
     let key_hash: Hash<D> = Hash::of(&key);
-    Hash::of(&(0xffu8, key_hash, value))
+    Hash::of(&(key_hash, value))
 }
 
-/// ```hash
-/// // Both children present:
-/// H(0b11 || <left> || <right>)
-///
-/// // Left child present:
-/// H(0b10 || <left>)
-///
-/// // Right child present:
-/// H(0b01 || <right>)
-///
-/// // Empty tree:
-/// H(0b00)
-/// ```
 pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    Hash::of(&(lhs, rhs))
+    Hash::of((lhs, rhs))
 }

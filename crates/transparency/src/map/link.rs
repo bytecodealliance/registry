@@ -37,11 +37,10 @@ impl<D: SupportedDigest> Clone for Link<D> {
 
 impl<D: SupportedDigest> Default for Link<D> {
     fn default() -> Self {
-        let node = Arc::new(Node::default());
 
         Link {
-            hash: node.hash(),
-            node,
+            hash: Node::Empty(0).hash(),
+            node: Arc::new(Node::Empty(0)),
         }
     }
 }

@@ -44,7 +44,7 @@ mod test {
         assert_ne!(second.root(), third.root());
 
         // Ensure the empty tree has the known root.
-        assert_eq!(first.root().clone(), Hash::of(0u8));
+        assert_eq!(first.root().clone(), Sha256::empty_tree_hash(0));
     }
 
     #[test]
@@ -108,7 +108,7 @@ mod test {
 
     #[test]
     fn prove() {
-        fn check<D: SupportedDigest, K: VisitBytes + Clone, V: VisitBytes>(
+        fn check<D: SupportedDigest + std::fmt::Debug, K: VisitBytes + Clone, V: VisitBytes>(
             tree: &Map<D, K, V>,
             key: K,
             value: V,
