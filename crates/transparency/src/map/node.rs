@@ -43,10 +43,10 @@ impl<D: SupportedDigest> Node<D> {
     pub fn prove<V: VisitBytes>(&self, mut path: Path<D>) -> Option<Proof<D, V>> {
         match (path.next(), self) {
             (Some(idx), Self::Fork(fork)) => {
-                let mut proof = fork[idx].as_ref()?.node().prove(path)?;
-                let peer = fork[idx.opposite()].as_ref().map(|link| link.hash());
+                let mut proof = fork[idx].as_ref().node().prove(path)?;
+                let peer = fork[idx.opposite()].as_ref().hash();
 
-                proof.push(peer.cloned());
+                proof.push(peer);
 
                 Some(proof)
             }
@@ -73,12 +73,11 @@ impl<D: SupportedDigest> Node<D> {
                     // Choose the branch on the specified side.
                     let node = fork[index]
                         .as_ref()
-                        .map(|link| link.node().clone())
-                        .unwrap_or_default();
+                        .node();
 
                     // Replace its value recursively.
                     let (node, new) = node.insert(path, leaf);
-                    fork[index] = Some(Arc::new(Link::new(node)));
+                    fork[index] = Arc::new(Link::new(node));
                     (Node::Fork(fork), new)
                 }
 

@@ -261,14 +261,9 @@ where
 /// // Empty tree:
 /// H(0b00)
 /// ```
-pub(crate) fn hash_branch<D>(lhs: Option<Hash<D>>, rhs: Option<Hash<D>>) -> Hash<D>
+pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    match (lhs, rhs) {
-        (Some(left), Some(right)) => Hash::of(&(0b11, left, right)),
-        (Some(left), None) => Hash::of(&(0b10, left)),
-        (None, Some(right)) => Hash::of(&(0b01, right)),
-        (None, None) => Hash::of(0b00u8),
-    }
+    Hash::of(&(lhs, rhs))
 }

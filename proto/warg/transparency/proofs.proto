@@ -7,11 +7,11 @@ message MapProofBundle {
 }
 
 message MapInclusionProof {
-    repeated OptionalHash hashes = 1;
+    repeated Hash hashes = 1;
 }
 
-message OptionalHash {
-    optional bytes hash = 1;
+message Hash {
+    bytes hash = 1;
 }
 
 message LogProofBundle {

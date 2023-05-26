@@ -34,7 +34,7 @@ where
     V: VisitBytes,
 {
     value: PhantomData<V>,
-    peers: Vec<Option<Hash<D>>>,
+    peers: Vec<Hash<D>>,
 }
 
 impl<D, V> Proof<D, V>
@@ -42,15 +42,15 @@ where
     D: SupportedDigest,
     V: VisitBytes,
 {
-    pub(crate) fn new(peers: Vec<Option<Hash<D>>>) -> Self {
+    pub(crate) fn new(peers: Vec<Hash<D>>) -> Self {
         Self {
             value: PhantomData,
             peers,
         }
     }
 
-    pub(crate) fn push(&mut self, peer: Option<Hash<D>>) {
-        self.peers.push(peer);
+    pub(crate) fn push(&mut self, peer: &Hash<D>) {
+        self.peers.push(peer.clone());
     }
 
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
@@ -70,8 +70,8 @@ where
         // );
         for (side, peer) in path.rev().zip(self.peers.clone()) {
             hash = match side {
-                Side::Left => hash_branch(Some(hash), peer),
-                Side::Right => hash_branch(peer, Some(hash)),
+                Side::Left => hash_branch(&hash, &peer),
+                Side::Right => hash_branch(&peer, &hash),
             };
         }
 
@@ -79,7 +79,7 @@ where
     }
 }
 
-impl<D, V> From<Proof<D, V>> for Vec<Option<Hash<D>>>
+impl<D, V> From<Proof<D, V>> for Vec<Hash<D>>
 where
     D: SupportedDigest,
     V: VisitBytes,

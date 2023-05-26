@@ -3968,8 +3968,6 @@ dependencies = [
  "anyhow",
  "ciborium",
  "criterion",
- "lazy_static",
- "once_cell",
  "pbjson",
  "pbjson-build",
  "pbjson-types",
