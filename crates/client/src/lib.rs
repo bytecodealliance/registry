@@ -179,7 +179,17 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             },
                         )?),
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| match e {
+                        api::ClientError::Package(PackageError::Rejection(reason)) => {
+                            ClientError::PublishRejected {
+                                package: package.name.clone(),
+                                record_id: record.id.clone(),
+                                reason,
+                            }
+                        }
+                        _ => e.into(),
+                    })?;
             }
         }
 
@@ -211,6 +221,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 PackageRecordState::Rejected { reason } => {
                     return Err(ClientError::PublishRejected {
                         package: package.to_string(),
+                        record_id: record_id.clone(),
                         reason,
                     });
                 }
@@ -639,6 +650,7 @@ pub enum ClientError {
         /// The validation error.
         inner: operator::ValidationError,
     },
+
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
@@ -708,6 +720,8 @@ pub enum ClientError {
     PublishRejected {
         /// The package that was rejected.
         package: String,
+        /// The record identifier for the record that was rejected.
+        record_id: RecordId,
         /// The reason it was rejected.
         reason: String,
     },

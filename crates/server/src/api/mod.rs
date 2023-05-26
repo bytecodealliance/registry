@@ -1,4 +1,4 @@
-use crate::services::CoreService;
+use crate::{policy::content::ContentPolicy, services::CoreService};
 use axum::{body::Body, http::Request, Router};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceBuilder;
@@ -18,11 +18,12 @@ pub fn create_router(
     core: Arc<CoreService>,
     temp_dir: PathBuf,
     files_dir: PathBuf,
+    content_policy: Option<Arc<dyn ContentPolicy>>,
 ) -> Router {
     Router::new()
         .nest(
             "/v1",
-            v1::create_router(base_url, core, temp_dir, files_dir.clone()),
+            v1::create_router(base_url, core, temp_dir, files_dir.clone(), content_policy),
         )
         .nest_service("/content", ServeDir::new(files_dir))
         .layer(

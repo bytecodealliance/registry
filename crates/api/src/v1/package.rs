@@ -120,6 +120,9 @@ pub enum PackageError {
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]
     NotSupported(String),
+    /// The package was rejected by the registry.
+    #[error("the package was rejected by the registry: {0}")]
+    Rejection(String),
     /// An error with a message occurred.
     #[error("{message}")]
     Message {
@@ -139,6 +142,7 @@ impl PackageError {
             Self::Unauthorized { .. } => 403,
             Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
             Self::RecordNotSourcing => 405,
+            Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
             Self::Message { status, .. } => *status,
         }
@@ -172,6 +176,10 @@ where
     RecordNotSourcing {
         status: Status<405>,
     },
+    Rejection {
+        status: Status<422>,
+        message: Cow<'a, str>,
+    },
     NotSupported {
         status: Status<501>,
         message: Cow<'a, str>,
@@ -204,6 +212,11 @@ impl Serialize for PackageError {
             .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
                 status: Status::<405>,
+            }
+            .serialize(serializer),
+            Self::Rejection(message) => RawError::Rejection::<()> {
+                status: Status::<422>,
+                message: Cow::Borrowed(message),
             }
             .serialize(serializer),
             Self::NotSupported(message) => RawError::NotSupported::<()> {
@@ -249,6 +262,7 @@ impl<'de> Deserialize<'de> for PackageError {
                 )),
             },
             RawError::RecordNotSourcing { status: _ } => Ok(Self::RecordNotSourcing),
+            RawError::Rejection { status: _, message } => Ok(Self::Rejection(message.into_owned())),
             RawError::NotSupported { status: _, message } => {
                 Ok(Self::NotSupported(message.into_owned()))
             }

@@ -1,7 +1,7 @@
 use self::support::*;
 use anyhow::{bail, Context, Result};
-use std::{fs, str::FromStr};
-use warg_client::{api, Config, FileSystemClient, StorageLockResult};
+use std::{fs, str::FromStr, time::Duration};
+use warg_client::{api, ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::{signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
 
@@ -132,6 +132,54 @@ async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Res
     Ok(())
 }
 
+async fn validate_content_policy(client: &FileSystemClient) -> Result<()> {
+    const PACKAGE_NAME: &str = "bad:content";
+
+    // Publish empty content to the server
+    // This should be rejected by policy because it is not valid WebAssembly
+    match publish(client, PACKAGE_NAME, "0.1.0", Vec::new(), true)
+        .await
+        .expect_err("expected publish to fail")
+        .downcast::<ClientError>()
+    {
+        Ok(ClientError::PublishRejected {
+            package,
+            record_id,
+            reason,
+        }) => {
+            assert_eq!(package, PACKAGE_NAME);
+            assert_eq!(
+                reason,
+                "content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
+            );
+
+            // Waiting on the publish should fail with a rejection as well
+            match client
+                .wait_for_publish(PACKAGE_NAME, &record_id, Duration::from_millis(100))
+                .await
+                .expect_err("expected wait for publish to fail")
+            {
+                ClientError::PublishRejected {
+                    package,
+                    record_id: other,
+                    reason,
+                } => {
+                    assert_eq!(package, PACKAGE_NAME);
+                    assert_eq!(record_id, other);
+                    assert_eq!(
+                        reason,
+                        "content with digest `sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` was rejected by policy: content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
+                    );
+                }
+                _ => panic!("expected a content policy rejection error"),
+            }
+        }
+        _ => panic!("expected a content policy rejection error"),
+    }
+
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_starts_with_initial_checkpoint() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None).await?;
@@ -169,4 +217,11 @@ async fn it_publishes_a_wit_package() -> Result<()> {
     assert_eq!(checkpoint.as_ref().log_length, 2);
 
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_rejects_non_wasm_content() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None).await?;
+    let client = create_client(&config)?;
+    validate_content_policy(&client).await
 }

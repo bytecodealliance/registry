@@ -11,7 +11,11 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
     FileSystemClient,
 };
-use warg_server::{datastore::DataStore, Config, Server};
+use warg_server::{
+    datastore::DataStore,
+    policy::content::{ContentPolicyCollection, WasmContentPolicy},
+    Config, Server,
+};
 use wit_parser::{Resolve, UnresolvedPackage};
 
 pub fn test_operator_key() -> &'static str {
@@ -78,11 +82,16 @@ pub async fn spawn_server(
     root: &Path,
     data_store: Option<Box<dyn DataStore>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
+    // For the tests, we assume only wasm content is allowed.
+    let mut policies = ContentPolicyCollection::default();
+    policies.push(WasmContentPolicy::default());
+
     let shutdown = CancellationToken::new();
     let mut config = Config::new(test_operator_key().parse()?, root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
         .with_shutdown(shutdown.clone().cancelled_owned())
-        .with_checkpoint_interval(Duration::from_millis(100));
+        .with_checkpoint_interval(Duration::from_millis(100))
+        .with_content_policy(policies);
 
     if let Some(store) = data_store {
         config = config.with_boxed_data_store(store);
@@ -109,19 +118,17 @@ pub async fn spawn_server(
     Ok((instance, config))
 }
 
-pub async fn publish_component(
+pub async fn publish(
     client: &FileSystemClient,
     name: &str,
     version: &str,
-    wat: &str,
+    content: Vec<u8>,
     init: bool,
 ) -> Result<()> {
-    let bytes = wat::parse_str(wat).context("failed to parse component for publishing")?;
-
     let digest = client
         .content()
         .store_content(
-            Box::pin(futures::stream::once(async move { Ok(bytes.into()) })),
+            Box::pin(futures::stream::once(async move { Ok(content.into()) })),
             None,
         )
         .await
@@ -146,13 +153,30 @@ pub async fn publish_component(
             },
         )
         .await
-        .context("failed to publish component")?;
+        .context("failed to publish package")?;
 
     client
-        .wait_for_publish(name, &record_id, Duration::from_secs(1))
+        .wait_for_publish(name, &record_id, Duration::from_millis(100))
         .await?;
 
     Ok(())
+}
+
+pub async fn publish_component(
+    client: &FileSystemClient,
+    name: &str,
+    version: &str,
+    wat: &str,
+    init: bool,
+) -> Result<()> {
+    publish(
+        client,
+        name,
+        version,
+        wat::parse_str(wat).context("failed to parse component for publishing")?,
+        init,
+    )
+    .await
 }
 
 pub async fn publish_wit(
@@ -171,42 +195,12 @@ pub async fn publish_wit(
         )
         .context("failed to resolve wit for publishing")?;
 
-    let bytes =
-        wit_component::encode(&resolve, pkg).context("failed to encode wit for publishing")?;
-
-    let digest = client
-        .content()
-        .store_content(
-            Box::pin(futures::stream::once(async move { Ok(bytes.into()) })),
-            None,
-        )
-        .await
-        .context("failed to store wit component for publishing")?;
-
-    let mut entries = Vec::with_capacity(2);
-    if init {
-        entries.push(PublishEntry::Init);
-    }
-    entries.push(PublishEntry::Release {
-        version: version.parse().unwrap(),
-        content: digest,
-    });
-
-    let record_id = client
-        .publish_with_info(
-            &test_signing_key().parse().unwrap(),
-            PublishInfo {
-                package: name.to_string(),
-                head: None,
-                entries,
-            },
-        )
-        .await
-        .context("failed to publish wit component")?;
-
-    client
-        .wait_for_publish(name, &record_id, Duration::from_secs(1))
-        .await?;
-
-    Ok(())
+    publish(
+        client,
+        name,
+        version,
+        wit_component::encode(&resolve, pkg).context("failed to encode wit for publishing")?,
+        init,
+    )
+    .await
 }
