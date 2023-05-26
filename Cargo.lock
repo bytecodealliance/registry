@@ -3833,7 +3833,6 @@ dependencies = [
  "dialoguer",
  "futures",
  "keyring",
- "lazy_static",
  "p256",
  "rand_core",
  "rpassword",

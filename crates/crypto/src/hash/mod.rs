@@ -1,7 +1,6 @@
 use anyhow::Error;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::{fmt, str::FromStr};
 use thiserror::Error;
 
@@ -41,31 +40,31 @@ impl FromStr for HashAlgorithm {
     }
 }
 
-static EMPTY_HASH_CACHE: Lazy<HashMap<u8, Hash<Sha256>>> = Lazy::new(|| {
-    let mut m: HashMap<u8, Hash<Sha256>> = HashMap::new();
-    fn empty_hash<D: SupportedDigest>(m: &mut HashMap<u8, Hash<D>>, n: u8) -> Hash<D> {
-        let hash: Hash<D> = if n == 0 {
+static EMPTY_HASH_CACHE: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
+    let mut v: Vec<Hash<Sha256>> = Vec::with_capacity(257);
+    fn empty_tree_hash<D: SupportedDigest>(v: &mut Vec<Hash<D>>, height: u32) -> Hash<D> {
+        let hash: Hash<D> = if height == 0 {
             Hash::of("")
         } else {
-            let last_hash = empty_hash(m, n - 1);
+            let last_hash = empty_tree_hash(v, height - 1);
             Hash::of(Hash::<Sha256>::of((&last_hash, &last_hash)))
         };
-        m.insert(n, hash.clone());
+        v.push(hash.clone());
         hash
     }
-    empty_hash(&mut m, 255);
-    m
+    empty_tree_hash(&mut v, 256);
+    v
 });
 
 pub trait SupportedDigest: Digest + private::Sealed + Sized {
     const ALGORITHM: HashAlgorithm;
-    fn empty_hash_cache(n: &u8) -> Hash<Self>;
+    fn empty_tree_hash(height: usize) -> Hash<Self>;
 }
 
 impl SupportedDigest for Sha256 {
     const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
-    fn empty_hash_cache(n: &u8) -> Hash<Sha256> {
-        EMPTY_HASH_CACHE.get(n).unwrap().clone()
+    fn empty_tree_hash(height: usize) -> Hash<Sha256> {
+        EMPTY_HASH_CACHE[height].to_owned()
     }
 }
 
