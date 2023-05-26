@@ -71,9 +71,7 @@ impl<D: SupportedDigest> Node<D> {
             Some(index) => match self.clone() {
                 Node::Fork(mut fork) => {
                     // Choose the branch on the specified side.
-                    let node = fork[index]
-                        .as_ref()
-                        .node();
+                    let node = fork[index].as_ref().node();
 
                     // Replace its value recursively.
                     let (node, new) = node.insert(path, leaf);

@@ -65,7 +65,7 @@ where
     fn from(value: Proof<D, V>) -> Self {
         let peers: Vec<Hash<D>> = value.into();
         protobuf::MapInclusionProof {
-            hashes: peers.into_iter().map(|h| h.into()).collect()
+            hashes: peers.into_iter().map(|h| h.into()).collect(),
         }
     }
 }

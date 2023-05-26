@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::{link::Link, map::hash_branch, path::Side, node::Node};
+use super::{link::Link, map::hash_branch, node::Node, path::Side};
 
 pub struct Fork<D: SupportedDigest> {
     left: Arc<Link<D>>,
