@@ -1,17 +1,19 @@
+use std::sync::Arc;
+
 use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::Node;
 
 pub struct Link<D: SupportedDigest> {
     hash: Hash<D>,
-    node: Node<D>,
+    node: Arc<Node<D>>,
 }
 
 impl<D: SupportedDigest> Link<D> {
     pub fn new(node: Node<D>) -> Self {
         Self {
             hash: node.hash(),
-            node,
+            node: Arc::new(node),
         }
     }
 
@@ -35,7 +37,7 @@ impl<D: SupportedDigest> Clone for Link<D> {
 
 impl<D: SupportedDigest> Default for Link<D> {
     fn default() -> Self {
-        let node = Node::default();
+        let node = Arc::new(Node::default());
 
         Link {
             hash: node.hash(),
