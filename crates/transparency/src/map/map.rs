@@ -6,6 +6,7 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 use warg_crypto::VisitBytes;
 
 use super::link::Link;
+use super::node::Node;
 use super::path::Path;
 use super::proof::Proof;
 
@@ -128,7 +129,7 @@ where
 {
     fn default() -> Self {
         Self {
-            link: Link::default(),
+            link: Link::new(Node::Empty(256)),
             len: 0,
             _key: PhantomData,
             _value: PhantomData,

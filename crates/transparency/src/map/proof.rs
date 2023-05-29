@@ -8,7 +8,7 @@ use warg_crypto::{
 
 use super::{
     map::{hash_branch, hash_leaf},
-    path::{Path, Side},
+    path::{ReversePath, Side},
 };
 
 /// An inclusion proof of the specified value in a map
@@ -56,19 +56,13 @@ where
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
     pub fn evaluate<K: ?Sized + VisitBytes>(&self, key: &K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.
-        let path = Path::<D>::new(key);
-
-        // // Determine how many empty leading peers there will be.
-        // let fill = repeat(None).take(path.len() - self.peers.len());
+        let path = ReversePath::<D>::new(key);
 
         // Calculate the leaf hash.
         let mut hash = hash_leaf(key, value);
 
         // // Loop over each side and peer.
-        // let peers = fill.chain(
-        //   self.peers.iter().cloned()
-        // );
-        for (side, peer) in path.rev().zip(self.peers.clone()) {
+        for (side, peer) in path.zip(self.peers.clone()) {
             hash = match side {
                 Side::Left => hash_branch(&hash, &peer),
                 Side::Right => hash_branch(&peer, &hash),

@@ -34,12 +34,3 @@ impl<D: SupportedDigest> Clone for Link<D> {
         }
     }
 }
-
-impl<D: SupportedDigest> Default for Link<D> {
-    fn default() -> Self {
-        Link {
-            hash: Node::Empty(0).hash(),
-            node: Arc::new(Node::Empty(0)),
-        }
-    }
-}
