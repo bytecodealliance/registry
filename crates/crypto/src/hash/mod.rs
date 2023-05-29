@@ -40,14 +40,14 @@ impl FromStr for HashAlgorithm {
     }
 }
 
-static EMPTY_HASH_CACHE: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
+static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
     let mut v: Vec<Hash<Sha256>> = Vec::with_capacity(257);
     fn empty_tree_hash<D: SupportedDigest>(v: &mut Vec<Hash<D>>, height: u32) -> Hash<D> {
         let hash: Hash<D> = if height == 0 {
             Hash::of("")
         } else {
             let last_hash = empty_tree_hash(v, height - 1);
-            Hash::of(Hash::<Sha256>::of((&last_hash, &last_hash)))
+            Hash::of(Hash::<Sha256>::of((0b1, &last_hash, &last_hash)))
         };
         v.push(hash.clone());
         hash
@@ -64,7 +64,7 @@ pub trait SupportedDigest: Digest + private::Sealed + Sized {
 impl SupportedDigest for Sha256 {
     const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
     fn empty_tree_hash(height: usize) -> Hash<Sha256> {
-        EMPTY_HASH_CACHE[height].to_owned()
+        EMPTY_TREE_HASH[height].to_owned()
     }
 }
 

@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-use super::{link::Link, map::hash_branch, node::Node, path::Side};
+use super::{link::Link, map::hash_branch, path::Side};
 
 pub struct Fork<D: SupportedDigest> {
     left: Arc<Link<D>>,
@@ -12,6 +12,10 @@ pub struct Fork<D: SupportedDigest> {
 }
 
 impl<D: SupportedDigest> Fork<D> {
+    pub fn new(left: Arc<Link<D>>, right: Arc<Link<D>>) -> Self {
+        Self { left, right }
+    }
+
     pub fn hash(&self) -> Hash<D> {
         let lhs = self.left.hash();
         let rhs = self.right.hash();
@@ -24,15 +28,6 @@ impl<D: SupportedDigest> Clone for Fork<D> {
         Self {
             left: self.left.clone(),
             right: self.right.clone(),
-        }
-    }
-}
-
-impl<D: SupportedDigest> Default for Fork<D> {
-    fn default() -> Self {
-        Self {
-            left: Arc::new(Link::new(Node::Empty(0))),
-            right: Arc::new(Link::new(Node::Empty(0))),
         }
     }
 }

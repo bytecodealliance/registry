@@ -28,7 +28,10 @@ impl<D: SupportedDigest> Clone for Node<D> {
 
 impl<D: SupportedDigest> Default for Node<D> {
     fn default() -> Self {
-        Self::Fork(Fork::default())
+        Self::Fork(Fork::new(
+            Arc::new(Link::new(Node::Empty(0))),
+            Arc::new(Link::new(Node::Empty(0))),
+        ))
     }
 }
 
@@ -81,7 +84,10 @@ impl<D: SupportedDigest> Node<D> {
                 }
 
                 _ => {
-                    let mut fork = Fork::default();
+                    let mut fork = Fork::new(
+                        Arc::new(Link::new(Node::Empty(0))),
+                        Arc::new(Link::new(Node::Empty(0))),
+                    );
                     let node = fork[index].as_ref().node();
                     let (node, new) = node.insert(path, leaf);
                     fork[index] = Arc::new(Link::new(node));

@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use core::{iter::repeat, marker::PhantomData};
+use core::marker::PhantomData;
 
 use warg_crypto::{
     hash::{Hash, SupportedDigest},

@@ -248,5 +248,5 @@ pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    Hash::of((lhs, rhs))
+    Hash::of((0b1, lhs, rhs))
 }
