@@ -25,7 +25,7 @@ pub use proof_bundle::ProofBundle as MapProofBundle;
 #[cfg(test)]
 mod test {
     use warg_crypto::{
-        hash::{Hash, Sha256, SupportedDigest},
+        hash::{Sha256, SupportedDigest},
         VisitBytes,
     };
 

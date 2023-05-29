@@ -7,7 +7,7 @@ use warg_crypto::VisitBytes;
 
 use super::fork::Fork;
 use super::link::Link;
-use super::path::Path;
+use super::path::{Path, Side};
 use super::proof::Proof;
 
 pub enum Node<D: SupportedDigest> {
@@ -46,6 +46,7 @@ impl<D: SupportedDigest> Node<D> {
 
     pub fn prove<V: VisitBytes>(&self, mut path: Path<D>) -> Option<Proof<D, V>> {
         match (path.next(), self) {
+            (Some(_), Self::Empty(_)) => None,
             (Some(idx), Self::Fork(fork)) => {
                 let mut proof = fork[idx].as_ref().node().prove(path)?;
                 let peer = fork[idx.opposite()].as_ref().hash();
@@ -69,7 +70,7 @@ impl<D: SupportedDigest> Node<D> {
     pub fn insert(&self, path: &mut Path<D>, leaf: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
-            None => (Node::Leaf(leaf), matches!(self, Node::Empty(0))),
+            None => (Node::Leaf(leaf), matches!(self, Node::Empty(_))),
 
             // We are not at the end of the path. Recurse...
             Some(index) => match self.clone() {
@@ -84,14 +85,20 @@ impl<D: SupportedDigest> Node<D> {
                 }
 
                 _ => {
-                    let mut fork = Fork::new(
-                        Arc::new(Link::new(Node::Empty(0))),
-                        Arc::new(Link::new(Node::Empty(0))),
-                    );
-                    let node = fork[index].as_ref().node();
-                    let (node, new) = node.insert(path, leaf);
-                    fork[index] = Arc::new(Link::new(node));
-                    (Node::Fork(fork), new)
+                    let (node, new) = self.insert(path, leaf);
+                    if index == Side::Left {
+                        let fork = Fork::new(
+                            Arc::new(Link::new(node)),
+                            Arc::new(Link::new(Node::Empty(256 - path.index()))),
+                        );
+                        (Node::Fork(fork), new)
+                    } else {
+                        let fork = Fork::new(
+                            Arc::new(Link::new(Node::Empty(256 - path.index()))),
+                            Arc::new(Link::new(node)),
+                        );
+                        (Node::Fork(fork), new)
+                    }
                 }
             },
         }

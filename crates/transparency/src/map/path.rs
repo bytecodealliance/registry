@@ -6,7 +6,6 @@ use warg_crypto::{
 pub struct Path<D: SupportedDigest> {
     all: Hash<D>,
     index: usize,
-    end: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -29,9 +28,8 @@ impl Side {
 impl<D: SupportedDigest> Path<D> {
     pub(crate) fn new<K: VisitBytes>(key: K) -> Self {
         let all = Hash::of(&key);
-        let end = all.len() * 8;
 
-        Self { index: 0, end, all }
+        Self { index: 0, all }
     }
 
     fn get(&self, at: usize) -> Side {
@@ -46,20 +44,18 @@ impl<D: SupportedDigest> Path<D> {
             Side::Left
         }
     }
+
+    pub fn index(&self) -> usize {
+        self.index
+    }
 }
 
 impl<D: SupportedDigest> Iterator for Path<D> {
     type Item = Side;
 
     #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.end - self.index;
-        (size, Some(size))
-    }
-
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.end {
+        if self.index == self.all.bit_len() {
             return None;
         }
 

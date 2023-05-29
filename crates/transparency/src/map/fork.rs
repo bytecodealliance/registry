@@ -7,8 +7,8 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 use super::{link::Link, map::hash_branch, path::Side};
 
 pub struct Fork<D: SupportedDigest> {
-    left: Arc<Link<D>>,
-    right: Arc<Link<D>>,
+    pub left: Arc<Link<D>>,
+    pub right: Arc<Link<D>>,
 }
 
 impl<D: SupportedDigest> Fork<D> {
