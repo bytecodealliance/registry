@@ -1,7 +1,7 @@
 use futures::Stream;
 use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
@@ -22,7 +22,7 @@ pub enum DataStoreError {
     Conflict,
 
     #[error("checkpoint `{0}` was not found")]
-    CheckpointNotFound(DynHash),
+    CheckpointNotFound(AnyHash),
 
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -65,14 +65,14 @@ pub struct InitialLeaf {
     ///
     /// A value of `None` indicates the leaf needs to be included in the
     /// next checkpoint.
-    pub checkpoint: Option<DynHash>,
+    pub checkpoint: Option<AnyHash>,
 }
 
 /// Represents the status of a record.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordStatus {
     /// The record is pending with missing content.
-    MissingContent(Vec<DynHash>),
+    MissingContent(Vec<AnyHash>),
     /// The record is pending with all content present.
     Pending,
     /// The record was rejected.
@@ -150,7 +150,7 @@ pub trait DataStore: Send + Sync {
         name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&DynHash>,
+        missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given package record.
@@ -181,7 +181,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError>;
 
     /// Sets the present flag for the given record and content digest.
@@ -196,13 +196,13 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError>;
 
     /// Stores a new checkpoint.
     async fn store_checkpoint(
         &self,
-        checkpoint_id: &DynHash,
+        checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
         participants: &[LogLeaf],
     ) -> Result<(), DataStoreError>;
@@ -214,7 +214,7 @@ pub trait DataStore: Send + Sync {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
@@ -223,7 +223,7 @@ pub trait DataStore: Send + Sync {
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;

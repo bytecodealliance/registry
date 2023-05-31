@@ -1,6 +1,6 @@
 //! Module for server content policy implementations.
 use thiserror::Error;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 
 mod wasm;
 
@@ -28,7 +28,7 @@ pub trait ContentPolicy: Send + Sync {
     /// to check the content as it is received.
     fn new_stream_policy(
         &self,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> ContentPolicyResult<Box<dyn ContentStreamPolicy>>;
 }
 
@@ -71,7 +71,7 @@ impl ContentPolicyCollection {
 impl ContentPolicy for ContentPolicyCollection {
     fn new_stream_policy(
         &self,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> ContentPolicyResult<Box<dyn ContentStreamPolicy>> {
         Ok(Box::new(ContentStreamPolicyCollection {
             policies: self

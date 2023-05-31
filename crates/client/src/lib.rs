@@ -17,7 +17,7 @@ use warg_api::v1::{
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
-    hash::{DynHash, Hash, Sha256},
+    hash::{AnyHash, Hash, Sha256},
     signing,
 };
 use warg_protocol::{
@@ -355,7 +355,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        let root: DynHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        let root: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
         tracing::info!("updating to checkpoint `{root}`");
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
@@ -536,7 +536,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
@@ -632,7 +632,7 @@ pub struct PackageDownload {
     /// The package version that was downloaded.
     pub version: Version,
     /// The digest of the package contents.
-    pub digest: DynHash,
+    pub digest: AnyHash,
     /// The path to the downloaded package contents.
     pub path: PathBuf,
 }
@@ -705,7 +705,7 @@ pub enum ClientError {
     #[error("content with digest `{digest}` was not found in client storage")]
     ContentNotFound {
         /// The digest of the missing content.
-        digest: DynHash,
+        digest: AnyHash,
     },
 
     /// The package log is empty and cannot be validated.

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 use std::fmt;
 use thiserror::Error;
-use warg_crypto::{hash::DynHashError, signing, Decode, Signable};
+use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
 
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
@@ -107,7 +107,7 @@ pub enum ParseEnvelopeError {
     Contents(#[from] Error),
 
     #[error("failed to parse envelope key id")]
-    KeyID(#[from] DynHashError),
+    KeyID(#[from] AnyHashError),
 
     #[error("failed to parse envelope signature")]
     Signature(#[from] signing::SignatureParseError),

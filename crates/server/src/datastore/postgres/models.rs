@@ -11,7 +11,7 @@ use diesel_json::Json;
 use serde::Serialize;
 use std::{fmt::Display, io::Write, str::FromStr};
 use warg_crypto::{
-    hash::DynHash,
+    hash::AnyHash,
     signing::{KeyID, Signature},
 };
 use warg_protocol::registry::{LogId, RecordId};
@@ -80,10 +80,10 @@ pub struct NewRecord<'a> {
 #[derive(Insertable)]
 #[diesel(table_name = checkpoints)]
 pub struct NewCheckpoint<'a> {
-    pub checkpoint_id: TextRef<'a, DynHash>,
-    pub log_root: TextRef<'a, DynHash>,
+    pub checkpoint_id: TextRef<'a, AnyHash>,
+    pub log_root: TextRef<'a, AnyHash>,
     pub log_length: i64,
-    pub map_root: TextRef<'a, DynHash>,
+    pub map_root: TextRef<'a, AnyHash>,
     pub key_id: TextRef<'a, KeyID>,
     pub signature: TextRef<'a, Signature>,
 }
@@ -92,10 +92,10 @@ pub struct NewCheckpoint<'a> {
 #[diesel(table_name = checkpoints)]
 pub struct Checkpoint {
     pub id: i32,
-    pub checkpoint_id: ParsedText<DynHash>,
-    pub log_root: ParsedText<DynHash>,
+    pub checkpoint_id: ParsedText<AnyHash>,
+    pub log_root: ParsedText<AnyHash>,
     pub log_length: i64,
-    pub map_root: ParsedText<DynHash>,
+    pub map_root: ParsedText<AnyHash>,
     pub key_id: Text<KeyID>,
     pub signature: ParsedText<Signature>,
     pub created_at: DateTime<Utc>,
@@ -115,9 +115,9 @@ pub struct RecordContent {
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = checkpoints)]
 pub struct CheckpointData {
-    pub log_root: ParsedText<DynHash>,
+    pub log_root: ParsedText<AnyHash>,
     pub log_length: i64,
-    pub map_root: ParsedText<DynHash>,
+    pub map_root: ParsedText<AnyHash>,
     pub key_id: Text<KeyID>,
     pub signature: ParsedText<Signature>,
 }
@@ -126,6 +126,6 @@ pub struct CheckpointData {
 #[diesel(table_name = contents)]
 pub struct NewContent<'a> {
     pub record_id: i32,
-    pub digest: TextRef<'a, DynHash>,
+    pub digest: TextRef<'a, AnyHash>,
     pub missing: bool,
 }

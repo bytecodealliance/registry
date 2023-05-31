@@ -2,7 +2,7 @@ use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
 use warg_client::storage::{PackageInfo, RegistryStorage};
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::Version;
 
 /// Display client storage information.
@@ -54,7 +54,7 @@ impl InfoCommand {
         });
     }
 
-    fn print_release(version: &Version, content: &DynHash) {
+    fn print_release(version: &Version, content: &AnyHash) {
         println!("    {version} ({content})");
     }
 }

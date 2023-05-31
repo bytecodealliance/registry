@@ -20,7 +20,7 @@ use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
     ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
 };
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogId, RecordId},
@@ -64,19 +64,19 @@ impl Config {
             .with_state(self)
     }
 
-    fn content_present(&self, digest: &DynHash) -> bool {
+    fn content_present(&self, digest: &AnyHash) -> bool {
         self.content_path(digest).is_file()
     }
 
-    fn content_file_name(&self, digest: &DynHash) -> String {
+    fn content_file_name(&self, digest: &AnyHash) -> String {
         digest.to_string().replace(':', "-")
     }
 
-    fn content_path(&self, digest: &DynHash) -> PathBuf {
+    fn content_path(&self, digest: &AnyHash) -> PathBuf {
         self.files_dir.join(self.content_file_name(digest))
     }
 
-    fn content_url(&self, digest: &DynHash) -> String {
+    fn content_url(&self, digest: &AnyHash) -> String {
         format!(
             "{url}/content/{name}",
             url = self.base_url,
@@ -268,7 +268,7 @@ async fn get_record(
 #[debug_handler]
 async fn upload_content(
     State(config): State<Config>,
-    Path((log_id, record_id, digest)): Path<(LogId, RecordId, DynHash)>,
+    Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
     stream: BodyStream,
 ) -> Result<impl IntoResponse, PackageApiError> {
     match config
@@ -341,7 +341,7 @@ async fn upload_content(
 
 async fn process_content(
     path: &std::path::Path,
-    digest: &DynHash,
+    digest: &AnyHash,
     mut stream: BodyStream,
     policy: Option<&dyn ContentPolicy>,
 ) -> Result<(), PackageApiError> {
