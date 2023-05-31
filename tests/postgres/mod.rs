@@ -12,9 +12,9 @@ fn data_store() -> Result<Box<dyn DataStore>> {
     )?))
 }
 
-async fn run<F>(root: &Path, callback: impl FnOnce(Config) -> F) -> Result<()>
+async fn run<F, T>(root: &Path, callback: impl FnOnce(Config) -> F) -> Result<T>
 where
-    F: Future<Output = Result<()>>,
+    F: Future<Output = Result<T>>,
 {
     let (_server, config) = super::support::spawn_server(root, Some(data_store()?)).await?;
     callback(config).await
@@ -46,24 +46,24 @@ async fn test() -> Result<()> {
     .await?;
 
     // Publish and validate a component package
-    run(&root, |config| async move {
+    let digest = run(&root, |config| async move {
         let client = super::create_client(&config)?;
-        super::publish_component_package(&client).await?;
-        super::validate_component_package(&config, &client).await?;
+        let digest = super::publish_component_package(&client).await?;
+        super::validate_component_package(&config, &client, &digest).await?;
 
         // There should be two log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
         let checkpoint = client.latest_checkpoint().await?;
         assert_eq!(checkpoint.as_ref().log_length, 2);
 
-        Ok(())
+        Ok(digest)
     })
     .await?;
 
     // Validate the component package is still present after a restart
     run(&root, |config| async move {
         let client = super::create_client(&config)?;
-        super::validate_component_package(&config, &client).await?;
+        super::validate_component_package(&config, &client, &digest).await?;
 
         // There should be two log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
@@ -75,24 +75,24 @@ async fn test() -> Result<()> {
     .await?;
 
     // Publish and validate a wit package
-    run(&root, |config| async move {
+    let digest = run(&root, |config| async move {
         let client = super::create_client(&config)?;
-        super::publish_wit_package(&client).await?;
-        super::validate_wit_package(&config, &client).await?;
+        let digest = super::publish_wit_package(&client).await?;
+        super::validate_wit_package(&config, &client, &digest).await?;
 
         // There should be three log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;
         let checkpoint = client.latest_checkpoint().await?;
         assert_eq!(checkpoint.as_ref().log_length, 3);
 
-        Ok(())
+        Ok(digest)
     })
     .await?;
 
     // Validate the wit package is still present after a restart
     run(&root, |config| async move {
         let client = super::create_client(&config)?;
-        super::validate_wit_package(&config, &client).await?;
+        super::validate_wit_package(&config, &client, &digest).await?;
 
         // There should be three log entries in the registry
         let client = api::Client::new(config.default_url.as_ref().unwrap())?;

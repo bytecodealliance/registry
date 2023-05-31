@@ -2,7 +2,7 @@ use self::support::*;
 use anyhow::{bail, Context, Result};
 use std::{fs, str::FromStr, time::Duration};
 use warg_client::{api, ClientError, Config, FileSystemClient, StorageLockResult};
-use warg_crypto::{signing::PrivateKey, Encode, Signable};
+use warg_crypto::{hash::DynHash, signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
 
 mod support;
@@ -44,21 +44,22 @@ async fn validate_initial_checkpoint(config: Config) -> Result<()> {
     Ok(())
 }
 
-async fn publish_component_package(client: &FileSystemClient) -> Result<()> {
+async fn publish_component_package(client: &FileSystemClient) -> Result<DynHash> {
     publish_component(client, "component:foo", "0.1.0", "(component)", true).await
 }
 
-async fn validate_component_package(config: &Config, client: &FileSystemClient) -> Result<()> {
+async fn validate_component_package(
+    config: &Config,
+    client: &FileSystemClient,
+    expected_digest: &DynHash,
+) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["component:foo"]).await?;
     let download = client
         .download("component:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
-    assert_eq!(
-        download.digest.to_string(),
-        "sha256:396bf81fe30c615180c31fc3ba964396241af472ace265f55609a3fcf12140f2"
-    );
+    assert_eq!(download.digest, *expected_digest);
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
         download.path,
@@ -67,14 +68,11 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("396bf81fe30c615180c31fc3ba964396241af472ace265f55609a3fcf12140f2")
+            .join(download.digest.to_string().strip_prefix("sha256:").unwrap())
     );
 
     // Assert that it is a valid component
-    match wit_component::decode(
-        "foo",
-        &fs::read(download.path).context("failed to read component")?,
-    )? {
+    match wit_component::decode(&fs::read(download.path).context("failed to read component")?)? {
         DecodedWasm::Component(..) => {}
         _ => panic!("expected component"),
     }
@@ -88,21 +86,29 @@ async fn validate_component_package(config: &Config, client: &FileSystemClient) 
     Ok(())
 }
 
-async fn publish_wit_package(client: &FileSystemClient) -> Result<()> {
-    publish_wit(client, "wit:foo", "0.1.0", "default world foo {}", true).await
+async fn publish_wit_package(client: &FileSystemClient) -> Result<DynHash> {
+    publish_wit(
+        client,
+        "wit:foo",
+        "0.1.0",
+        "package wit:foo\nworld foo {}",
+        true,
+    )
+    .await
 }
 
-async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Result<()> {
+async fn validate_wit_package(
+    config: &Config,
+    client: &FileSystemClient,
+    expected_digest: &DynHash,
+) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["wit:foo"]).await?;
     let download = client
         .download("wit:foo", &"0.1.0".parse()?)
         .await?
         .context("failed to resolve package")?;
-    assert_eq!(
-        download.digest.to_string(),
-        "sha256:eb83fbde29872c3c2da5a8485c60236b7a1ccaa461504cfb2ed52a6e9d9b2cfd"
-    );
+    assert_eq!(download.digest, *expected_digest);
     assert_eq!(download.version, "0.1.0".parse()?);
     assert_eq!(
         download.path,
@@ -111,14 +117,11 @@ async fn validate_wit_package(config: &Config, client: &FileSystemClient) -> Res
             .as_ref()
             .unwrap()
             .join("sha256")
-            .join("eb83fbde29872c3c2da5a8485c60236b7a1ccaa461504cfb2ed52a6e9d9b2cfd")
+            .join(download.digest.to_string().strip_prefix("sha256:").unwrap())
     );
 
     // Assert it is a valid wit package
-    match wit_component::decode(
-        "foo",
-        &fs::read(download.path).context("failed to read WIT package")?,
-    )? {
+    match wit_component::decode(&fs::read(download.path).context("failed to read WIT package")?)? {
         DecodedWasm::WitPackage(..) => {}
         _ => panic!("expected WIT package"),
     }
@@ -192,8 +195,8 @@ async fn it_publishes_a_component() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None).await?;
     let client = create_client(&config)?;
 
-    publish_component_package(&client).await?;
-    validate_component_package(&config, &client).await?;
+    let digest = publish_component_package(&client).await?;
+    validate_component_package(&config, &client, &digest).await?;
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
@@ -208,8 +211,8 @@ async fn it_publishes_a_wit_package() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None).await?;
     let client = create_client(&config)?;
 
-    publish_wit_package(&client).await?;
-    validate_wit_package(&config, &client).await?;
+    let digest = publish_wit_package(&client).await?;
+    validate_wit_package(&config, &client, &digest).await?;
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
