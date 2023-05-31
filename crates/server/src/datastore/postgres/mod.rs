@@ -13,7 +13,7 @@ use diesel_async::{
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
 use std::{collections::HashSet, pin::Pin};
-use warg_crypto::{hash::DynHash, Decode};
+use warg_crypto::{hash::AnyHash, Decode};
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
@@ -26,7 +26,7 @@ mod schema;
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
-    root: &DynHash,
+    root: &AnyHash,
     since: Option<&RecordId>,
     limit: i64,
 ) -> Result<Vec<ProtoEnvelope<R>>, DataStoreError> {
@@ -63,7 +63,7 @@ async fn get_records<R: Decode>(
     }
 
     query
-        .load::<(ParsedText<DynHash>, Vec<u8>)>(conn)
+        .load::<(ParsedText<AnyHash>, Vec<u8>)>(conn)
         .await?
         .into_iter()
         .map(|(record_id, c)| {
@@ -81,7 +81,7 @@ async fn insert_record<V>(
     name: Option<&str>,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
-    missing: &HashSet<&DynHash>,
+    missing: &HashSet<&AnyHash>,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
@@ -294,7 +294,7 @@ where
                             .eq(TextRef(record_id))
                             .and(schema::contents::missing.eq(true)),
                     )
-                    .load::<ParsedText<DynHash>>(conn)
+                    .load::<ParsedText<AnyHash>>(conn)
                     .await?;
 
                 if missing.is_empty() {
@@ -371,9 +371,9 @@ impl DataStore for PostgresDataStore {
                 .filter(schema::records::status.eq(RecordStatus::Validated))
                 .order_by(schema::records::id)
                 .load_stream::<(
-                    ParsedText<DynHash>,
-                    ParsedText<DynHash>,
-                    Option<ParsedText<DynHash>>,
+                    ParsedText<AnyHash>,
+                    ParsedText<AnyHash>,
+                    Option<ParsedText<AnyHash>>,
                 )>(&mut conn)
                 .await?
                 .map(|r| {
@@ -454,7 +454,7 @@ impl DataStore for PostgresDataStore {
         name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&DynHash>,
+        missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
         insert_record::<package::Validator>(
@@ -513,7 +513,7 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
         let mut conn = self.0.get().await?;
         schema::contents::table
@@ -537,7 +537,7 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
         let mut conn = self.0.get().await?;
         conn.transaction::<_, DataStoreError, _>(|conn| {
@@ -597,7 +597,7 @@ impl DataStore for PostgresDataStore {
 
     async fn store_checkpoint(
         &self,
-        checkpoint_id: &DynHash,
+        checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
         participants: &[LogLeaf],
     ) -> Result<(), DataStoreError> {
@@ -675,7 +675,7 @@ impl DataStore for PostgresDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -694,7 +694,7 @@ impl DataStore for PostgresDataStore {
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {

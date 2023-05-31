@@ -11,7 +11,7 @@ use warg_client::{
     storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
     FileSystemClient,
 };
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::{registry::RecordId, Version};
 
 const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
@@ -438,7 +438,7 @@ pub struct PublishWaitCommand {
 
     /// The identifier of the package record to wait for completion.
     #[clap(value_name = "RECORD")]
-    pub record_id: DynHash,
+    pub record_id: AnyHash,
 }
 
 impl PublishWaitCommand {

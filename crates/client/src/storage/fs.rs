@@ -17,7 +17,7 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
-use warg_crypto::hash::{Digest, DynHash, Hash, Sha256};
+use warg_crypto::hash::{AnyHash, Digest, Hash, Sha256};
 use warg_protocol::{
     registry::{LogId, MapCheckpoint},
     SerdeEnvelope,
@@ -215,14 +215,14 @@ impl FileSystemContentStorage {
         })
     }
 
-    fn content_path(&self, digest: &DynHash) -> PathBuf {
+    fn content_path(&self, digest: &AnyHash) -> PathBuf {
         self.base_dir.join(digest.to_string().replace(':', "/"))
     }
 }
 
 #[async_trait]
 impl ContentStorage for FileSystemContentStorage {
-    fn content_location(&self, digest: &DynHash) -> Option<PathBuf> {
+    fn content_location(&self, digest: &AnyHash) -> Option<PathBuf> {
         let path = self.content_path(digest);
         if path.is_file() {
             Some(path)
@@ -233,7 +233,7 @@ impl ContentStorage for FileSystemContentStorage {
 
     async fn load_content(
         &self,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<Option<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>>> {
         let path = self.content_path(digest);
         if !path.is_file() {
@@ -253,8 +253,8 @@ impl ContentStorage for FileSystemContentStorage {
     async fn store_content(
         &self,
         mut stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
-        expected_digest: Option<&DynHash>,
-    ) -> Result<DynHash> {
+        expected_digest: Option<&AnyHash>,
+    ) -> Result<AnyHash> {
         let (file, path) = self.temp_file()?.into_parts();
         let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
         let mut hasher = Sha256::new();
@@ -267,7 +267,7 @@ impl ContentStorage for FileSystemContentStorage {
                 .with_context(|| format!("failed to write to `{path}`", path = path.display()))?;
         }
 
-        let hash = DynHash::from(Hash::<Sha256>::from(hasher.finalize()));
+        let hash = AnyHash::from(Hash::<Sha256>::from(hasher.finalize()));
 
         if let Some(expected) = expected_digest {
             if hash != *expected {

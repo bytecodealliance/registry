@@ -7,7 +7,7 @@ use futures_util::Stream;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, pin::Pin, time::SystemTime};
 use warg_crypto::{
-    hash::{DynHash, HashAlgorithm},
+    hash::{AnyHash, HashAlgorithm},
     signing,
 };
 use warg_protocol::{
@@ -75,14 +75,14 @@ pub trait ContentStorage: Send + Sync {
     /// exists as a file on disk.
     ///
     /// Returns `None` if the content is not present on disk.
-    fn content_location(&self, digest: &DynHash) -> Option<PathBuf>;
+    fn content_location(&self, digest: &AnyHash) -> Option<PathBuf>;
 
     /// Loads the content associated with the given digest as a stream.
     ///
     /// If the content is not found, `Ok(None)` is returned.
     async fn load_content(
         &self,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<Option<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>>>;
 
     /// Stores the given stream as content.
@@ -95,8 +95,8 @@ pub trait ContentStorage: Send + Sync {
     async fn store_content(
         &self,
         stream: Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + Sync>>,
-        expected_digest: Option<&DynHash>,
-    ) -> Result<DynHash>;
+        expected_digest: Option<&AnyHash>,
+    ) -> Result<AnyHash>;
 }
 
 /// Represents information about a registry operator.
@@ -144,7 +144,7 @@ pub enum PublishEntry {
         /// The version of the release.
         version: Version,
         /// The content digest of the release.
-        content: DynHash,
+        content: AnyHash,
     },
 }
 

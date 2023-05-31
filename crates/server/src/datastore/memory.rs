@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
@@ -46,7 +46,7 @@ enum PendingRecord {
     },
     Package {
         record: Option<ProtoEnvelope<package::PackageRecord>>,
-        missing: HashSet<DynHash>,
+        missing: HashSet<AnyHash>,
     },
 }
 
@@ -71,7 +71,7 @@ enum RecordStatus {
 struct State {
     operators: HashMap<LogId, Log<operator::Validator, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::Validator, package::PackageRecord>>,
-    checkpoints: IndexMap<DynHash, SerdeEnvelope<MapCheckpoint>>,
+    checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
 }
 
@@ -213,7 +213,7 @@ impl DataStore for MemoryDataStore {
         _name: &str,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&DynHash>,
+        missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         // Ensure the set of missing hashes is a subset of the record contents.
         debug_assert!({
@@ -315,7 +315,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
         let state = self.0.read().await;
         let log = state
@@ -343,7 +343,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
         let mut state = self.0.write().await;
         let log = state
@@ -375,7 +375,7 @@ impl DataStore for MemoryDataStore {
 
     async fn store_checkpoint(
         &self,
-        checkpoint_id: &DynHash,
+        checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
         participants: &[LogLeaf],
     ) -> Result<(), DataStoreError> {
@@ -421,7 +421,7 @@ impl DataStore for MemoryDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -451,7 +451,7 @@ impl DataStore for MemoryDataStore {
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &DynHash,
+        root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {

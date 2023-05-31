@@ -22,7 +22,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use warg_crypto::{
-    hash::{DynHash, Hash, HashAlgorithm, Sha256},
+    hash::{AnyHash, Hash, HashAlgorithm, Sha256},
     signing::PrivateKey,
 };
 use warg_protocol::{
@@ -265,7 +265,7 @@ impl CoreService {
         data.map_data.insert(data.map.clone());
 
         let checkpoint = data.log.checkpoint();
-        let log_root: DynHash = checkpoint.root().into();
+        let log_root: AnyHash = checkpoint.root().into();
         let log_length = checkpoint.length() as u32;
 
         let checkpoint = MapCheckpoint {

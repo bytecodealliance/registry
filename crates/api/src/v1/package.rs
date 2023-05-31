@@ -4,7 +4,7 @@ use crate::Status;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     registry::{LogId, MapCheckpoint, RecordId},
     ProtoEnvelopeBody, SerdeEnvelope,
@@ -32,7 +32,7 @@ pub struct PublishRecordRequest<'a> {
     /// The complete set of content sources for the record.
     ///
     /// A registry may not support specifying content sources directly.
-    pub content_sources: HashMap<DynHash, Vec<ContentSource>>,
+    pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
 }
 
 /// Represents a package record API entity in a registry.
@@ -56,7 +56,7 @@ impl PackageRecord {
     }
 
     /// Gets the missing content digests of the record.
-    pub fn missing_content(&self) -> &[DynHash] {
+    pub fn missing_content(&self) -> &[AnyHash] {
         match &self.state {
             PackageRecordState::Sourcing {
                 missing_content, ..
@@ -78,7 +78,7 @@ pub enum PackageRecordState {
     /// The package record needs content sources.
     Sourcing {
         /// The digests of the missing content.
-        missing_content: Vec<DynHash>,
+        missing_content: Vec<AnyHash>,
     },
     /// The package record is processing.
     Processing,
@@ -94,7 +94,7 @@ pub enum PackageRecordState {
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,
         /// The content sources of the record.
-        content_sources: HashMap<DynHash, Vec<ContentSource>>,
+        content_sources: HashMap<AnyHash, Vec<ContentSource>>,
     },
 }
 
@@ -244,14 +244,14 @@ impl<'de> Deserialize<'de> for PackageError {
             }),
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
-                    id.parse::<DynHash>()
+                    id.parse::<AnyHash>()
                         .map_err(|_| {
                             serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid log id")
                         })?
                         .into(),
                 )),
                 EntityType::Record => Ok(Self::RecordNotFound(
-                    id.parse::<DynHash>()
+                    id.parse::<AnyHash>()
                         .map_err(|_| {
                             serde::de::Error::invalid_value(
                                 Unexpected::Str(&id),

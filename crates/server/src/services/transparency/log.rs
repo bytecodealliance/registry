@@ -1,7 +1,7 @@
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::registry::LogLeaf;
 use warg_transparency::log::{LogBuilder, StackLog};
 
@@ -22,7 +22,7 @@ pub struct Output {
 #[derive(Debug)]
 pub struct Summary {
     pub leaf: LogLeaf,
-    pub log_root: DynHash,
+    pub log_root: AnyHash,
     pub log_length: u32,
 }
 
@@ -44,7 +44,7 @@ pub fn spawn(input: Input) -> Output {
                         log.push(&leaf);
 
                         let checkpoint = log.checkpoint();
-                        let log_root: DynHash = checkpoint.root().into();
+                        let log_root: AnyHash = checkpoint.root().into();
                         let log_length = checkpoint.length() as u32;
 
                         log_tx.send(leaf.clone()).await.unwrap();

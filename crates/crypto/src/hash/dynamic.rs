@@ -15,12 +15,12 @@ impl Hasher {
         }
     }
 
-    pub fn finalize(self) -> DynHash {
+    pub fn finalize(self) -> AnyHash {
         let (algo, bytes) = match self {
             Self::Sha256(d) => (HashAlgorithm::Sha256, d.finalize().deref().into()),
         };
 
-        DynHash { algo, bytes }
+        AnyHash { algo, bytes }
     }
 }
 
@@ -31,7 +31,7 @@ impl HashAlgorithm {
         }
     }
 
-    pub fn digest(&self, content_bytes: &[u8]) -> DynHash {
+    pub fn digest(&self, content_bytes: &[u8]) -> AnyHash {
         let hash_bytes: Vec<u8> = match self {
             HashAlgorithm::Sha256 => {
                 let mut d = Sha256::new();
@@ -40,7 +40,7 @@ impl HashAlgorithm {
             }
         };
 
-        DynHash {
+        AnyHash {
             algo: *self,
             bytes: hash_bytes,
         }
@@ -48,12 +48,12 @@ impl HashAlgorithm {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DynHash {
+pub struct AnyHash {
     pub(crate) algo: HashAlgorithm,
     pub(crate) bytes: Vec<u8>,
 }
 
-impl DynHash {
+impl AnyHash {
     pub fn algorithm(&self) -> HashAlgorithm {
         self.algo
     }
@@ -63,39 +63,39 @@ impl DynHash {
     }
 }
 
-impl fmt::Display for DynHash {
+impl fmt::Display for AnyHash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}:{}", self.algo, hex::encode(self.bytes.as_slice()))
     }
 }
 
-impl fmt::Debug for DynHash {
+impl fmt::Debug for AnyHash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}:{}", self.algo, hex::encode(self.bytes.as_slice()))
     }
 }
 
-impl FromStr for DynHash {
-    type Err = DynHashError;
+impl FromStr for AnyHash {
+    type Err = AnyHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (algo_part, bytes_part) = s
             .split_once(':')
-            .ok_or_else(|| DynHashError::IncorrectStructure(s.matches(':').count() + 1))?;
+            .ok_or_else(|| AnyHashError::IncorrectStructure(s.matches(':').count() + 1))?;
 
         if bytes_part.chars().any(|c| "ABCDEF".contains(c)) {
-            return Err(DynHashError::UppercaseHex);
+            return Err(AnyHashError::UppercaseHex);
         }
 
         let algo = algo_part.parse::<HashAlgorithm>()?;
         let bytes = hex::decode(bytes_part)?;
 
-        Ok(DynHash { algo, bytes })
+        Ok(AnyHash { algo, bytes })
     }
 }
 
 #[derive(Error, Debug)]
-pub enum DynHashError {
+pub enum AnyHashError {
     #[error("expected two parts for hash; found {0}")]
     IncorrectStructure(usize),
 
@@ -109,13 +109,13 @@ pub enum DynHashError {
     InvalidHex(#[from] hex::FromHexError),
 }
 
-impl Serialize for DynHash {
+impl Serialize for AnyHash {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())
     }
 }
 
-impl<'de> Deserialize<'de> for DynHash {
+impl<'de> Deserialize<'de> for AnyHash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -142,17 +142,17 @@ mod tests {
     #[test]
     fn test_labeled_digest_parse_rejects_uppercase() {
         let digest_str = "sha256:7d38b5cd25a2baf85ad3bb5b9311383e671a8a142eb302b324d4a5fba8748c69";
-        assert!(digest_str.parse::<DynHash>().is_ok());
+        assert!(digest_str.parse::<AnyHash>().is_ok());
 
         let (algo, encoded) = digest_str.split_once(':').unwrap();
         let digest_str = String::from(algo) + ":" + &encoded.to_uppercase();
-        assert!(digest_str.parse::<DynHash>().is_err());
+        assert!(digest_str.parse::<AnyHash>().is_err());
     }
 
     #[test]
     fn test_labeled_digest_roundtrip() {
         let input = "sha256:7d38b5cd25a2baf85ad3bb5b9311383e671a8a142eb302b324d4a5fba8748c69";
-        let output = format!("{}", input.parse::<DynHash>().unwrap());
+        let output = format!("{}", input.parse::<AnyHash>().unwrap());
         assert_eq!(input, &output);
     }
 }
