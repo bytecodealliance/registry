@@ -2,7 +2,7 @@ use self::support::*;
 use anyhow::{bail, Context, Result};
 use std::{fs, str::FromStr, time::Duration};
 use warg_client::{api, ClientError, Config, FileSystemClient, StorageLockResult};
-use warg_crypto::{hash::DynHash, signing::PrivateKey, Encode, Signable};
+use warg_crypto::{hash::AnyHash, signing::PrivateKey, Encode, Signable};
 use wit_component::DecodedWasm;
 
 mod support;
@@ -44,14 +44,14 @@ async fn validate_initial_checkpoint(config: Config) -> Result<()> {
     Ok(())
 }
 
-async fn publish_component_package(client: &FileSystemClient) -> Result<DynHash> {
+async fn publish_component_package(client: &FileSystemClient) -> Result<AnyHash> {
     publish_component(client, "component:foo", "0.1.0", "(component)", true).await
 }
 
 async fn validate_component_package(
     config: &Config,
     client: &FileSystemClient,
-    expected_digest: &DynHash,
+    expected_digest: &AnyHash,
 ) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["component:foo"]).await?;
@@ -86,7 +86,7 @@ async fn validate_component_package(
     Ok(())
 }
 
-async fn publish_wit_package(client: &FileSystemClient) -> Result<DynHash> {
+async fn publish_wit_package(client: &FileSystemClient) -> Result<AnyHash> {
     publish_wit(
         client,
         "wit:foo",
@@ -100,7 +100,7 @@ async fn publish_wit_package(client: &FileSystemClient) -> Result<DynHash> {
 async fn validate_wit_package(
     config: &Config,
     client: &FileSystemClient,
-    expected_digest: &DynHash,
+    expected_digest: &AnyHash,
 ) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert(&["wit:foo"]).await?;

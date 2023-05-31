@@ -11,7 +11,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
     FileSystemClient,
 };
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_server::{
     datastore::DataStore,
     policy::content::{ContentPolicyCollection, WasmContentPolicy},
@@ -125,7 +125,7 @@ pub async fn publish(
     version: &str,
     content: Vec<u8>,
     init: bool,
-) -> Result<DynHash> {
+) -> Result<AnyHash> {
     let digest = client
         .content()
         .store_content(
@@ -169,7 +169,7 @@ pub async fn publish_component(
     version: &str,
     wat: &str,
     init: bool,
-) -> Result<DynHash> {
+) -> Result<AnyHash> {
     publish(
         client,
         name,
@@ -186,7 +186,7 @@ pub async fn publish_wit(
     version: &str,
     wit: &str,
     init: bool,
-) -> Result<DynHash> {
+) -> Result<AnyHash> {
     let mut resolve = Resolve::new();
     let pkg = resolve
         .push(
