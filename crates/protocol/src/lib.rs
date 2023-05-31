@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashSet;
-use warg_crypto::{hash::DynHash, Decode};
+use warg_crypto::{hash::AnyHash, Decode};
 
 pub mod operator;
 pub mod package;
@@ -17,7 +17,7 @@ pub trait Record: Clone + Decode + Send + Sync {
     /// Gets the set of content hashes associated with the record.
     ///
     /// An empty set indicates that the record has no associated content.
-    fn contents(&self) -> HashSet<&DynHash>;
+    fn contents(&self) -> HashSet<&AnyHash>;
 }
 
 /// Trait implemented by the validator types.

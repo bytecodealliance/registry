@@ -4,7 +4,7 @@ use crate::Status;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     registry::{LogId, RecordId},
     ProtoEnvelopeBody,
@@ -15,7 +15,7 @@ use warg_protocol::{
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchLogsRequest<'a> {
     /// The root checkpoint hash of the registry.
-    pub root: Cow<'a, DynHash>,
+    pub root: Cow<'a, AnyHash>,
     /// The limit for the number of operator and package records to fetch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,
@@ -48,7 +48,7 @@ pub struct FetchLogsResponse {
 pub enum FetchError {
     /// The provided checkpoint was not found.
     #[error("checkpoint `{0}` was not found")]
-    CheckpointNotFound(DynHash),
+    CheckpointNotFound(AnyHash),
     /// The provided log was not found.
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -148,14 +148,14 @@ impl<'de> Deserialize<'de> for FetchError {
                     })?))
                 }
                 EntityType::Log => Ok(Self::LogNotFound(
-                    id.parse::<DynHash>()
+                    id.parse::<AnyHash>()
                         .map_err(|_| {
                             serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid log id")
                         })?
                         .into(),
                 )),
                 EntityType::Record => Ok(Self::RecordNotFound(
-                    id.parse::<DynHash>()
+                    id.parse::<AnyHash>()
                         .map_err(|_| {
                             serde::de::Error::invalid_value(
                                 Unexpected::Str(&id),

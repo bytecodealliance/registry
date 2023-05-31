@@ -1,5 +1,5 @@
 use super::{ContentPolicy, ContentPolicyError, ContentPolicyResult, ContentStreamPolicy};
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use wasmparser::{
     Chunk, Encoding, FuncValidatorAllocations, Parser, ValidPayload, Validator, WasmFeatures,
 };
@@ -54,7 +54,7 @@ impl Default for WasmContentPolicy {
 impl ContentPolicy for WasmContentPolicy {
     fn new_stream_policy(
         &self,
-        _digest: &DynHash,
+        _digest: &AnyHash,
     ) -> ContentPolicyResult<Box<dyn ContentStreamPolicy>> {
         Ok(Box::new(WasmContentStreamPolicy {
             buffer: Vec::new(),

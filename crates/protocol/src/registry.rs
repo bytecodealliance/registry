@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{operator::OperatorRecord, package::PackageRecord, ProtoEnvelope};
 use serde::{Deserialize, Serialize};
-use warg_crypto::hash::{DynHash, Hash, HashAlgorithm, SupportedDigest};
+use warg_crypto::hash::{AnyHash, Hash, HashAlgorithm, SupportedDigest};
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 
 use warg_crypto::prefix::VisitPrefixEncode;
@@ -10,9 +10,9 @@ use warg_crypto::prefix::VisitPrefixEncode;
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MapCheckpoint {
-    pub log_root: DynHash,
+    pub log_root: AnyHash,
     pub log_length: u32,
-    pub map_root: DynHash,
+    pub map_root: AnyHash,
 }
 
 impl Signable for MapCheckpoint {
@@ -78,7 +78,7 @@ impl VisitBytes for LogLeaf {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LogId(DynHash);
+pub struct LogId(AnyHash);
 
 impl LogId {
     pub fn operator_log<D: SupportedDigest>() -> Self {
@@ -106,13 +106,13 @@ impl VisitBytes for LogId {
     }
 }
 
-impl From<DynHash> for LogId {
-    fn from(value: DynHash) -> Self {
+impl From<AnyHash> for LogId {
+    fn from(value: AnyHash) -> Self {
         Self(value)
     }
 }
 
-impl From<LogId> for DynHash {
+impl From<LogId> for AnyHash {
     fn from(id: LogId) -> Self {
         id.0
     }
@@ -126,7 +126,7 @@ impl AsRef<[u8]> for LogId {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct RecordId(DynHash);
+pub struct RecordId(AnyHash);
 
 impl RecordId {
     pub fn algorithm(&self) -> HashAlgorithm {
@@ -152,8 +152,8 @@ impl fmt::Display for RecordId {
     }
 }
 
-impl From<DynHash> for RecordId {
-    fn from(value: DynHash) -> Self {
+impl From<AnyHash> for RecordId {
+    fn from(value: AnyHash) -> Self {
         Self(value)
     }
 }

@@ -3,7 +3,7 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::{str::FromStr, time::SystemTime};
-use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::hash::{AnyHash, HashAlgorithm};
 use warg_crypto::signing;
 
 /// An operator record is a collection of entries published together by the same author
@@ -20,7 +20,7 @@ pub struct OperatorRecord {
 }
 
 impl crate::Record for OperatorRecord {
-    fn contents(&self) -> HashSet<&DynHash> {
+    fn contents(&self) -> HashSet<&AnyHash> {
         Default::default()
     }
 }

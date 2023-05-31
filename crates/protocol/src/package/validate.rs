@@ -6,7 +6,7 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
-use warg_crypto::hash::{DynHash, HashAlgorithm, Sha256};
+use warg_crypto::hash::{AnyHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
@@ -76,7 +76,7 @@ pub enum ReleaseState {
     /// The release is currently available.
     Released {
         /// The content digest associated with the release.
-        content: DynHash,
+        content: AnyHash,
     },
     /// The release has been yanked.
     Yanked {
@@ -114,7 +114,7 @@ impl Release {
     /// Gets the content associated with the release.
     ///
     /// Returns `None` if the release has been yanked.
-    pub fn content(&self) -> Option<&DynHash> {
+    pub fn content(&self) -> Option<&AnyHash> {
         match &self.state {
             ReleaseState::Released { content } => Some(content),
             ReleaseState::Yanked { .. } => None,
@@ -447,7 +447,7 @@ impl Validator {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         version: &Version,
-        content: &DynHash,
+        content: &AnyHash,
     ) -> Result<(), ValidationError> {
         match self.releases.entry(version.clone()) {
             Entry::Occupied(e) => {
