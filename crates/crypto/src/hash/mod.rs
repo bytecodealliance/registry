@@ -8,7 +8,7 @@ mod dynamic;
 mod r#static;
 
 pub use digest::{Digest, Output};
-pub use dynamic::{DynHash, DynHashError};
+pub use dynamic::{AnyHash, AnyHashError};
 pub use r#static::Hash;
 pub use sha2::Sha256;
 
@@ -75,9 +75,9 @@ mod private {
     impl Sealed for Sha256 {}
 }
 
-impl<D: SupportedDigest> From<Hash<D>> for DynHash {
+impl<D: SupportedDigest> From<Hash<D>> for AnyHash {
     fn from(value: Hash<D>) -> Self {
-        DynHash {
+        AnyHash {
             algo: D::ALGORITHM,
             bytes: value.digest.to_vec(),
         }
@@ -100,10 +100,10 @@ pub enum HashError {
     },
 }
 
-impl<D: SupportedDigest> TryFrom<DynHash> for Hash<D> {
+impl<D: SupportedDigest> TryFrom<AnyHash> for Hash<D> {
     type Error = HashError;
 
-    fn try_from(value: DynHash) -> Result<Self, Self::Error> {
+    fn try_from(value: AnyHash) -> Result<Self, Self::Error> {
         if value.algorithm() == D::ALGORITHM {
             let len = value.bytes.len();
             match Hash::try_from(value.bytes) {

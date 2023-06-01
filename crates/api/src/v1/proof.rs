@@ -5,7 +5,7 @@ use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use serde_with::{base64::Base64, serde_as};
 use std::borrow::Cow;
 use thiserror::Error;
-use warg_crypto::hash::DynHash;
+use warg_crypto::hash::AnyHash;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
 
 /// Represents a consistency proof request.
@@ -13,9 +13,9 @@ use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
 #[serde(rename_all = "camelCase")]
 pub struct ConsistencyRequest<'a> {
     /// The starting log root hash to check for consistency.
-    pub from: Cow<'a, DynHash>,
+    pub from: Cow<'a, AnyHash>,
     /// The ending log root hash to check for consistency.
-    pub to: Cow<'a, DynHash>,
+    pub to: Cow<'a, AnyHash>,
 }
 
 /// Represents a consistency proof response.
@@ -57,7 +57,7 @@ pub struct InclusionResponse {
 pub enum ProofError {
     /// The provided log root was not found.
     #[error("log root `{0}` was not found")]
-    RootNotFound(DynHash),
+    RootNotFound(AnyHash),
     /// The provided log leaf was not found.
     #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
     LeafNotFound(LogLeaf),
@@ -68,9 +68,9 @@ pub enum ProofError {
     #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
     IncorrectProof {
         /// The provided root.
-        root: DynHash,
+        root: AnyHash,
         /// The found root.
-        found: DynHash,
+        found: AnyHash,
     },
     /// A failure was encountered while bundling proofs.
     #[error("failed to bundle proofs: {0}")]
@@ -112,8 +112,8 @@ enum BundleError<'a> {
         log_id: Cow<'a, LogId>,
     },
     IncorrectProof {
-        root: Cow<'a, DynHash>,
-        found: Cow<'a, DynHash>,
+        root: Cow<'a, AnyHash>,
+        found: Cow<'a, AnyHash>,
     },
     Failure {
         message: Cow<'a, str>,
@@ -198,7 +198,7 @@ impl<'de> Deserialize<'de> for ProofError {
         match RawError::<String>::deserialize(deserializer)? {
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::LogRoot => {
-                    Ok(Self::RootNotFound(id.parse::<DynHash>().map_err(|_| {
+                    Ok(Self::RootNotFound(id.parse::<AnyHash>().map_err(|_| {
                         serde::de::Error::invalid_value(
                             Unexpected::Str(&id),
                             &"a valid checkpoint id",
@@ -210,7 +210,7 @@ impl<'de> Deserialize<'de> for ProofError {
                         .map(|(log_id, record_id)| {
                             Ok(LogLeaf {
                                 log_id: log_id
-                                    .parse::<DynHash>()
+                                    .parse::<AnyHash>()
                                     .map_err(|_| {
                                         serde::de::Error::invalid_value(
                                             Unexpected::Str(log_id),
@@ -219,7 +219,7 @@ impl<'de> Deserialize<'de> for ProofError {
                                     })?
                                     .into(),
                                 record_id: record_id
-                                    .parse::<DynHash>()
+                                    .parse::<AnyHash>()
                                     .map_err(|_| {
                                         serde::de::Error::invalid_value(
                                             Unexpected::Str(record_id),

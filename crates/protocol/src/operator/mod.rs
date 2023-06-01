@@ -2,7 +2,7 @@ use crate::{protobuf, registry::RecordId};
 use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
-use warg_crypto::{hash::DynHash, Decode, Encode, Signable};
+use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
 
 mod model;
 mod validate;
@@ -25,7 +25,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
     fn try_from(record: protobuf::OperatorRecord) -> Result<Self, Self::Error> {
         let prev: Option<RecordId> = match record.prev {
             Some(hash_string) => {
-                let digest: DynHash = hash_string.parse()?;
+                let digest: AnyHash = hash_string.parse()?;
                 Some(digest.into())
             }
             None => None,

@@ -17,7 +17,7 @@ use warg_api::v1::{
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
-    hash::{DynHash, Hash, Sha256},
+    hash::{AnyHash, Hash, Sha256},
     signing,
 };
 use warg_protocol::{
@@ -179,7 +179,17 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             },
                         )?),
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| match e {
+                        api::ClientError::Package(PackageError::Rejection(reason)) => {
+                            ClientError::PublishRejected {
+                                package: package.name.clone(),
+                                record_id: record.id.clone(),
+                                reason,
+                            }
+                        }
+                        _ => e.into(),
+                    })?;
             }
         }
 
@@ -211,6 +221,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 PackageRecordState::Rejected { reason } => {
                     return Err(ClientError::PublishRejected {
                         package: package.to_string(),
+                        record_id: record_id.clone(),
                         reason,
                     });
                 }
@@ -344,7 +355,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        let root: DynHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        let root: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
         tracing::info!("updating to checkpoint `{root}`");
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
@@ -525,7 +536,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
@@ -621,7 +632,7 @@ pub struct PackageDownload {
     /// The package version that was downloaded.
     pub version: Version,
     /// The digest of the package contents.
-    pub digest: DynHash,
+    pub digest: AnyHash,
     /// The path to the downloaded package contents.
     pub path: PathBuf,
 }
@@ -639,6 +650,7 @@ pub enum ClientError {
         /// The validation error.
         inner: operator::ValidationError,
     },
+
     /// The package already exists and cannot be initialized.
     #[error("package `{package}` already exists and cannot be initialized")]
     CannotInitializePackage {
@@ -693,7 +705,7 @@ pub enum ClientError {
     #[error("content with digest `{digest}` was not found in client storage")]
     ContentNotFound {
         /// The digest of the missing content.
-        digest: DynHash,
+        digest: AnyHash,
     },
 
     /// The package log is empty and cannot be validated.
@@ -708,6 +720,8 @@ pub enum ClientError {
     PublishRejected {
         /// The package that was rejected.
         package: String,
+        /// The record identifier for the record that was rejected.
+        record_id: RecordId,
         /// The reason it was rejected.
         reason: String,
     },

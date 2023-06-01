@@ -2,12 +2,14 @@ use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use datastore::DataStore;
 use futures::Future;
+use policy::content::ContentPolicy;
 use services::CoreService;
 use std::{
     fs,
     net::{SocketAddr, TcpListener},
     path::PathBuf,
     pin::Pin,
+    sync::Arc,
     time::Duration,
 };
 use warg_crypto::signing::PrivateKey;
@@ -29,6 +31,7 @@ pub struct Config {
     content_dir: PathBuf,
     shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
     checkpoint_interval: Option<Duration>,
+    content_policy: Option<Arc<dyn ContentPolicy>>,
 }
 
 impl std::fmt::Debug for Config {
@@ -57,6 +60,7 @@ impl Config {
             content_dir,
             shutdown: None,
             checkpoint_interval: None,
+            content_policy: None,
         }
     }
 
@@ -96,6 +100,12 @@ impl Config {
     /// Sets the checkpoint interval to use for the server.
     pub fn with_checkpoint_interval(mut self, interval: Duration) -> Self {
         self.checkpoint_interval = Some(interval);
+        self
+    }
+
+    /// Sets the content policy to use for the server.
+    pub fn with_content_policy(mut self, policy: impl ContentPolicy + 'static) -> Self {
+        self.content_policy = Some(Arc::new(policy));
         self
     }
 }
@@ -181,8 +191,16 @@ impl Server {
         })?;
 
         let base_url = format!("http://{addr}", addr = self.config.addr.unwrap());
-        let server = axum::Server::from_tcp(listener)?
-            .serve(create_router(base_url, core, temp_dir, files_dir.clone()).into_make_service());
+        let server = axum::Server::from_tcp(listener)?.serve(
+            create_router(
+                base_url,
+                core,
+                temp_dir,
+                files_dir.clone(),
+                self.config.content_policy,
+            )
+            .into_make_service(),
+        );
 
         tracing::info!("listening on {addr}", addr = self.config.addr.unwrap());
 

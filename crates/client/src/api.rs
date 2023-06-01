@@ -17,7 +17,7 @@ use warg_api::v1::{
         ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
     },
 };
-use warg_crypto::hash::{DynHash, HashError, Sha256};
+use warg_crypto::hash::{AnyHash, HashError, Sha256};
 use warg_protocol::{
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     SerdeEnvelope,
@@ -56,9 +56,9 @@ pub enum ClientError {
     )]
     IncorrectConsistencyProof {
         /// The provided root.
-        root: DynHash,
+        root: AnyHash,
         /// The found root.
-        found: DynHash,
+        found: AnyHash,
     },
     /// A hash returned from the server was incorrect.
     #[error("the server returned an invalid hash: {0}")]
@@ -74,10 +74,10 @@ pub enum ClientError {
     RecordNotPublished(RecordId),
     /// Could not find a source for the given content digest.
     #[error("no download location could be found for content digest `{0}`")]
-    NoSourceForContent(DynHash),
+    NoSourceForContent(AnyHash),
     /// All sources for the given content digest returned an error response.
     #[error("all sources for content digest `{0}` returned an error response")]
-    AllSourcesFailed(DynHash),
+    AllSourcesFailed(AnyHash),
     /// An other error occurred during the requested operation.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -243,7 +243,7 @@ impl Client {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
         tracing::debug!("fetching record `{record_id}` for package `{log_id}`");
 
@@ -327,7 +327,7 @@ impl Client {
             .first()
             .unwrap()
             .evaluate(&log_data)
-            .map(|(from, to)| (DynHash::from(from), DynHash::from(to)))?;
+            .map(|(from, to)| (AnyHash::from(from), AnyHash::from(to)))?;
 
         if request.from.as_ref() != &from {
             return Err(ClientError::IncorrectConsistencyProof {
@@ -351,7 +351,7 @@ impl Client {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        digest: &DynHash,
+        digest: &AnyHash,
         content: impl Into<Body>,
     ) -> Result<String, ClientError> {
         let url = self

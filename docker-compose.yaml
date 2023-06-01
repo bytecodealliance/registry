@@ -1,6 +1,4 @@
 # Base in-memory configuration for the registry service
-version: '3'
-name: bytecodealliance-registry
 services:
   import-secrets:
     container_name: import-secrets

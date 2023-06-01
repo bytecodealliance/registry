@@ -4,7 +4,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::{str::FromStr, time::SystemTime};
-use warg_crypto::hash::{DynHash, HashAlgorithm};
+use warg_crypto::hash::{AnyHash, HashAlgorithm};
 use warg_crypto::signing;
 
 /// A package record is a collection of entries published together by the same author
@@ -21,7 +21,7 @@ pub struct PackageRecord {
 }
 
 impl crate::Record for PackageRecord {
-    fn contents(&self) -> HashSet<&DynHash> {
+    fn contents(&self) -> HashSet<&AnyHash> {
         self.entries
             .iter()
             .filter_map(PackageEntry::content)
@@ -91,7 +91,7 @@ pub enum PackageEntry {
     },
     /// Release a version of a package.
     /// The version must not have been released yet.
-    Release { version: Version, content: DynHash },
+    Release { version: Version, content: AnyHash },
     /// Yank a version of a package.
     /// The version must have been released and not yanked.
     Yank { version: Version },
@@ -110,7 +110,7 @@ impl PackageEntry {
     /// Gets the content associated with the entry.
     ///
     /// Returns `None` if the entry does not have content.
-    pub fn content(&self) -> Option<&DynHash> {
+    pub fn content(&self) -> Option<&AnyHash> {
         match self {
             Self::Release { content, .. } => Some(content),
             _ => None,

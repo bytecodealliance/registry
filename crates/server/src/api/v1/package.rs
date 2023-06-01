@@ -1,6 +1,7 @@
 use super::{Json, Path};
 use crate::{
     datastore::{DataStoreError, RecordStatus},
+    policy::content::{ContentPolicy, ContentPolicyError},
     services::CoreService,
 };
 use axum::{
@@ -19,7 +20,7 @@ use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
     ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
 };
-use warg_crypto::hash::{DynHash, Sha256};
+use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogId, RecordId},
@@ -32,6 +33,7 @@ pub struct Config {
     base_url: String,
     files_dir: PathBuf,
     temp_dir: PathBuf,
+    content_policy: Option<Arc<dyn ContentPolicy>>,
 }
 
 impl Config {
@@ -40,12 +42,14 @@ impl Config {
         base_url: String,
         files_dir: PathBuf,
         temp_dir: PathBuf,
+        content_policy: Option<Arc<dyn ContentPolicy>>,
     ) -> Self {
         Self {
             core_service,
             base_url,
             files_dir,
             temp_dir,
+            content_policy,
         }
     }
 
@@ -60,19 +64,19 @@ impl Config {
             .with_state(self)
     }
 
-    fn content_present(&self, digest: &DynHash) -> bool {
+    fn content_present(&self, digest: &AnyHash) -> bool {
         self.content_path(digest).is_file()
     }
 
-    fn content_file_name(&self, digest: &DynHash) -> String {
+    fn content_file_name(&self, digest: &AnyHash) -> String {
         digest.to_string().replace(':', "-")
     }
 
-    fn content_path(&self, digest: &DynHash) -> PathBuf {
+    fn content_path(&self, digest: &AnyHash) -> PathBuf {
         self.files_dir.join(self.content_file_name(digest))
     }
 
-    fn content_url(&self, digest: &DynHash) -> String {
+    fn content_url(&self, digest: &AnyHash) -> String {
         format!(
             "{url}/content/{name}",
             url = self.base_url,
@@ -124,6 +128,14 @@ impl From<DataStoreError> for PackageApiError {
                 }
             }
         })
+    }
+}
+
+impl From<ContentPolicyError> for PackageApiError {
+    fn from(value: ContentPolicyError) -> Self {
+        match value {
+            ContentPolicyError::Rejection(message) => Self(PackageError::Rejection(message)),
+        }
     }
 }
 
@@ -256,8 +268,8 @@ async fn get_record(
 #[debug_handler]
 async fn upload_content(
     State(config): State<Config>,
-    Path((log_id, record_id, digest)): Path<(LogId, RecordId, DynHash)>,
-    mut stream: BodyStream,
+    Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
+    stream: BodyStream,
 ) -> Result<impl IntoResponse, PackageApiError> {
     match config
         .core_service
@@ -286,35 +298,23 @@ async fn upload_content(
         path = tmp_path.display()
     );
 
-    let mut hasher = digest.algorithm().hasher();
-    let mut tmp_file = tokio::fs::File::create(&tmp_path)
-        .await
-        .map_err(PackageApiError::internal_error)?;
+    let res = process_content(&tmp_path, &digest, stream, config.content_policy.as_deref()).await;
 
-    while let Some(chunk) = stream
-        .next()
-        .await
-        .transpose()
-        .map_err(PackageApiError::internal_error)?
-    {
-        // TODO: validate each chunk against the content policy
-
-        hasher.update(&chunk);
-        tmp_file
-            .write_all(&chunk)
-            .await
-            .map_err(PackageApiError::internal_error)?;
+    // If the error was a rejection, transition the record itself to rejected
+    if let Err(PackageApiError(PackageError::Rejection(reason))) = &res {
+        config
+            .core_service
+            .store()
+            .reject_package_record(
+                &log_id,
+                &record_id,
+                &format!("content with digest `{digest}` was rejected by policy: {reason}"),
+            )
+            .await?;
     }
 
-    let result = hasher.finalize();
-    if result != digest {
-        return Err(PackageApiError::bad_request(format!(
-            "content digest `{result}` does not match expected digest `{digest}`",
-        )));
-    }
-
-    // TODO: if the content is not acceptable (i.e. fails a policy check), we should
-    // not persist the file, reject the associated record, and return an error
+    // Only persist the file if the content was successfully processed
+    res?;
 
     tmp_path
         .persist(config.content_path(&digest))
@@ -337,4 +337,48 @@ async fn upload_content(
         StatusCode::CREATED,
         [(axum::http::header::LOCATION, config.content_url(&digest))],
     ))
+}
+
+async fn process_content(
+    path: &std::path::Path,
+    digest: &AnyHash,
+    mut stream: BodyStream,
+    policy: Option<&dyn ContentPolicy>,
+) -> Result<(), PackageApiError> {
+    let mut tmp_file = tokio::fs::File::create(&path)
+        .await
+        .map_err(PackageApiError::internal_error)?;
+
+    let mut hasher = digest.algorithm().hasher();
+    let mut policy = policy.map(|p| p.new_stream_policy(digest)).transpose()?;
+
+    while let Some(chunk) = stream
+        .next()
+        .await
+        .transpose()
+        .map_err(PackageApiError::internal_error)?
+    {
+        if let Some(policy) = policy.as_mut() {
+            policy.check(&chunk)?;
+        }
+
+        hasher.update(&chunk);
+        tmp_file
+            .write_all(&chunk)
+            .await
+            .map_err(PackageApiError::internal_error)?;
+    }
+
+    let result = hasher.finalize();
+    if &result != digest {
+        return Err(PackageApiError::bad_request(format!(
+            "content digest `{result}` does not match expected digest `{digest}`",
+        )));
+    }
+
+    if let Some(mut policy) = policy {
+        policy.finalize()?;
+    }
+
+    Ok(())
 }
