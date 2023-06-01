@@ -63,20 +63,20 @@ where
     V: VisitBytes,
 {
     fn from(value: Proof<D, V>) -> Self {
-        let peers: Vec<Hash<D>> = value.into();
+        let peers: Vec<Option<Hash<D>>> = value.into();
         protobuf::MapInclusionProof {
             hashes: peers.into_iter().map(|h| h.into()).collect(),
         }
     }
 }
 
-impl<D> From<Hash<D>> for protobuf::Hash
+impl<D> From<Option<Hash<D>>> for protobuf::OptionalHash
 where
     D: SupportedDigest,
 {
-    fn from(value: Hash<D>) -> Self {
-        protobuf::Hash {
-            hash: Vec::from(value.bytes()),
+    fn from(value: Option<Hash<D>>) -> Self {
+        protobuf::OptionalHash {
+            hash: value.map(|h| h.bytes().to_vec()),
         }
     }
 }
@@ -106,20 +106,24 @@ where
     type Error = Error;
 
     fn try_from(value: protobuf::MapInclusionProof) -> Result<Self, Self::Error> {
-        let peers: Result<Vec<Hash<D>>, Error> =
+        let peers: Result<Vec<Option<Hash<D>>>, Error> =
             value.hashes.into_iter().map(|h| h.try_into()).collect();
         let proof = Proof::new(peers?);
         Ok(proof)
     }
 }
 
-impl<D> TryFrom<protobuf::Hash> for Hash<D>
+impl<D> TryFrom<protobuf::OptionalHash> for Option<Hash<D>>
 where
     D: SupportedDigest,
 {
     type Error = Error;
 
-    fn try_from(value: protobuf::Hash) -> Result<Self, Self::Error> {
-        Ok(value.hash.try_into()?)
+    fn try_from(value: protobuf::OptionalHash) -> Result<Self, Self::Error> {
+        let hash = match value.hash {
+            Some(h) => Some(h.try_into()?),
+            None => None,
+        };
+        Ok(hash)
     }
 }

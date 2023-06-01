@@ -48,6 +48,9 @@ impl<D: SupportedDigest> Path<D> {
     pub fn index(&self) -> usize {
         self.index
     }
+    pub fn hash(&self) -> Hash<D> {
+        self.all.clone()
+    }
 }
 
 impl<D: SupportedDigest> Iterator for Path<D> {

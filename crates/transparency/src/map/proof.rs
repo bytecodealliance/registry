@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use std::iter::repeat;
 
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
@@ -7,7 +8,7 @@ use warg_crypto::{
 };
 
 use super::{
-    map::{hash_branch, hash_leaf},
+    map::hash_branch,
     path::{ReversePath, Side},
 };
 
@@ -34,7 +35,7 @@ where
     V: VisitBytes,
 {
     value: PhantomData<V>,
-    peers: Vec<Hash<D>>,
+    peers: Vec<Option<Hash<D>>>,
 }
 
 impl<D, V> Proof<D, V>
@@ -42,15 +43,15 @@ where
     D: SupportedDigest,
     V: VisitBytes,
 {
-    pub(crate) fn new(peers: Vec<Hash<D>>) -> Self {
+    pub(crate) fn new(peers: Vec<Option<Hash<D>>>) -> Self {
         Self {
             value: PhantomData,
             peers,
         }
     }
 
-    pub(crate) fn push(&mut self, peer: &Hash<D>) {
-        self.peers.push(peer.clone());
+    pub(crate) fn push(&mut self, peer: Option<Hash<D>>) {
+        self.peers.push(peer);
     }
 
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
@@ -58,22 +59,34 @@ where
         // Get the path from bottom to top.
         let path = ReversePath::<D>::new(key);
 
+        let fill = repeat(None).take(256 - self.peers.len());
         // Calculate the leaf hash.
-        let mut hash = hash_leaf(key, value);
+        let mut hash = Hash::of(value);
 
         // // Loop over each side and peer.
-        for (side, peer) in path.zip(self.peers.clone()) {
-            hash = match side {
-                Side::Left => hash_branch(&hash, &peer),
-                Side::Right => hash_branch(&peer, &hash),
-            };
+        let peers = fill.chain(self.peers.iter().cloned());
+        for (i, (side, peer)) in path.zip(peers).enumerate() {
+            match &peer {
+                Some(_) => {
+                    hash = match side {
+                        Side::Left => hash_branch(Some(hash), peer),
+                        Side::Right => hash_branch(peer, Some(hash)),
+                    };
+                }
+                None => match side {
+                    Side::Left => hash = hash_branch(Some(hash), Some(D::empty_tree_hash(i))),
+                    Side::Right => {
+                        hash = hash_branch(Some(D::empty_tree_hash(i)), Some(hash));
+                    }
+                },
+            }
         }
 
         hash
     }
 }
 
-impl<D, V> From<Proof<D, V>> for Vec<Hash<D>>
+impl<D, V> From<Proof<D, V>> for Vec<Option<Hash<D>>>
 where
     D: SupportedDigest,
     V: VisitBytes,

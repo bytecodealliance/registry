@@ -7,7 +7,7 @@ use warg_crypto::VisitBytes;
 
 use super::link::Link;
 use super::node::Node;
-use super::path::Path;
+use super::path::{Path, ReversePath};
 use super::proof::Proof;
 
 /// Immutable Map w/ Inclusion Proofs
@@ -42,48 +42,13 @@ use super::proof::Proof;
 /// to have `2^(n+1) - 1` entries (far too many!), the tree is sparse and
 /// only creates nodes as necessary to represent the contents in the tree.
 ///
-/// ## Hashing Strategy
-///
-/// Hashes for leaf and branch nodes are calculated using the following input
-/// pattern:
-///
-///   1. A single byte prefix determining the type of the node.
-///   2. Zero, one or two values.
-///
-/// ### Leaf Nodes
-///
-/// Leaf node hashes are calculated using the following double-hashing strategy
-/// which ensures protection from concatenation-based collision attacks:
-///
-/// ```hash
-/// H(0xff || H(<key>) || <value>)
-/// ```
-///
-/// ### Branch Nodes
-///
-/// Branch node hashes are calculated using a bit field indicating the presence
-/// of child nodes. For example:
-///
-/// ```hash
-/// // Both children present:
-/// H(0b11 || <left> || <right>)
-///
-/// // Left child present:
-/// H(0b10 || <left>)
-///
-/// // Right child present:
-/// H(0b01 || <right>)
-///
-/// // Empty tree:
-/// H(0b00)
-/// ```
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes,
     V: VisitBytes,
 {
-    link: Link<D>,
+    pub link: Link<D>,
     len: usize,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
@@ -215,8 +180,11 @@ where
     /// This replaces any existing items with the same key.
     pub fn insert(&self, key: K, val: V) -> Self {
         let mut path = Path::new(&key);
-        let leaf = hash_leaf(key, val);
-        let (node, new) = self.link.node().insert(&mut path, leaf);
+        let mut reversed = ReversePath::new(&key);
+        let (node, new) =
+            self.link
+                .node()
+                .insert(&mut path, &mut reversed, Hash::of(key), Hash::of(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
@@ -226,8 +194,11 @@ where
 
         for (key, val) in iter {
             let mut path = Path::new(&key);
-            let leaf = hash_leaf(key, val);
-            let (node, new) = here.link.node().insert(&mut path, leaf);
+            let mut reversed: ReversePath<D> = ReversePath::new(&key);
+            let (node, new) =
+                here.link
+                    .node()
+                    .insert(&mut path, &mut reversed, Hash::of(key), Hash::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
@@ -235,19 +206,9 @@ where
     }
 }
 
-pub(crate) fn hash_leaf<D, K, V>(key: K, value: V) -> Hash<D>
-where
-    D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
-{
-    let key_hash: Hash<D> = Hash::of(&key);
-    Hash::of(&(key_hash, value))
-}
-
-pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
+pub(crate) fn hash_branch<D>(lhs: Option<Hash<D>>, rhs: Option<Hash<D>>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    Hash::of((0b1, lhs, rhs))
+    Hash::of((0b1, lhs.unwrap(), rhs.unwrap()))
 }

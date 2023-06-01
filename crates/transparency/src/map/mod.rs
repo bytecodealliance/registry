@@ -17,6 +17,7 @@ mod node;
 mod path;
 mod proof;
 mod proof_bundle;
+mod singleton;
 
 pub use map::Map;
 pub use proof::Proof;
@@ -108,7 +109,11 @@ mod test {
 
     #[test]
     fn prove() {
-        fn check<D: SupportedDigest + std::fmt::Debug, K: VisitBytes + Clone, V: VisitBytes>(
+        fn check<
+            D: SupportedDigest + std::fmt::Debug,
+            K: VisitBytes + Clone + std::fmt::Debug,
+            V: VisitBytes,
+        >(
             tree: &Map<D, K, V>,
             key: K,
             value: V,
@@ -131,5 +136,8 @@ mod test {
         check(&third, "foo", "bar");
         check(&third, "baz", "bat");
         assert!(third.prove(&"qux").is_none());
+
+        let fourth = third.insert("foo", "qux");
+        check(&fourth, "foo", "qux");
     }
 }

@@ -7,8 +7,8 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 use super::{link::Link, map::hash_branch, path::Side};
 
 pub struct Fork<D: SupportedDigest> {
-    pub left: Arc<Link<D>>,
-    pub right: Arc<Link<D>>,
+    left: Arc<Link<D>>,
+    right: Arc<Link<D>>,
 }
 
 impl<D: SupportedDigest> Fork<D> {
@@ -17,9 +17,9 @@ impl<D: SupportedDigest> Fork<D> {
     }
 
     pub fn hash(&self) -> Hash<D> {
-        let lhs = self.left.hash();
-        let rhs = self.right.hash();
-        hash_branch(lhs, rhs)
+        let lhs = self.left.as_ref().hash().clone();
+        let rhs = self.right.as_ref().hash().clone();
+        hash_branch(Some(lhs), Some(rhs))
     }
 }
 
