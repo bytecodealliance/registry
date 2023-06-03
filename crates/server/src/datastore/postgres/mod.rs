@@ -396,7 +396,7 @@ impl DataStore for PostgresDataStore {
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<operator::Validator>(
+        insert_record::<operator::OperatorState>(
             conn.as_mut(),
             log_id,
             None,
@@ -439,7 +439,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await {
+        match validate_record::<operator::OperatorState>(conn.as_mut(), log_id, record_id).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -457,7 +457,7 @@ impl DataStore for PostgresDataStore {
         missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<package::Validator>(
+        insert_record::<package::PackageState>(
             conn.as_mut(),
             log_id,
             Some(name),
@@ -500,7 +500,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<package::Validator>(conn.as_mut(), log_id, record_id).await {
+        match validate_record::<package::PackageState>(conn.as_mut(), log_id, record_id).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -716,7 +716,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
     ) -> Result<Record<operator::OperatorRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-        get_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
+        get_record::<operator::OperatorState>(conn.as_mut(), log_id, record_id).await
     }
 
     async fn get_package_record(
@@ -725,6 +725,6 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
     ) -> Result<Record<package::PackageRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-        get_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
+        get_record::<package::PackageState>(conn.as_mut(), log_id, record_id).await
     }
 }
