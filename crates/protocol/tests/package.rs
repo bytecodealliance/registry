@@ -8,7 +8,7 @@ use std::{
 use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
 use warg_protocol::{
-    package::{self, Validator},
+    package::{self, PackageState},
     protobuf,
     registry::RecordId,
     ProtoEnvelope,
@@ -31,7 +31,7 @@ fn test_package_logs() {
     }
 }
 
-fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
+fn validate_input(input: Vec<EnvelopeData>) -> Result<PackageState> {
     input
         .into_iter()
         .scan(None, |last, e_data| {
@@ -46,7 +46,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
 
             Some(envelope)
         })
-        .try_fold(Validator::new(), |mut validator, record| {
+        .try_fold(PackageState::new(), |mut validator, record| {
             validator.validate(&record)?;
             Ok(validator)
         })
@@ -122,6 +122,6 @@ pub struct EnvelopeData {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Output {
-    Valid(Validator),
+    Valid(PackageState),
     Error(String),
 }

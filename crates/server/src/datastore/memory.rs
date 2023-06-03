@@ -15,19 +15,19 @@ use warg_protocol::{
     ProtoEnvelope, SerdeEnvelope,
 };
 
-struct Log<V, R> {
-    validator: V,
+struct Log<S, R> {
+    state: S,
     entries: Vec<ProtoEnvelope<R>>,
     checkpoint_indices: Vec<usize>,
 }
 
-impl<V, R> Default for Log<V, R>
+impl<S, R> Default for Log<S, R>
 where
-    V: Default,
+    S: Default,
 {
     fn default() -> Self {
         Self {
-            validator: V::default(),
+            state: S::default(),
             entries: Vec::new(),
             checkpoint_indices: Vec::new(),
         }
@@ -70,8 +70,8 @@ enum RecordStatus {
 
 #[derive(Default)]
 struct State {
-    operators: HashMap<LogId, Log<operator::Validator, operator::OperatorRecord>>,
-    packages: HashMap<LogId, Log<package::Validator, package::PackageRecord>>,
+    operators: HashMap<LogId, Log<operator::OperatorState, operator::OperatorRecord>>,
+    packages: HashMap<LogId, Log<package::PackageState, package::PackageRecord>>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
 }
@@ -182,7 +182,7 @@ impl DataStore for MemoryDataStore {
                 let record = record.take().unwrap();
                 let log = operators.entry(log_id.clone()).or_default();
                 match log
-                    .validator
+                    .state
                     .validate(&record)
                     .map_err(DataStoreError::from)
                 {
@@ -286,7 +286,7 @@ impl DataStore for MemoryDataStore {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
                 match log
-                    .validator
+                    .state
                     .validate(&record)
                     .map_err(DataStoreError::from)
                 {

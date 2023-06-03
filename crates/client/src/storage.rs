@@ -105,7 +105,7 @@ pub trait ContentStorage: Send + Sync {
 pub struct OperatorInfo {
     /// The current validation state of the operator.
     #[serde(default)]
-    pub state: operator::Validator,
+    pub state: operator::OperatorState,
 }
 
 /// Represents information about a registry package.
@@ -119,7 +119,7 @@ pub struct PackageInfo {
     pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
     /// The current validation state of the package.
     #[serde(default)]
-    pub state: package::Validator,
+    pub state: package::PackageState,
 }
 
 impl PackageInfo {
@@ -128,7 +128,7 @@ impl PackageInfo {
         Self {
             id: id.into(),
             checkpoint: None,
-            state: package::Validator::default(),
+            state: package::PackageState::default(),
         }
     }
 }

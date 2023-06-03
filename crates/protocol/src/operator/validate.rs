@@ -75,7 +75,7 @@ pub struct Head {
 /// A validator for operator records.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
-pub struct Validator {
+pub struct OperatorState {
     /// The hash algorithm used by the operator log.
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,7 +91,7 @@ pub struct Validator {
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
-impl Validator {
+impl OperatorState {
     /// Create a new operator log validator.
     pub fn new() -> Self {
         Self::default()
@@ -379,7 +379,7 @@ impl Validator {
     }
 }
 
-impl crate::Validator for Validator {
+impl crate::Validator for OperatorState {
     type Record = model::OperatorRecord;
     type Error = ValidationError;
 
@@ -423,12 +423,12 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = Validator::default();
-        validator.validate(&envelope).unwrap();
+        let mut operator_state = OperatorState::default();
+        operator_state.validate(&envelope).unwrap();
 
         assert_eq!(
-            validator,
-            Validator {
+            operator_state,
+            OperatorState {
                 head: Some(Head {
                     digest: RecordId::operator_record::<Sha256>(&envelope),
                     timestamp,
@@ -462,10 +462,10 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = Validator::default();
-        validator.validate(&envelope).unwrap();
+        let mut operator_state = OperatorState::default();
+        operator_state.validate(&envelope).unwrap();
 
-        let expected = Validator {
+        let expected = OperatorState {
             head: Some(Head {
                 digest: RecordId::operator_record::<Sha256>(&envelope),
                 timestamp,
@@ -478,7 +478,7 @@ mod tests {
             keys: IndexMap::from([(alice_id, alice_pub)]),
         };
 
-        assert_eq!(validator, expected);
+        assert_eq!(operator_state, expected);
 
         let record = model::OperatorRecord {
             prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
@@ -501,13 +501,13 @@ mod tests {
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
 
-        // This validation should fail and the validator state should remain unchanged
-        match validator.validate(&envelope).unwrap_err() {
+        // This validation should fail and the operator_state should remain unchanged
+        match operator_state.validate(&envelope).unwrap_err() {
             ValidationError::PermissionNotFoundToRevoke { .. } => {}
             _ => panic!("expected a different error"),
         }
 
         // The validator should not have changed
-        assert_eq!(validator, expected);
+        assert_eq!(operator_state, expected);
     }
 }
