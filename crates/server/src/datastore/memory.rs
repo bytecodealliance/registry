@@ -180,11 +180,7 @@ impl DataStore for MemoryDataStore {
             RecordStatus::Pending(PendingRecord::Operator { record }) => {
                 let record = record.take().unwrap();
                 let log = operators.entry(log_id.clone()).or_default();
-                match log
-                    .state
-                    .validate(&record)
-                    .map_err(DataStoreError::from)
-                {
+                match log.state.validate(&record).map_err(DataStoreError::from) {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(record);
@@ -284,11 +280,7 @@ impl DataStore for MemoryDataStore {
             RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
-                match log
-                    .state
-                    .validate(&record)
-                    .map_err(DataStoreError::from)
-                {
+                match log.state.validate(&record).map_err(DataStoreError::from) {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(record);
