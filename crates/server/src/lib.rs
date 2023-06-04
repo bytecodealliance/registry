@@ -1,10 +1,11 @@
 use crate::{api::create_router, datastore::MemoryDataStore};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use datastore::DataStore;
 use futures::Future;
 use policy::content::ContentPolicy;
 use services::CoreService;
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     net::{SocketAddr, TcpListener},
     path::PathBuf,
@@ -12,7 +13,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use warg_crypto::signing::PrivateKey;
+use warg_crypto::signing::{KeyID, PrivateKey};
 
 pub mod api;
 pub mod args;
@@ -23,6 +24,28 @@ pub mod services;
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
+fn is_kebab_case(s: &str) -> bool {
+    let mut lower = false;
+    let mut upper = false;
+    for c in s.chars() {
+        match c {
+            'a'..='z' if !lower && !upper => lower = true,
+            'A'..='Z' if !lower && !upper => upper = true,
+            'a'..='z' if lower => continue,
+            'A'..='Z' if upper => continue,
+            '0'..='9' if lower || upper => continue,
+            '-' if lower || upper => {
+                lower = false;
+                upper = false;
+                continue;
+            }
+            _ => return false,
+        }
+    }
+
+    !s.is_empty() && !s.ends_with('-')
+}
+
 /// The server configuration.
 pub struct Config {
     operator_key: PrivateKey,
@@ -32,6 +55,7 @@ pub struct Config {
     shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
     checkpoint_interval: Option<Duration>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
+    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
 }
 
 impl std::fmt::Debug for Config {
@@ -43,9 +67,14 @@ impl std::fmt::Debug for Config {
                 "data_store",
                 &self.data_store.as_ref().map(|_| "dyn DataStore"),
             )
-            .field("content", &self.content_dir)
+            .field("content_dir", &self.content_dir)
             .field("shutdown", &self.shutdown.as_ref().map(|_| "dyn Future"))
             .field("checkpoint_interval", &self.checkpoint_interval)
+            .field(
+                "content_policy",
+                &self.content_policy.as_ref().map(|_| "dyn ContentPolicy"),
+            )
+            .field("authorized_keys", &self.authorized_keys)
             .finish()
     }
 }
@@ -61,6 +90,7 @@ impl Config {
             shutdown: None,
             checkpoint_interval: None,
             content_policy: None,
+            authorized_keys: Some(Default::default()),
         }
     }
 
@@ -106,6 +136,29 @@ impl Config {
     /// Sets the content policy to use for the server.
     pub fn with_content_policy(mut self, policy: impl ContentPolicy + 'static) -> Self {
         self.content_policy = Some(Arc::new(policy));
+        self
+    }
+
+    /// Sets an authorized key for a particular namespace.
+    pub fn with_authorized_key(mut self, namespace: impl Into<String>, key: KeyID) -> Result<Self> {
+        let namespace = namespace.into();
+        if !is_kebab_case(&namespace) {
+            bail!("namespace `{namespace}` is not a legal kebab-case identifier");
+        }
+
+        self.authorized_keys
+            .get_or_insert_with(Default::default)
+            .entry(namespace)
+            .or_default()
+            .insert(key);
+        Ok(self)
+    }
+
+    /// Sets the configuration to allow any key to publish a package record.
+    ///
+    /// This will clear any previously set authorized keys.
+    pub fn with_no_authorization(mut self) -> Self {
+        self.authorized_keys = None;
         self
     }
 }
@@ -196,8 +249,9 @@ impl Server {
                 base_url,
                 core,
                 temp_dir,
-                files_dir.clone(),
+                files_dir,
                 self.config.content_policy,
+                self.config.authorized_keys,
             )
             .into_make_service(),
         );
@@ -206,9 +260,7 @@ impl Server {
 
         if let Some(shutdown) = self.config.shutdown {
             tracing::debug!("server is running with a shutdown signal");
-            server
-                .with_graceful_shutdown(async move { shutdown.await })
-                .await?;
+            server.with_graceful_shutdown(shutdown).await?;
         } else {
             tracing::debug!("server is running without a shutdown signal");
             server.await?;

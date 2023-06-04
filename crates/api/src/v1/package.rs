@@ -112,11 +112,8 @@ pub enum PackageError {
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
     /// The publish operation was not authorized by the registry.
-    #[error("registry did not authorize the request to publish: {message}")]
-    Unauthorized {
-        /// The error message.
-        message: String,
-    },
+    #[error("registry did not authorize the request to publish: {0}")]
+    Unauthorized(String),
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]
     NotSupported(String),
@@ -193,7 +190,7 @@ where
 impl Serialize for PackageError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Unauthorized { message } => RawError::Unauthorized::<()> {
+            Self::Unauthorized(message) => RawError::Unauthorized::<()> {
                 status: Status::<403>,
                 message: Cow::Borrowed(message),
             }
@@ -239,9 +236,9 @@ impl<'de> Deserialize<'de> for PackageError {
         D: serde::Deserializer<'de>,
     {
         match RawError::<String>::deserialize(deserializer)? {
-            RawError::Unauthorized { status: _, message } => Ok(Self::Unauthorized {
-                message: message.into_owned(),
-            }),
+            RawError::Unauthorized { status: _, message } => {
+                Ok(Self::Unauthorized(message.into_owned()))
+            }
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
                     id.parse::<AnyHash>()

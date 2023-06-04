@@ -30,10 +30,14 @@ wasmtime = "9.0"
 wasmtime-wasi = "9.0"
 
 [dev-dependencies]
+reqwest = { workspace = true }
+serde_json = { workspace = true }
 warg-server = { workspace = true }
+warg-api = { workspace = true }
 wat = "1.0.66"
 wit-component = "0.11.0"
 wit-parser = "0.8.0"
+testresult = "0.3.0"
 
 [features]
 default = []

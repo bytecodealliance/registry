@@ -13,9 +13,10 @@ use diesel_async::{
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
 use std::{collections::HashSet, pin::Pin};
-use warg_crypto::{hash::AnyHash, Decode};
+use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
-    operator, package,
+    operator,
+    package::{self, PackageEntry},
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
     ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
@@ -726,5 +727,34 @@ impl DataStore for PostgresDataStore {
     ) -> Result<Record<package::PackageRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
         get_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
+    }
+
+    async fn verify_package_record_signature(
+        &self,
+        log_id: &LogId,
+        record: &ProtoEnvelope<package::PackageRecord>,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.0.get().await?;
+
+        let validator = schema::logs::table
+            .select(schema::logs::validator)
+            .filter(schema::logs::log_id.eq(TextRef(log_id)))
+            .first::<Json<package::Validator>>(&mut conn)
+            .await
+            .optional()?;
+
+        let key = match validator
+            .as_ref()
+            .and_then(|v| v.public_key(record.key_id()))
+        {
+            Some(key) => key,
+            None => match record.as_ref().entries.get(0) {
+                Some(PackageEntry::Init { key, .. }) => key,
+                _ => return Err(DataStoreError::UnknownKey(record.key_id().clone())),
+            },
+        };
+
+        package::PackageRecord::verify(key, record.content_bytes(), record.signature())
+            .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 }

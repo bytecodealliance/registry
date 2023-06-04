@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -9,14 +9,13 @@ use tokio::{fs, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
-    FileSystemClient,
+    FileSystemClient, StorageLockResult,
 };
-use warg_crypto::hash::AnyHash;
-use warg_server::{
-    datastore::DataStore,
-    policy::content::{ContentPolicyCollection, WasmContentPolicy},
-    Config, Server,
+use warg_crypto::{
+    hash::AnyHash,
+    signing::{KeyID, PrivateKey},
 };
+use warg_server::{datastore::DataStore, policy::content::WasmContentPolicy, Config, Server};
 use wit_parser::{Resolve, UnresolvedPackage};
 
 pub fn test_operator_key() -> &'static str {
@@ -25,6 +24,13 @@ pub fn test_operator_key() -> &'static str {
 
 pub fn test_signing_key() -> &'static str {
     "ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
+}
+
+pub fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
+    match FileSystemClient::try_new_with_config(None, config)? {
+        StorageLockResult::Acquired(client) => Ok(client),
+        _ => bail!("failed to acquire storage lock"),
+    }
 }
 
 pub struct ServerInstance {
@@ -69,8 +75,8 @@ pub async fn root() -> Result<PathBuf> {
     let server_content_dir = path.join("server");
     fs::create_dir_all(&server_content_dir).await?;
 
-    let packages_dir = path.join("packages");
-    fs::create_dir_all(&packages_dir).await?;
+    let registries_dir = path.join("registries");
+    fs::create_dir_all(&registries_dir).await?;
 
     let content_dir = path.join("content");
     fs::create_dir_all(&content_dir).await?;
@@ -82,17 +88,25 @@ pub async fn root() -> Result<PathBuf> {
 pub async fn spawn_server(
     root: &Path,
     data_store: Option<Box<dyn DataStore>>,
+    authorized_keys: Option<Vec<(String, KeyID)>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
-    // For the tests, we assume only wasm content is allowed.
-    let mut policies = ContentPolicyCollection::default();
-    policies.push(WasmContentPolicy::default());
-
     let shutdown = CancellationToken::new();
     let mut config = Config::new(test_operator_key().parse()?, root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100))
-        .with_content_policy(policies);
+        .with_content_policy(WasmContentPolicy::default()); // For the tests, we assume only wasm content is allowed.
+
+    match authorized_keys {
+        Some(keys) => {
+            for (namespace, key) in keys {
+                config = config.with_authorized_key(namespace, key)?;
+            }
+        }
+        None => {
+            config = config.with_no_authorization();
+        }
+    }
 
     if let Some(store) = data_store {
         config = config.with_boxed_data_store(store);
@@ -125,6 +139,7 @@ pub async fn publish(
     version: &str,
     content: Vec<u8>,
     init: bool,
+    signing_key: &PrivateKey,
 ) -> Result<AnyHash> {
     let digest = client
         .content()
@@ -132,8 +147,7 @@ pub async fn publish(
             Box::pin(futures::stream::once(async move { Ok(content.into()) })),
             None,
         )
-        .await
-        .context("failed to store component for publishing")?;
+        .await?;
 
     let mut entries = Vec::with_capacity(2);
     if init {
@@ -146,15 +160,14 @@ pub async fn publish(
 
     let record_id = client
         .publish_with_info(
-            &test_signing_key().parse().unwrap(),
+            signing_key,
             PublishInfo {
                 package: name.to_string(),
                 head: None,
                 entries,
             },
         )
-        .await
-        .context("failed to publish package")?;
+        .await?;
 
     client
         .wait_for_publish(name, &record_id, Duration::from_millis(100))
@@ -169,13 +182,15 @@ pub async fn publish_component(
     version: &str,
     wat: &str,
     init: bool,
+    signing_key: &PrivateKey,
 ) -> Result<AnyHash> {
     publish(
         client,
         name,
         version,
-        wat::parse_str(wat).context("failed to parse component for publishing")?,
+        wat::parse_str(wat)?,
         init,
+        signing_key,
     )
     .await
 }
@@ -186,21 +201,18 @@ pub async fn publish_wit(
     version: &str,
     wit: &str,
     init: bool,
+    signing_key: &PrivateKey,
 ) -> Result<AnyHash> {
     let mut resolve = Resolve::new();
-    let pkg = resolve
-        .push(
-            UnresolvedPackage::parse(Path::new("foo.wit"), wit)
-                .context("failed to parse wit for publishing")?,
-        )
-        .context("failed to resolve wit for publishing")?;
+    let pkg = resolve.push(UnresolvedPackage::parse(Path::new("foo.wit"), wit)?)?;
 
     publish(
         client,
         name,
         version,
-        wit_component::encode(&resolve, pkg).context("failed to encode wit for publishing")?,
+        wit_component::encode(&resolve, pkg)?,
         init,
+        signing_key,
     )
     .await
 }

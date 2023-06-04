@@ -1,6 +1,7 @@
 use super::{Json, Path};
 use crate::{
     datastore::{DataStoreError, RecordStatus},
+    is_kebab_case,
     policy::content::{ContentPolicy, ContentPolicyError},
     services::CoreService,
 };
@@ -13,14 +14,20 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
     ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
 };
-use warg_crypto::hash::{AnyHash, Sha256};
+use warg_crypto::{
+    hash::{AnyHash, Sha256},
+    signing::KeyID,
+};
 use warg_protocol::{
     package,
     registry::{LogId, RecordId},
@@ -34,6 +41,7 @@ pub struct Config {
     files_dir: PathBuf,
     temp_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
+    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
 }
 
 impl Config {
@@ -43,6 +51,7 @@ impl Config {
         files_dir: PathBuf,
         temp_dir: PathBuf,
         content_policy: Option<Arc<dyn ContentPolicy>>,
+        authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
     ) -> Self {
         Self {
             core_service,
@@ -50,6 +59,7 @@ impl Config {
             files_dir,
             temp_dir,
             content_policy,
+            authorized_keys,
         }
     }
 
@@ -85,6 +95,33 @@ impl Config {
     }
 }
 
+/// Represents a valid package name.
+///
+/// Valid package names conform to the component model specification
+/// for identifiers.
+///
+/// A valid component model identifier is the format `<namespace>:<name>`,
+/// where both parts are also kebab-case WIT identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct PackageName<'a> {
+    namespace: &'a str,
+    name: &'a str,
+}
+
+impl<'a> PackageName<'a> {
+    /// Creates a package name from the given string.
+    ///
+    /// Returns `None` if the given string is not a valid package name.
+    pub fn new(s: &'a str) -> Option<Self> {
+        let (namespace, name) = s.split_once(':')?;
+        if !is_kebab_case(namespace) || !is_kebab_case(name) {
+            return None;
+        }
+
+        Some(Self { namespace, name })
+    }
+}
+
 struct PackageApiError(PackageError);
 
 impl PackageApiError {
@@ -93,6 +130,10 @@ impl PackageApiError {
             status: StatusCode::BAD_REQUEST.as_u16(),
             message: message.to_string(),
         })
+    }
+
+    fn unauthorized(message: impl ToString) -> Self {
+        Self(PackageError::Unauthorized(message.to_string()))
     }
 
     fn internal_error(e: impl std::fmt::Display) -> Self {
@@ -119,6 +160,9 @@ impl From<DataStoreError> for PackageApiError {
             }
             DataStoreError::LogNotFound(id) => PackageError::LogNotFound(id),
             DataStoreError::RecordNotFound(id) => PackageError::RecordNotFound(id),
+            DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed => {
+                PackageError::Unauthorized(e.to_string())
+            }
             // Other errors are internal server errors
             e => {
                 tracing::error!("unexpected data store error: {e}");
@@ -172,8 +216,35 @@ async fn publish_record(
         ));
     }
 
-    let record_id = RecordId::package_record::<Sha256>(&record);
+    let pkg = PackageName::new(&body.name).ok_or_else(|| {
+        PackageApiError::bad_request(format!(
+            "invalid package name `{name}`: expected format is `<namespace>:<name>`",
+            name = body.name
+        ))
+    })?;
 
+    if let Some(authorized_keys) = &config.authorized_keys {
+        if !authorized_keys
+            .get(pkg.namespace)
+            .map(|keys| keys.contains(record.key_id()))
+            .unwrap_or(false)
+        {
+            return Err(PackageApiError::unauthorized(format!(
+                "key id `{key}` is not authorized to publish to package `{name}`",
+                name = body.name,
+                key = record.key_id()
+            )));
+        }
+    }
+
+    // Verify the signature on the record itself before storing it
+    config
+        .core_service
+        .store()
+        .verify_package_record_signature(&log_id, &record)
+        .await?;
+
+    let record_id = RecordId::package_record::<Sha256>(&record);
     let mut missing = record.as_ref().contents();
     missing.retain(|d| !config.content_present(d));
 

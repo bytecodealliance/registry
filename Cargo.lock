@@ -3384,6 +3384,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "testresult"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52e045f5cf9ad69772c1c9652f5567a75df88bbb5a1310a64e53cab140c5c459"
+
+[[package]]
 name = "thiserror"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3851,12 +3857,16 @@ dependencies = [
  "keyring",
  "p256",
  "rand_core",
+ "reqwest",
  "rpassword",
+ "serde_json",
+ "testresult",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing-subscriber",
  "url",
+ "warg-api",
  "warg-client",
  "warg-crypto",
  "warg-protocol",

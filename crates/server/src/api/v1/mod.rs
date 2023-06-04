@@ -10,7 +10,12 @@ use axum::{
     Router,
 };
 use serde::{Serialize, Serializer};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
+use warg_crypto::signing::KeyID;
 
 pub mod fetch;
 pub mod package;
@@ -91,10 +96,17 @@ pub fn create_router(
     temp_dir: PathBuf,
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
+    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
 ) -> Router {
     let proof_config = proof::Config::new(core.log_data().clone(), core.map_data().clone());
-    let package_config =
-        package::Config::new(core.clone(), base_url, files_dir, temp_dir, content_policy);
+    let package_config = package::Config::new(
+        core.clone(),
+        base_url,
+        files_dir,
+        temp_dir,
+        content_policy,
+        authorized_keys,
+    );
     let fetch_config = fetch::Config::new(core);
 
     Router::new()
