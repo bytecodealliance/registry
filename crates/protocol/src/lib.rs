@@ -8,6 +8,8 @@ mod proto_envelope;
 pub mod registry;
 mod serde_envelope;
 
+pub use operator::{OperatorState, OperatorValidationError};
+pub use package::{PackageState, PackageValidationError};
 pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
 pub use semver::{Version, VersionReq};
 pub use serde_envelope::SerdeEnvelope;

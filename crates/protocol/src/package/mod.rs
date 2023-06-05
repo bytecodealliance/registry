@@ -8,7 +8,7 @@ mod model;
 mod validate;
 
 pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Head, PackageState, Release, ReleaseState, ValidationError};
+pub use validate::{Head, PackageState, PackageValidationError, Release, ReleaseState};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

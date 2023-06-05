@@ -10,7 +10,7 @@ use warg_crypto::hash::{AnyHash, HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
-pub enum ValidationError {
+pub enum PackageValidationError {
     #[error("the first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
@@ -180,7 +180,7 @@ impl PackageState {
     pub fn validate(
         &mut self,
         record: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         let snapshot = self.snapshot();
 
         let result = self.validate_record(record);
@@ -232,7 +232,7 @@ impl PackageState {
     fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         let record = envelope.as_ref();
         let record_id = RecordId::package_record::<Sha256>(envelope);
 
@@ -256,11 +256,11 @@ impl PackageState {
         // At this point the digest algorithm must be set via an init entry
         let _algorithm = self
             .algorithm
-            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+            .ok_or(PackageValidationError::InitialRecordDoesNotInit)?;
 
         // Validate the envelope key id
         let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
-            ValidationError::KeyIDNotRecognized {
+            PackageValidationError::KeyIDNotRecognized {
                 key_id: envelope.key_id().clone(),
             }
         })?;
@@ -277,21 +277,24 @@ impl PackageState {
         Ok(())
     }
 
-    fn validate_record_hash(&self, record: &model::PackageRecord) -> Result<(), ValidationError> {
+    fn validate_record_hash(
+        &self,
+        record: &model::PackageRecord,
+    ) -> Result<(), PackageValidationError> {
         match (&self.head, &record.prev) {
-            (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
-            (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
+            (None, Some(_)) => Err(PackageValidationError::PreviousHashOnFirstRecord),
+            (Some(_), None) => Err(PackageValidationError::NoPreviousHashAfterInit),
             (None, None) => Ok(()),
             (Some(expected), Some(found)) => {
                 if found.algorithm() != expected.digest.algorithm() {
-                    return Err(ValidationError::IncorrectHashAlgorithm {
+                    return Err(PackageValidationError::IncorrectHashAlgorithm {
                         found: found.algorithm(),
                         expected: expected.digest.algorithm(),
                     });
                 }
 
                 if found != &expected.digest {
-                    return Err(ValidationError::RecordHashDoesNotMatch);
+                    return Err(PackageValidationError::RecordHashDoesNotMatch);
                 }
 
                 Ok(())
@@ -302,11 +305,11 @@ impl PackageState {
     fn validate_record_version(
         &self,
         record: &model::PackageRecord,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         if record.version == PACKAGE_RECORD_VERSION {
             Ok(())
         } else {
-            Err(ValidationError::ProtocolVersionNotAllowed {
+            Err(PackageValidationError::ProtocolVersionNotAllowed {
                 version: record.version,
             })
         }
@@ -315,10 +318,10 @@ impl PackageState {
     fn validate_record_timestamp(
         &self,
         record: &model::PackageRecord,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         if let Some(head) = &self.head {
             if record.timestamp < head.timestamp {
-                return Err(ValidationError::TimestampLowerThanPrevious);
+                return Err(PackageValidationError::TimestampLowerThanPrevious);
             }
         }
 
@@ -331,7 +334,7 @@ impl PackageState {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         entries: &[model::PackageEntry],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
@@ -349,7 +352,7 @@ impl PackageState {
 
             // Must have seen an init entry by now
             if !self.initialized() {
-                return Err(ValidationError::FirstEntryIsNotInit);
+                return Err(PackageValidationError::FirstEntryIsNotInit);
             }
 
             match entry {
@@ -381,9 +384,9 @@ impl PackageState {
         signer_key_id: &signing::KeyID,
         algorithm: HashAlgorithm,
         init_key: &signing::PublicKey,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         if self.initialized() {
-            return Err(ValidationError::InitialEntryAfterBeginning);
+            return Err(PackageValidationError::InitialEntryAfterBeginning);
         }
 
         assert!(self.permissions.is_empty());
@@ -405,7 +408,7 @@ impl PackageState {
         signer_key_id: &signing::KeyID,
         key: &signing::PublicKey,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         // Check that the current key has the permission they're trying to grant
         self.check_key_permission(signer_key_id, permission)?;
 
@@ -424,7 +427,7 @@ impl PackageState {
         signer_key_id: &signing::KeyID,
         key_id: &signing::KeyID,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         // Check that the current key has the permission they're trying to revoke
         self.check_key_permission(signer_key_id, permission)?;
 
@@ -435,7 +438,7 @@ impl PackageState {
         }
 
         // Permission not found to remove
-        Err(ValidationError::PermissionNotFoundToRevoke {
+        Err(PackageValidationError::PermissionNotFoundToRevoke {
             permission,
             key_id: key_id.clone(),
         })
@@ -448,10 +451,10 @@ impl PackageState {
         timestamp: SystemTime,
         version: &Version,
         content: &AnyHash,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         match self.releases.entry(version.clone()) {
             Entry::Occupied(e) => {
-                return Err(ValidationError::ReleaseOfReleased {
+                return Err(PackageValidationError::ReleaseOfReleased {
                     version: e.key().clone(),
                 })
             }
@@ -477,10 +480,10 @@ impl PackageState {
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
         version: &Version,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         match self.releases.get_mut(version) {
             Some(e) => match e.state {
-                ReleaseState::Yanked { .. } => Err(ValidationError::YankOfYanked {
+                ReleaseState::Yanked { .. } => Err(PackageValidationError::YankOfYanked {
                     version: version.clone(),
                 }),
                 ReleaseState::Released { .. } => {
@@ -491,7 +494,7 @@ impl PackageState {
                     Ok(())
                 }
             },
-            None => Err(ValidationError::YankOfUnreleased {
+            None => Err(PackageValidationError::YankOfUnreleased {
                 version: version.clone(),
             }),
         }
@@ -501,7 +504,7 @@ impl PackageState {
         &self,
         key_id: &signing::KeyID,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), PackageValidationError> {
         if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
                 return Ok(());
@@ -509,7 +512,7 @@ impl PackageState {
         }
 
         // Needed permission not found
-        Err(ValidationError::UnauthorizedAction {
+        Err(PackageValidationError::UnauthorizedAction {
             key_id: key_id.clone(),
             needed_permission: permission,
         })
@@ -552,7 +555,7 @@ impl PackageState {
 
 impl crate::Validator for PackageState {
     type Record = model::PackageRecord;
-    type Error = ValidationError;
+    type Error = PackageValidationError;
 
     fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
         self.validate(record)
@@ -818,7 +821,7 @@ mod tests {
 
         // This validation should fail and the package_state should remain unchanged
         match package_state.validate(&envelope).unwrap_err() {
-            ValidationError::PermissionNotFoundToRevoke { .. } => {}
+            PackageValidationError::PermissionNotFoundToRevoke { .. } => {}
             _ => panic!("expected a different error"),
         }
 
