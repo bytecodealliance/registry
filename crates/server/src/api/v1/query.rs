@@ -11,12 +11,10 @@ use axum::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse, FetchNamesResponse};
 use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, MapCheckpoint};
 use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
-use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope, query};
 
 const DEFAULT_RECORDS_LIMIT: u16 = 100;
 const MAX_RECORDS_LIMIT: u16 = 1000;
@@ -33,7 +31,6 @@ impl Config {
 
     pub fn into_router(self) -> Router {
         Router::new()
-            .route("/query", post(query))
             .route("/logs", post(fetch_logs))
             .route("/checkpoint", get(fetch_checkpoint))
             .with_state(self)
@@ -51,7 +48,7 @@ impl FetchApiError {
     }
 }
 
-impl From<DataStoreError<'_>> for FetchApiError {
+impl From<DataStoreError> for FetchApiError {
     fn from(e: DataStoreError) -> Self {
         Self(match e {
             DataStoreError::CheckpointNotFound(checkpoint) => {
@@ -79,32 +76,6 @@ impl IntoResponse for FetchApiError {
 
 #[debug_handler]
 async fn query(
-    State(config): State<Config>,
-    Json(body): Json<FetchLogsRequest<'static>>,
-) -> Result<Json<FetchNamesResponse>, FetchApiError> {
-    let limit = body.limit.unwrap_or(DEFAULT_RECORDS_LIMIT);
-    if limit == 0 || limit > MAX_RECORDS_LIMIT {
-        return Err(FetchApiError::bad_request(format!(
-            "invalid records limit value `{limit}`: must be between 1 and {MAX_RECORDS_LIMIT}"
-        )));
-    }
-
-    let names = config
-      .core_service
-      .store()
-      .get_names(body.root.clone())
-      .await;
-        // .into_iter()
-        // .map(Into::into)
-        // .collect();
-
-    Ok(Json(FetchNamesResponse {
-      query: names
-    }))
-}
-
-#[debug_handler]
-async fn fetch_logs(
     State(config): State<Config>,
     Json(body): Json<FetchLogsRequest<'static>>,
 ) -> Result<Json<FetchLogsResponse>, FetchApiError> {

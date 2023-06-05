@@ -4,6 +4,7 @@ use warg_crypto::{hash::AnyHash, Decode};
 
 pub mod operator;
 pub mod package;
+pub mod query;
 mod proto_envelope;
 pub mod registry;
 mod serde_envelope;

@@ -111,7 +111,7 @@ impl PackageApiError {
     }
 }
 
-impl From<DataStoreError> for PackageApiError {
+impl From<DataStoreError<'_>> for PackageApiError {
     fn from(e: DataStoreError) -> Self {
         Self(match e {
             DataStoreError::PackageValidationFailed(e) => {

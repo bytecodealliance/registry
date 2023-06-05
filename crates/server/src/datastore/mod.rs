@@ -1,4 +1,5 @@
 use futures::Stream;
+use std::{collections::HashSet, pin::Pin, borrow::Cow};
 use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
@@ -17,12 +18,15 @@ pub use memory::*;
 pub use postgres::*;
 
 #[derive(Debug, Error)]
-pub enum DataStoreError {
+pub enum DataStoreError<'a> {
     #[error("a conflicting operation was processed: update to the latest checkpoint and try the operation again")]
     Conflict,
 
     #[error("checkpoint `{0}` was not found")]
     CheckpointNotFound(AnyHash),
+        
+    #[error("checkpoint `{0}` was not found")]
+    CheckpointNotFoundCow(Cow<'a, AnyHash>),
 
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -101,6 +105,7 @@ where
 /// Implemented by data stores.
 #[axum::async_trait]
 pub trait DataStore: Send + Sync {
+    async fn get_names(&self, root: Cow<AnyHash>) -> Vec<String>;
     /// Gets a stream of initial leaves in the store.
     ///
     /// This is an expensive operation and should only be performed on startup.

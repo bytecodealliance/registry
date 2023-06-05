@@ -12,16 +12,50 @@ use diesel_async::{
 };
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
+use std::{collections::HashSet, pin::Pin, borrow::Cow};
 use std::{collections::HashSet, pin::Pin};
 use warg_crypto::{hash::AnyHash, Decode};
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
     ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
+    query::model::Query
 };
 
 mod models;
 mod schema;
+
+async fn get_names<'a>(
+  conn: &'a mut AsyncPgConnection,
+  root: Cow<'a, AnyHash>,
+) 
+->
+ Result<Vec<String>, DataStoreError<'a>> 
+ {
+  let checkpoint_id = schema::checkpoints::table
+        .select(schema::checkpoints::id)
+        .filter(schema::checkpoints::checkpoint_id.eq(TextRef(&root)))
+        .first::<i32>(conn).await
+        .optional()?
+        .ok_or_else(|| DataStoreError::CheckpointNotFoundCow(root));
+  
+  let mut query = schema::logs::table
+  .into_boxed()
+  .select((schema::logs::log_id, schema::logs::name));
+
+  query
+  .load::<(ParsedText<AnyHash>, Vec<u8>)>(conn)
+  .await?
+  .into_iter()
+  .map(|(record_id, c)| {
+      Query::from_protobuf(c).map_err(|e| DataStoreError::InvalidRecordContents {
+          record_id: record_id.0.into(),
+          message: e.to_string(),
+      })
+    })
+  .collect::<Result<Vec<String>, DataStoreError<'a>>>()
+  // Ok(())
+}
 
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,

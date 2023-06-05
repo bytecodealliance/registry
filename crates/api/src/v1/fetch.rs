@@ -7,7 +7,7 @@ use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     registry::{LogId, RecordId},
-    ProtoEnvelopeBody,
+    ProtoEnvelopeBody, query::model::Query,
 };
 
 /// Represents a fetch logs request.
@@ -40,6 +40,15 @@ pub struct FetchLogsResponse {
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub packages: HashMap<LogId, Vec<ProtoEnvelopeBody>>,
+}
+
+/// The Query
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchNamesResponse {
+  /// The Query
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub query: Vec<String>,
 }
 
 /// Represents a fetch API error.

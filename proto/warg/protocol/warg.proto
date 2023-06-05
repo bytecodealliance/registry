@@ -10,6 +10,11 @@ message Envelope {
     string signature = 3;
 }
 
+message Query {
+  // The result
+  repeated string names = 1;
+}
+
 message OperatorRecord {
     // The previous entry in the log.
     // First entry of a log has no previous entry.
