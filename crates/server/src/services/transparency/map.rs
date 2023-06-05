@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
-use warg_crypto::hash::Sha256;
+use warg_crypto::hash::{AnyHash, Hash, Sha256};
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
 use warg_transparency::map::Map;
 
@@ -49,7 +49,10 @@ pub fn spawn(input: Input) -> Output {
                 summary = log_summary_rx.recv() => {
                     if let Some(summary) = summary {
                         let leaf = summary.leaf;
-                        map = map.insert(leaf.log_id.clone(), MapLeaf { record_id: leaf.record_id.clone() });
+                        let hash = leaf.log_id.0.clone().try_into().unwrap();
+                        map = map.insert(hash, MapLeaf { record_id: leaf.record_id.clone() });
+                        // map = map.insert(leaf.log_id.clone(), MapLeaf { record_id: leaf.record_id.clone() });
+                        // dbg!(map.link.node());
                         leaves.push(leaf);
 
                         current = Some(MapCheckpoint {

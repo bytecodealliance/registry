@@ -23,7 +23,7 @@ pub struct Output {
 
 #[derive(Default)]
 pub struct MapData {
-    map_index: HashMap<Hash<Sha256>, VerifiableMap>,
+    pub map_index: HashMap<Hash<Sha256>, VerifiableMap>,
 }
 
 impl MapData {
@@ -40,16 +40,23 @@ impl MapData {
             .map_index
             .get(root)
             .ok_or_else(|| DataServiceError::RootNotFound(root.clone()))?;
+        // dbg!(map.link.node());
 
+        // dbg!("INITIALIZE PROOFS");
+        // dbg!(leaves);
         let mut proofs = Vec::new();
         for LogLeaf { log_id, record_id } in leaves {
+            // dbg!("ITERATION", log_id, record_id);
+            // dbg!(map.link.clone());
             let proof = map
-                .prove(log_id)
+                .prove(log_id.0.clone())
                 .ok_or_else(|| DataServiceError::PackageNotIncluded(log_id.clone()))?;
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };
-            let found_root = proof.evaluate(log_id, &leaf);
+            // dbg!("BEFORE EVAL");
+            let found_root = proof.evaluate(log_id.0.clone(), &leaf);
+            // dbg!(&found_root);
             if found_root != *root {
                 return Err(DataServiceError::IncorrectProof {
                     root: root.clone(),

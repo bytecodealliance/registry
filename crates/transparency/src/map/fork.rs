@@ -6,12 +6,13 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{link::Link, map::hash_branch, path::Side};
 
-pub struct Fork<D: SupportedDigest> {
+#[derive(Debug)]
+pub struct Fork<D: SupportedDigest + std::fmt::Debug> {
     left: Arc<Link<D>>,
     right: Arc<Link<D>>,
 }
 
-impl<D: SupportedDigest> Fork<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Fork<D> {
     pub fn new(left: Arc<Link<D>>, right: Arc<Link<D>>) -> Self {
         Self { left, right }
     }
@@ -19,11 +20,12 @@ impl<D: SupportedDigest> Fork<D> {
     pub fn hash(&self) -> Hash<D> {
         let lhs = self.left.as_ref().hash().clone();
         let rhs = self.right.as_ref().hash().clone();
+        dbg!(lhs.clone(), rhs.clone());
         hash_branch(Some(lhs), Some(rhs))
     }
 }
 
-impl<D: SupportedDigest> Clone for Fork<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Clone for Fork<D> {
     fn clone(&self) -> Self {
         Self {
             left: self.left.clone(),
@@ -32,7 +34,7 @@ impl<D: SupportedDigest> Clone for Fork<D> {
     }
 }
 
-impl<D: SupportedDigest> Index<Side> for Fork<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Index<Side> for Fork<D> {
     type Output = Arc<Link<D>>;
 
     fn index(&self, index: Side) -> &Self::Output {
@@ -43,7 +45,7 @@ impl<D: SupportedDigest> Index<Side> for Fork<D> {
     }
 }
 
-impl<D: SupportedDigest> IndexMut<Side> for Fork<D> {
+impl<D: SupportedDigest + std::fmt::Debug> IndexMut<Side> for Fork<D> {
     fn index_mut(&mut self, index: Side) -> &mut Self::Output {
         match index {
             Side::Left => &mut self.left,

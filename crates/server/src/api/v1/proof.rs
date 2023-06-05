@@ -91,6 +91,7 @@ async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest<'static>>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
+    dbg!("INCLUSION SERVICE");
     let checkpoint = body.checkpoint.into_owned();
     let log_root = checkpoint
         .log_root
@@ -101,13 +102,17 @@ async fn prove_inclusion(
         .try_into()
         .map_err(ProofApiError::bad_request)?;
 
+    dbg!("BUNDLE LOG");
     let log_bundle = {
         let log = config.log.as_ref().read().await;
         log.inclusion(&log_root, body.leafs.as_ref())?
     };
 
+    dbg!("BUNDLE MAP");
     let map_bundle = {
         let map = config.map.as_ref().read().await;
+        // dbg!(map.link().node());
+        dbg!(&map_root);
         map.inclusion(&map_root, body.leafs.as_ref())?
     };
 

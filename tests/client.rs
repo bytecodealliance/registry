@@ -5,6 +5,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
 };
+use warg_crypto::hash::{Hash, Sha256};
 
 pub mod support;
 
@@ -35,6 +36,7 @@ async fn client_incrementally_fetches() -> Result<()> {
             None,
         )
         .await?;
+    dbg!("FIRST AWAIT");
 
     // Here we don't wait for a single publish operation to complete, except for the last one
     // If the last one is accepted, it implies that all the previous ones were accepted as well
@@ -49,6 +51,7 @@ async fn client_incrementally_fetches() -> Result<()> {
         )
         .await?;
 
+    dbg!("SECOND AWAIT");
     for i in 1..=RELEASE_COUNT {
         head = client
             .publish_with_info(
@@ -68,7 +71,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     client
         .wait_for_publish(PACKAGE_NAME, &head, Duration::from_millis(100))
         .await?;
-
+    dbg!("THIRD");
     drop(client);
 
     // Delete the client's registry storage directory to ensure it fetches
@@ -79,7 +82,10 @@ async fn client_incrementally_fetches() -> Result<()> {
     let client = create_client(&config)?;
 
     // Fetch the package log
+    dbg!("BEFORE UPSERT");
+    dbg!(Hash::<Sha256>::of(PACKAGE_NAME));
     client.upsert(&[PACKAGE_NAME]).await?;
+    dbg!("FOURTH");
 
     // Ensure the package log exists and has releases with all with the same digest
     let package = client

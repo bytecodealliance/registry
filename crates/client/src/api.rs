@@ -286,11 +286,13 @@ impl Client {
         let url = self.url.join(paths::prove_inclusion()).unwrap();
         tracing::debug!("proving checkpoint inclusion at `{url}`");
 
+        // dbg!("BEFORE REQUEST");
         let response = into_result::<InclusionResponse, ProofError>(
             self.client.post(url).json(&request).send().await?,
         )
         .await?;
 
+        // dbg!(&response);
         Self::validate_inclusion_response(
             response,
             request.checkpoint.as_ref(),
@@ -389,6 +391,7 @@ impl Client {
     ) -> Result<(), ClientError> {
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =
             LogProofBundle::decode(response.log.as_slice())?;
+        // dbg!("UNBUNDLED");
         let (log_data, _, log_inclusions) = log_proof_bundle.unbundle();
         for (leaf, proof) in leafs.iter().zip(log_inclusions.iter()) {
             let found = proof.evaluate_value(&log_data, leaf)?;
@@ -406,7 +409,7 @@ impl Client {
         let map_inclusions = map_proof_bundle.unbundle();
         for (leaf, proof) in leafs.iter().zip(map_inclusions.iter()) {
             let found = proof.evaluate(
-                &leaf.log_id,
+                leaf.log_id.0.clone(),
                 &MapLeaf {
                     record_id: leaf.record_id.clone(),
                 },

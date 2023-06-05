@@ -7,7 +7,7 @@ use std::fmt;
 
 use crate::{ByteVisitor, VisitBytes};
 
-use super::{Output, SupportedDigest};
+use super::{AnyHash, Output, SupportedDigest};
 
 #[derive(PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {
@@ -45,6 +45,10 @@ impl<D: SupportedDigest> Hash<D> {
         content.visit(&mut visitor);
         visitor.finalize()
     }
+
+    // pub fn from(content: impl VisitBytes) -> Self {
+
+    // }
 
     pub fn bytes(&self) -> &[u8] {
         self.digest.as_slice()
@@ -112,9 +116,16 @@ impl<D: SupportedDigest> fmt::Debug for Hash<D> {
 
 impl<D: SupportedDigest> From<Output<D>> for Hash<D> {
     fn from(value: Output<D>) -> Self {
+        // dbg!(&value);
         Hash { digest: value }
     }
 }
+
+// impl<D: SupportedDigest> From<AnyHash> for Hash<D> {
+//     fn from(value: AnyHash) -> Self {
+//         Hash { digest: value.bytes() }
+//     }
+// }
 
 impl<D: SupportedDigest> TryFrom<Vec<u8>> for Hash<D> {
     type Error = IncorrectLengthError;

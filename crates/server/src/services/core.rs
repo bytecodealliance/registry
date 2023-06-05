@@ -205,9 +205,11 @@ impl CoreService {
         while let Some(res) = initial.next().await {
             let InitialLeaf { leaf, checkpoint } = res?;
             data.log.push(&leaf);
-
+            // dbg!(&leaf);
+            let new_key = leaf.log_id.0.clone().try_into().unwrap();
             data.map = data.map.insert(
-                leaf.log_id.clone(),
+                // leaf.log_id.0.clone(),
+                new_key,
                 MapLeaf {
                     record_id: leaf.record_id.clone(),
                 },
@@ -241,6 +243,8 @@ impl CoreService {
         let init = init_envelope(signing_key);
         let log_id = LogId::operator_log::<Sha256>();
         let record_id = RecordId::operator_record::<Sha256>(&init);
+        // dbg!(&log_id);
+        // sha256:0db9178aabc877b42f03a038bf453ee53f08e3c8c55fab916043428078596bfb,
 
         store
             .store_operator_record(&log_id, &record_id, &init)
@@ -254,16 +258,26 @@ impl CoreService {
         let mut data = InitializationData::default();
         data.log.push(&leaf);
 
+        dbg!(&leaf);
+        let new_key = leaf.log_id.0.clone().try_into().unwrap();
         data.map = data.map.insert(
-            leaf.log_id.clone(),
+            new_key,
             MapLeaf {
                 record_id: leaf.record_id.clone(),
             },
         );
 
         data.log_data.push(leaf.clone());
+        // dbg!("OPERATOR INSERTED IN MAP");
         data.map_data.insert(data.map.clone());
 
+        // dbg!(&data
+        //     .map_data
+        //     .map_index
+        //     .get(&data.map.root().clone())
+        //     .unwrap()
+        //     .link
+        //     .node());
         let checkpoint = data.log.checkpoint();
         let log_root: AnyHash = checkpoint.root().into();
         let log_length = checkpoint.length() as u32;
