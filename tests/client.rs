@@ -5,6 +5,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
 };
+use warg_crypto::hash::{Hash, Sha256};
 
 pub mod support;
 
@@ -68,7 +69,6 @@ async fn client_incrementally_fetches() -> Result<()> {
     client
         .wait_for_publish(PACKAGE_NAME, &head, Duration::from_millis(100))
         .await?;
-
     drop(client);
 
     // Delete the client's registry storage directory to ensure it fetches

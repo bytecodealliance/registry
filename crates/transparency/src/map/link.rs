@@ -4,12 +4,13 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::Node;
 
-pub struct Link<D: SupportedDigest> {
+#[derive(Debug)]
+pub struct Link<D: SupportedDigest + std::fmt::Debug> {
     hash: Hash<D>,
     node: Arc<Node<D>>,
 }
 
-impl<D: SupportedDigest> Link<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Link<D> {
     pub fn new(node: Node<D>) -> Self {
         Self {
             hash: node.hash(),
@@ -26,7 +27,7 @@ impl<D: SupportedDigest> Link<D> {
     }
 }
 
-impl<D: SupportedDigest> Clone for Link<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Clone for Link<D> {
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),

@@ -370,7 +370,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             })
             .inspect(|(_, p)| tracing::info!("package log `{name}` will be updated", name = p.name))
             .collect::<HashMap<_, _>>();
-
         if packages.is_empty() {
             return Ok(());
         }

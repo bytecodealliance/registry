@@ -2,7 +2,7 @@ use std::{iter::repeat_with, time::Duration};
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::Rng;
-use warg_crypto::hash::Sha256;
+use warg_crypto::hash::{AnyHash, Hash, Sha256};
 use warg_transparency::map::Map;
 
 fn create(items: impl Iterator<Item = ([u8; 32], [u8; 32])>) -> Map<Sha256, [u8; 32], [u8; 32]> {

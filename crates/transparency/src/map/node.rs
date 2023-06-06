@@ -11,14 +11,15 @@ use super::path::{Path, ReversePath, Side};
 use super::proof::Proof;
 use super::singleton::Singleton;
 
-pub enum Node<D: SupportedDigest> {
+#[derive(Debug)]
+pub enum Node<D: SupportedDigest + std::fmt::Debug> {
     Leaf(Hash<D>),
     Fork(Fork<D>),
     Singleton(Singleton<D>),
     Empty(usize),
 }
 
-impl<D: SupportedDigest> Clone for Node<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Clone for Node<D> {
     fn clone(&self) -> Self {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
@@ -29,7 +30,7 @@ impl<D: SupportedDigest> Clone for Node<D> {
     }
 }
 
-impl<D: SupportedDigest> Default for Node<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Default for Node<D> {
     fn default() -> Self {
         Self::Fork(Fork::new(
             Arc::new(Link::new(Node::Empty(0))),
@@ -38,7 +39,7 @@ impl<D: SupportedDigest> Default for Node<D> {
     }
 }
 
-impl<D: SupportedDigest> Node<D> {
+impl<D: SupportedDigest + std::fmt::Debug> Node<D> {
     pub fn hash(&self) -> Hash<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
@@ -64,8 +65,8 @@ impl<D: SupportedDigest> Node<D> {
             }
             (Some(idx), Self::Fork(fork)) => {
                 let mut proof = fork[idx].as_ref().node().prove(path)?;
-                let peer = fork[idx.opposite()].as_ref().hash();
 
+                let peer = fork[idx.opposite()].as_ref().hash();
                 proof.push(Some(peer.clone()));
                 Some(proof)
             }
@@ -81,13 +82,7 @@ impl<D: SupportedDigest> Node<D> {
     /// Returns:
     ///   * the new node that must replace the current node.
     ///   * whether or not this is a new entry in the map.
-    pub fn insert(
-        &self,
-        path: &mut Path<D>,
-        reversed: &mut ReversePath<D>,
-        key: Hash<D>,
-        value: Hash<D>,
-    ) -> (Self, bool) {
+    pub fn insert(&self, path: &mut Path<D>, key: Hash<D>, value: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
             None => (
@@ -98,7 +93,8 @@ impl<D: SupportedDigest> Node<D> {
             // We are not at the end of the path. Recurse...
             Some(index) => match self.clone() {
                 Node::Empty(_) => {
-                    let singleton = Node::Singleton(Singleton::new(key, value, path, reversed));
+                    let singleton =
+                        Node::Singleton(Singleton::new(key, value, 256 - path.index(), index));
                     if path.index() == 1 {
                         match index {
                             Side::Left => {
@@ -122,23 +118,38 @@ impl<D: SupportedDigest> Node<D> {
                 Node::Fork(mut fork) => {
                     // Choose the branch on the specified side.
                     let node = fork[index].as_ref().node();
-
+                    // fork
                     match node {
                         Node::Empty(_) => {
-                            let singleton =
-                                Node::Singleton(Singleton::new(key, value, path, reversed));
+                            let singleton = Node::Singleton(Singleton::new(
+                                key,
+                                value,
+                                256 - path.index(),
+                                index,
+                            ));
                             fork[index] = Arc::new(Link::new(singleton));
                             (Node::Fork(fork), true)
                         }
-                        Node::Singleton(_) => {
-                            let singleton =
-                                Node::Singleton(Singleton::new(key, value, path, reversed));
-                            fork[index] = Arc::new(Link::new(singleton));
-                            (Node::Fork(fork), false)
+                        Node::Singleton(singleton) => {
+                            if singleton.key() == key {
+                                let new_singleton = Node::Singleton(Singleton::new(
+                                    key,
+                                    value,
+                                    256 - path.index(),
+                                    index,
+                                ));
+                                fork[index] = Arc::new(Link::new(new_singleton));
+                                (Node::Fork(fork), false)
+                            } else {
+                                let (new_fork, new) = node.insert(path, key, value);
+                                let new_node = Arc::new(Link::new(new_fork));
+                                fork[index] = new_node;
+                                (Node::Fork(fork), new)
+                            }
                         }
                         _ => {
                             // Replace its value recursively.
-                            let (node, new) = node.insert(path, reversed, key, value);
+                            let (node, new) = node.insert(path, key, value);
                             fork[index] = Arc::new(Link::new(node));
                             (Node::Fork(fork), new)
                         }
@@ -146,26 +157,56 @@ impl<D: SupportedDigest> Node<D> {
                 }
                 Node::Singleton(singleton) => {
                     if singleton.key() == key {
-                        let new_singleton = Singleton::new(key, value, path, reversed);
+                        let new_singleton = Singleton::new(key, value, 256 - path.index(), index);
                         (Node::Singleton(new_singleton), false)
-                    } else {
-                        let node = Node::Singleton(Singleton::new(key, value, path, reversed));
-                        match index {
+                    } else if singleton.side != index {
+                        let node =
+                            Node::Singleton(Singleton::new(key, value, 256 - path.index(), index));
+                        let original = Node::Singleton(Singleton::new(
+                            singleton.key,
+                            singleton.value,
+                            256 - path.index(),
+                            index.opposite(),
+                        ));
+                        let fork = match index {
                             Side::Left => {
-                                let fork = Fork::new(
-                                    Arc::new(Link::new(node)),
-                                    Arc::new(Link::new(Node::Empty(256 - path.index()))),
-                                );
-                                (Node::Fork(fork), true)
+                                Fork::new(Arc::new(Link::new(node)), Arc::new(Link::new(original)))
                             }
                             Side::Right => {
-                                let fork = Fork::new(
-                                    Arc::new(Link::new(Node::Empty(256 - path.index()))),
-                                    Arc::new(Link::new(node)),
-                                );
-                                (Node::Fork(fork), true)
+                                Fork::new(Arc::new(Link::new(original)), Arc::new(Link::new(node)))
                             }
-                        }
+                        };
+                        (Node::Fork(fork), false)
+                    } else {
+                        let fork = match index {
+                            Side::Left => {
+                                let (down_one, _) = Node::Singleton(Singleton::new(
+                                    singleton.key,
+                                    singleton.value,
+                                    singleton.height - 1,
+                                    index,
+                                ))
+                                .insert(path, key, value);
+                                Fork::new(
+                                    Arc::new(Link::new(down_one)),
+                                    Arc::new(Link::new(Node::Empty(256 - path.index() - 1))),
+                                )
+                            }
+                            Side::Right => {
+                                let (down_one, _) = Node::Singleton(Singleton::new(
+                                    singleton.key,
+                                    singleton.value,
+                                    singleton.height - 1,
+                                    index,
+                                ))
+                                .insert(path, key, value);
+                                Fork::new(
+                                    Arc::new(Link::new(Node::Empty(256 - path.index() - 1))),
+                                    Arc::new(Link::new(down_one)),
+                                )
+                            }
+                        };
+                        (Node::Fork(fork), true)
                     }
                 }
                 Node::Leaf(_) => (Node::Leaf(value), false),

@@ -7,7 +7,7 @@ use std::fmt;
 
 use crate::{ByteVisitor, VisitBytes};
 
-use super::{Output, SupportedDigest};
+use super::{AnyHash, Output, SupportedDigest};
 
 #[derive(PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {
@@ -45,6 +45,10 @@ impl<D: SupportedDigest> Hash<D> {
         content.visit(&mut visitor);
         visitor.finalize()
     }
+
+    // pub fn from(content: impl VisitBytes) -> Self {
+
+    // }
 
     pub fn bytes(&self) -> &[u8] {
         self.digest.as_slice()
