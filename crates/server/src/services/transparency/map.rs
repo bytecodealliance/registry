@@ -51,8 +51,6 @@ pub fn spawn(input: Input) -> Output {
                         let leaf = summary.leaf;
                         let hash = leaf.log_id.0.clone().try_into().unwrap();
                         map = map.insert(hash, MapLeaf { record_id: leaf.record_id.clone() });
-                        // map = map.insert(leaf.log_id.clone(), MapLeaf { record_id: leaf.record_id.clone() });
-                        // dbg!(map.link.node());
                         leaves.push(leaf);
 
                         current = Some(MapCheckpoint {

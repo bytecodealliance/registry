@@ -101,7 +101,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 package: info.package.clone(),
             });
         }
-        // dbg!(&info.entries);
 
         let initializing = info.initializing();
 
@@ -252,7 +251,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let mut updating = Vec::with_capacity(packages.len());
         for package in packages {
-            dbg!(package);
             updating.push(
                 self.registry
                     .load_package(package)
@@ -260,7 +258,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .unwrap_or_else(|| PackageInfo::new(*package)),
             );
         }
-        dbg!(&updating);
 
         self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
             .await?;
@@ -358,7 +355,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        dbg!("UPDATING CHECKPOINT");
         let root: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
         tracing::info!("updating to checkpoint `{root}`");
 
@@ -374,7 +370,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             })
             .inspect(|(_, p)| tracing::info!("package log `{name}` will be updated", name = p.name))
             .collect::<HashMap<_, _>>();
-        dbg!(&packages);
         if packages.is_empty() {
             return Ok(());
         }
@@ -460,7 +455,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         for (log_id, package) in &packages {
-            dbg!(log_id);
             if let Some(head) = package.state.head() {
                 leafs.push(LogLeaf {
                     log_id: log_id.clone(),
@@ -469,7 +463,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             }
         }
 
-        dbg!("BEFORE INCLUSION PROOF");
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(InclusionRequest {

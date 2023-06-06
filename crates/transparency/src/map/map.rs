@@ -162,38 +162,16 @@ where
         // Q: VisitBytes,
     {
         let hash: Hash<D> = key.try_into().unwrap();
-        self.link.node().prove(Path::new(hash), None)
+        self.link.node().prove(Path::new(hash))
     }
 
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
     pub fn insert(&self, key: AnyHash, val: V) -> Self {
-        // pub fn insert(&self, key: K, val: V) -> Self {
-        // dbg!("MAP INSERTION", &key);
-        // let new_key = key.visit(visitor);
-
-        // let hash = Hash::<D>::from(&key);
-        // let key_hash = match key {
-        //   Hash<D> => key,
-        //   _ => Hash::<D>::of(key)
-        // };
         let new_key: Hash<D> = key.try_into().unwrap();
         let mut path = Path::new(new_key.clone());
-        // let mut path = Path::new(&key);
-        let mut reversed = ReversePath::new(new_key.clone());
-        // let mut reversed = ReversePath::new(&key);
-        let (node, new) = self
-            .link
-            .node()
-            // .insert(&mut path, &mut reversed, Hash::of(key), Hash::of(val));
-            .insert(&mut path, &mut reversed, new_key, Hash::of(val));
-        // match &node {
-        //   Node::Fork(fork) => {
-        //     dbg!(fork);
-        //   }
-        //   _ => {}
-        // }
+        let (node, new) = self.link.node().insert(&mut path, new_key, Hash::of(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
@@ -204,11 +182,10 @@ where
         for (key, val) in iter {
             let hash: Hash<D> = key.try_into().unwrap();
             let mut path = Path::new(hash.clone());
-            let mut reversed: ReversePath<D> = ReversePath::new(hash.clone());
-            let (node, new) =
-                here.link
-                    .node()
-                    .insert(&mut path, &mut reversed, Hash::of(hash), Hash::of(val));
+            let (node, new) = here
+                .link
+                .node()
+                .insert(&mut path, Hash::of(hash), Hash::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
@@ -216,13 +193,9 @@ where
     }
 }
 
-pub(crate) fn hash_branch<D>(lhs: Option<Hash<D>>, rhs: Option<Hash<D>>) -> Hash<D>
+pub(crate) fn hash_branch<D>(lhs: Hash<D>, rhs: Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    // dbg!(lhs.clone().unwrap(), rhs.clone().unwrap());
-    Hash::of((0b1, lhs.unwrap(), rhs.unwrap()))
+    Hash::of((0b1, lhs, rhs))
 }
-
-// [crates/transparency/src/map/map.rs:223] lhs.clone().unwrap() = Hash<Sha256>(c21a4fdf2cb3f9fdc6160ef05b7ddcbd1b656ac21f4f2fdb83f6eb231fb1dfef)
-// [crates/transparency/src/map/map.rs:223] rhs.clone().unwrap() = Hash<Sha256>(16fc8d04ab903d99afeccb72cbdc5020fbae2ac2642716308bf0340584b89bbb)

@@ -41,7 +41,6 @@ pub fn spawn(input: Input) -> Output {
             tokio::select! {
                 leaf = log_rx.recv() => {
                     if let Some(leaf) = leaf {
-                        // dbg!(&leaf);
                         log.push(&leaf);
 
                         let checkpoint = log.checkpoint();

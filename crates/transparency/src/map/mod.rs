@@ -127,7 +127,6 @@ mod test {
             key: AnyHash,
             value: V,
         ) {
-            dbg!(tree.link.node());
             let proof = tree.prove(key.clone()).unwrap();
             assert_eq!(tree.root().clone(), proof.evaluate(key, &value));
         }
@@ -145,7 +144,6 @@ mod test {
             .is_none());
 
         let second = first.insert(AnyHash::from(Hash::<Sha256>::of("foo")), "bar");
-        // let second = first.insert("foo", "bar");
         check(&second, AnyHash::from(Hash::<Sha256>::of("foo")), "bar");
         assert!(second
             .prove(AnyHash::from(Hash::<Sha256>::of("baz")))
@@ -153,12 +151,7 @@ mod test {
         assert!(second
             .prove(AnyHash::from(Hash::<Sha256>::of("qux")))
             .is_none());
-        // assert!(second.prove(&"baz").is_none());
-        // assert!(second.prove(&"qux").is_none());
-
-        // let third = second.insert("bar", "bat");
         let third = second.insert(AnyHash::from(Hash::<Sha256>::of("bar")), "bat");
-        dbg!("THIRD CHECK");
         check(&third, AnyHash::from(Hash::<Sha256>::of("foo")), "bar");
         check(&third, AnyHash::from(Hash::<Sha256>::of("bar")), "bat");
         assert!(third
@@ -166,7 +159,6 @@ mod test {
             .is_none());
 
         let fourth = third.insert(AnyHash::from(Hash::<Sha256>::of("foo")), "qux");
-        // let fourth = third.insert(AnyHash::from(Hash::<Sha256>::of("foo")), "qux");
         check(&fourth, AnyHash::from(Hash::<Sha256>::of("foo")), "qux");
     }
 }

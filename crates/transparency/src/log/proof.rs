@@ -172,7 +172,6 @@ where
         hashes: &impl LogData<D, V>,
         hash: Hash<D>,
     ) -> Result<Hash<D>, InclusionProofError> {
-        // dbg!("EVALUATE HASH");
         let leaf = (self.leaf, hash);
         let walk = self.walk()?;
 

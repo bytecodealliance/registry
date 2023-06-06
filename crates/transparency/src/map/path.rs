@@ -34,7 +34,7 @@ impl<D: SupportedDigest> Path<D> {
     }
 
     pub fn back(&mut self) {
-      self.index -= 1;
+        self.index -= 1;
     }
 
     fn get(&self, at: usize) -> Side {
@@ -98,7 +98,7 @@ impl<D: SupportedDigest> ReversePath<D> {
     }
 
     pub fn back(&mut self) {
-      self.index -= 1;
+        self.index -= 1;
     }
 
     pub fn index(&self) -> usize {

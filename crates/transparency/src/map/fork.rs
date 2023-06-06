@@ -20,8 +20,7 @@ impl<D: SupportedDigest + std::fmt::Debug> Fork<D> {
     pub fn hash(&self) -> Hash<D> {
         let lhs = self.left.as_ref().hash().clone();
         let rhs = self.right.as_ref().hash().clone();
-        dbg!(lhs.clone(), rhs.clone());
-        hash_branch(Some(lhs), Some(rhs))
+        hash_branch(lhs, rhs)
     }
 }
 
