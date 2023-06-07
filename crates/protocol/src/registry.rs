@@ -6,6 +6,7 @@ use std::str::FromStr;
 use warg_crypto::hash::{AnyHash, Hash, HashAlgorithm, SupportedDigest};
 use warg_crypto::prefix::VisitPrefixEncode;
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
+use wasmparser::names::KebabStr;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,28 +77,6 @@ impl VisitBytes for LogLeaf {
     }
 }
 
-fn is_kebab_case(s: &str) -> bool {
-    let mut lower = false;
-    let mut upper = false;
-    for c in s.chars() {
-        match c {
-            'a'..='z' if !lower && !upper => lower = true,
-            'A'..='Z' if !lower && !upper => upper = true,
-            'a'..='z' if lower => continue,
-            'A'..='Z' if upper => continue,
-            '0'..='9' if lower || upper => continue,
-            '-' if lower || upper => {
-                lower = false;
-                upper = false;
-                continue;
-            }
-            _ => return false,
-        }
-    }
-
-    !s.is_empty() && !s.ends_with('-')
-}
-
 /// Represents a valid package identifier in the registry.
 ///
 /// Valid package identifiers conform to the component model specification
@@ -119,7 +98,8 @@ impl PackageId {
         let id = id.into();
 
         if let Some(colon) = id.find(':') {
-            if is_kebab_case(&id[..colon]) && is_kebab_case(&id[colon + 1..]) {
+            // Validate the namespace and name parts are valid kebab strings
+            if KebabStr::new(&id[..colon]).is_some() && KebabStr::new(&id[colon + 1..]).is_some() {
                 return Ok(Self { id, colon });
             }
         }

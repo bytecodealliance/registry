@@ -3952,6 +3952,7 @@ dependencies = [
  "thiserror",
  "warg-crypto",
  "warg-transparency",
+ "wasmparser 0.107.0",
 ]
 
 [[package]]

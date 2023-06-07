@@ -1,9 +1,9 @@
 use super::{RecordPolicy, RecordPolicyError, RecordPolicyResult};
-use crate::is_kebab_case;
 use anyhow::{bail, Result};
 use std::collections::{HashMap, HashSet};
 use warg_crypto::signing::KeyID;
 use warg_protocol::{package::PackageRecord, registry::PackageId, ProtoEnvelope};
+use wasmparser::names::KebabStr;
 
 /// A policy that ensures a published record is authorized by
 /// the key signing the record.
@@ -23,7 +23,7 @@ impl AuthorizedKeyPolicy {
     /// Sets an authorized key for a particular namespace.
     pub fn with_authorized_key(mut self, namespace: impl Into<String>, key: KeyID) -> Result<Self> {
         let namespace = namespace.into();
-        if !is_kebab_case(&namespace) {
+        if KebabStr::new(&namespace).is_none() {
             bail!("namespace `{namespace}` is not a legal kebab-case identifier");
         }
 

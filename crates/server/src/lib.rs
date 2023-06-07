@@ -23,28 +23,6 @@ pub mod services;
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
-fn is_kebab_case(s: &str) -> bool {
-    let mut lower = false;
-    let mut upper = false;
-    for c in s.chars() {
-        match c {
-            'a'..='z' if !lower && !upper => lower = true,
-            'A'..='Z' if !lower && !upper => upper = true,
-            'a'..='z' if lower => continue,
-            'A'..='Z' if upper => continue,
-            '0'..='9' if lower || upper => continue,
-            '-' if lower || upper => {
-                lower = false;
-                upper = false;
-                continue;
-            }
-            _ => return false,
-        }
-    }
-
-    !s.is_empty() && !s.ends_with('-')
-}
-
 /// The server configuration.
 pub struct Config {
     operator_key: PrivateKey,
