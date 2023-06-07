@@ -46,10 +46,6 @@ impl<D: SupportedDigest> Hash<D> {
         visitor.finalize()
     }
 
-    // pub fn from(content: impl VisitBytes) -> Self {
-
-    // }
-
     pub fn bytes(&self) -> &[u8] {
         self.digest.as_slice()
     }

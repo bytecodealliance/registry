@@ -111,31 +111,12 @@ mod tests {
         let a = crate::map::Map::<Sha256, &str, &[u8]>::default();
         let b = a.insert("foo", b"bar");
         let c = b.insert("baz", b"bat");
-        // let b = a.insert(AnyHash::from(Hash::<Sha256>::of("foo")), b"bar");
-        // let c = b.insert(AnyHash::from(Hash::<Sha256>::of("baz")), b"bat");
 
         let root = c.root().clone();
 
         let p = c.prove(&"baz").unwrap();
-        // let p = c.prove(AnyHash::from(Hash::<Sha256>::of(&"baz"))).unwrap();
 
         assert_eq!(root, p.evaluate("baz", &b"bat".as_slice()));
         assert_ne!(root, p.evaluate("other", &b"bar".as_slice()));
-        // assert_eq!(
-        //     root,
-        //     // p.evaluate(AnyHash::from(Hash::<Sha256>::of("baz")), &b"bat".as_slice())
-        //     p.evaluate("baz", &b"bat".as_slice())
-        // );
-        // assert_ne!(
-        //     root,
-        //     p.evaluate("other", &b"bar".as_slice())
-        // );
-        // assert_ne!(
-        //     root,
-        //     p.evaluate(
-        //         AnyHash::from(Hash::<Sha256>::of("other")),
-        //         &b"bar".as_slice()
-        //     )
-        // );
     }
 }

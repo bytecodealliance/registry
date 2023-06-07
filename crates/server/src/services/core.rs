@@ -257,9 +257,7 @@ impl CoreService {
         let mut data = InitializationData::default();
         data.log.push(&leaf);
 
-        // let new_key = leaf.log_id.0.clone().try_into().unwrap();
         data.map = data.map.insert(
-            // new_key,
             log_id.clone(),
             MapLeaf {
                 record_id: leaf.record_id.clone(),

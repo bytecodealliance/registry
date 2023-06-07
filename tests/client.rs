@@ -68,6 +68,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     client
         .wait_for_publish(PACKAGE_NAME, &head, Duration::from_millis(100))
         .await?;
+
     drop(client);
 
     // Delete the client's registry storage directory to ensure it fetches

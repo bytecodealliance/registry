@@ -19,6 +19,17 @@ use super::proof::Proof;
 /// items are inserted, you can get an inclusion proof that demonstrates the
 /// presence of a key/value in a tree.
 ///
+/// ```rust
+/// use warg_transparency::map::Map;
+/// use sha2::Sha256;
+///
+/// let a = Map::<Sha256, &str, &str>::default();
+/// let b = a.insert("foo", "bar");
+/// let c = b.extend([("baz", "bat"), ("foo", "qux")]);
+///
+/// let proof = c.prove(&"foo").unwrap();
+/// assert_eq!(c.root().clone(), proof.evaluate(&"foo", &"qux"));
+/// ```
 ///
 /// # Design
 ///
