@@ -29,31 +29,31 @@ impl crate::Record for OperatorRecord {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
-pub enum Permission {
+pub enum OperatorPermission {
     Commit,
 }
 
-impl Permission {
+impl OperatorPermission {
     /// Gets an array of all permissions.
-    pub const fn all() -> [Permission; 1] {
-        [Permission::Commit]
+    pub const fn all() -> [OperatorPermission; 1] {
+        [OperatorPermission::Commit]
     }
 }
 
-impl fmt::Display for Permission {
+impl fmt::Display for OperatorPermission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Permission::Commit => write!(f, "commit"),
+            OperatorPermission::Commit => write!(f, "commit"),
         }
     }
 }
 
-impl FromStr for Permission {
+impl FromStr for OperatorPermission {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "commit" => Ok(Permission::Commit),
+            "commit" => Ok(OperatorPermission::Commit),
             _ => Err(()),
         }
     }
@@ -74,22 +74,22 @@ pub enum OperatorEntry {
     /// The author of this entry must have the permission.
     GrantFlat {
         key: signing::PublicKey,
-        permission: Permission,
+        permission: OperatorPermission,
     },
     /// Remove a permission from a key.
     /// The author of this entry must have the permission.
     RevokeFlat {
         key_id: signing::KeyID,
-        permission: Permission,
+        permission: OperatorPermission,
     },
 }
 
 impl OperatorEntry {
     /// Check permission is required to submit this entry
-    pub fn required_permission(&self) -> Option<Permission> {
+    pub fn required_permission(&self) -> Option<OperatorPermission> {
         match self {
             Self::Init { .. } => None,
-            Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(Permission::Commit),
+            Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(OperatorPermission::Commit),
         }
     }
 }

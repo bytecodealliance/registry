@@ -7,19 +7,21 @@ use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
 mod model;
 mod validate;
 
-pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Head, PackageState, PackageValidationError, Release, ReleaseState};
+pub use model::{PackageEntry, PackagePermission, PackageRecord};
+pub use validate::{
+    PackageHead, PackageRelease, PackageReleaseState, PackageState, PackageValidationError,
+};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;
 
-impl Decode for model::PackageRecord {
+impl Decode for PackageRecord {
     fn decode(bytes: &[u8]) -> Result<Self, Error> {
         protobuf::PackageRecord::decode(bytes)?.try_into()
     }
 }
 
-impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
+impl TryFrom<protobuf::PackageRecord> for PackageRecord {
     type Error = Error;
 
     fn try_from(record: protobuf::PackageRecord) -> Result<Self, Self::Error> {
@@ -35,14 +37,14 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
         let prost_timestamp = protobuf::pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
-        let entries: Result<Vec<model::PackageEntry>, Error> = record
+        let entries: Result<Vec<PackageEntry>, Error> = record
             .entries
             .into_iter()
             .map(|proto_entry| proto_entry.try_into())
             .collect();
         let entries = entries?;
 
-        Ok(model::PackageRecord {
+        Ok(PackageRecord {
             prev,
             version,
             timestamp,
@@ -55,32 +57,32 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
 #[error("Empty or invalid timestamp in record")]
 struct InvalidTimestampError;
 
-impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
+impl TryFrom<protobuf::PackageEntry> for PackageEntry {
     type Error = Error;
 
     fn try_from(entry: protobuf::PackageEntry) -> Result<Self, Self::Error> {
         use protobuf::package_entry::Contents;
         let output = match entry.contents.ok_or_else(|| Box::new(EmptyContentError))? {
-            Contents::Init(init) => model::PackageEntry::Init {
+            Contents::Init(init) => PackageEntry::Init {
                 hash_algorithm: init.hash_algorithm.parse()?,
                 key: init.key.parse()?,
             },
-            Contents::GrantFlat(grant_flat) => model::PackageEntry::GrantFlat {
+            Contents::GrantFlat(grant_flat) => PackageEntry::GrantFlat {
                 key: grant_flat.key.parse()?,
                 permission: grant_flat.permission.try_into()?,
             },
-            Contents::RevokeFlat(revoke_flat) => model::PackageEntry::RevokeFlat {
+            Contents::RevokeFlat(revoke_flat) => PackageEntry::RevokeFlat {
                 key_id: revoke_flat.key_id.into(),
                 permission: revoke_flat.permission.try_into()?,
             },
-            Contents::Release(release) => model::PackageEntry::Release {
+            Contents::Release(release) => PackageEntry::Release {
                 version: release
                     .version
                     .parse()
                     .map_err(|error| Error::new(error) as Error)?,
                 content: release.content_hash.parse()?,
             },
-            Contents::Yank(yank) => model::PackageEntry::Yank {
+            Contents::Yank(yank) => PackageEntry::Yank {
                 version: yank.version.parse()?,
             },
         };
@@ -92,43 +94,45 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
 #[error("no content in entry")]
 struct EmptyContentError;
 
-impl TryFrom<i32> for model::Permission {
+impl TryFrom<i32> for PackagePermission {
     type Error = Error;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
         let proto_perm = protobuf::PackagePermission::from_i32(permission)
-            .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
+            .ok_or_else(|| Box::new(PackagePermissionParseError { value: permission }))?;
         match proto_perm {
             protobuf::PackagePermission::Unspecified => {
-                Err(Error::new(PermissionParseError { value: permission }))
+                Err(Error::new(PackagePermissionParseError {
+                    value: permission,
+                }))
             }
-            protobuf::PackagePermission::Release => Ok(model::Permission::Release),
-            protobuf::PackagePermission::Yank => Ok(model::Permission::Yank),
+            protobuf::PackagePermission::Release => Ok(PackagePermission::Release),
+            protobuf::PackagePermission::Yank => Ok(PackagePermission::Yank),
         }
     }
 }
 
 #[derive(Error, Debug)]
 #[error("the value {value} could not be parsed as a permission")]
-struct PermissionParseError {
+struct PackagePermissionParseError {
     value: i32,
 }
 
 // Serialization
 
-impl Signable for model::PackageRecord {
+impl Signable for PackageRecord {
     const PREFIX: &'static [u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0";
 }
 
-impl Encode for model::PackageRecord {
+impl Encode for PackageRecord {
     fn encode(&self) -> Vec<u8> {
         let proto_record: protobuf::PackageRecord = self.into();
         proto_record.encode_to_vec()
     }
 }
 
-impl<'a> From<&'a model::PackageRecord> for protobuf::PackageRecord {
-    fn from(record: &'a model::PackageRecord) -> Self {
+impl<'a> From<&'a PackageRecord> for protobuf::PackageRecord {
+    fn from(record: &'a PackageRecord) -> Self {
         protobuf::PackageRecord {
             prev: record.prev.as_ref().map(|hash| hash.to_string()),
             version: record.version,
@@ -138,36 +142,36 @@ impl<'a> From<&'a model::PackageRecord> for protobuf::PackageRecord {
     }
 }
 
-impl<'a> From<&'a model::PackageEntry> for protobuf::PackageEntry {
-    fn from(entry: &'a model::PackageEntry) -> Self {
+impl<'a> From<&'a PackageEntry> for protobuf::PackageEntry {
+    fn from(entry: &'a PackageEntry) -> Self {
         use protobuf::package_entry::Contents;
         let contents = match entry {
-            model::PackageEntry::Init {
+            PackageEntry::Init {
                 hash_algorithm,
                 key,
             } => Contents::Init(protobuf::PackageInit {
                 key: key.to_string(),
                 hash_algorithm: hash_algorithm.to_string(),
             }),
-            model::PackageEntry::GrantFlat { key, permission } => {
+            PackageEntry::GrantFlat { key, permission } => {
                 Contents::GrantFlat(protobuf::PackageGrantFlat {
                     key: key.to_string(),
                     permission: permission.into(),
                 })
             }
-            model::PackageEntry::RevokeFlat { key_id, permission } => {
+            PackageEntry::RevokeFlat { key_id, permission } => {
                 Contents::RevokeFlat(protobuf::PackageRevokeFlat {
                     key_id: key_id.to_string(),
                     permission: permission.into(),
                 })
             }
-            model::PackageEntry::Release { version, content } => {
+            PackageEntry::Release { version, content } => {
                 Contents::Release(protobuf::PackageRelease {
                     version: version.to_string(),
                     content_hash: content.to_string(),
                 })
             }
-            model::PackageEntry::Yank { version } => Contents::Yank(protobuf::PackageYank {
+            PackageEntry::Yank { version } => Contents::Yank(protobuf::PackageYank {
                 version: version.to_string(),
             }),
         };
@@ -176,11 +180,11 @@ impl<'a> From<&'a model::PackageEntry> for protobuf::PackageEntry {
     }
 }
 
-impl<'a> From<&'a model::Permission> for i32 {
-    fn from(permission: &'a model::Permission) -> Self {
+impl<'a> From<&'a PackagePermission> for i32 {
+    fn from(permission: &'a PackagePermission) -> Self {
         let proto_perm = match permission {
-            model::Permission::Release => protobuf::PackagePermission::Release,
-            model::Permission::Yank => protobuf::PackagePermission::Yank,
+            PackagePermission::Release => protobuf::PackagePermission::Release,
+            PackagePermission::Yank => protobuf::PackagePermission::Yank,
         };
         proto_perm.into()
     }
@@ -204,24 +208,24 @@ mod tests {
         let (alice_pub, alice_priv) = generate_p256_pair();
         let (bob_pub, _bob_priv) = generate_p256_pair();
 
-        let record = model::PackageRecord {
+        let record = PackageRecord {
             prev: None,
             version: PACKAGE_RECORD_VERSION,
             timestamp: SystemTime::now(),
             entries: vec![
-                model::PackageEntry::Init {
+                PackageEntry::Init {
                     hash_algorithm: HashAlgorithm::Sha256,
                     key: alice_pub,
                 },
-                model::PackageEntry::GrantFlat {
+                PackageEntry::GrantFlat {
                     key: bob_pub.clone(),
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
-                model::PackageEntry::RevokeFlat {
+                PackageEntry::RevokeFlat {
                     key_id: bob_pub.fingerprint(),
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
-                model::PackageEntry::Release {
+                PackageEntry::Release {
                     version: Version::new(1, 0, 0),
                     content: HashAlgorithm::Sha256.digest(&[0, 1, 2, 3]),
                 },
@@ -235,7 +239,7 @@ mod tests {
 
         let bytes = first_envelope.to_protobuf();
 
-        let second_envelope: ProtoEnvelope<model::PackageRecord> =
+        let second_envelope: ProtoEnvelope<PackageRecord> =
             match ProtoEnvelope::from_protobuf(bytes) {
                 Ok(value) => value,
                 Err(error) => panic!("Failed to create envelope 2: {:?}", error),
