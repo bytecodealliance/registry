@@ -346,7 +346,14 @@ impl PostgresDataStore {
 
 #[axum::async_trait]
 impl DataStore for PostgresDataStore {
-    async fn get_initial_leaves(
+   async fn get_names(&self) -> Result<Vec<Option<String>>, DataStoreError> {
+      let mut conn = self.0.get().await?;
+      let names = schema::logs::table.select(schema::logs::name)
+        .load::<Option<String>>(&mut conn)
+        .await?;
+      Ok(names)
+   }
+   async fn get_initial_leaves(
         &self,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,

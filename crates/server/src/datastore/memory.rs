@@ -104,6 +104,11 @@ impl Default for MemoryDataStore {
 
 #[axum::async_trait]
 impl DataStore for MemoryDataStore {
+    async fn get_names(&self) -> Result<Vec<Option<String>>, DataStoreError> {
+      let foo = Vec::new();
+      Ok(foo)
+    }
+    
     async fn get_initial_leaves(
         &self,
     ) -> Result<

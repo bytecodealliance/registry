@@ -101,6 +101,7 @@ where
 /// Implemented by data stores.
 #[axum::async_trait]
 pub trait DataStore: Send + Sync {
+    async fn get_names(&self) -> Result<Vec<Option<String>>, DataStoreError>;
     /// Gets a stream of initial leaves in the store.
     ///
     /// This is an expensive operation and should only be performed on startup.

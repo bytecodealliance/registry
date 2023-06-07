@@ -11,7 +11,7 @@ use axum::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
+use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse, FetchNamesResponse};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, MapCheckpoint};
 use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
@@ -31,6 +31,7 @@ impl Config {
 
     pub fn into_router(self) -> Router {
         Router::new()
+            .route("/query", get(query))
             .route("/logs", post(fetch_logs))
             .route("/checkpoint", get(fetch_checkpoint))
             .with_state(self)
@@ -72,6 +73,23 @@ impl IntoResponse for FetchApiError {
     fn into_response(self) -> axum::response::Response {
         (StatusCode::from_u16(self.0.status()).unwrap(), Json(self.0)).into_response()
     }
+}
+
+
+#[debug_handler]
+async fn query(
+    State(config): State<Config>,
+) -> Result<Json<FetchNamesResponse>, FetchApiError> {
+
+    let names = config
+      .core_service
+      .store()
+      .get_names()
+      .await?;
+
+    Ok(Json(FetchNamesResponse {
+      query: names
+    }))
 }
 
 #[debug_handler]

@@ -89,6 +89,11 @@ pub struct NewCheckpoint<'a> {
 }
 
 #[derive(Queryable)]
+#[diesel(table_name = logs)]
+pub struct Package {
+    pub name: ParsedText<String>,
+}
+#[derive(Queryable)]
 #[diesel(table_name = checkpoints)]
 pub struct Checkpoint {
     pub id: i32,
