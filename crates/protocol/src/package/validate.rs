@@ -2,6 +2,7 @@ use super::{model, PACKAGE_RECORD_VERSION};
 use crate::registry::RecordId;
 use crate::ProtoEnvelope;
 use indexmap::{map::Entry, IndexMap, IndexSet};
+use model::{PackageEntry, PackagePermission, PackageRecord};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -26,12 +27,12 @@ pub enum PackageValidationError {
     #[error("the key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
         key_id: signing::KeyID,
-        needed_permission: model::Permission,
+        needed_permission: PackagePermission,
     },
 
     #[error("attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
-        permission: model::Permission,
+        permission: PackagePermission,
         key_id: signing::KeyID,
     },
 
@@ -72,7 +73,7 @@ pub enum PackageValidationError {
 /// Represents the current state of a release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
-pub enum ReleaseState {
+pub enum PackageReleaseState {
     /// The release is currently available.
     Released {
         /// The content digest associated with the release.
@@ -91,7 +92,7 @@ pub enum ReleaseState {
 /// Represents information about a release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Release {
+pub struct PackageRelease {
     /// The id of the record that released the package.
     pub record_id: RecordId,
     /// The version of the release.
@@ -102,13 +103,13 @@ pub struct Release {
     #[serde(with = "crate::timestamp")]
     pub timestamp: SystemTime,
     /// The current state of the release.
-    pub state: ReleaseState,
+    pub state: PackageReleaseState,
 }
 
-impl Release {
+impl PackageRelease {
     /// Determines if the release has been yanked.
     pub fn yanked(&self) -> bool {
-        matches!(self.state, ReleaseState::Yanked { .. })
+        matches!(self.state, PackageReleaseState::Yanked { .. })
     }
 
     /// Gets the content associated with the release.
@@ -116,8 +117,8 @@ impl Release {
     /// Returns `None` if the release has been yanked.
     pub fn content(&self) -> Option<&AnyHash> {
         match &self.state {
-            ReleaseState::Released { content } => Some(content),
-            ReleaseState::Yanked { .. } => None,
+            PackageReleaseState::Released { content } => Some(content),
+            PackageReleaseState::Yanked { .. } => None,
         }
     }
 }
@@ -148,10 +149,10 @@ pub struct PackageState {
     head: Option<PackageHead>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    permissions: IndexMap<signing::KeyID, IndexSet<PackagePermission>>,
     /// The releases in the package log.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    releases: IndexMap<Version, Release>,
+    releases: IndexMap<Version, PackageRelease>,
     /// The keys known thus far processing the package records.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
@@ -179,7 +180,7 @@ impl PackageState {
     /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
-        record: &ProtoEnvelope<model::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
     ) -> Result<(), PackageValidationError> {
         let snapshot = self.snapshot();
 
@@ -196,21 +197,21 @@ impl PackageState {
     /// The releases are returned in package log order.
     ///
     /// Yanked releases are included.
-    pub fn releases(&self) -> impl Iterator<Item = &Release> {
+    pub fn releases(&self) -> impl Iterator<Item = &PackageRelease> {
         self.releases.values()
     }
 
     /// Gets the release with the given version.
     ///
     /// Returns `None` if a release with the given version does not exist.
-    pub fn release(&self, version: &Version) -> Option<&Release> {
+    pub fn release(&self, version: &Version) -> Option<&PackageRelease> {
         self.releases.get(version)
     }
 
     /// Finds the latest release matching the given version requirement.
     ///
     /// Releases that have been yanked are not considered.
-    pub fn find_latest_release(&self, req: &VersionReq) -> Option<&Release> {
+    pub fn find_latest_release(&self, req: &VersionReq) -> Option<&PackageRelease> {
         self.releases
             .values()
             .filter(|release| !release.yanked() && req.matches(&release.version))
@@ -231,7 +232,7 @@ impl PackageState {
 
     fn validate_record(
         &mut self,
-        envelope: &ProtoEnvelope<model::PackageRecord>,
+        envelope: &ProtoEnvelope<PackageRecord>,
     ) -> Result<(), PackageValidationError> {
         let record = envelope.as_ref();
         let record_id = RecordId::package_record::<Sha256>(envelope);
@@ -266,7 +267,7 @@ impl PackageState {
         })?;
 
         // Validate the envelope signature
-        model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+        PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator head
         self.head = Some(PackageHead {
@@ -277,10 +278,7 @@ impl PackageState {
         Ok(())
     }
 
-    fn validate_record_hash(
-        &self,
-        record: &model::PackageRecord,
-    ) -> Result<(), PackageValidationError> {
+    fn validate_record_hash(&self, record: &PackageRecord) -> Result<(), PackageValidationError> {
         match (&self.head, &record.prev) {
             (None, Some(_)) => Err(PackageValidationError::PreviousHashOnFirstRecord),
             (Some(_), None) => Err(PackageValidationError::NoPreviousHashAfterInit),
@@ -304,7 +302,7 @@ impl PackageState {
 
     fn validate_record_version(
         &self,
-        record: &model::PackageRecord,
+        record: &PackageRecord,
     ) -> Result<(), PackageValidationError> {
         if record.version == PACKAGE_RECORD_VERSION {
             Ok(())
@@ -317,7 +315,7 @@ impl PackageState {
 
     fn validate_record_timestamp(
         &self,
-        record: &model::PackageRecord,
+        record: &PackageRecord,
     ) -> Result<(), PackageValidationError> {
         if let Some(head) = &self.head {
             if record.timestamp < head.timestamp {
@@ -333,7 +331,7 @@ impl PackageState {
         record_id: &RecordId,
         signer_key_id: &signing::KeyID,
         timestamp: SystemTime,
-        entries: &[model::PackageEntry],
+        entries: &[PackageEntry],
     ) -> Result<(), PackageValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
@@ -341,7 +339,7 @@ impl PackageState {
             }
 
             // Process an init entry specially
-            if let model::PackageEntry::Init {
+            if let PackageEntry::Init {
                 hash_algorithm,
                 key,
             } = entry
@@ -356,21 +354,21 @@ impl PackageState {
             }
 
             match entry {
-                model::PackageEntry::Init { .. } => unreachable!(), // handled above
-                model::PackageEntry::GrantFlat { key, permission } => {
+                PackageEntry::Init { .. } => unreachable!(), // handled above
+                PackageEntry::GrantFlat { key, permission } => {
                     self.validate_grant_entry(signer_key_id, key, *permission)?
                 }
-                model::PackageEntry::RevokeFlat { key_id, permission } => {
+                PackageEntry::RevokeFlat { key_id, permission } => {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
-                model::PackageEntry::Release { version, content } => self.validate_release_entry(
+                PackageEntry::Release { version, content } => self.validate_release_entry(
                     record_id,
                     signer_key_id,
                     timestamp,
                     version,
                     content,
                 )?,
-                model::PackageEntry::Yank { version } => {
+                PackageEntry::Yank { version } => {
                     self.validate_yank_entry(signer_key_id, timestamp, version)?
                 }
             }
@@ -396,7 +394,7 @@ impl PackageState {
         self.algorithm = Some(algorithm);
         self.permissions.insert(
             signer_key_id.clone(),
-            IndexSet::from(model::Permission::all()),
+            IndexSet::from(PackagePermission::all()),
         );
         self.keys.insert(init_key.fingerprint(), init_key.clone());
 
@@ -407,7 +405,7 @@ impl PackageState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key: &signing::PublicKey,
-        permission: model::Permission,
+        permission: PackagePermission,
     ) -> Result<(), PackageValidationError> {
         // Check that the current key has the permission they're trying to grant
         self.check_key_permission(signer_key_id, permission)?;
@@ -426,7 +424,7 @@ impl PackageState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permission: PackagePermission,
     ) -> Result<(), PackageValidationError> {
         // Check that the current key has the permission they're trying to revoke
         self.check_key_permission(signer_key_id, permission)?;
@@ -460,12 +458,12 @@ impl PackageState {
             }
             Entry::Vacant(e) => {
                 let version = e.key().clone();
-                e.insert(Release {
+                e.insert(PackageRelease {
                     record_id: record_id.clone(),
                     version,
                     by: signer_key_id.clone(),
                     timestamp,
-                    state: ReleaseState::Released {
+                    state: PackageReleaseState::Released {
                         content: content.clone(),
                     },
                 });
@@ -483,11 +481,11 @@ impl PackageState {
     ) -> Result<(), PackageValidationError> {
         match self.releases.get_mut(version) {
             Some(e) => match e.state {
-                ReleaseState::Yanked { .. } => Err(PackageValidationError::YankOfYanked {
+                PackageReleaseState::Yanked { .. } => Err(PackageValidationError::YankOfYanked {
                     version: version.clone(),
                 }),
-                ReleaseState::Released { .. } => {
-                    e.state = ReleaseState::Yanked {
+                PackageReleaseState::Released { .. } => {
+                    e.state = PackageReleaseState::Yanked {
                         by: signer_key_id.clone(),
                         timestamp,
                     };
@@ -503,7 +501,7 @@ impl PackageState {
     fn check_key_permission(
         &self,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permission: PackagePermission,
     ) -> Result<(), PackageValidationError> {
         if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
@@ -554,7 +552,7 @@ impl PackageState {
 }
 
 impl crate::Validator for PackageState {
-    type Record = model::PackageRecord;
+    type Record = PackageRecord;
     type Error = PackageValidationError;
 
     fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
@@ -584,11 +582,11 @@ mod tests {
         let alice_id = alice_pub.fingerprint();
 
         let timestamp = SystemTime::now();
-        let record = model::PackageRecord {
+        let record = PackageRecord {
             prev: None,
             version: PACKAGE_RECORD_VERSION,
             timestamp,
-            entries: vec![model::PackageEntry::Init {
+            entries: vec![PackageEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
@@ -608,7 +606,7 @@ mod tests {
                 algorithm: Some(HashAlgorithm::Sha256),
                 permissions: IndexMap::from([(
                     alice_id.clone(),
-                    IndexSet::from([model::Permission::Release, model::Permission::Yank]),
+                    IndexSet::from([PackagePermission::Release, PackagePermission::Yank]),
                 )]),
                 releases: IndexMap::default(),
                 keys: IndexMap::from([(alice_id, alice_pub)]),
@@ -628,18 +626,18 @@ mod tests {
 
         // In envelope 0: alice inits and grants bob release
         let timestamp0 = SystemTime::now();
-        let record0 = model::PackageRecord {
+        let record0 = PackageRecord {
             prev: None,
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp0,
             entries: vec![
-                model::PackageEntry::Init {
+                PackageEntry::Init {
                     hash_algorithm: hash_algo,
                     key: alice_pub.clone(),
                 },
-                model::PackageEntry::GrantFlat {
+                PackageEntry::GrantFlat {
                     key: bob_pub.clone(),
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
             ],
         };
@@ -649,11 +647,11 @@ mod tests {
         // In envelope 1: bob releases 1.1.0
         let timestamp1 = timestamp0 + Duration::from_secs(1);
         let content = hash_algo.digest(&[0, 1, 2, 3]);
-        let record1 = model::PackageRecord {
+        let record1 = PackageRecord {
             prev: Some(RecordId::package_record::<Sha256>(&envelope0)),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp1,
-            entries: vec![model::PackageEntry::Release {
+            entries: vec![PackageEntry::Release {
                 version: Version::new(1, 1, 0),
                 content: content.clone(),
             }],
@@ -666,12 +664,12 @@ mod tests {
         // At this point, the package_state should consider 1.1.0 released
         assert_eq!(
             package_state.find_latest_release(&"~1".parse().unwrap()),
-            Some(&Release {
+            Some(&PackageRelease {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                state: ReleaseState::Released {
+                state: PackageReleaseState::Released {
                     content: content.clone()
                 }
             })
@@ -681,27 +679,27 @@ mod tests {
             .is_none());
         assert_eq!(
             package_state.releases().collect::<Vec<_>>(),
-            vec![&Release {
+            vec![&PackageRelease {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                state: ReleaseState::Released { content }
+                state: PackageReleaseState::Released { content }
             }]
         );
 
         // In envelope 2: alice revokes bobs access and yanks 1.1.0
         let timestamp2 = timestamp1 + Duration::from_secs(1);
-        let record2 = model::PackageRecord {
+        let record2 = PackageRecord {
             prev: Some(RecordId::package_record::<Sha256>(&envelope1)),
             version: PACKAGE_RECORD_VERSION,
             timestamp: timestamp2,
             entries: vec![
-                model::PackageEntry::RevokeFlat {
+                PackageEntry::RevokeFlat {
                     key_id: bob_id.clone(),
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
-                model::PackageEntry::Yank {
+                PackageEntry::Yank {
                     version: Version::new(1, 1, 0),
                 },
             ],
@@ -715,12 +713,12 @@ mod tests {
             .is_none());
         assert_eq!(
             package_state.releases().collect::<Vec<_>>(),
-            vec![&Release {
+            vec![&PackageRelease {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
                 by: bob_id.clone(),
                 timestamp: timestamp1,
-                state: ReleaseState::Yanked {
+                state: PackageReleaseState::Yanked {
                     by: alice_id.clone(),
                     timestamp: timestamp2
                 }
@@ -738,18 +736,18 @@ mod tests {
                 permissions: IndexMap::from([
                     (
                         alice_id.clone(),
-                        IndexSet::from([model::Permission::Release, model::Permission::Yank]),
+                        IndexSet::from([PackagePermission::Release, PackagePermission::Yank]),
                     ),
                     (bob_id.clone(), IndexSet::default()),
                 ]),
                 releases: IndexMap::from([(
                     Version::new(1, 1, 0),
-                    Release {
+                    PackageRelease {
                         record_id: record_id1,
                         version: Version::new(1, 1, 0),
                         by: bob_id.clone(),
                         timestamp: timestamp1,
-                        state: ReleaseState::Yanked {
+                        state: PackageReleaseState::Yanked {
                             by: alice_id.clone(),
                             timestamp: timestamp2
                         }
@@ -767,11 +765,11 @@ mod tests {
         let (bob_pub, _) = generate_p256_pair();
 
         let timestamp = SystemTime::now();
-        let record = model::PackageRecord {
+        let record = PackageRecord {
             prev: None,
             version: 0,
             timestamp,
-            entries: vec![model::PackageEntry::Init {
+            entries: vec![PackageEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
@@ -791,27 +789,27 @@ mod tests {
             releases: IndexMap::new(),
             permissions: IndexMap::from([(
                 alice_id.clone(),
-                IndexSet::from([model::Permission::Release, model::Permission::Yank]),
+                IndexSet::from([PackagePermission::Release, PackagePermission::Yank]),
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
         };
 
         assert_eq!(package_state, expected);
 
-        let record = model::PackageRecord {
+        let record = PackageRecord {
             prev: Some(RecordId::package_record::<Sha256>(&envelope)),
             version: 0,
             timestamp: SystemTime::now(),
             entries: vec![
                 // This entry is valid
-                model::PackageEntry::GrantFlat {
+                PackageEntry::GrantFlat {
                     key: bob_pub,
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
                 // This entry is not valid
-                model::PackageEntry::RevokeFlat {
+                PackageEntry::RevokeFlat {
                     key_id: "not-valid".to_string().into(),
-                    permission: model::Permission::Release,
+                    permission: PackagePermission::Release,
                 },
             ],
         };

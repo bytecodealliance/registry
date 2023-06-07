@@ -2,6 +2,7 @@ use super::{model, OPERATOR_RECORD_VERSION};
 use crate::registry::RecordId;
 use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
+use model::{OperatorEntry, OperatorPermission, OperatorRecord};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use thiserror::Error;
@@ -25,12 +26,12 @@ pub enum OperatorValidationError {
     #[error("the key with ID {key_id} did not have required permission {needed_permission}")]
     UnauthorizedAction {
         key_id: signing::KeyID,
-        needed_permission: model::Permission,
+        needed_permission: OperatorPermission,
     },
 
     #[error("attempted to remove permission {permission} from key {key_id} which did not have it")]
     PermissionNotFoundToRevoke {
-        permission: model::Permission,
+        permission: OperatorPermission,
         key_id: signing::KeyID,
     },
 
@@ -85,7 +86,7 @@ pub struct OperatorState {
     head: Option<OperatorHead>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    permissions: IndexMap<signing::KeyID, IndexSet<OperatorPermission>>,
     /// The keys known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
@@ -113,7 +114,7 @@ impl OperatorState {
     /// fails to validate, the validator state will remain unchanged.
     pub fn validate(
         &mut self,
-        record: &ProtoEnvelope<model::OperatorRecord>,
+        record: &ProtoEnvelope<OperatorRecord>,
     ) -> Result<(), OperatorValidationError> {
         let snapshot = self.snapshot();
 
@@ -139,7 +140,7 @@ impl OperatorState {
 
     fn validate_record(
         &mut self,
-        envelope: &ProtoEnvelope<model::OperatorRecord>,
+        envelope: &ProtoEnvelope<OperatorRecord>,
     ) -> Result<(), OperatorValidationError> {
         let record = envelope.as_ref();
 
@@ -168,7 +169,7 @@ impl OperatorState {
         })?;
 
         // Validate the envelope signature
-        model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
+        OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator head
         self.head = Some(OperatorHead {
@@ -179,10 +180,7 @@ impl OperatorState {
         Ok(())
     }
 
-    fn validate_record_hash(
-        &self,
-        record: &model::OperatorRecord,
-    ) -> Result<(), OperatorValidationError> {
+    fn validate_record_hash(&self, record: &OperatorRecord) -> Result<(), OperatorValidationError> {
         match (&self.head, &record.prev) {
             (None, Some(_)) => Err(OperatorValidationError::PreviousHashOnFirstRecord),
             (Some(_), None) => Err(OperatorValidationError::NoPreviousHashAfterInit),
@@ -206,7 +204,7 @@ impl OperatorState {
 
     fn validate_record_version(
         &self,
-        record: &model::OperatorRecord,
+        record: &OperatorRecord,
     ) -> Result<(), OperatorValidationError> {
         if record.version == OPERATOR_RECORD_VERSION {
             Ok(())
@@ -219,7 +217,7 @@ impl OperatorState {
 
     fn validate_record_timestamp(
         &self,
-        record: &model::OperatorRecord,
+        record: &OperatorRecord,
     ) -> Result<(), OperatorValidationError> {
         if let Some(head) = &self.head {
             if record.timestamp < head.timestamp {
@@ -233,7 +231,7 @@ impl OperatorState {
     fn validate_record_entries(
         &mut self,
         signer_key_id: &signing::KeyID,
-        entries: &[model::OperatorEntry],
+        entries: &[OperatorEntry],
     ) -> Result<(), OperatorValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
@@ -241,7 +239,7 @@ impl OperatorState {
             }
 
             // Process an init entry specially
-            if let model::OperatorEntry::Init {
+            if let OperatorEntry::Init {
                 hash_algorithm,
                 key,
             } = entry
@@ -256,11 +254,11 @@ impl OperatorState {
             }
 
             match entry {
-                model::OperatorEntry::Init { .. } => unreachable!(), // handled above
-                model::OperatorEntry::GrantFlat { key, permission } => {
+                OperatorEntry::Init { .. } => unreachable!(), // handled above
+                OperatorEntry::GrantFlat { key, permission } => {
                     self.validate_grant_entry(signer_key_id, key, *permission)?
                 }
-                model::OperatorEntry::RevokeFlat { key_id, permission } => {
+                OperatorEntry::RevokeFlat { key_id, permission } => {
                     self.validate_revoke_entry(signer_key_id, key_id, *permission)?
                 }
             }
@@ -285,7 +283,7 @@ impl OperatorState {
         self.algorithm = Some(algorithm);
         self.permissions.insert(
             signer_key_id.clone(),
-            IndexSet::from(model::Permission::all()),
+            IndexSet::from(OperatorPermission::all()),
         );
         self.keys.insert(init_key.fingerprint(), init_key.clone());
 
@@ -296,7 +294,7 @@ impl OperatorState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key: &signing::PublicKey,
-        permission: model::Permission,
+        permission: OperatorPermission,
     ) -> Result<(), OperatorValidationError> {
         // Check that the current key has the permission they're trying to grant
         self.check_key_permission(signer_key_id, permission)?;
@@ -315,7 +313,7 @@ impl OperatorState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permission: OperatorPermission,
     ) -> Result<(), OperatorValidationError> {
         // Check that the current key has the permission they're trying to revoke
         self.check_key_permission(signer_key_id, permission)?;
@@ -336,7 +334,7 @@ impl OperatorState {
     fn check_key_permission(
         &self,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permission: OperatorPermission,
     ) -> Result<(), OperatorValidationError> {
         if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
@@ -383,7 +381,7 @@ impl OperatorState {
 }
 
 impl crate::Validator for OperatorState {
-    type Record = model::OperatorRecord;
+    type Record = OperatorRecord;
     type Error = OperatorValidationError;
 
     fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
@@ -414,11 +412,11 @@ mod tests {
         let alice_id = alice_pub.fingerprint();
 
         let timestamp = SystemTime::now();
-        let record = model::OperatorRecord {
+        let record = OperatorRecord {
             prev: None,
             version: 0,
             timestamp,
-            entries: vec![model::OperatorEntry::Init {
+            entries: vec![OperatorEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
@@ -439,7 +437,7 @@ mod tests {
                 algorithm: Some(HashAlgorithm::Sha256),
                 permissions: IndexMap::from([(
                     alice_id.clone(),
-                    IndexSet::from([model::Permission::Commit]),
+                    IndexSet::from([OperatorPermission::Commit]),
                 )]),
                 keys: IndexMap::from([(alice_id, alice_pub)]),
             }
@@ -453,11 +451,11 @@ mod tests {
         let (bob_pub, _) = generate_p256_pair();
 
         let timestamp = SystemTime::now();
-        let record = model::OperatorRecord {
+        let record = OperatorRecord {
             prev: None,
             version: 0,
             timestamp,
-            entries: vec![model::OperatorEntry::Init {
+            entries: vec![OperatorEntry::Init {
                 hash_algorithm: HashAlgorithm::Sha256,
                 key: alice_pub.clone(),
             }],
@@ -476,27 +474,27 @@ mod tests {
             algorithm: Some(HashAlgorithm::Sha256),
             permissions: IndexMap::from([(
                 alice_id.clone(),
-                IndexSet::from([model::Permission::Commit]),
+                IndexSet::from([OperatorPermission::Commit]),
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
         };
 
         assert_eq!(operator_state, expected);
 
-        let record = model::OperatorRecord {
+        let record = OperatorRecord {
             prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
             version: 0,
             timestamp: SystemTime::now(),
             entries: vec![
                 // This entry is valid
-                model::OperatorEntry::GrantFlat {
+                OperatorEntry::GrantFlat {
                     key: bob_pub,
-                    permission: model::Permission::Commit,
+                    permission: OperatorPermission::Commit,
                 },
                 // This entry is not valid
-                model::OperatorEntry::RevokeFlat {
+                OperatorEntry::RevokeFlat {
                     key_id: "not-valid".to_string().into(),
-                    permission: model::Permission::Commit,
+                    permission: OperatorPermission::Commit,
                 },
             ],
         };

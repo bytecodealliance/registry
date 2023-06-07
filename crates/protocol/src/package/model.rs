@@ -33,34 +33,34 @@ impl crate::Record for PackageRecord {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
-pub enum Permission {
+pub enum PackagePermission {
     Release,
     Yank,
 }
 
-impl Permission {
+impl PackagePermission {
     /// Gets an array of all permissions.
-    pub const fn all() -> [Permission; 2] {
-        [Permission::Release, Permission::Yank]
+    pub const fn all() -> [PackagePermission; 2] {
+        [PackagePermission::Release, PackagePermission::Yank]
     }
 }
 
-impl fmt::Display for Permission {
+impl fmt::Display for PackagePermission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Permission::Release => write!(f, "release"),
-            Permission::Yank => write!(f, "yank"),
+            PackagePermission::Release => write!(f, "release"),
+            PackagePermission::Yank => write!(f, "yank"),
         }
     }
 }
 
-impl FromStr for Permission {
+impl FromStr for PackagePermission {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "release" => Ok(Permission::Release),
-            "yank" => Ok(Permission::Yank),
+            "release" => Ok(PackagePermission::Release),
+            "yank" => Ok(PackagePermission::Yank),
             _ => Err(()),
         }
     }
@@ -81,13 +81,13 @@ pub enum PackageEntry {
     /// The author of this entry must have the permission.
     GrantFlat {
         key: signing::PublicKey,
-        permission: Permission,
+        permission: PackagePermission,
     },
     /// Remove a permission from a key.
     /// The author of this entry must have the permission.
     RevokeFlat {
         key_id: signing::KeyID,
-        permission: Permission,
+        permission: PackagePermission,
     },
     /// Release a version of a package.
     /// The version must not have been released yet.
@@ -99,11 +99,11 @@ pub enum PackageEntry {
 
 impl PackageEntry {
     /// Check permission is required to submit this entry
-    pub fn required_permission(&self) -> Option<Permission> {
+    pub fn required_permission(&self) -> Option<PackagePermission> {
         match self {
             Self::Init { .. } | Self::GrantFlat { .. } | Self::RevokeFlat { .. } => None,
-            Self::Release { .. } => Some(Permission::Release),
-            Self::Yank { .. } => Some(Permission::Yank),
+            Self::Release { .. } => Some(PackagePermission::Release),
+            Self::Yank { .. } => Some(PackagePermission::Yank),
         }
     }
 
