@@ -7,7 +7,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use warg_crypto::hash::{Hash, Sha256};
-use warg_protocol::registry::{LogLeaf, MapLeaf, LogId};
+use warg_protocol::registry::{LogId, LogLeaf, MapLeaf};
 use warg_transparency::map::MapProofBundle;
 
 pub struct Input {
@@ -42,8 +42,7 @@ impl MapData {
             .ok_or_else(|| DataServiceError::RootNotFound(root.clone()))?;
         let mut proofs = Vec::new();
         for LogLeaf { log_id, record_id } in leaves {
-            let proof = map
-                .prove(log_id.clone());
+            let proof = map.prove(log_id.clone());
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };

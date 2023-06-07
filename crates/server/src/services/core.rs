@@ -250,7 +250,10 @@ impl CoreService {
 
         store.validate_operator_record(&log_id, &record_id).await?;
 
-        let leaf = LogLeaf { log_id: log_id.clone(), record_id };
+        let leaf = LogLeaf {
+            log_id: log_id.clone(),
+            record_id,
+        };
         let mut data = InitializationData::default();
         data.log.push(&leaf);
 

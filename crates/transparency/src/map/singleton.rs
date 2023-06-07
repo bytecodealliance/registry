@@ -1,4 +1,7 @@
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 use super::{
     map::hash_branch,

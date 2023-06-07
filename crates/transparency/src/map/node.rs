@@ -66,13 +66,12 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
             (Some(idx), Self::Fork(fork)) => {
                 let proof = fork[idx].as_ref().node().prove(path);
                 match proof {
-                  Some(mut p) => {
-                    let peer = fork[idx.opposite()].as_ref().hash();
-                    p.push(Some(peer.clone()));
-                    Some(p)
-
-                  }
-                  None => None
+                    Some(mut p) => {
+                        let peer = fork[idx.opposite()].as_ref().hash();
+                        p.push(Some(peer.clone()));
+                        Some(p)
+                    }
+                    None => None,
                 }
             }
 

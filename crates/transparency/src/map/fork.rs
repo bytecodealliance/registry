@@ -3,7 +3,10 @@ use std::marker::PhantomData;
 
 use alloc::sync::Arc;
 
-use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
+use warg_crypto::{
+    hash::{Hash, SupportedDigest},
+    VisitBytes,
+};
 
 use super::{link::Link, map::hash_branch, path::Side};
 
@@ -16,7 +19,11 @@ pub struct Fork<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + Pa
 
 impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Fork<D, K> {
     pub fn new(left: Arc<Link<D, K>>, right: Arc<Link<D, K>>) -> Self {
-        Self { key: PhantomData, left, right }
+        Self {
+            key: PhantomData,
+            left,
+            right,
+        }
     }
 
     pub fn hash(&self) -> Hash<D> {
@@ -36,7 +43,9 @@ impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Cl
     }
 }
 
-impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Index<Side> for Fork<D, K> {
+impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Index<Side>
+    for Fork<D, K>
+{
     type Output = Arc<Link<D, K>>;
 
     fn index(&self, index: Side) -> &Self::Output {
@@ -47,7 +56,9 @@ impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> In
     }
 }
 
-impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> IndexMut<Side> for Fork<D, K> {
+impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> IndexMut<Side>
+    for Fork<D, K>
+{
     fn index_mut(&mut self, index: Side) -> &mut Self::Output {
         match index {
             Side::Left => &mut self.left,

@@ -6,7 +6,7 @@ use warg_crypto::VisitBytes;
 
 use super::link::Link;
 use super::node::Node;
-use super::path::{Path};
+use super::path::Path;
 use super::proof::Proof;
 
 /// Immutable Map w/ Inclusion Proofs
@@ -33,7 +33,7 @@ use super::proof::Proof;
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq +  Debug,
+    K: VisitBytes + Clone + PartialEq + Debug,
     V: VisitBytes + Clone,
 {
     link: Link<D, K>,
@@ -156,8 +156,7 @@ where
 
     /// Gets the value for a given key and a proof of its presence in this map.
     pub fn prove(&self, key: K) -> Option<Proof<D, K, V>>
-where
-    {
+where {
         self.link.node().prove(Path::new(key))
     }
 
@@ -175,7 +174,7 @@ where
         let mut here = self.clone();
 
         for (key, val) in iter {
-            let mut path: Path<D,K> = Path::new(key.clone());
+            let mut path: Path<D, K> = Path::new(key.clone());
             let (node, new) = here.link.node().insert(&mut path, key, Hash::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }

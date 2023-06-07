@@ -34,7 +34,7 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
     }
 
     pub fn key(&self) -> K {
-      self.key.clone()
+        self.key.clone()
     }
 
     fn get(&self, at: usize) -> Side {
@@ -88,10 +88,7 @@ impl<D: SupportedDigest> ReversePath<D> {
         let all = Hash::of(key);
         let start = all.len() * 8;
 
-        Self {
-            index: start,
-            all,
-        }
+        Self { index: start, all }
     }
 
     fn get(&self, at: usize) -> Side {

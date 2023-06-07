@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
-use warg_crypto::hash::{Sha256};
+use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf};
 use warg_transparency::map::Map;
 
