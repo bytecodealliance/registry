@@ -1,10 +1,9 @@
-use crate::{policy::content::ContentPolicy, services::CoreService};
-use axum::{body::Body, http::Request, Router};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
+use crate::{
+    policy::{content::ContentPolicy, record::RecordPolicy},
+    services::CoreService,
 };
+use axum::{body::Body, http::Request, Router};
+use std::{path::PathBuf, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -13,7 +12,6 @@ use tower_http::{
     LatencyUnit,
 };
 use tracing::{Level, Span};
-use warg_crypto::signing::KeyID;
 
 pub mod v1;
 
@@ -24,7 +22,7 @@ pub fn create_router(
     temp_dir: PathBuf,
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
-    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
+    record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
     Router::new()
         .nest(
@@ -35,7 +33,7 @@ pub fn create_router(
                 temp_dir,
                 files_dir.clone(),
                 content_policy,
-                authorized_keys,
+                record_policy,
             ),
         )
         .nest_service("/content", ServeDir::new(files_dir))

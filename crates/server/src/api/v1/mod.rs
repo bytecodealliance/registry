@@ -1,4 +1,7 @@
-use crate::{policy::content::ContentPolicy, services::CoreService};
+use crate::{
+    policy::{content::ContentPolicy, record::RecordPolicy},
+    services::CoreService,
+};
 use anyhow::Result;
 use axum::{
     extract::{
@@ -10,12 +13,7 @@ use axum::{
     Router,
 };
 use serde::{Serialize, Serializer};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
-use warg_crypto::signing::KeyID;
+use std::{path::PathBuf, sync::Arc};
 
 pub mod fetch;
 pub mod package;
@@ -96,7 +94,7 @@ pub fn create_router(
     temp_dir: PathBuf,
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
-    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
+    record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
     let proof_config = proof::Config::new(core.log_data().clone(), core.map_data().clone());
     let package_config = package::Config::new(
@@ -105,7 +103,7 @@ pub fn create_router(
         files_dir,
         temp_dir,
         content_policy,
-        authorized_keys,
+        record_policy,
     );
     let fetch_config = fetch::Config::new(core);
 

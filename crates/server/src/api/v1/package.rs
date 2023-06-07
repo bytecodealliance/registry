@@ -1,8 +1,10 @@
 use super::{Json, Path};
 use crate::{
     datastore::{DataStoreError, RecordStatus},
-    is_kebab_case,
-    policy::content::{ContentPolicy, ContentPolicyError},
+    policy::{
+        content::{ContentPolicy, ContentPolicyError},
+        record::{RecordPolicy, RecordPolicyError},
+    },
     services::CoreService,
 };
 use axum::{
@@ -14,20 +16,14 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
     ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
 };
-use warg_crypto::{
-    hash::{AnyHash, Sha256},
-    signing::KeyID,
-};
+use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
     package,
     registry::{LogId, RecordId},
@@ -41,7 +37,7 @@ pub struct Config {
     files_dir: PathBuf,
     temp_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
-    authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
+    record_policy: Option<Arc<dyn RecordPolicy>>,
 }
 
 impl Config {
@@ -51,7 +47,7 @@ impl Config {
         files_dir: PathBuf,
         temp_dir: PathBuf,
         content_policy: Option<Arc<dyn ContentPolicy>>,
-        authorized_keys: Option<HashMap<String, HashSet<KeyID>>>,
+        record_policy: Option<Arc<dyn RecordPolicy>>,
     ) -> Self {
         Self {
             core_service,
@@ -59,7 +55,7 @@ impl Config {
             files_dir,
             temp_dir,
             content_policy,
-            authorized_keys,
+            record_policy,
         }
     }
 
@@ -95,33 +91,6 @@ impl Config {
     }
 }
 
-/// Represents a valid package name.
-///
-/// Valid package names conform to the component model specification
-/// for identifiers.
-///
-/// A valid component model identifier is the format `<namespace>:<name>`,
-/// where both parts are also kebab-case WIT identifiers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct PackageName<'a> {
-    namespace: &'a str,
-    name: &'a str,
-}
-
-impl<'a> PackageName<'a> {
-    /// Creates a package name from the given string.
-    ///
-    /// Returns `None` if the given string is not a valid package name.
-    pub fn new(s: &'a str) -> Option<Self> {
-        let (namespace, name) = s.split_once(':')?;
-        if !is_kebab_case(namespace) || !is_kebab_case(name) {
-            return None;
-        }
-
-        Some(Self { namespace, name })
-    }
-}
-
 struct PackageApiError(PackageError);
 
 impl PackageApiError {
@@ -130,10 +99,6 @@ impl PackageApiError {
             status: StatusCode::BAD_REQUEST.as_u16(),
             message: message.to_string(),
         })
-    }
-
-    fn unauthorized(message: impl ToString) -> Self {
-        Self(PackageError::Unauthorized(message.to_string()))
     }
 
     fn internal_error(e: impl std::fmt::Display) -> Self {
@@ -176,9 +141,18 @@ impl From<DataStoreError> for PackageApiError {
 }
 
 impl From<ContentPolicyError> for PackageApiError {
-    fn from(value: ContentPolicyError) -> Self {
-        match value {
+    fn from(e: ContentPolicyError) -> Self {
+        match e {
             ContentPolicyError::Rejection(message) => Self(PackageError::Rejection(message)),
+        }
+    }
+}
+
+impl From<RecordPolicyError> for PackageApiError {
+    fn from(e: RecordPolicyError) -> Self {
+        match e {
+            RecordPolicyError::Unauthorized(message) => Self(PackageError::Unauthorized(message)),
+            RecordPolicyError::Rejection(message) => Self(PackageError::Rejection(message)),
         }
     }
 }
@@ -195,11 +169,11 @@ async fn publish_record(
     Path(log_id): Path<LogId>,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
-    let expected_log_id = LogId::package_log::<Sha256>(&body.name);
+    let expected_log_id = LogId::package_log::<Sha256>(&body.id);
     if expected_log_id != log_id {
         return Err(PackageApiError::bad_request(format!(
-            "package log identifier `{expected_log_id}` derived from name `{name}` does not match provided log identifier `{log_id}`",
-            name = body.name
+            "package log identifier `{expected_log_id}` derived from `{id}` does not match provided log identifier `{log_id}`",
+            id = body.id
         )));
     }
 
@@ -216,25 +190,10 @@ async fn publish_record(
         ));
     }
 
-    let pkg = PackageName::new(&body.name).ok_or_else(|| {
-        PackageApiError::bad_request(format!(
-            "invalid package name `{name}`: expected format is `<namespace>:<name>`",
-            name = body.name
-        ))
-    })?;
-
-    if let Some(authorized_keys) = &config.authorized_keys {
-        if !authorized_keys
-            .get(pkg.namespace)
-            .map(|keys| keys.contains(record.key_id()))
-            .unwrap_or(false)
-        {
-            return Err(PackageApiError::unauthorized(format!(
-                "key id `{key}` is not authorized to publish to package `{name}`",
-                name = body.name,
-                key = record.key_id()
-            )));
-        }
+    // Preemptively perform the policy check on the record before storing it
+    // This is performed here so that we never store an unauthorized record
+    if let Some(policy) = &config.record_policy {
+        policy.check(&body.id, &record)?;
     }
 
     // Verify the signature on the record itself before storing it
@@ -251,7 +210,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .store_package_record(&log_id, &body.name, &record_id, &record, &missing)
+        .store_package_record(&log_id, &body.id, &record_id, &record, &missing)
         .await?;
 
     // If there's no missing content, submit the record for processing now

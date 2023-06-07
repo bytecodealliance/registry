@@ -4,7 +4,7 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
+    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -153,7 +153,7 @@ pub trait DataStore: Send + Sync {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        name: &str,
+        package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,

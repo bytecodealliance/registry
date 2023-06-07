@@ -12,7 +12,10 @@ use warg_client::{
     FileSystemClient,
 };
 use warg_crypto::hash::AnyHash;
-use warg_protocol::{registry::RecordId, Version};
+use warg_protocol::{
+    registry::{PackageId, RecordId},
+    Version,
+};
 
 const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -21,7 +24,7 @@ const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
 /// was no pending publish.
 async fn enqueue<'a, T>(
     client: &'a FileSystemClient,
-    name: &str,
+    id: &PackageId,
     entry: impl FnOnce(&'a FileSystemClient) -> T,
 ) -> Result<Option<PublishEntry>>
 where
@@ -29,20 +32,17 @@ where
 {
     match client.registry().load_publish().await? {
         Some(mut info) => {
-            if info.package != name {
+            if &info.id != id {
                 bail!(
-                    "there is already publish in progress for package `{package}`",
-                    package = info.package
+                    "there is already publish in progress for package `{id}`",
+                    id = info.id
                 );
             }
 
             let entry = entry(client).await?;
 
             if matches!(entry, PublishEntry::Init) && info.initializing() {
-                bail!(
-                    "there is already a pending initializing for package `{package}`",
-                    package = name
-                );
+                bail!("there is already a pending initializing for package `{id}`");
             }
 
             info.entries.push(entry);
@@ -112,9 +112,9 @@ pub struct PublishInitCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The name of the package being initialized.
-    #[clap(value_name = "NAME")]
-    pub name: String,
+    /// The identifier of the package being initialized.
+    #[clap(value_name = "PACKAGE")]
+    pub id: PackageId,
     /// Whether to wait for the publish to complete.
     #[clap(long)]
     pub no_wait: bool,
@@ -126,7 +126,7 @@ impl PublishInitCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match enqueue(&client, &self.name, |_| {
+        match enqueue(&client, &self.id, |_| {
             std::future::ready(Ok(PublishEntry::Init))
         })
         .await?
@@ -135,7 +135,7 @@ impl PublishInitCommand {
                 let record_id = submit(
                     &client,
                     PublishInfo {
-                        package: self.name.clone(),
+                        id: self.id.clone(),
                         head: None,
                         entries: vec![entry],
                     },
@@ -147,19 +147,16 @@ impl PublishInitCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
-                    println!(
-                        "published initialization of package `{name}`",
-                        name = self.name,
-                    );
+                    println!("published initialization of package `{id}`", id = self.id,);
                 }
             }
             None => {
                 println!(
-                    "added initialization of package `{package}` to pending publish",
-                    package = self.name
+                    "added initialization of package `{id}` to pending publish",
+                    id = self.id
                 );
             }
         }
@@ -175,9 +172,9 @@ pub struct PublishReleaseCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The name of the package being published.
-    #[clap(long, short, value_name = "NAME")]
-    pub name: String,
+    /// The identifier of the package being published.
+    #[clap(long, short, value_name = "PACKAGE")]
+    pub id: PackageId,
     /// The version of the package being published.
     #[clap(long, short, value_name = "VERSION")]
     pub version: Version,
@@ -197,7 +194,7 @@ impl PublishReleaseCommand {
 
         let path = self.path.clone();
         let version = self.version.clone();
-        match enqueue(&client, &self.name, move |c| async move {
+        match enqueue(&client, &self.id, move |c| async move {
             let content = c
                 .content()
                 .store_content(
@@ -221,7 +218,7 @@ impl PublishReleaseCommand {
                 let record_id = submit(
                     &client,
                     PublishInfo {
-                        package: self.name.clone(),
+                        id: self.id.clone(),
                         head: None,
                         entries: vec![entry],
                     },
@@ -233,21 +230,21 @@ impl PublishReleaseCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     println!(
-                        "published version {version} of package `{name}`",
+                        "published version {version} of package `{id}`",
                         version = self.version,
-                        name = self.name
+                        id = self.id
                     );
                 }
             }
             None => {
                 println!(
-                    "added release of version {version} for package `{package}` to pending publish",
+                    "added release of version {version} for package `{id}` to pending publish",
                     version = self.version,
-                    package = self.name
+                    id = self.id
                 );
             }
         }
@@ -263,9 +260,9 @@ pub struct PublishStartCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The name of the package being published.
-    #[clap(value_name = "NAME")]
-    pub name: String,
+    /// The identifier of the package being published.
+    #[clap(value_name = "PACKAGE")]
+    pub id: PackageId,
 }
 
 impl PublishStartCommand {
@@ -275,18 +272,18 @@ impl PublishStartCommand {
         let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
-            Some(info) => bail!("a publish is already in progress for package `{package}`; use `publish abort` to abort the current publish", package = info.package),
+            Some(info) => bail!("a publish is already in progress for package `{id}`; use `publish abort` to abort the current publish", id = info.id),
             None => {
                 client.registry().store_publish(Some(&PublishInfo {
-                    package: self.name.clone(),
+                    id: self.id.clone(),
                     head: None,
                     entries: Default::default(),
                 }))
                 .await?;
 
                 println!(
-                    "started new pending publish for package `{name}`",
-                    name = self.name
+                    "started new pending publish for package `{id}`",
+                    id = self.id
                 );
                 Ok(())
             },
@@ -311,8 +308,8 @@ impl PublishListCommand {
         match client.registry().load_publish().await? {
             Some(info) => {
                 println!(
-                    "publishing package `{package}` with {count} record(s) to publish\n",
-                    package = info.package,
+                    "publishing package `{id}` with {count} record(s) to publish\n",
+                    id = info.id,
                     count = info.entries.len()
                 );
 
@@ -353,8 +350,8 @@ impl PublishAbortCommand {
             Some(info) => {
                 client.registry().store_publish(None).await?;
                 println!(
-                    "aborted the pending publish for package `{package}`",
-                    package = info.package
+                    "aborted the pending publish for package `{id}`",
+                    id = info.id
                 );
             }
             None => bail!("no pending publish to abort"),
@@ -383,10 +380,7 @@ impl PublishSubmitCommand {
 
         match client.registry().load_publish().await? {
             Some(info) => {
-                println!(
-                    "submitting publish for package `{package}`...",
-                    package = info.package
-                );
+                println!("submitting publish for package `{id}`...", id = info.id);
 
                 let record_id = submit(&client, info.clone(), &self.common.key_name).await?;
 
@@ -396,22 +390,22 @@ impl PublishSubmitCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&info.package, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&info.id, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     for entry in &info.entries {
                         match entry {
                             PublishEntry::Init => {
                                 println!(
-                                    "published initialization of package `{package}`",
-                                    package = info.package
+                                    "published initialization of package `{id}`",
+                                    id = info.id
                                 );
                             }
                             PublishEntry::Release { version, .. } => {
                                 println!(
-                                    "published version {version} of package `{package}`",
+                                    "published version {version} of package `{id}`",
                                     version = version,
-                                    package = info.package,
+                                    id = info.id,
                                 );
                             }
                         }
@@ -432,9 +426,9 @@ pub struct PublishWaitCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
-    /// The name of the package being published.
+    /// The name of the published package.
     #[clap(value_name = "PACKAGE")]
-    pub package: String,
+    pub id: PackageId,
 
     /// The identifier of the package record to wait for completion.
     #[clap(value_name = "RECORD")]
@@ -449,17 +443,17 @@ impl PublishWaitCommand {
         let record_id = RecordId::from(self.record_id);
 
         println!(
-            "waiting for record `{record_id} of package `{package}` to be published...",
-            package = self.package
+            "waiting for record `{record_id} of package `{id}` to be published...",
+            id = self.id
         );
 
         client
-            .wait_for_publish(&self.package, &record_id, Duration::from_secs(1))
+            .wait_for_publish(&self.id, &record_id, Duration::from_secs(1))
             .await?;
 
         println!(
-            "record `{record_id} of package `{package}` has been published",
-            package = self.package
+            "record `{record_id} of package `{id}` has been published",
+            id = self.id
         );
 
         Ok(())

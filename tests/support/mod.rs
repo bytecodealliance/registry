@@ -15,7 +15,12 @@ use warg_crypto::{
     hash::AnyHash,
     signing::{KeyID, PrivateKey},
 };
-use warg_server::{datastore::DataStore, policy::content::WasmContentPolicy, Config, Server};
+use warg_protocol::registry::PackageId;
+use warg_server::{
+    datastore::DataStore,
+    policy::{content::WasmContentPolicy, record::AuthorizedKeyPolicy},
+    Config, Server,
+};
 use wit_parser::{Resolve, UnresolvedPackage};
 
 pub fn test_operator_key() -> &'static str {
@@ -97,15 +102,13 @@ pub async fn spawn_server(
         .with_checkpoint_interval(Duration::from_millis(100))
         .with_content_policy(WasmContentPolicy::default()); // For the tests, we assume only wasm content is allowed.
 
-    match authorized_keys {
-        Some(keys) => {
-            for (namespace, key) in keys {
-                config = config.with_authorized_key(namespace, key)?;
-            }
+    if let Some(authorized_keys) = authorized_keys {
+        let mut policy = AuthorizedKeyPolicy::new();
+        for (namespace, key) in authorized_keys {
+            policy = policy.with_authorized_key(namespace, key)?;
         }
-        None => {
-            config = config.with_no_authorization();
-        }
+
+        config = config.with_record_policy(policy);
     }
 
     if let Some(store) = data_store {
@@ -135,7 +138,7 @@ pub async fn spawn_server(
 
 pub async fn publish(
     client: &FileSystemClient,
-    name: &str,
+    id: &PackageId,
     version: &str,
     content: Vec<u8>,
     init: bool,
@@ -162,7 +165,7 @@ pub async fn publish(
         .publish_with_info(
             signing_key,
             PublishInfo {
-                package: name.to_string(),
+                id: id.clone(),
                 head: None,
                 entries,
             },
@@ -170,7 +173,7 @@ pub async fn publish(
         .await?;
 
     client
-        .wait_for_publish(name, &record_id, Duration::from_millis(100))
+        .wait_for_publish(id, &record_id, Duration::from_millis(100))
         .await?;
 
     Ok(digest)
@@ -178,26 +181,18 @@ pub async fn publish(
 
 pub async fn publish_component(
     client: &FileSystemClient,
-    name: &str,
+    id: &PackageId,
     version: &str,
     wat: &str,
     init: bool,
     signing_key: &PrivateKey,
 ) -> Result<AnyHash> {
-    publish(
-        client,
-        name,
-        version,
-        wat::parse_str(wat)?,
-        init,
-        signing_key,
-    )
-    .await
+    publish(client, id, version, wat::parse_str(wat)?, init, signing_key).await
 }
 
 pub async fn publish_wit(
     client: &FileSystemClient,
-    name: &str,
+    id: &PackageId,
     version: &str,
     wit: &str,
     init: bool,
@@ -208,7 +203,7 @@ pub async fn publish_wit(
 
     publish(
         client,
-        name,
+        id,
         version,
         wit_component::encode(&resolve, pkg)?,
         init,

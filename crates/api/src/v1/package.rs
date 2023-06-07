@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, MapCheckpoint, RecordId},
+    registry::{LogId, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelopeBody, SerdeEnvelope,
 };
 
@@ -25,8 +25,8 @@ pub enum ContentSource {
 #[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
 pub struct PublishRecordRequest<'a> {
-    /// The name of the package being published.
-    pub name: Cow<'a, str>,
+    /// The id of the package being published.
+    pub id: Cow<'a, PackageId>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
     /// The complete set of content sources for the record.
@@ -111,8 +111,8 @@ pub enum PackageError {
     /// The record is not currently sourcing content.
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
-    /// The publish operation was not authorized by the registry.
-    #[error("registry did not authorize the request to publish: {0}")]
+    /// The operation was not authorized by the registry.
+    #[error("unauthorized operation: {0}")]
     Unauthorized(String),
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]

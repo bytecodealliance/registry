@@ -55,9 +55,9 @@ async fn it_works_with_postgres() -> TestResult {
     test_invalid_signature(&config).await?;
 
     let mut packages = vec![
-        "test:component",
-        "test:wit-package",
-        "test:unauthorized-key",
+        PackageId::new("test:component")?,
+        PackageId::new("test:wit-package")?,
+        PackageId::new("test:unauthorized-key")?,
     ];
 
     // There should be two log entries in the registry
@@ -77,7 +77,7 @@ async fn it_works_with_postgres() -> TestResult {
 
     test_unknown_signing_key(&config).await?;
 
-    packages.push("test:unknown-key");
+    packages.push(PackageId::new("test:unknown-key")?);
 
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
     let checkpoint = client.latest_checkpoint().await?;
@@ -93,12 +93,12 @@ async fn it_works_with_postgres() -> TestResult {
     fs::remove_dir_all(root.join("registries"))?;
 
     let client = create_client(&config)?;
-    client.upsert(&packages).await?;
+    client.upsert(packages.iter()).await?;
 
     // Finally, after a restart, ensure the packages can be downloaded
     for package in packages {
         client
-            .download(package, &"0.1.0".parse()?)
+            .download(&package, &"0.1.0".parse()?)
             .await?
             .context("failed to resolve package")?;
     }

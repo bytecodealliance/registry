@@ -17,7 +17,7 @@ use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
+    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
@@ -452,7 +452,7 @@ impl DataStore for PostgresDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        name: &str,
+        package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -461,7 +461,7 @@ impl DataStore for PostgresDataStore {
         insert_record::<package::Validator>(
             conn.as_mut(),
             log_id,
-            Some(name),
+            Some(package_id.as_ref()),
             record_id,
             record,
             missing,
