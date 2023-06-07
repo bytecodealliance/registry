@@ -1,56 +1,20 @@
-use std::{
-    error::Error,
-    fmt,
-    fs::{self, File},
-    io::Write,
-    sync::Arc,
-};
-
-use warg_crypto::hash::{Hash, SupportedDigest};
-
-use crate::map::{fork::Fork, link::Link};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 use super::{
     map::hash_branch,
-    node::Node,
-    path::{Path, ReversePath, Side},
+    path::{ReversePath, Side},
 };
 
 #[derive(Debug)]
-pub struct Singleton<D: SupportedDigest> {
-    pub key: Hash<D>,
+pub struct Singleton<D: SupportedDigest, K: VisitBytes + Clone> {
+    pub key: K,
     pub value: Hash<D>,
     pub height: usize,
     pub side: Side,
 }
 
-#[derive(Debug)]
-pub struct ReplacementError {
-    details: String,
-}
-
-impl ReplacementError {
-    pub fn new() -> Self {
-        Self {
-            details: String::from("Elided path length not equal to inerted path length"),
-        }
-    }
-}
-
-impl fmt::Display for ReplacementError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.details)
-    }
-}
-
-impl Error for ReplacementError {
-    fn description(&self) -> &str {
-        &self.details
-    }
-}
-
-impl<D: SupportedDigest + std::fmt::Debug> Singleton<D> {
-    pub fn new(key: Hash<D>, value: Hash<D>, height: usize, side: Side) -> Self {
+impl<D: SupportedDigest, K: VisitBytes + Clone> Singleton<D, K> {
+    pub fn new(key: K, value: Hash<D>, height: usize, side: Side) -> Self {
         Self {
             key,
             value,
@@ -59,13 +23,13 @@ impl<D: SupportedDigest + std::fmt::Debug> Singleton<D> {
         }
     }
 
-    pub fn key(&self) -> Hash<D> {
+    pub fn key(&self) -> K {
         self.key.clone()
     }
 
     pub fn hash(&self) -> Hash<D> {
         let mut hash = self.value.clone();
-        let mut reversed = ReversePath::new(self.key.clone());
+        let mut reversed: ReversePath<D> = ReversePath::new(self.key.clone());
         for n in 0..self.height {
             hash = match reversed.next() {
                 Some(side) => match side {
@@ -79,7 +43,7 @@ impl<D: SupportedDigest + std::fmt::Debug> Singleton<D> {
     }
 }
 
-impl<D: SupportedDigest> Clone for Singleton<D> {
+impl<D: SupportedDigest, K: VisitBytes + Clone> Clone for Singleton<D, K> {
     fn clone(&self) -> Self {
         Self {
             key: self.key.clone(),

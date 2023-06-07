@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use warg_crypto::hash::{Hash, SupportedDigest};
+use warg_crypto::{hash::{Hash, SupportedDigest}, VisitBytes};
 
 use super::node::Node;
 
 #[derive(Debug)]
-pub struct Link<D: SupportedDigest + std::fmt::Debug> {
+pub struct Link<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> {
     hash: Hash<D>,
-    node: Arc<Node<D>>,
+    node: Arc<Node<D, K>>,
 }
 
-impl<D: SupportedDigest + std::fmt::Debug> Link<D> {
-    pub fn new(node: Node<D>) -> Self {
+impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Link<D, K> {
+    pub fn new(node: Node<D, K>) -> Self {
         Self {
             hash: node.hash(),
             node: Arc::new(node),
@@ -22,12 +22,12 @@ impl<D: SupportedDigest + std::fmt::Debug> Link<D> {
         &self.hash
     }
 
-    pub fn node(&self) -> &Node<D> {
+    pub fn node(&self) -> &Node<D, K> {
         &self.node
     }
 }
 
-impl<D: SupportedDigest + std::fmt::Debug> Clone for Link<D> {
+impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Clone for Link<D, K> {
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),

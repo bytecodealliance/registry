@@ -5,7 +5,6 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
 };
-use warg_crypto::hash::{Hash, Sha256};
 
 pub mod support;
 

@@ -1,13 +1,12 @@
 use core::fmt::{Debug, Formatter};
-use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use warg_crypto::hash::{AnyHash, Hash, SupportedDigest};
+use warg_crypto::hash::{Hash, SupportedDigest};
 use warg_crypto::VisitBytes;
 
 use super::link::Link;
 use super::node::Node;
-use super::path::{Path, ReversePath};
+use super::path::{Path};
 use super::proof::Proof;
 
 /// Immutable Map w/ Inclusion Proofs
@@ -33,11 +32,11 @@ use super::proof::Proof;
 ///
 pub struct Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq +  Debug,
+    V: VisitBytes + Clone,
 {
-    pub link: Link<D>,
+    link: Link<D, K>,
     len: usize,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
@@ -45,11 +44,11 @@ where
 
 impl<D, K, V> Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
-    pub(crate) fn new(link: Link<D>, len: usize) -> Self {
+    pub(crate) fn new(link: Link<D, K>, len: usize) -> Self {
         Self {
             link,
             len,
@@ -61,9 +60,9 @@ where
 
 impl<D, K, V> Clone for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -77,9 +76,9 @@ where
 
 impl<D, K, V> Default for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
     fn default() -> Self {
         Self {
@@ -93,17 +92,17 @@ where
 
 impl<D, K, V> Eq for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
 }
 
 impl<D, K, V> PartialEq for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         self.link.hash() == other.link.hash()
@@ -112,9 +111,9 @@ where
 
 impl<D, K, V> core::hash::Hash for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.link.hash().hash(state);
@@ -123,9 +122,9 @@ where
 
 impl<D, K, V> Debug for Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug,
+    V: VisitBytes + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("Map({:?})", self.link.hash()))
@@ -134,9 +133,9 @@ where
 
 impl<D, K, V> Map<D, K, V>
 where
-    D: SupportedDigest + Debug,
-    K: VisitBytes + Debug,
-    V: VisitBytes,
+    D: SupportedDigest,
+    K: VisitBytes + Clone + PartialEq + Debug + ?Sized,
+    V: VisitBytes + Clone,
 {
     /// The hash of the root of the tree.
     ///
@@ -156,36 +155,28 @@ where
     }
 
     /// Gets the value for a given key and a proof of its presence in this map.
-    pub fn prove(&self, key: AnyHash) -> Option<Proof<D, V>>
+    pub fn prove(&self, key: K) -> Option<Proof<D, K, V>>
 where
-        // K: Borrow<Q>,
-        // Q: VisitBytes,
     {
-        let hash: Hash<D> = key.try_into().unwrap();
-        self.link.node().prove(Path::new(hash))
+        self.link.node().prove(Path::new(key))
     }
 
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
-    pub fn insert(&self, key: AnyHash, val: V) -> Self {
-        let new_key: Hash<D> = key.try_into().unwrap();
-        let mut path = Path::new(new_key.clone());
-        let (node, new) = self.link.node().insert(&mut path, new_key, Hash::of(val));
+    pub fn insert(&self, key: K, val: V) -> Self {
+        let mut path: Path<D, K> = Path::new(key.clone());
+        let (node, new) = self.link.node().insert(&mut path, key, Hash::of(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
     /// Inserts all key/value pairs into the map, creating a new map.
-    pub fn extend(&self, iter: impl IntoIterator<Item = (AnyHash, V)>) -> Self {
+    pub fn extend(&self, iter: impl IntoIterator<Item = (K, V)>) -> Self {
         let mut here = self.clone();
 
         for (key, val) in iter {
-            let hash: Hash<D> = key.try_into().unwrap();
-            let mut path = Path::new(hash.clone());
-            let (node, new) = here
-                .link
-                .node()
-                .insert(&mut path, Hash::of(hash), Hash::of(val));
+            let mut path: Path<D,K> = Path::new(key.clone());
+            let (node, new) = here.link.node().insert(&mut path, key, Hash::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 

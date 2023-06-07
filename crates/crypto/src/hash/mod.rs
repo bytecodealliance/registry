@@ -56,7 +56,7 @@ static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
     v
 });
 
-pub trait SupportedDigest: Digest + private::Sealed + Sized {
+pub trait SupportedDigest: Digest + private::Sealed + Sized + std::fmt::Debug {
     const ALGORITHM: HashAlgorithm;
     fn empty_tree_hash(height: usize) -> Hash<Self>;
 }

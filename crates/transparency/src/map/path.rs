@@ -1,9 +1,10 @@
 use warg_crypto::{
-    hash::{AnyHash, Hash, SupportedDigest},
+    hash::{Hash, SupportedDigest},
     VisitBytes,
 };
 
-pub struct Path<D: SupportedDigest> {
+pub struct Path<D: SupportedDigest, K: VisitBytes + Clone> {
+    key: K,
     all: Hash<D>,
     index: usize,
 }
@@ -25,16 +26,15 @@ impl Side {
     }
 }
 
-impl<D: SupportedDigest> Path<D> {
-    pub(crate) fn new(key: Hash<D>) -> Self {
-        // let all = Hash::of(&key);
-        // let all = &key;
+impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
+    pub(crate) fn new(key: K) -> Self {
+        let all = Hash::of(&key);
 
-        Self { index: 0, all: key }
+        Self { key, index: 0, all }
     }
 
-    pub fn back(&mut self) {
-        self.index -= 1;
+    pub fn key(&self) -> K {
+      self.key.clone()
     }
 
     fn get(&self, at: usize) -> Side {
@@ -53,12 +53,9 @@ impl<D: SupportedDigest> Path<D> {
     pub fn index(&self) -> usize {
         self.index
     }
-    pub fn hash(&self) -> Hash<D> {
-        self.all.clone()
-    }
 }
 
-impl<D: SupportedDigest> Iterator for Path<D> {
+impl<D: SupportedDigest, K: VisitBytes + Clone> Iterator for Path<D, K> {
     type Item = Side;
 
     #[inline]
@@ -87,22 +84,14 @@ impl<D: SupportedDigest> Clone for ReversePath<D> {
 }
 
 impl<D: SupportedDigest> ReversePath<D> {
-    pub(crate) fn new(key: Hash<D>) -> Self {
-        // let all = Hash::of(&key);
-        let start = key.len() * 8;
+    pub(crate) fn new<K: VisitBytes>(key: K) -> Self {
+        let all = Hash::of(key);
+        let start = all.len() * 8;
 
         Self {
             index: start,
-            all: key,
+            all,
         }
-    }
-
-    pub fn back(&mut self) {
-        self.index -= 1;
-    }
-
-    pub fn index(&self) -> usize {
-        self.index
     }
 
     fn get(&self, at: usize) -> Side {
@@ -144,50 +133,50 @@ mod tests {
         }
     }
 
-    // #[test]
-    // #[allow(clippy::identity_op)]
-    // fn test_forwards() {
-    //     let mut path = Path::<Sha256>::new("foo");
-    //     let hash: Hash<Sha256> = Hash::of("foo");
-    //     let mut bytes = hash.bytes().iter();
+    #[test]
+    #[allow(clippy::identity_op)]
+    fn test_forwards() {
+        let mut path = Path::<Sha256, &str>::new("foo");
+        let hash: Hash<Sha256> = Hash::of("foo");
+        let mut bytes = hash.bytes().iter();
 
-    //     for _ in 0..hash.len() {
-    //         let lhs = *bytes.next().unwrap();
-    //         assert_eq!(side((lhs >> 7) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 6) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 5) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 4) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 3) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 2) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 1) & 1), path.next().unwrap());
-    //         assert_eq!(side((lhs >> 0) & 1), path.next().unwrap());
-    //     }
+        for _ in 0..hash.len() {
+            let lhs = *bytes.next().unwrap();
+            assert_eq!(side((lhs >> 7) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 6) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 5) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 4) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 3) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 2) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 1) & 1), path.next().unwrap());
+            assert_eq!(side((lhs >> 0) & 1), path.next().unwrap());
+        }
 
-    //     assert!(bytes.next().is_none());
-    //     assert!(path.next().is_none());
-    // }
+        assert!(bytes.next().is_none());
+        assert!(path.next().is_none());
+    }
 
-    // #[test]
-    // #[allow(clippy::identity_op)]
-    // fn test_backwards() {
-    //     let mut path = ReversePath::<Sha256>::new("foo");
-    //     let hash: Hash<Sha256> = Hash::of("foo");
-    //     let mut bytes = hash.bytes().iter();
+    #[test]
+    #[allow(clippy::identity_op)]
+    fn test_backwards() {
+        let mut path = ReversePath::<Sha256>::new("foo");
+        let hash: Hash<Sha256> = Hash::of("foo");
+        let mut bytes = hash.bytes().iter();
 
-    //     for _ in 0..hash.len() {
-    //         let rhs = *bytes.next_back().unwrap();
+        for _ in 0..hash.len() {
+            let rhs = *bytes.next_back().unwrap();
 
-    //         assert_eq!(side((rhs >> 0) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 1) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 2) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 3) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 4) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 5) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 6) & 1), path.next().unwrap());
-    //         assert_eq!(side((rhs >> 7) & 1), path.next().unwrap());
-    //     }
+            assert_eq!(side((rhs >> 0) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 1) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 2) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 3) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 4) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 5) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 6) & 1), path.next().unwrap());
+            assert_eq!(side((rhs >> 7) & 1), path.next().unwrap());
+        }
 
-    //     assert!(bytes.next().is_none());
-    //     assert!(path.next().is_none());
-    // }
+        assert!(bytes.next().is_none());
+        assert!(path.next().is_none());
+    }
 }

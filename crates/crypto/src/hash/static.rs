@@ -7,7 +7,7 @@ use std::fmt;
 
 use crate::{ByteVisitor, VisitBytes};
 
-use super::{AnyHash, Output, SupportedDigest};
+use super::{Output, SupportedDigest};
 
 #[derive(PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {

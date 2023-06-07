@@ -1,25 +1,25 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use std::fmt::Debug;
 
-// use sha2::Sha256;
 use warg_crypto::hash::{Hash, SupportedDigest};
 use warg_crypto::VisitBytes;
 
 use super::fork::Fork;
 use super::link::Link;
-use super::path::{Path, ReversePath, Side};
+use super::path::{Path, Side};
 use super::proof::Proof;
 use super::singleton::Singleton;
 
 #[derive(Debug)]
-pub enum Node<D: SupportedDigest + std::fmt::Debug> {
+pub enum Node<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> {
     Leaf(Hash<D>),
-    Fork(Fork<D>),
-    Singleton(Singleton<D>),
+    Fork(Fork<D, K>),
+    Singleton(Singleton<D, K>),
     Empty(usize),
 }
 
-impl<D: SupportedDigest + std::fmt::Debug> Clone for Node<D> {
+impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Clone for Node<D, K> {
     fn clone(&self) -> Self {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
@@ -30,7 +30,7 @@ impl<D: SupportedDigest + std::fmt::Debug> Clone for Node<D> {
     }
 }
 
-impl<D: SupportedDigest + std::fmt::Debug> Default for Node<D> {
+impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Default for Node<D, K> {
     fn default() -> Self {
         Self::Fork(Fork::new(
             Arc::new(Link::new(Node::Empty(0))),
@@ -39,7 +39,7 @@ impl<D: SupportedDigest + std::fmt::Debug> Default for Node<D> {
     }
 }
 
-impl<D: SupportedDigest + std::fmt::Debug> Node<D> {
+impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
     pub fn hash(&self) -> Hash<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
@@ -49,26 +49,31 @@ impl<D: SupportedDigest + std::fmt::Debug> Node<D> {
         }
     }
 
-    pub fn prove<V: VisitBytes>(&self, mut path: Path<D>) -> Option<Proof<D, V>> {
+    pub fn prove<V: VisitBytes + Clone>(&self, mut path: Path<D, K>) -> Option<Proof<D, K, V>> {
         match (path.next(), self) {
             (Some(_), Self::Singleton(singleton)) => {
-                if singleton.key() == path.hash() {
+                if singleton.key() == path.key() {
                     Some(Proof::new(Vec::new()))
                 } else {
                     None
                 }
             }
             (Some(_), Self::Empty(_)) => {
-                let mut proof: Proof<D, V> = self.prove(path)?;
+                let mut proof: Proof<D, K, V> = self.prove(path)?;
                 proof.push(None);
                 None
             }
             (Some(idx), Self::Fork(fork)) => {
-                let mut proof = fork[idx].as_ref().node().prove(path)?;
+                let proof = fork[idx].as_ref().node().prove(path);
+                match proof {
+                  Some(mut p) => {
+                    let peer = fork[idx.opposite()].as_ref().hash();
+                    p.push(Some(peer.clone()));
+                    Some(p)
 
-                let peer = fork[idx.opposite()].as_ref().hash();
-                proof.push(Some(peer.clone()));
-                Some(proof)
+                  }
+                  None => None
+                }
             }
 
             (None, Self::Leaf(_)) => Some(Proof::new(Vec::new())),
@@ -82,7 +87,7 @@ impl<D: SupportedDigest + std::fmt::Debug> Node<D> {
     /// Returns:
     ///   * the new node that must replace the current node.
     ///   * whether or not this is a new entry in the map.
-    pub fn insert(&self, path: &mut Path<D>, key: Hash<D>, value: Hash<D>) -> (Self, bool) {
+    pub fn insert(&self, path: &mut Path<D, K>, key: K, value: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
             None => (

@@ -9,26 +9,28 @@ use warg_crypto::{
 use crate::{map::proof::Proof, protobuf};
 
 /// A collection of inclusion proof info
-pub struct ProofBundle<D, V>
+pub struct ProofBundle<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
-    proofs: Vec<Proof<D, V>>,
+    proofs: Vec<Proof<D, K, V>>,
 }
 
-impl<D, V> ProofBundle<D, V>
+impl<D, K, V> ProofBundle<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
     /// Bundles inclusion proofs together
-    pub fn bundle(proofs: Vec<Proof<D, V>>) -> Self {
+    pub fn bundle(proofs: Vec<Proof<D, K, V>>) -> Self {
         ProofBundle { proofs }
     }
 
     /// Splits a bundle into its constituent inclusion proofs
-    pub fn unbundle(self) -> Vec<Proof<D, V>> {
+    pub fn unbundle(self) -> Vec<Proof<D, K, V>> {
         self.proofs
     }
 
@@ -46,23 +48,25 @@ where
     }
 }
 
-impl<D, V> From<ProofBundle<D, V>> for protobuf::MapProofBundle
+impl<D, K, V> From<ProofBundle<D, K, V>> for protobuf::MapProofBundle
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
-    fn from(value: ProofBundle<D, V>) -> Self {
+    fn from(value: ProofBundle<D, K, V>) -> Self {
         let proofs = value.proofs.into_iter().map(|proof| proof.into()).collect();
         protobuf::MapProofBundle { proofs }
     }
 }
 
-impl<D, V> From<Proof<D, V>> for protobuf::MapInclusionProof
+impl<D, K, V> From<Proof<D, K, V>> for protobuf::MapInclusionProof
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
-    fn from(value: Proof<D, V>) -> Self {
+    fn from(value: Proof<D, K, V>) -> Self {
         let peers: Vec<Option<Hash<D>>> = value.into();
         protobuf::MapInclusionProof {
             hashes: peers.into_iter().map(|h| h.into()).collect(),
@@ -81,9 +85,10 @@ where
     }
 }
 
-impl<D, V> TryFrom<protobuf::MapProofBundle> for ProofBundle<D, V>
+impl<D, K, V> TryFrom<protobuf::MapProofBundle> for ProofBundle<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
     type Error = Error;
@@ -98,9 +103,10 @@ where
     }
 }
 
-impl<D, V> TryFrom<protobuf::MapInclusionProof> for Proof<D, V>
+impl<D, K, V> TryFrom<protobuf::MapInclusionProof> for Proof<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
     type Error = Error;

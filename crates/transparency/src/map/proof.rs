@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use std::iter::repeat;
 
 use warg_crypto::{
-    hash::{AnyHash, Hash, SupportedDigest},
+    hash::{Hash, SupportedDigest},
     VisitBytes,
 };
 
@@ -29,22 +29,27 @@ use super::{
 ///
 /// Third, since sparse peers are more likely at the bottom of the tree, we
 /// can omit all leading sparse peers. The verifier can dynamically reconstruct
-pub struct Proof<D, V>
+pub struct Proof<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
+    key: PhantomData<K>,
     value: PhantomData<V>,
+    /// Sibling node hashes needed to construct a proof
     pub peers: Vec<Option<Hash<D>>>,
 }
 
-impl<D, V> Proof<D, V>
+impl<D, K, V> Proof<D, K, V>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
     pub(crate) fn new(peers: Vec<Option<Hash<D>>>) -> Self {
         Self {
+            key: PhantomData,
             value: PhantomData,
             peers,
         }
@@ -55,10 +60,9 @@ where
     }
 
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
-    pub fn evaluate(&self, key: AnyHash, value: &V) -> Hash<D> {
+    pub fn evaluate(&self, key: K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.
-        let hash_key: Hash<D> = key.try_into().unwrap();
-        let path = ReversePath::<D>::new(hash_key);
+        let path = ReversePath::<D>::new(key);
 
         let fill = repeat(None).take(256 - self.peers.len());
         // Calculate the leaf hash.
@@ -87,47 +91,51 @@ where
     }
 }
 
-impl<D, V> From<Proof<D, V>> for Vec<Option<Hash<D>>>
+impl<D, K, V> From<Proof<D, K, V>> for Vec<Option<Hash<D>>>
 where
     D: SupportedDigest,
+    K: VisitBytes,
     V: VisitBytes,
 {
-    fn from(value: Proof<D, V>) -> Self {
+    fn from(value: Proof<D, K, V>) -> Self {
         value.peers
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use warg_crypto::hash::{AnyHash, Hash};
-
     #[test]
     fn test_proof_evaluate() {
         use warg_crypto::hash::Sha256;
 
         let a = crate::map::Map::<Sha256, &str, &[u8]>::default();
-        // let b = a.insert("foo", b"bar");
-        // let c = b.insert("baz", b"bat");
-        let b = a.insert(AnyHash::from(Hash::<Sha256>::of("foo")), b"bar");
-        let c = b.insert(AnyHash::from(Hash::<Sha256>::of("baz")), b"bat");
+        let b = a.insert("foo", b"bar");
+        let c = b.insert("baz", b"bat");
+        // let b = a.insert(AnyHash::from(Hash::<Sha256>::of("foo")), b"bar");
+        // let c = b.insert(AnyHash::from(Hash::<Sha256>::of("baz")), b"bat");
 
         let root = c.root().clone();
 
-        // let p = c.prove(&"baz").unwrap();
-        let p = c.prove(AnyHash::from(Hash::<Sha256>::of(&"baz"))).unwrap();
+        let p = c.prove(&"baz").unwrap();
+        // let p = c.prove(AnyHash::from(Hash::<Sha256>::of(&"baz"))).unwrap();
 
-        // assert_eq!(root, p.evaluate(&"baz", &b"bat".as_slice()));
-        // assert_ne!(root, p.evaluate(&"other", &b"bar".as_slice()));
-        assert_eq!(
-            root,
-            p.evaluate(AnyHash::from(Hash::<Sha256>::of("baz")), &b"bat".as_slice())
-        );
-        assert_ne!(
-            root,
-            p.evaluate(
-                AnyHash::from(Hash::<Sha256>::of("other")),
-                &b"bar".as_slice()
-            )
-        );
+        assert_eq!(root, p.evaluate("baz", &b"bat".as_slice()));
+        assert_ne!(root, p.evaluate("other", &b"bar".as_slice()));
+        // assert_eq!(
+        //     root,
+        //     // p.evaluate(AnyHash::from(Hash::<Sha256>::of("baz")), &b"bat".as_slice())
+        //     p.evaluate("baz", &b"bat".as_slice())
+        // );
+        // assert_ne!(
+        //     root,
+        //     p.evaluate("other", &b"bar".as_slice())
+        // );
+        // assert_ne!(
+        //     root,
+        //     p.evaluate(
+        //         AnyHash::from(Hash::<Sha256>::of("other")),
+        //         &b"bar".as_slice()
+        //     )
+        // );
     }
 }

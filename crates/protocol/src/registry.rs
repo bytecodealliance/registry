@@ -84,13 +84,13 @@ pub struct LogId(pub AnyHash);
 impl LogId {
     pub fn operator_log<D: SupportedDigest>() -> Self {
         let prefix: &[u8] = b"WARG-OPERATOR-LOG-ID-V0".as_slice();
-        let hash: Hash<D> = Hash::of(prefix);
+        let hash: Hash<D> = Hash::of(Hash::<D>::of(prefix));
         Self(hash.into())
     }
 
     pub fn package_log<D: SupportedDigest>(name: &str) -> Self {
         let prefix: &[u8] = b"WARG-PACKAGE-LOG-ID-V0:".as_slice();
-        let hash: Hash<D> = Hash::of((prefix, name));
+        let hash: Hash<D> = Hash::of(Hash::<D>::of((prefix, name)));
         Self(hash.into())
     }
 }
