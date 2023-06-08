@@ -84,7 +84,7 @@ impl VisitBytes for LogLeaf {
 ///
 /// A valid component model identifier is the format `<namespace>:<name>`,
 /// where both parts are also valid WIT identifiers (i.e. kebab-cased).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct PackageId {
     id: String,
     colon: usize,
