@@ -105,7 +105,7 @@ pub async fn spawn_server(
     if let Some(authorized_keys) = authorized_keys {
         let mut policy = AuthorizedKeyPolicy::new();
         for (namespace, key) in authorized_keys {
-            policy = policy.with_authorized_key(namespace, key)?;
+            policy = policy.with_namespace_key(namespace, key)?;
         }
 
         config = config.with_record_policy(policy);
