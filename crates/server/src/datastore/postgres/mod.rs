@@ -743,10 +743,7 @@ impl DataStore for PostgresDataStore {
             .await
             .optional()?;
 
-        let key = match state
-            .as_ref()
-            .and_then(|v| v.public_key(record.key_id()))
-        {
+        let key = match state.as_ref().and_then(|v| v.public_key(record.key_id())) {
             Some(key) => key,
             None => match record.as_ref().entries.get(0) {
                 Some(PackageEntry::Init { key, .. }) => key,

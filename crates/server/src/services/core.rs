@@ -26,7 +26,7 @@ use warg_crypto::{
     signing::PrivateKey,
 };
 use warg_protocol::{
-    operator::{OperatorRecord, OperatorEntry},
+    operator::{OperatorEntry, OperatorRecord},
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
