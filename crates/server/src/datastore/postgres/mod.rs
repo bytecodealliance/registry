@@ -15,8 +15,8 @@ use futures::{Stream, StreamExt};
 use std::{collections::HashSet, pin::Pin};
 use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
-    operator,
-    package::{self, PackageEntry},
+    operator::{OperatorRecord, OperatorState},
+    package::{PackageEntry, PackageRecord, PackageState},
     registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
@@ -394,10 +394,10 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<operator::OperatorRecord>,
+        record: &ProtoEnvelope<OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<operator::OperatorState>(
+        insert_record::<OperatorState>(
             conn.as_mut(),
             log_id,
             None,
@@ -440,7 +440,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<operator::OperatorState>(conn.as_mut(), log_id, record_id).await {
+        match validate_record::<OperatorState>(conn.as_mut(), log_id, record_id).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -454,11 +454,11 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         package_id: &PackageId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
         missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        insert_record::<package::PackageState>(
+        insert_record::<PackageState>(
             conn.as_mut(),
             log_id,
             Some(package_id.as_ref()),
@@ -501,7 +501,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<package::PackageState>(conn.as_mut(), log_id, record_id).await {
+        match validate_record::<PackageState>(conn.as_mut(), log_id, record_id).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -679,7 +679,7 @@ impl DataStore for PostgresDataStore {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
+    ) -> Result<Vec<ProtoEnvelope<OperatorRecord>>, DataStoreError> {
         let mut conn = self.0.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
@@ -698,7 +698,7 @@ impl DataStore for PostgresDataStore {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
+    ) -> Result<Vec<ProtoEnvelope<PackageRecord>>, DataStoreError> {
         let mut conn = self.0.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
@@ -715,31 +715,31 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<Record<operator::OperatorRecord>, DataStoreError> {
+    ) -> Result<Record<OperatorRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-        get_record::<operator::OperatorState>(conn.as_mut(), log_id, record_id).await
+        get_record::<OperatorState>(conn.as_mut(), log_id, record_id).await
     }
 
     async fn get_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<Record<package::PackageRecord>, DataStoreError> {
+    ) -> Result<Record<PackageRecord>, DataStoreError> {
         let mut conn = self.0.get().await?;
-        get_record::<package::PackageState>(conn.as_mut(), log_id, record_id).await
+        get_record::<PackageState>(conn.as_mut(), log_id, record_id).await
     }
 
     async fn verify_package_record_signature(
         &self,
         log_id: &LogId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
 
         let validator = schema::logs::table
             .select(schema::logs::validator)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
-            .first::<Json<package::Validator>>(&mut conn)
+            .first::<Json<PackageState>>(&mut conn)
             .await
             .optional()?;
 
@@ -754,7 +754,7 @@ impl DataStore for PostgresDataStore {
             },
         };
 
-        package::PackageRecord::verify(key, record.content_bytes(), record.signature())
+        PackageRecord::verify(key, record.content_bytes(), record.signature())
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 }

@@ -11,8 +11,8 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    operator,
-    package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
+    operator::OperatorState,
+    package::{PackageEntry, PackageRecord, PackageState, PACKAGE_RECORD_VERSION},
     registry::{MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
@@ -105,7 +105,7 @@ pub trait ContentStorage: Send + Sync {
 pub struct OperatorInfo {
     /// The current validation state of the operator.
     #[serde(default)]
-    pub state: operator::OperatorState,
+    pub state: OperatorState,
 }
 
 /// Represents information about a registry package.
@@ -119,7 +119,7 @@ pub struct PackageInfo {
     pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
     /// The current validation state of the package.
     #[serde(default)]
-    pub state: package::PackageState,
+    pub state: PackageState,
 }
 
 impl PackageInfo {
@@ -128,7 +128,7 @@ impl PackageInfo {
         Self {
             id: id.into(),
             checkpoint: None,
-            state: package::PackageState::default(),
+            state: PackageState::default(),
         }
     }
 }
@@ -177,18 +177,18 @@ impl PublishInfo {
         for entry in self.entries {
             match entry {
                 PublishEntry::Init => {
-                    entries.push(package::PackageEntry::Init {
+                    entries.push(PackageEntry::Init {
                         hash_algorithm: HashAlgorithm::Sha256,
                         key: signing_key.public_key(),
                     });
                 }
                 PublishEntry::Release { version, content } => {
-                    entries.push(package::PackageEntry::Release { version, content });
+                    entries.push(PackageEntry::Release { version, content });
                 }
             }
         }
 
-        let record = package::PackageRecord {
+        let record = PackageRecord {
             prev: self.head,
             version: PACKAGE_RECORD_VERSION,
             // TODO: this seems wrong to record the current time client-side

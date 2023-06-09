@@ -9,7 +9,7 @@ use warg_crypto::hash::{HashAlgorithm, Sha256};
 use warg_crypto::{signing, Signable};
 
 #[derive(Error, Debug)]
-pub enum ValidationError {
+pub enum OperatorValidationError {
     #[error("the first entry of the log is not \"init\"")]
     FirstEntryIsNotInit,
 
@@ -64,7 +64,7 @@ pub enum ValidationError {
 /// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct Head {
+pub struct OperatorHead {
     /// The digest of the last validated record.
     pub digest: RecordId,
     /// The timestamp of the last validated record.
@@ -82,7 +82,7 @@ pub struct OperatorState {
     algorithm: Option<HashAlgorithm>,
     /// The current head of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    head: Option<Head>,
+    head: Option<OperatorHead>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
@@ -100,7 +100,7 @@ impl OperatorState {
     /// Gets the current head of the validator.
     ///
     /// Returns `None` if no records have been validated yet.
-    pub fn head(&self) -> &Option<Head> {
+    pub fn head(&self) -> &Option<OperatorHead> {
         &self.head
     }
 
@@ -114,7 +114,7 @@ impl OperatorState {
     pub fn validate(
         &mut self,
         record: &ProtoEnvelope<model::OperatorRecord>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         let snapshot = self.snapshot();
 
         let result = self.validate_record(record);
@@ -140,7 +140,7 @@ impl OperatorState {
     fn validate_record(
         &mut self,
         envelope: &ProtoEnvelope<model::OperatorRecord>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         let record = envelope.as_ref();
 
         // Validate previous hash
@@ -158,11 +158,11 @@ impl OperatorState {
         // At this point the digest algorithm must be set via an init entry
         let _algorithm = self
             .algorithm
-            .ok_or(ValidationError::InitialRecordDoesNotInit)?;
+            .ok_or(OperatorValidationError::InitialRecordDoesNotInit)?;
 
         // Validate the envelope key id
         let key = self.keys.get(envelope.key_id()).ok_or_else(|| {
-            ValidationError::KeyIDNotRecognized {
+            OperatorValidationError::KeyIDNotRecognized {
                 key_id: envelope.key_id().clone(),
             }
         })?;
@@ -171,7 +171,7 @@ impl OperatorState {
         model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
         // Update the validator head
-        self.head = Some(Head {
+        self.head = Some(OperatorHead {
             digest: RecordId::operator_record::<Sha256>(envelope),
             timestamp: record.timestamp,
         });
@@ -179,21 +179,24 @@ impl OperatorState {
         Ok(())
     }
 
-    fn validate_record_hash(&self, record: &model::OperatorRecord) -> Result<(), ValidationError> {
+    fn validate_record_hash(
+        &self,
+        record: &model::OperatorRecord,
+    ) -> Result<(), OperatorValidationError> {
         match (&self.head, &record.prev) {
-            (None, Some(_)) => Err(ValidationError::PreviousHashOnFirstRecord),
-            (Some(_), None) => Err(ValidationError::NoPreviousHashAfterInit),
+            (None, Some(_)) => Err(OperatorValidationError::PreviousHashOnFirstRecord),
+            (Some(_), None) => Err(OperatorValidationError::NoPreviousHashAfterInit),
             (None, None) => Ok(()),
             (Some(expected), Some(found)) => {
                 if found.algorithm() != expected.digest.algorithm() {
-                    return Err(ValidationError::IncorrectHashAlgorithm {
+                    return Err(OperatorValidationError::IncorrectHashAlgorithm {
                         found: found.algorithm(),
                         expected: expected.digest.algorithm(),
                     });
                 }
 
                 if found != &expected.digest {
-                    return Err(ValidationError::RecordHashDoesNotMatch);
+                    return Err(OperatorValidationError::RecordHashDoesNotMatch);
                 }
 
                 Ok(())
@@ -204,11 +207,11 @@ impl OperatorState {
     fn validate_record_version(
         &self,
         record: &model::OperatorRecord,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         if record.version == OPERATOR_RECORD_VERSION {
             Ok(())
         } else {
-            Err(ValidationError::ProtocolVersionNotAllowed {
+            Err(OperatorValidationError::ProtocolVersionNotAllowed {
                 version: record.version,
             })
         }
@@ -217,10 +220,10 @@ impl OperatorState {
     fn validate_record_timestamp(
         &self,
         record: &model::OperatorRecord,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         if let Some(head) = &self.head {
             if record.timestamp < head.timestamp {
-                return Err(ValidationError::TimestampLowerThanPrevious);
+                return Err(OperatorValidationError::TimestampLowerThanPrevious);
             }
         }
 
@@ -231,7 +234,7 @@ impl OperatorState {
         &mut self,
         signer_key_id: &signing::KeyID,
         entries: &[model::OperatorEntry],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
                 self.check_key_permission(signer_key_id, permission)?;
@@ -249,7 +252,7 @@ impl OperatorState {
 
             // Must have seen an init entry by now
             if !self.initialized() {
-                return Err(ValidationError::FirstEntryIsNotInit);
+                return Err(OperatorValidationError::FirstEntryIsNotInit);
             }
 
             match entry {
@@ -271,9 +274,9 @@ impl OperatorState {
         signer_key_id: &signing::KeyID,
         algorithm: HashAlgorithm,
         init_key: &signing::PublicKey,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         if self.initialized() {
-            return Err(ValidationError::InitialEntryAfterBeginning);
+            return Err(OperatorValidationError::InitialEntryAfterBeginning);
         }
 
         assert!(self.permissions.is_empty());
@@ -294,7 +297,7 @@ impl OperatorState {
         signer_key_id: &signing::KeyID,
         key: &signing::PublicKey,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         // Check that the current key has the permission they're trying to grant
         self.check_key_permission(signer_key_id, permission)?;
 
@@ -313,7 +316,7 @@ impl OperatorState {
         signer_key_id: &signing::KeyID,
         key_id: &signing::KeyID,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         // Check that the current key has the permission they're trying to revoke
         self.check_key_permission(signer_key_id, permission)?;
 
@@ -324,7 +327,7 @@ impl OperatorState {
         }
 
         // Permission not found to remove
-        Err(ValidationError::PermissionNotFoundToRevoke {
+        Err(OperatorValidationError::PermissionNotFoundToRevoke {
             permission,
             key_id: key_id.clone(),
         })
@@ -334,7 +337,7 @@ impl OperatorState {
         &self,
         key_id: &signing::KeyID,
         permission: model::Permission,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), OperatorValidationError> {
         if let Some(available_permissions) = self.permissions.get(key_id) {
             if available_permissions.contains(&permission) {
                 return Ok(());
@@ -342,7 +345,7 @@ impl OperatorState {
         }
 
         // Needed permission not found
-        Err(ValidationError::UnauthorizedAction {
+        Err(OperatorValidationError::UnauthorizedAction {
             key_id: key_id.clone(),
             needed_permission: permission,
         })
@@ -381,7 +384,7 @@ impl OperatorState {
 
 impl crate::Validator for OperatorState {
     type Record = model::OperatorRecord;
-    type Error = ValidationError;
+    type Error = OperatorValidationError;
 
     fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
         self.validate(record)
@@ -390,7 +393,7 @@ impl crate::Validator for OperatorState {
 
 struct Snapshot {
     algorithm: Option<HashAlgorithm>,
-    head: Option<Head>,
+    head: Option<OperatorHead>,
     permissions: usize,
     keys: usize,
 }
@@ -429,7 +432,7 @@ mod tests {
         assert_eq!(
             operator_state,
             OperatorState {
-                head: Some(Head {
+                head: Some(OperatorHead {
                     digest: RecordId::operator_record::<Sha256>(&envelope),
                     timestamp,
                 }),
@@ -466,7 +469,7 @@ mod tests {
         operator_state.validate(&envelope).unwrap();
 
         let expected = OperatorState {
-            head: Some(Head {
+            head: Some(OperatorHead {
                 digest: RecordId::operator_record::<Sha256>(&envelope),
                 timestamp,
             }),
@@ -503,7 +506,7 @@ mod tests {
 
         // This validation should fail and the operator_state should remain unchanged
         match operator_state.validate(&envelope).unwrap_err() {
-            ValidationError::PermissionNotFoundToRevoke { .. } => {}
+            OperatorValidationError::PermissionNotFoundToRevoke { .. } => {}
             _ => panic!("expected a different error"),
         }
 

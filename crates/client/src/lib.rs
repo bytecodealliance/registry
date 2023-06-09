@@ -21,7 +21,10 @@ use warg_crypto::{
     signing,
 };
 use warg_protocol::{
-    operator, package,
+    operator,
+    operator::OperatorValidationError,
+    package,
+    package::PackageValidationError,
     registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
@@ -644,7 +647,7 @@ pub enum ClientError {
     #[error("operator failed validation: {inner}")]
     OperatorValidationFailed {
         /// The validation error.
-        inner: operator::ValidationError,
+        inner: OperatorValidationError,
     },
 
     /// The package already exists and cannot be initialized.
@@ -694,7 +697,7 @@ pub enum ClientError {
         /// The identifier of the package that failed validation.
         id: PackageId,
         /// The validation error.
-        inner: package::ValidationError,
+        inner: PackageValidationError,
     },
 
     /// Content was not found during a publish operation.

@@ -3,7 +3,8 @@ use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
-    operator, package,
+    operator::{OperatorRecord, OperatorValidationError},
+    package::{PackageRecord, PackageValidationError},
     registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
@@ -40,10 +41,10 @@ pub enum DataStoreError {
     },
 
     #[error("the operator record was invalid: {0}")]
-    OperatorValidationFailed(#[from] operator::ValidationError),
+    OperatorValidationFailed(#[from] OperatorValidationError),
 
     #[error("the package record was invalid: {0}")]
-    PackageValidationFailed(#[from] package::ValidationError),
+    PackageValidationFailed(#[from] PackageValidationError),
 
     #[error("unknown key id `{0}`")]
     UnknownKey(KeyID),
@@ -122,7 +123,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<operator::OperatorRecord>,
+        record: &ProtoEnvelope<OperatorRecord>,
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given operator record.
@@ -155,7 +156,7 @@ pub trait DataStore: Send + Sync {
         log_id: &LogId,
         package_id: &PackageId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
         missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError>;
 
@@ -223,7 +224,7 @@ pub trait DataStore: Send + Sync {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
+    ) -> Result<Vec<ProtoEnvelope<OperatorRecord>>, DataStoreError>;
 
     /// Gets the package records for the given registry root.
     async fn get_package_records(
@@ -232,21 +233,21 @@ pub trait DataStore: Send + Sync {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
+    ) -> Result<Vec<ProtoEnvelope<PackageRecord>>, DataStoreError>;
 
     /// Gets an operator record.
     async fn get_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<Record<operator::OperatorRecord>, DataStoreError>;
+    ) -> Result<Record<OperatorRecord>, DataStoreError>;
 
     /// Gets a package record.
     async fn get_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<Record<package::PackageRecord>, DataStoreError>;
+    ) -> Result<Record<PackageRecord>, DataStoreError>;
 
     /// Verifies the signature of a package record.
     ///
@@ -257,6 +258,6 @@ pub trait DataStore: Send + Sync {
     async fn verify_package_record_signature(
         &self,
         log_id: &LogId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
     ) -> Result<(), DataStoreError>;
 }

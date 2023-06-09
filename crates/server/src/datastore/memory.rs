@@ -9,8 +9,8 @@ use std::{
 use tokio::sync::RwLock;
 use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
-    operator,
-    package::{self, PackageEntry},
+    operator::{OperatorRecord, OperatorState},
+    package::{PackageEntry, PackageRecord, PackageState},
     registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
@@ -43,21 +43,21 @@ struct Record {
 
 enum PendingRecord {
     Operator {
-        record: Option<ProtoEnvelope<operator::OperatorRecord>>,
+        record: Option<ProtoEnvelope<OperatorRecord>>,
     },
     Package {
-        record: Option<ProtoEnvelope<package::PackageRecord>>,
+        record: Option<ProtoEnvelope<PackageRecord>>,
         missing: HashSet<AnyHash>,
     },
 }
 
 enum RejectedRecord {
     Operator {
-        record: ProtoEnvelope<operator::OperatorRecord>,
+        record: ProtoEnvelope<OperatorRecord>,
         reason: String,
     },
     Package {
-        record: ProtoEnvelope<package::PackageRecord>,
+        record: ProtoEnvelope<PackageRecord>,
         reason: String,
     },
 }
@@ -70,8 +70,8 @@ enum RecordStatus {
 
 #[derive(Default)]
 struct State {
-    operators: HashMap<LogId, Log<operator::OperatorState, operator::OperatorRecord>>,
-    packages: HashMap<LogId, Log<package::PackageState, package::PackageRecord>>,
+    operators: HashMap<LogId, Log<OperatorState, OperatorRecord>>,
+    packages: HashMap<LogId, Log<PackageState, PackageRecord>>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
 }
@@ -118,7 +118,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<operator::OperatorRecord>,
+        record: &ProtoEnvelope<OperatorRecord>,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
         let prev = state.records.entry(log_id.clone()).or_default().insert(
@@ -209,7 +209,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         _package_id: &PackageId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
         missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         // Ensure the set of missing hashes is a subset of the record contents.
@@ -417,7 +417,7 @@ impl DataStore for MemoryDataStore {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
+    ) -> Result<Vec<ProtoEnvelope<OperatorRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -447,7 +447,7 @@ impl DataStore for MemoryDataStore {
         root: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
+    ) -> Result<Vec<ProtoEnvelope<PackageRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -475,7 +475,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<super::Record<operator::OperatorRecord>, DataStoreError> {
+    ) -> Result<super::Record<OperatorRecord>, DataStoreError> {
         let state = self.0.read().await;
         let status = state
             .records
@@ -525,7 +525,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-    ) -> Result<super::Record<package::PackageRecord>, DataStoreError> {
+    ) -> Result<super::Record<PackageRecord>, DataStoreError> {
         let state = self.0.read().await;
         let status = state
             .records
@@ -574,13 +574,13 @@ impl DataStore for MemoryDataStore {
     async fn verify_package_record_signature(
         &self,
         log_id: &LogId,
-        record: &ProtoEnvelope<package::PackageRecord>,
+        record: &ProtoEnvelope<PackageRecord>,
     ) -> Result<(), DataStoreError> {
         let state = self.0.read().await;
         let key = match state
             .packages
             .get(log_id)
-            .and_then(|log| log.validator.public_key(record.key_id()))
+            .and_then(|log| log.state.public_key(record.key_id()))
         {
             Some(key) => Some(key),
             None => match record.as_ref().entries.first() {
@@ -590,7 +590,7 @@ impl DataStore for MemoryDataStore {
         }
         .ok_or_else(|| DataStoreError::UnknownKey(record.key_id().clone()))?;
 
-        package::PackageRecord::verify(key, record.content_bytes(), record.signature())
+        PackageRecord::verify(key, record.content_bytes(), record.signature())
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 }
