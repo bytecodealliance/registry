@@ -1,10 +1,10 @@
 use futures::Stream;
 use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
-use warg_crypto::hash::AnyHash;
+use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
+    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -44,6 +44,12 @@ pub enum DataStoreError {
 
     #[error("the package record was invalid: {0}")]
     PackageValidationFailed(#[from] package::ValidationError),
+
+    #[error("unknown key id `{0}`")]
+    UnknownKey(KeyID),
+
+    #[error("record signature verification failed")]
+    SignatureVerificationFailed,
 
     #[error("the record was rejected: {0}")]
     Rejection(String),
@@ -147,7 +153,7 @@ pub trait DataStore: Send + Sync {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        name: &str,
+        package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -241,4 +247,16 @@ pub trait DataStore: Send + Sync {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<Record<package::PackageRecord>, DataStoreError>;
+
+    /// Verifies the signature of a package record.
+    ///
+    /// This is different from `validate_package_record` in that
+    /// only the signature on the envelope is verified.
+    ///
+    /// It does not attempt to validate the record itself.
+    async fn verify_package_record_signature(
+        &self,
+        log_id: &LogId,
+        record: &ProtoEnvelope<package::PackageRecord>,
+    ) -> Result<(), DataStoreError>;
 }

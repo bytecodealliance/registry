@@ -1,11 +1,12 @@
-use std::fmt;
-
 use crate::{operator::OperatorRecord, package::PackageRecord, ProtoEnvelope};
+use anyhow::bail;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 use warg_crypto::hash::{AnyHash, Hash, HashAlgorithm, SupportedDigest};
-use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
-
 use warg_crypto::prefix::VisitPrefixEncode;
+use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
+use wasmparser::names::KebabStr;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +77,93 @@ impl VisitBytes for LogLeaf {
     }
 }
 
+/// Represents a valid package identifier in the registry.
+///
+/// Valid package identifiers conform to the component model specification
+/// for identifiers.
+///
+/// A valid component model identifier is the format `<namespace>:<name>`,
+/// where both parts are also valid WIT identifiers (i.e. kebab-cased).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct PackageId {
+    id: String,
+    colon: usize,
+}
+
+impl PackageId {
+    /// Creates a package identifier from the given string.
+    ///
+    /// Returns an error if the given string is not a valid package identifier.
+    pub fn new(id: impl Into<String>) -> anyhow::Result<Self> {
+        let id = id.into();
+
+        if let Some(colon) = id.find(':') {
+            // Validate the namespace and name parts are valid kebab strings
+            if KebabStr::new(&id[..colon]).is_some() && KebabStr::new(&id[colon + 1..]).is_some() {
+                return Ok(Self { id, colon });
+            }
+        }
+
+        bail!("invalid package identifier `{id}`: expected format is `<namespace>:<name>`")
+    }
+
+    /// Gets the namespace part of the package identifier.
+    pub fn namespace(&self) -> &str {
+        &self.id[..self.colon]
+    }
+
+    /// Gets the name part of the package identifier.
+    pub fn name(&self) -> &str {
+        &self.id[self.colon + 1..]
+    }
+}
+
+impl AsRef<str> for PackageId {
+    fn as_ref(&self) -> &str {
+        &self.id
+    }
+}
+
+impl FromStr for PackageId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::new(s)
+    }
+}
+
+impl fmt::Display for PackageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{id}", id = self.id)
+    }
+}
+
+impl prefix::VisitPrefixEncode for PackageId {
+    fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+        visitor.visit_str_raw("WARG-PACKAGE-ID-V0");
+        visitor.visit_str(&self.id);
+    }
+}
+
+impl VisitBytes for PackageId {
+    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+        self.visit_bv(visitor);
+    }
+}
+
+impl Serialize for PackageId {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.id)
+    }
+}
+
+impl<'de> Deserialize<'de> for PackageId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let id = String::deserialize(deserializer)?;
+        PackageId::new(id).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LogId(AnyHash);
@@ -87,9 +175,9 @@ impl LogId {
         Self(hash.into())
     }
 
-    pub fn package_log<D: SupportedDigest>(name: &str) -> Self {
+    pub fn package_log<D: SupportedDigest>(id: &PackageId) -> Self {
         let prefix: &[u8] = b"WARG-PACKAGE-LOG-ID-V0:".as_slice();
-        let hash: Hash<D> = Hash::of((prefix, name));
+        let hash: Hash<D> = Hash::of((prefix, id));
         Self(hash.into())
     }
 }

@@ -1,8 +1,9 @@
-use std::path::Path;
+//! Tests for the PostgreSQL storage backend.
 
+use super::{support::*, *};
 use anyhow::{Context, Result};
-use futures::Future;
-use warg_client::{api, Config};
+use testresult::TestResult;
+use warg_client::api;
 use warg_server::datastore::{DataStore, PostgresDataStore};
 
 fn data_store() -> Result<Box<dyn DataStore>> {
@@ -10,14 +11,6 @@ fn data_store() -> Result<Box<dyn DataStore>> {
         std::env::var("WARG_DATABASE_URL")
             .context("failed to get `WARG_DATABASE_URL` environment variable")?,
     )?))
-}
-
-async fn run<F, T>(root: &Path, callback: impl FnOnce(Config) -> F) -> Result<T>
-where
-    F: Future<Output = Result<T>>,
-{
-    let (_server, config) = super::support::spawn_server(root, Some(data_store()?)).await?;
-    callback(config).await
 }
 
 /// This test assumes the database is empty on each run.
@@ -34,81 +27,81 @@ where
 /// the checkpointing service is moved to a separate process, we can extract this
 /// out to multiple tests.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test() -> Result<()> {
-    let root = super::root().await?;
-
-    // Each of these is run with their own server instance to ensure restart works
-
-    // Start by validating the initial checkpoint
-    run(&root, |config| async {
-        super::validate_initial_checkpoint(config).await
-    })
+async fn it_works_with_postgres() -> TestResult {
+    let root = root().await?;
+    let (server, config) = spawn_server(
+        &root,
+        Some(data_store()?),
+        Some(vec![(
+            "test".to_string(),
+            test_signing_key()
+                .parse::<PrivateKey>()
+                .unwrap()
+                .public_key()
+                .fingerprint(),
+        )]),
+    )
     .await?;
 
-    // Publish and validate a component package
-    let digest = run(&root, |config| async move {
-        let client = super::create_client(&config)?;
-        let digest = super::publish_component_package(&client).await?;
-        super::validate_component_package(&config, &client, &digest).await?;
+    // This should be the same set of tests as in `tests/memory/mod.rs`
+    test_initial_checkpoint(&config).await?;
+    test_component_publishing(&config).await?;
+    test_wit_publishing(&config).await?;
+    test_wasm_content_policy(&config).await?;
+    test_unauthorized_signing_key(&config).await?;
+    // This is tested below where a different server is used that
+    // allows any signing key
+    //test_unknown_signing_key(&config).await?;
+    test_invalid_signature(&config).await?;
 
-        // There should be two log entries in the registry
-        let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let checkpoint = client.latest_checkpoint().await?;
-        assert_eq!(checkpoint.as_ref().log_length, 2);
+    let mut packages = vec![
+        PackageId::new("test:component")?,
+        PackageId::new("test:wit-package")?,
+        PackageId::new("test:unauthorized-key")?,
+    ];
 
-        Ok(digest)
-    })
-    .await?;
+    // There should be two log entries in the registry
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let checkpoint = client.latest_checkpoint().await?;
+    assert_eq!(
+        checkpoint.as_ref().log_length,
+        packages.len() as u32 + 1, /* initial checkpoint */
+        "expected {len} packages plus the initial checkpoint",
+        len = packages.len()
+    );
 
-    // Validate the component package is still present after a restart
-    run(&root, |config| async move {
-        let client = super::create_client(&config)?;
-        super::validate_component_package(&config, &client, &digest).await?;
+    drop(server);
 
-        // There should be two log entries in the registry
-        let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let checkpoint = client.latest_checkpoint().await?;
-        assert_eq!(checkpoint.as_ref().log_length, 2);
+    // Restart the server and ensure the data is still there
+    let (_server, config) = spawn_server(&root, Some(data_store()?), None).await?;
 
-        Ok(())
-    })
-    .await?;
+    test_unknown_signing_key(&config).await?;
 
-    // Publish and validate a wit package
-    let digest = run(&root, |config| async move {
-        let client = super::create_client(&config)?;
-        let digest = super::publish_wit_package(&client).await?;
-        super::validate_wit_package(&config, &client, &digest).await?;
+    packages.push(PackageId::new("test:unknown-key")?);
 
-        // There should be three log entries in the registry
-        let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let checkpoint = client.latest_checkpoint().await?;
-        assert_eq!(checkpoint.as_ref().log_length, 3);
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let checkpoint = client.latest_checkpoint().await?;
+    assert_eq!(
+        checkpoint.as_ref().log_length,
+        packages.len() as u32 + 1, /* initial checkpoint */
+        "expected {len} packages plus the initial checkpoint",
+        len = packages.len()
+    );
 
-        Ok(digest)
-    })
-    .await?;
+    // Delete the client cache to force a complete download of all packages below
+    fs::remove_dir_all(root.join("content"))?;
+    fs::remove_dir_all(root.join("registries"))?;
 
-    // Validate the wit package is still present after a restart
-    run(&root, |config| async move {
-        let client = super::create_client(&config)?;
-        super::validate_wit_package(&config, &client, &digest).await?;
+    let client = create_client(&config)?;
+    client.upsert(packages.iter()).await?;
 
-        // There should be three log entries in the registry
-        let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-        let checkpoint = client.latest_checkpoint().await?;
-        assert_eq!(checkpoint.as_ref().log_length, 3);
-
-        Ok(())
-    })
-    .await?;
-
-    // Validate content policy
-    run(&root, |config| async move {
-        let client = super::create_client(&config)?;
-        super::validate_content_policy(&client).await
-    })
-    .await?;
+    // Finally, after a restart, ensure the packages can be downloaded
+    for package in packages {
+        client
+            .download(&package, &"0.1.0".parse()?)
+            .await?
+            .context("failed to resolve package")?;
+    }
 
     Ok(())
 }

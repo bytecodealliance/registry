@@ -6,7 +6,7 @@ mod wasm;
 
 pub use wasm::*;
 
-/// Represents an error
+/// Represents a content policy error.
 #[derive(Debug, Error)]
 pub enum ContentPolicyError {
     /// The policy rejected the content with the given message.
