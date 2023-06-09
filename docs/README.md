@@ -1,8 +1,8 @@
-# WebAssembly Registry (WARG)
+# WebAssembly Registry (Warg)
 
 This document introduces the registry project's scope and
 design proposed by the Bytecode Alliance SIG Registries group,
-commonly known as ***WebAssembly Registry (WARG)***.
+commonly known as ***WebAssembly Registry (Warg)***.
 
 
 ## Process
@@ -18,14 +18,14 @@ Design process [phases](phases.md).
 ## Design Decisions
 
 #### WebAssembly binary packages
-*WARG* is primarily designed for publishing and fetching
+*Warg* is primarily designed for publishing and fetching
 WebAssembly binary packages, both core modules as well as
 components and component interfaces.
 
 #### From development to deployment
 Both libraries and interfaces published for software
 developers as well as deployment artifacts can be published
-to *WARG* registries.
+to *Warg* registries.
 
 #### Federation of registries
 Anyone can run their own registry and import (and optionally
@@ -42,7 +42,7 @@ state and history of state changes to detect a compromised or
 malicious registry.
 
 #### Content hosting optionality
-*WARG* primarily interacts with package release logs with content
+*Warg* primarily interacts with package release logs with content
 hashes. The registry itself or other services, such as blob
 stores and OCI registries, can host the package contents.
 
@@ -50,9 +50,9 @@ stores and OCI registries, can host the package contents.
 ## Scope for the Specification and Reference Implementation
 Anything that involves client-to-registry, monitor-to-registry,
 or registry-to-registry interaction needs to be clearly defined
-in the *WARG Specification*.
+in the [Warg Specification](specification.md).
 
 The reference implementation prioritizes a minimal design that
 is usable but not necessarily highly scalable or full-featured.
-This encourages other *WARG Specification* compliant
+This encourages other [Warg Specification](specification.md) compliant
 implementations to be developed for more extensive requirements.
