@@ -1,10 +1,10 @@
 <div align="center">
-  <h1><code>WebAssembly Component Registry</code></h1>
+  <h1><code>WebAssembly Registry (Warg)</code></h1>
 
 <strong>A <a href="https://bytecodealliance.org/">Bytecode Alliance</a> project</strong>
 
   <p>
-    <strong>An implementation of the Warg protocol, client, and server for distributing <a href="https://github.com/WebAssembly/component-model/">WebAssembly components</a>.</strong>
+    <strong>The reference implementation of the Warg protocol, client, and server for distributing <a href="https://github.com/WebAssembly/component-model/">WebAssembly components</a>.</strong>
   </p>
 
   <p>
@@ -17,11 +17,13 @@
 
 ## Overview
 
-This repository contains an implementation of the Warg protocol, a client,
+This repository contains the reference implementation of the Warg protocol, a client,
 server, and CLI.
 
 A Warg client and server can be used to distribute WebAssembly components to
 various component tooling.
+
+See the [introduction](docs/README.md) for the design decisions and scope.
 
 ## Prerequisites
 
