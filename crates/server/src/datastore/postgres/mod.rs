@@ -736,14 +736,14 @@ impl DataStore for PostgresDataStore {
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
 
-        let validator = schema::logs::table
+        let state = schema::logs::table
             .select(schema::logs::validator)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
             .first::<Json<PackageState>>(&mut conn)
             .await
             .optional()?;
 
-        let key = match validator
+        let key = match state
             .as_ref()
             .and_then(|v| v.public_key(record.key_id()))
         {
