@@ -10,6 +10,7 @@ mod validate;
 pub use model::{PackageEntry, PackagePermission, PackageRecord};
 pub use validate::{
     PackageHead, PackageRelease, PackageReleaseState, PackageState, PackageValidationError,
+};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

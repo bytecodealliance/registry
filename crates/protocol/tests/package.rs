@@ -8,7 +8,7 @@ use std::{
 use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
 use warg_protocol::{
-    package::{self, PackageState},
+    package::{PackageRecord, PackageState},
     protobuf,
     registry::RecordId,
     ProtoEnvelope,
@@ -36,7 +36,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<PackageState> {
         .into_iter()
         .scan(None, |last, e_data| {
             let key: signing::PrivateKey = e_data.key.parse().unwrap();
-            let mut record: package::PackageRecord = e_data.contents.try_into().unwrap();
+            let mut record: PackageRecord = e_data.contents.try_into().unwrap();
 
             record.prev = last.clone();
 
@@ -46,9 +46,9 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<PackageState> {
 
             Some(envelope)
         })
-        .try_fold(PackageState::new(), |mut validator, record| {
-            validator.validate(&record)?;
-            Ok(validator)
+        .try_fold(PackageState::new(), |mut state, record| {
+            state.validate(&record)?;
+            Ok(state)
         })
 }
 
@@ -77,7 +77,7 @@ fn execute_test(input_path: &Path) {
     .unwrap();
 
     let output = match validate_input(input) {
-        Ok(validator) => Output::Valid(validator),
+        Ok(state) => Output::Valid(state),
         Err(e) => Output::Error(e.to_string()),
     };
 

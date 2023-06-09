@@ -26,18 +26,18 @@ use warg_crypto::{
     signing::PrivateKey,
 };
 use warg_protocol::{
-    operator,
+    operator::{OperatorRecord, OperatorEntry},
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
 use warg_transparency::log::LogBuilder;
 
-fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRecord> {
-    let init_record = operator::OperatorRecord {
+fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<OperatorRecord> {
+    let init_record = OperatorRecord {
         prev: None,
         version: 0,
         timestamp: SystemTime::now(),
-        entries: vec![operator::OperatorEntry::Init {
+        entries: vec![OperatorEntry::Init {
             hash_algorithm: HashAlgorithm::Sha256,
             key: signing_key.public_key(),
         }],
