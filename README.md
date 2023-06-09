@@ -4,7 +4,7 @@
 <strong>A <a href="https://bytecodealliance.org/">Bytecode Alliance</a> project</strong>
 
   <p>
-    <strong>The reference implementation of the Warg protocol, client, and server for distributing <a href="https://github.com/WebAssembly/component-model/">WebAssembly components</a>.</strong>
+    <strong>The reference implementation of the Warg protocol, client, and server for distributing <a href="https://github.com/WebAssembly/component-model/">WebAssembly components and interfaces</a> as well as core modules.</strong>
   </p>
 
   <p>
