@@ -44,7 +44,7 @@ malicious registry.
 #### Content hosting optionality
 *Warg* primarily interacts with package release logs with content
 hashes. The registry itself or other services, such as blob
-stores and OCI registries, can host the package contents.
+stores and OCI registries, can host package contents.
 
 
 ## Scope for the Specification and Reference Implementation
