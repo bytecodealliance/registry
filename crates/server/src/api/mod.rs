@@ -7,7 +7,6 @@ use std::{path::PathBuf, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeDir,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
@@ -43,7 +42,6 @@ pub fn create_router(
                 record_policy,
             ),
         )
-        .nest_service("/content", ServeDir::new(files_dir))
         .layer(
             ServiceBuilder::new()
                 .layer(
