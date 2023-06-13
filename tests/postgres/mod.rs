@@ -31,6 +31,7 @@ async fn it_works_with_postgres() -> TestResult {
     let root = root().await?;
     let (server, config) = spawn_server(
         &root,
+        None,
         Some(data_store()?),
         Some(vec![(
             "test".to_string(),
@@ -73,7 +74,7 @@ async fn it_works_with_postgres() -> TestResult {
     drop(server);
 
     // Restart the server and ensure the data is still there
-    let (_server, config) = spawn_server(&root, Some(data_store()?), None).await?;
+    let (server, config) = spawn_server(&root, None, Some(data_store()?), None).await?;
 
     test_unknown_signing_key(&config).await?;
 
@@ -102,6 +103,19 @@ async fn it_works_with_postgres() -> TestResult {
             .await?
             .context("failed to resolve package")?;
     }
+
+    // Restart the server for the custom content URL test
+    drop(client);
+    drop(server);
+    let (_server, config) = spawn_server(
+        &root,
+        Some("https://example.com".parse().unwrap()),
+        Some(data_store()?),
+        None,
+    )
+    .await?;
+
+    test_custom_content_url(&config).await?;
 
     Ok(())
 }

@@ -7,6 +7,7 @@ use std::{
 };
 use tokio::{fs, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use url::Url;
 use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
     FileSystemClient, StorageLockResult,
@@ -92,6 +93,7 @@ pub async fn root() -> Result<PathBuf> {
 /// Spawns a server as a background task.
 pub async fn spawn_server(
     root: &Path,
+    content_base_url: Option<Url>,
     data_store: Option<Box<dyn DataStore>>,
     authorized_keys: Option<Vec<(String, KeyID)>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
@@ -101,6 +103,10 @@ pub async fn spawn_server(
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100))
         .with_content_policy(WasmContentPolicy::default()); // For the tests, we assume only wasm content is allowed.
+
+    if let Some(content_url) = content_base_url {
+        config = config.with_content_base_url(content_url);
+    }
 
     if let Some(authorized_keys) = authorized_keys {
         let mut policy = AuthorizedKeyPolicy::new();

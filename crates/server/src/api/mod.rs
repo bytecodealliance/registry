@@ -12,12 +12,13 @@ use tower_http::{
     LatencyUnit,
 };
 use tracing::{Level, Span};
+use url::Url;
 
 pub mod v1;
 
 /// Creates the router for the API.
 pub fn create_router(
-    base_url: String,
+    content_base_url: Url,
     core: Arc<CoreService>,
     temp_dir: PathBuf,
     files_dir: PathBuf,
@@ -28,7 +29,7 @@ pub fn create_router(
         .nest(
             "/v1",
             v1::create_router(
-                base_url,
+                content_base_url,
                 core,
                 temp_dir,
                 files_dir.clone(),

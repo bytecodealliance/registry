@@ -14,6 +14,7 @@ use axum::{
 };
 use serde::{Serialize, Serializer};
 use std::{path::PathBuf, sync::Arc};
+use url::Url;
 
 pub mod fetch;
 pub mod package;
@@ -89,7 +90,7 @@ pub async fn not_found() -> impl IntoResponse {
 }
 
 pub fn create_router(
-    base_url: String,
+    content_base_url: Url,
     core: Arc<CoreService>,
     temp_dir: PathBuf,
     files_dir: PathBuf,
@@ -99,7 +100,7 @@ pub fn create_router(
     let proof_config = proof::Config::new(core.log_data().clone(), core.map_data().clone());
     let package_config = package::Config::new(
         core.clone(),
-        base_url,
+        content_base_url,
         files_dir,
         temp_dir,
         content_policy,

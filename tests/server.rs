@@ -9,13 +9,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 use url::Url;
-use warg_api::v1::{package::PublishRecordRequest, paths};
-use warg_client::{api, ClientError, Config};
+use warg_api::v1::{
+    package::{ContentSource, PackageRecordState, PublishRecordRequest},
+    paths,
+};
+use warg_client::{api, storage::RegistryStorage, ClientError, Config};
 use warg_crypto::{hash::Sha256, signing::PrivateKey, Encode, Signable};
 use warg_protocol::{
     package::{PackageEntry, PackageRecord, PACKAGE_RECORD_VERSION},
     registry::{LogId, PackageId},
-    ProtoEnvelope, ProtoEnvelopeBody,
+    ProtoEnvelope, ProtoEnvelopeBody, Version,
 };
 use wit_component::DecodedWasm;
 
@@ -333,6 +336,70 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
         body.contains("record signature verification failed"),
         "unexpected response body: {body}"
     );
+
+    Ok(())
+}
+
+async fn test_custom_content_url(config: &Config) -> Result<()> {
+    const PACKAGE_ID: &str = "test:custom-content-url";
+    const PACKAGE_VERSION: &str = "0.1.0";
+
+    let id = PackageId::new(PACKAGE_ID)?;
+    let client = create_client(config)?;
+    let signing_key = test_signing_key().parse().unwrap();
+    let digest = publish_component(
+        &client,
+        &id,
+        PACKAGE_VERSION,
+        "(component)",
+        true,
+        &signing_key,
+    )
+    .await?;
+
+    client.upsert([&id]).await?;
+    let package = client
+        .registry()
+        .load_package(&id)
+        .await?
+        .expect("expected the package to exist");
+    let release = package
+        .state
+        .release(&Version::parse(PACKAGE_VERSION)?)
+        .expect("expected the package version to exist");
+
+    // Look up the content URL for the record
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let log_id = LogId::package_log::<Sha256>(&id);
+    let record = client
+        .get_package_record(&log_id, &release.record_id)
+        .await?;
+
+    let expected_url = format!(
+        "https://example.com/content/{digest}",
+        digest = digest.to_string().replace(':', "-")
+    );
+
+    match record.state {
+        PackageRecordState::Published {
+            content_sources, ..
+        } => {
+            assert_eq!(content_sources.len(), 1);
+
+            match content_sources.get(&digest) {
+                Some(sources) => {
+                    assert_eq!(sources.len(), 1);
+                    match &sources[0] {
+                        ContentSource::Http { url } => {
+                            assert_eq!(url, &expected_url);
+                        }
+                    }
+                }
+                None => panic!("expected content source to exist"),
+            }
+        }
+        _ => panic!("unexpected record state"),
+    }
 
     Ok(())
 }
