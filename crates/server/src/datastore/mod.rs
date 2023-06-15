@@ -1,6 +1,7 @@
 use futures::Stream;
-use std::{collections::HashSet, pin::Pin};
+use std::{collections::HashMap, pin::Pin};
 use thiserror::Error;
+use warg_api::v1::package::ContentSource;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
@@ -78,7 +79,7 @@ pub struct InitialLeaf {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordStatus {
     /// The record is pending with missing content.
-    MissingContent(Vec<AnyHash>),
+    MissingContent(HashMap<AnyHash, ContentSource>),
     /// The record is pending with all content present.
     Pending,
     /// The record was rejected.
@@ -156,7 +157,7 @@ pub trait DataStore: Send + Sync {
         package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given package record.

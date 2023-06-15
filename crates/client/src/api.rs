@@ -349,15 +349,9 @@ impl Client {
     /// Uploads package content to the registry.
     pub async fn upload_content(
         &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-        digest: &AnyHash,
         content: impl Into<Body>,
+        url: String,
     ) -> Result<String, ClientError> {
-        let url = self
-            .url
-            .join(&paths::package_record_content(log_id, record_id, digest))
-            .unwrap();
         tracing::debug!("uploading content to `{url}`");
 
         let response = self.client.post(url).body(content).send().await?;

@@ -1,12 +1,9 @@
 use super::{DataStore, DataStoreError, InitialLeaf};
 use futures::Stream;
 use indexmap::IndexMap;
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
+use warg_api::v1::package::ContentSource;
 use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
@@ -47,7 +44,7 @@ enum PendingRecord {
     },
     Package {
         record: Option<ProtoEnvelope<package::PackageRecord>>,
-        missing: HashSet<AnyHash>,
+        missing: HashMap<AnyHash, ContentSource>,
     },
 }
 
@@ -214,13 +211,19 @@ impl DataStore for MemoryDataStore {
         _package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
         // Ensure the set of missing hashes is a subset of the record contents.
         debug_assert!({
             use warg_protocol::Record;
             let contents = record.as_ref().contents();
-            missing.is_subset(&contents)
+            let mut contains_all = true;
+            for c in contents {
+                if !missing.contains_key(c) {
+                    contains_all = false;
+                }
+            }
+            contains_all
         });
 
         let mut state = self.0.write().await;
@@ -228,7 +231,7 @@ impl DataStore for MemoryDataStore {
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {
                 record: Some(record.clone()),
-                missing: missing.iter().map(|&d| d.clone()).collect(),
+                missing: missing.clone(),
             }),
         );
 
@@ -334,7 +337,7 @@ impl DataStore for MemoryDataStore {
                 Ok(false)
             }
             RecordStatus::Pending(PendingRecord::Package { missing, .. }) => {
-                Ok(missing.contains(digest))
+                Ok(missing.contains_key(digest))
             }
             _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),
         }

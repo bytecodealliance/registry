@@ -13,7 +13,9 @@ use storage::{
 use thiserror::Error;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
-    package::{PackageError, PackageRecord, PackageRecordState, PublishRecordRequest},
+    package::{
+        ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+    },
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
@@ -153,22 +155,20 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     }
                 })
             })?;
-
         let missing = record.missing_content();
         if !missing.is_empty() {
             // Upload the missing content
             // TODO: parallelize this
-            for digest in record.missing_content() {
+            for (digest, content_source) in record.missing_content() {
+                let ContentSource::Http { url } = content_source;
                 self.api
                     .upload_content(
-                        &log_id,
-                        &record.id,
-                        digest,
-                        Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
+                        Body::wrap_stream(self.content.load_content(&digest).await?.ok_or_else(
                             || ClientError::ContentNotFound {
                                 digest: digest.clone(),
                             },
                         )?),
+                        url,
                     )
                     .await
                     .map_err(|e| match e {

@@ -56,12 +56,12 @@ impl PackageRecord {
     }
 
     /// Gets the missing content digests of the record.
-    pub fn missing_content(&self) -> &[AnyHash] {
+    pub fn missing_content(&self) -> HashMap<AnyHash, ContentSource> {
         match &self.state {
             PackageRecordState::Sourcing {
                 missing_content, ..
-            } => missing_content,
-            _ => &[],
+            } => missing_content.to_owned(),
+            _ => HashMap::new(),
         }
     }
 }
@@ -78,7 +78,7 @@ pub enum PackageRecordState {
     /// The package record needs content sources.
     Sourcing {
         /// The digests of the missing content.
-        missing_content: Vec<AnyHash>,
+        missing_content: HashMap<AnyHash, ContentSource>,
     },
     /// The package record is processing.
     Processing,

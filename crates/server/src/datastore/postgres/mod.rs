@@ -12,7 +12,8 @@ use diesel_async::{
 };
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
-use std::{collections::HashSet, pin::Pin};
+use std::{collections::HashMap, pin::Pin};
+use warg_api::v1::package::ContentSource;
 use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
@@ -82,7 +83,7 @@ async fn insert_record<V>(
     name: Option<&str>,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
-    missing: &HashSet<&AnyHash>,
+    missing: &HashMap<AnyHash, ContentSource>,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
@@ -144,7 +145,7 @@ where
                             .map(|s| NewContent {
                                 record_id,
                                 digest: TextRef(s),
-                                missing: missing.contains(s),
+                                missing: missing.contains_key(s),
                             })
                             .collect::<Vec<_>>(),
                     )
@@ -301,7 +302,16 @@ where
                 if missing.is_empty() {
                     super::RecordStatus::Pending
                 } else {
-                    super::RecordStatus::MissingContent(missing.into_iter().map(|d| d.0).collect())
+                    let mut missing_sources = HashMap::new();
+                    for hash in missing {
+                        missing_sources.insert(
+                            hash.0,
+                            ContentSource::Http {
+                                url: String::from("foo"),
+                            },
+                        );
+                    }
+                    super::RecordStatus::MissingContent(missing_sources)
                 }
             }
             RecordStatus::Validated => {
@@ -455,7 +465,7 @@ impl DataStore for PostgresDataStore {
         package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
         insert_record::<package::Validator>(

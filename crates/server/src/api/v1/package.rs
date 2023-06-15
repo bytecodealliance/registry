@@ -16,8 +16,8 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
@@ -206,6 +206,22 @@ async fn publish_record(
     let record_id = RecordId::package_record::<Sha256>(&record);
     let mut missing = record.as_ref().contents();
     missing.retain(|d| !config.content_present(d));
+    let missing: HashMap<AnyHash, ContentSource> = missing
+        .into_iter()
+        .cloned()
+        .map(|hash| {
+            let mut url = config.base_url.clone();
+            let full_url = &config
+                .content_path(&hash)
+                .into_os_string()
+                .into_string()
+                .unwrap();
+            url.push('/');
+            url.push_str(full_url);
+            dbg!(&url);
+            (hash, ContentSource::Http { url })
+        })
+        .collect();
 
     config
         .core_service
@@ -234,7 +250,7 @@ async fn publish_record(
         Json(PackageRecord {
             id: record_id,
             state: PackageRecordState::Sourcing {
-                missing_content: missing.into_iter().cloned().collect(),
+                missing_content: missing,
             },
         }),
     ))
