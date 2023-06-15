@@ -7,13 +7,13 @@ use warg_crypto::signing::PrivateKey;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_starts_with_initial_checkpoint() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_initial_checkpoint(&config).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_publishes_a_component() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_component_publishing(&config).await?;
 
     // There should be two log entries in the registry
@@ -30,7 +30,7 @@ async fn it_publishes_a_component() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_publishes_a_wit_package() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_wit_publishing(&config).await?;
 
     // There should be two log entries in the registry
@@ -47,7 +47,7 @@ async fn it_publishes_a_wit_package() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_rejects_non_wasm_content() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_wasm_content_policy(&config).await
 }
 
@@ -55,6 +55,7 @@ async fn it_rejects_non_wasm_content() -> Result<()> {
 async fn it_rejects_unauthorized_signing_key() -> Result<()> {
     let (_server, config) = spawn_server(
         &root().await?,
+        None,
         None,
         Some(vec![(
             "test".to_string(),
@@ -72,12 +73,24 @@ async fn it_rejects_unauthorized_signing_key() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_rejects_unknown_signing_key() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_unknown_signing_key(&config).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_rejects_invalid_signature() -> Result<()> {
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_invalid_signature(&config).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_formats_custom_content_urls() -> Result<()> {
+    let (_server, config) = spawn_server(
+        &root().await?,
+        Some("https://example.com".parse().unwrap()),
+        None,
+        None,
+    )
+    .await?;
+    test_custom_content_url(&config).await
 }
