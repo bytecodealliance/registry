@@ -52,7 +52,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
 }
 
 #[derive(Error, Debug)]
-#[error("Empty or invalid timestamp in record")]
+#[error("empty or invalid timestamp in record")]
 struct InvalidTimestampError;
 
 impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {

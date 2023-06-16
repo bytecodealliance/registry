@@ -5,6 +5,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
 };
+use warg_protocol::registry::PackageId;
 
 pub mod support;
 
@@ -18,9 +19,9 @@ fn create_client(config: &Config) -> Result<FileSystemClient> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn client_incrementally_fetches() -> Result<()> {
     const RELEASE_COUNT: usize = 300;
-    const PACKAGE_NAME: &str = "test:package";
+    const PACKAGE_ID: &str = "test:package";
 
-    let (_server, config) = spawn_server(&root().await?, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None).await?;
 
     let client = create_client(&config)?;
     let signing_key = support::test_signing_key().parse().unwrap();
@@ -38,11 +39,12 @@ async fn client_incrementally_fetches() -> Result<()> {
 
     // Here we don't wait for a single publish operation to complete, except for the last one
     // If the last one is accepted, it implies that all the previous ones were accepted as well
+    let id = PackageId::new(PACKAGE_ID)?;
     let mut head = client
         .publish_with_info(
             &signing_key,
             PublishInfo {
-                package: PACKAGE_NAME.to_string(),
+                id: id.clone(),
                 head: None,
                 entries: vec![PublishEntry::Init],
             },
@@ -54,7 +56,7 @@ async fn client_incrementally_fetches() -> Result<()> {
             .publish_with_info(
                 &signing_key,
                 PublishInfo {
-                    package: PACKAGE_NAME.to_string(),
+                    id: id.clone(),
                     head: Some(head),
                     entries: vec![PublishEntry::Release {
                         version: format!("0.{i}.0").parse().unwrap(),
@@ -66,7 +68,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     }
 
     client
-        .wait_for_publish(PACKAGE_NAME, &head, Duration::from_millis(100))
+        .wait_for_publish(&id, &head, Duration::from_millis(100))
         .await?;
 
     drop(client);
@@ -79,12 +81,12 @@ async fn client_incrementally_fetches() -> Result<()> {
     let client = create_client(&config)?;
 
     // Fetch the package log
-    client.upsert(&[PACKAGE_NAME]).await?;
+    client.upsert([&id]).await?;
 
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
-        .load_package(PACKAGE_NAME)
+        .load_package(&id)
         .await?
         .context("package does not exist in client storage")?;
 

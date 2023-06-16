@@ -133,8 +133,6 @@ impl CoreService {
                         Some(SubmitPackageRecord {
                             log_id, record_id
                         }) => {
-                            // TODO: perform all policy checks on the record here
-
                             // Validate the package record
                             match task_core.store.validate_package_record(&log_id, &record_id).await {
                                 Ok(()) => {

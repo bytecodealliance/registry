@@ -13,7 +13,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
-    registry::{MapCheckpoint, RecordId},
+    registry::{MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
 
@@ -49,7 +49,7 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package(&self, package: &str) -> Result<Option<PackageInfo>>;
+    async fn load_package(&self, package: &PackageId) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
     async fn store_package(&self, info: &PackageInfo) -> Result<()>;
@@ -112,8 +112,8 @@ pub struct OperatorInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageInfo {
-    /// The name of the package.
-    pub name: String,
+    /// The id of the package to publish.
+    pub id: PackageId,
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
@@ -123,10 +123,10 @@ pub struct PackageInfo {
 }
 
 impl PackageInfo {
-    /// Creates a new package info for the given package name and url.
-    pub fn new(name: impl Into<String>) -> Self {
+    /// Creates a new package info for the given package id.
+    pub fn new(id: impl Into<PackageId>) -> Self {
         Self {
-            name: name.into(),
+            id: id.into(),
             checkpoint: None,
             state: package::Validator::default(),
         }
@@ -152,8 +152,8 @@ pub enum PublishEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishInfo {
-    /// The name of the package being published.
-    pub package: String,
+    /// The id of the package being published.
+    pub id: PackageId,
     /// The last known head of the package log to use.
     ///
     /// If `None` and the package is not being initialized,

@@ -7,10 +7,11 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use warg_crypto::hash::AnyHash;
+use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
-    operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, RecordId},
+    operator,
+    package::{self, PackageEntry},
+    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -210,7 +211,7 @@ impl DataStore for MemoryDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        _name: &str,
+        _package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -576,5 +577,28 @@ impl DataStore for MemoryDataStore {
             envelope,
             checkpoint,
         })
+    }
+
+    async fn verify_package_record_signature(
+        &self,
+        log_id: &LogId,
+        record: &ProtoEnvelope<package::PackageRecord>,
+    ) -> Result<(), DataStoreError> {
+        let state = self.0.read().await;
+        let key = match state
+            .packages
+            .get(log_id)
+            .and_then(|log| log.validator.public_key(record.key_id()))
+        {
+            Some(key) => Some(key),
+            None => match record.as_ref().entries.first() {
+                Some(PackageEntry::Init { key, .. }) => Some(key),
+                _ => return Err(DataStoreError::UnknownKey(record.key_id().clone())),
+            },
+        }
+        .ok_or_else(|| DataStoreError::UnknownKey(record.key_id().clone()))?;
+
+        package::PackageRecord::verify(key, record.content_bytes(), record.signature())
+            .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 }

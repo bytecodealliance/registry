@@ -2,7 +2,7 @@ use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use datastore::DataStore;
 use futures::Future;
-use policy::content::ContentPolicy;
+use policy::{content::ContentPolicy, record::RecordPolicy};
 use services::CoreService;
 use std::{
     fs,
@@ -32,6 +32,7 @@ pub struct Config {
     shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
     checkpoint_interval: Option<Duration>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
+    record_policy: Option<Arc<dyn RecordPolicy>>,
 }
 
 impl std::fmt::Debug for Config {
@@ -43,9 +44,17 @@ impl std::fmt::Debug for Config {
                 "data_store",
                 &self.data_store.as_ref().map(|_| "dyn DataStore"),
             )
-            .field("content", &self.content_dir)
+            .field("content_dir", &self.content_dir)
             .field("shutdown", &self.shutdown.as_ref().map(|_| "dyn Future"))
             .field("checkpoint_interval", &self.checkpoint_interval)
+            .field(
+                "content_policy",
+                &self.content_policy.as_ref().map(|_| "dyn ContentPolicy"),
+            )
+            .field(
+                "record_policy",
+                &self.record_policy.as_ref().map(|_| "dyn RecordPolicy"),
+            )
             .finish()
     }
 }
@@ -61,6 +70,7 @@ impl Config {
             shutdown: None,
             checkpoint_interval: None,
             content_policy: None,
+            record_policy: None,
         }
     }
 
@@ -106,6 +116,12 @@ impl Config {
     /// Sets the content policy to use for the server.
     pub fn with_content_policy(mut self, policy: impl ContentPolicy + 'static) -> Self {
         self.content_policy = Some(Arc::new(policy));
+        self
+    }
+
+    /// Sets the record policy to use for the server.
+    pub fn with_record_policy(mut self, policy: impl RecordPolicy + 'static) -> Self {
+        self.record_policy = Some(Arc::new(policy));
         self
     }
 }
@@ -196,8 +212,9 @@ impl Server {
                 base_url,
                 core,
                 temp_dir,
-                files_dir.clone(),
+                files_dir,
                 self.config.content_policy,
+                self.config.record_policy,
             )
             .into_make_service(),
         );
@@ -206,9 +223,7 @@ impl Server {
 
         if let Some(shutdown) = self.config.shutdown {
             tracing::debug!("server is running with a shutdown signal");
-            server
-                .with_graceful_shutdown(async move { shutdown.await })
-                .await?;
+            server.with_graceful_shutdown(shutdown).await?;
         } else {
             tracing::debug!("server is running without a shutdown signal");
             server.await?;
