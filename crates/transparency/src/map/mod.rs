@@ -119,7 +119,7 @@ mod test {
             value: V,
         ) {
             let proof = tree.prove(key.clone()).unwrap();
-            assert_eq!(tree.root().clone(), proof.evaluate(key, &value));
+            assert_eq!(tree.root().clone(), proof.evaluate(&key, &value));
         }
 
         let first = Map::<Sha256, &'static str, &'static str>::default();

@@ -26,18 +26,18 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Singleton<D, K> {
         }
     }
 
-    pub fn key(&self) -> K {
-        self.key.clone()
+    pub fn key(&self) -> &K {
+        &self.key
     }
 
     pub fn hash(&self) -> Hash<D> {
         let mut hash = self.value.clone();
-        let mut reversed: ReversePath<D> = ReversePath::new(self.key.clone());
+        let mut reversed: ReversePath<D> = ReversePath::new(&self.key);
         for n in 0..self.height {
             hash = match reversed.next() {
                 Some(side) => match side {
-                    Side::Left => hash_branch(hash.clone(), D::empty_tree_hash(n)),
-                    Side::Right => hash_branch(D::empty_tree_hash(n), hash.clone()),
+                    Side::Left => hash_branch(&hash, &D::empty_tree_hash(n)),
+                    Side::Right => hash_branch(&D::empty_tree_hash(n), &hash),
                 },
                 None => hash,
             };

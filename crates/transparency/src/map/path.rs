@@ -33,8 +33,8 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
         Self { key, index: 0, all }
     }
 
-    pub fn key(&self) -> K {
-        self.key.clone()
+    pub fn key(&self) -> &K {
+        &self.key
     }
 
     fn get(&self, at: usize) -> Side {
@@ -84,7 +84,7 @@ impl<D: SupportedDigest> Clone for ReversePath<D> {
 }
 
 impl<D: SupportedDigest> ReversePath<D> {
-    pub(crate) fn new<K: VisitBytes>(key: K) -> Self {
+    pub(crate) fn new<K: VisitBytes>(key: &K) -> Self {
         let all = Hash::of(key);
         let start = all.len() * 8;
 
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     #[allow(clippy::identity_op)]
     fn test_backwards() {
-        let mut path = ReversePath::<Sha256>::new("foo");
+        let mut path = ReversePath::<Sha256>::new(&"foo");
         let hash: Hash<Sha256> = Hash::of("foo");
         let mut bytes = hash.bytes().iter();
 

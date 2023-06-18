@@ -406,7 +406,7 @@ impl Client {
         let map_inclusions = map_proof_bundle.unbundle();
         for (leaf, proof) in leafs.iter().zip(map_inclusions.iter()) {
             let found = proof.evaluate(
-                leaf.log_id.clone(),
+                &leaf.log_id,
                 &MapLeaf {
                     record_id: leaf.record_id.clone(),
                 },

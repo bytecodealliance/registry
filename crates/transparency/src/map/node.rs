@@ -135,7 +135,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
                             (Node::Fork(fork), true)
                         }
                         Node::Singleton(singleton) => {
-                            if singleton.key() == key {
+                            if singleton.key() == &key {
                                 let new_singleton = Node::Singleton(Singleton::new(
                                     key,
                                     value,
@@ -160,7 +160,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
                     }
                 }
                 Node::Singleton(singleton) => {
-                    if singleton.key() == key {
+                    if singleton.key() == &key {
                         let new_singleton = Singleton::new(key, value, 256 - path.index(), index);
                         (Node::Singleton(new_singleton), false)
                     } else if singleton.side != index {

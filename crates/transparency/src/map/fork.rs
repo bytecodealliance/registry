@@ -29,7 +29,7 @@ impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Fo
     pub fn hash(&self) -> Hash<D> {
         let lhs = self.left.as_ref().hash().clone();
         let rhs = self.right.as_ref().hash().clone();
-        hash_branch(lhs, rhs)
+        hash_branch(&lhs, &rhs)
     }
 }
 

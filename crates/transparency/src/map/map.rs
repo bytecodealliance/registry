@@ -194,7 +194,7 @@ where {
     }
 }
 
-pub(crate) fn hash_branch<D>(lhs: Hash<D>, rhs: Hash<D>) -> Hash<D>
+pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {

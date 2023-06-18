@@ -203,7 +203,7 @@ impl CoreService {
         while let Some(res) = initial.next().await {
             let InitialLeaf { leaf, checkpoint } = res?;
             data.log.push(&leaf);
-            let new_key = leaf.log_id.0.clone().try_into().unwrap();
+            let new_key = leaf.log_id.clone();
             data.map = data.map.insert(
                 new_key,
                 MapLeaf {
