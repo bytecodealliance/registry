@@ -42,8 +42,9 @@ impl MapData {
             .ok_or_else(|| DataServiceError::RootNotFound(root.clone()))?;
         let mut proofs = Vec::new();
         for LogLeaf { log_id, record_id } in leaves {
-            let proof = map.prove(log_id.clone())
-              .ok_or_else(|| DataServiceError::PackageNotIncluded(log_id.clone()))?;
+            let proof = map
+                .prove(log_id.clone())
+                .ok_or_else(|| DataServiceError::PackageNotIncluded(log_id.clone()))?;
             let leaf = MapLeaf {
                 record_id: record_id.clone(),
             };
