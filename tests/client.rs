@@ -21,7 +21,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     const RELEASE_COUNT: usize = 300;
     const PACKAGE_ID: &str = "test:package";
 
-    let (_server, config) = spawn_server(&root().await?, None, None).await?;
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
     let client = create_client(&config)?;
     let signing_key = support::test_signing_key().parse().unwrap();

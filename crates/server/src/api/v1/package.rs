@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
+use url::Url;
 use warg_api::v1::{
     package::{
         ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
@@ -36,7 +37,7 @@ use warg_protocol::{
 #[derive(Clone)]
 pub struct Config {
     core_service: Arc<CoreService>,
-    base_url: String,
+    content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
@@ -46,7 +47,7 @@ pub struct Config {
 impl Config {
     pub fn new(
         core_service: Arc<CoreService>,
-        base_url: String,
+        content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,
         content_policy: Option<Arc<dyn ContentPolicy>>,
@@ -54,7 +55,7 @@ impl Config {
     ) -> Self {
         Self {
             core_service,
-            base_url,
+            content_base_url,
             files_dir,
             temp_dir,
             content_policy,
@@ -86,11 +87,12 @@ impl Config {
     }
 
     fn content_url(&self, digest: &AnyHash) -> String {
-        format!(
-            "{url}/content/{name}",
-            url = self.base_url,
-            name = self.content_file_name(digest)
-        )
+        self.content_base_url
+            .join("content/")
+            .unwrap()
+            .join(&self.content_file_name(digest))
+            .unwrap()
+            .to_string()
     }
 }
 
@@ -213,9 +215,8 @@ async fn publish_record(
         .into_iter()
         .cloned()
         .map(|hash| {
-            let mut url = config.base_url.clone();
+            let mut url = config.content_base_url.clone().to_string();
             let route = package_record_content(&log_id, &record_id, &hash);
-            url.push('/');
             url.push_str(&route);
             dbg!(&url);
             (hash, ContentSource::Http { url })

@@ -1,0 +1,929 @@
+openapi: 3.1.0
+
+info:
+  version: 1.0.0
+  title: Warg Registry API
+  description: |
+    [warg](https://warg.io/) is an open source protocol for WebAssembly component registries.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+# The Warg APIs currently do not use an authentication scheme
+# Publishing requires that entries are signed with an acceptable key
+x-42c-no-authentication: true
+
+# Ignore warnings regarding strings in responses not having a pattern or maximum length
+x-42c-skipIssues:
+  - v3-schema-response-string-pattern
+  - v3-schema-response-string-maxlength
+
+tags:
+  - name: fetch
+    description: API for fetching checkpoints and logs from the registry.
+  - name: package
+    description: API for managing package logs in the registry.
+  - name: proof
+    description: API for proving the integrity of the registry.
+
+servers:
+  - url: http://localhost:8090/v1
+    description: Local development server
+
+paths:
+  /fetch/logs:
+    post:
+      summary: Fetch registry logs
+      operationId: fetchLogs
+      security: []
+      tags:
+        - fetch
+      description: |
+        Fetch the operator and packages logs from the registry.
+
+        TODO: document operator record format.
+
+        TODO: document package record format.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FetchLogsRequest"
+      responses:
+        "200":
+          description: The logs were successfully fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchLogsResponse"
+        "404":
+          description: A requested entity was not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [checkpoint, log, record]
+                    example: checkpoint
+                  id:
+                    type: string
+                    description: The identifier of the entity that was not found.
+                    example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /fetch/checkpoint:
+    get:
+      summary: Fetch latest registry checkpoint
+      operationId: getCheckpoint
+      security: []
+      tags:
+        - fetch
+      description: Fetch the latest checkpoint from the registry.
+      responses:
+        "200":
+          description: The checkpoint was successfully fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedMapCheckpoint"
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /package/{logId}/record:
+    post:
+      summary: Publish a new record to a package log.
+      operationId: publishPackageRecord
+      security: []
+      tags:
+        - package
+      description: |
+        Attempts to publish a new record to a package log.
+
+        Publishing package records is an asynchronous operation.
+
+        The record must be signed by a key that is authorized to modify the package log.
+
+        TODO: document package record format.
+      parameters:
+        - name: logId
+          in: path
+          description: The package log identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishPackageRecordRequest"
+      responses:
+        "202":
+          description: The package record was accepted.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PackageRecord"
+        "403":
+          description: |
+            The key used to sign the record was not authorized to publish a record to the log.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: |
+            The server does not support publishing package records with explicitly
+            specified content source locations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /package/{logId}/record/{recordId}:
+    get:
+      summary: Get a package record.
+      operationId: getPackageRecord
+      security: []
+      tags:
+        - package
+      description: |
+        Gets a package record from the registry.
+
+        A package record is in one of the following states:
+          * `sourcing`: The package record needs content sources.
+          * `processing`: The package record is being processed.
+          * `rejected`: The package record was rejected.
+          * `published`: The package record was published to the log.
+
+        TODO: document package record format.
+      parameters:
+        - name: logId
+          in: path
+          description: The package log identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+        - name: recordId
+          in: path
+          description: The record identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+      responses:
+        "200":
+          description: The package record.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PackageRecord"
+        "404":
+          description: A requested entity was not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [log, record]
+                    example: log
+                  id:
+                    "$ref": "#/components/schemas/AnyHash"
+                    description: |
+                      The identifier of the entity that was not found.
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /package/{logId}/record/{recordId}/content/{digest}:
+    post:
+      summary: Post content for a package record.
+      operationId: postPackageRecordContent
+      security: []
+      tags:
+        - package
+      description: |
+        Posts package record content directly to the registry.
+
+        The package record must be in the `sourcing` state and the digest of the uploaded
+        content must match the digest parameter.
+      parameters:
+        - name: logId
+          in: path
+          description: The package log identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+        - name: recordId
+          in: path
+          description: The record identifier.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+        - name: digest
+          in: path
+          description: The digest of the content being uploaded.
+          required: true
+          schema:
+            "$ref": "#/components/schemas/AnyHash"
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              maxLength: 1073741824 # 1 GiB limit
+      responses:
+        "201":
+          description: The content was successfully uploaded.
+          headers:
+            Location:
+              description: The URL for accessing the uploaded content.
+              schema:
+                type: string
+                format: uri
+                example: https://example.com/content/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+        "404":
+          description: A requested entity was not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [log, record]
+                    example: log
+                  id:
+                    "$ref": "#/components/schemas/AnyHash"
+                    description: |
+                      The identifier of the entity that was not found.
+        "405":
+          description: The package record is not in the `sourcing` state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                status: 405
+                message: the package record is not in the `sourcing` state
+        "422":
+          description: The content was rejected by server policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                status: 422
+                message: the content is not valid WebAssembly
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /proof/consistency:
+    post:
+      summary: Prove registry checkpoint consistency.
+      operationId: proveConsistency
+      security: []
+      tags:
+        - proof
+      description: |
+        Proves the consistency of the registry between two specified checkpoints.
+
+        TODO: document the consistency proof bundle format.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProveConsistencyRequest"
+      responses:
+        "200":
+          description: The consistency proof was generated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProveConsistencyResponse"
+        "404":
+          description: A requested entity was not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [checkpoint]
+                    example: checkpoint
+                  id:
+                    "$ref": "#/components/schemas/AnyHash"
+                    description: |
+                      The identifier of the entity that was not found.
+        "422":
+          description: The proof bundle could not be generated.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - "$ref": "#/components/schemas/BundleFailureError"
+                discriminator:
+                  propertyName: reason
+                  mapping:
+                    failure: "#/components/schemas/BundleFailureError"
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /proof/inclusion:
+    post:
+      summary: Prove log leaf inclusion.
+      operationId: proveInclusion
+      security: []
+      tags:
+        - proof
+      description: |
+        Proves that the given log leafs are present in the given registry checkpoint.
+
+        TODO: document the log inclusion proof bundle format.
+
+        TODO: document the map inclusion proof bundle format.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProveInclusionRequest"
+      responses:
+        "200":
+          description: The inclusion proof was generated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProveInclusionResponse"
+        "404":
+          description: A requested entity was not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [checkpoint, leaf]
+                    example: checkpoint
+                  id:
+                    "$ref": "#/components/schemas/AnyHash"
+                    description: |
+                      The identifier of the entity that was not found.
+
+                      For leafs, the format is `<logId>|<recordId>`.
+        "422":
+          description: The proof bundle could not be generated.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - "$ref": "#/components/schemas/PackageNotIncludedError"
+                  - "$ref": "#/components/schemas/IncorrectProofError"
+                  - "$ref": "#/components/schemas/BundleFailureError"
+                discriminator:
+                  propertyName: reason
+                  mapping:
+                    packageNotIncluded: "#/components/schemas/PackageNotIncludedError"
+                    incorrectProof: "#/components/schemas/IncorrectProofError"
+                    failure: "#/components/schemas/BundleFailureError"
+        default:
+          description: An error occurred when processing the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Error:
+      type: object
+      description: A generic error response.
+      additionalProperties: false
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 406
+        message:
+          type: string
+          description: The error message.
+          example: the server cannot produce an acceptable response
+    AnyHash:
+      type: string
+      description: Represents a supported hash.
+      example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+      pattern: ^[a-z0-9-]+:[a-f0-9]+$
+    FetchLogsRequest:
+      type: object
+      description: A request to fetch logs from the registry.
+      additionalProperties: false
+      required:
+        - checkpoint
+      properties:
+        checkpoint:
+          $ref: "#/components/schemas/AnyHash"
+          description: The registry checkpoint hash to fetch from.
+        limit:
+          type: integer
+          description: The limit of operator and packages records to return for the fetch request.
+          example: 100
+          default: 100
+          minimum: 1
+          maximum: 1000
+          format: int16
+        operator:
+          $ref: "#/components/schemas/AnyHash"
+          description: The last known operator record identifier.
+        packages:
+          type: object
+          description: |
+            The map of package log identifier to last known package record identifier.
+
+            If the last package record identifier is null, records are returned from the start of the log.
+          patternProperties:
+            "^[a-z0-9-]+:[a-f0-9]+$":
+              $ref: "#/components/schemas/AnyHash"
+              description: The last known package record identifier.
+              nullable: true
+          example:
+            "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773": "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+            "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c": null
+    FetchLogsResponse:
+      type: object
+      description: A response containing the requested logs.
+      additionalProperties: false
+      properties:
+        more:
+          type: boolean
+          description: |
+            Whether there may be more records available.
+
+            This occurs when the number of records returned for a log reaches the requested limit.
+
+            If `true`, the client should make another request with the new last known record identifiers.
+          example: false
+        operator:
+          type: array
+          description: The operator log records for the given checkpoint since the last known record.
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/EnvelopeBody"
+        packages:
+          type: object
+          description: The map of package log identifier to package records.
+          patternProperties:
+            "^[a-z0-9-]+:[a-f0-9]+$":
+              type: array
+              description: The package log records for the given checkpoint since the last known record.
+              maxItems: 1000
+              items:
+                $ref: "#/components/schemas/EnvelopeBody"
+          example:
+            ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+            : - contentBytes: "ZXhhbXBsZQ=="
+                keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+                signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+              - contentBytes: "ZXhhbXBsZQ=="
+                keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+                signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+            ? "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
+            : - contentBytes: "ZXhhbXBsZQ=="
+                keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
+                signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+    PublishPackageRecordRequest:
+      type: object
+      description: A request to publish a record to a package log.
+      additionalProperties: false
+      required:
+        - name
+        - record
+      properties:
+        name:
+          type: string
+          description: The name of the package log being published to.
+          maxLength: 128
+          example: wasi:http
+        record:
+          "$ref": "#/components/schemas/EnvelopeBody"
+          description: The package record being published to the log.
+        contentSources:
+          "$ref": "#/components/schemas/ContentSourceMap"
+          description: |
+            The map of all content sources for the record.
+
+            A registry may not support specifying content sources for a record.
+
+            If a registry does not support content sources, a 501 will be returned
+            and content will need to be directly uploaded to the registry.
+    PackageRecord:
+      description: A package log record.
+      allOf:
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              "$ref": "#/components/schemas/AnyHash"
+              description: The record identifier.
+        - oneOf:
+            - "$ref": "#/components/schemas/SourcingRecord"
+            - "$ref": "#/components/schemas/ProcessingRecord"
+            - "$ref": "#/components/schemas/RejectedRecord"
+            - "$ref": "#/components/schemas/PublishedRecord"
+          discriminator:
+            propertyName: state
+            mapping:
+              sourcing: "#/components/schemas/SourcingRecord"
+              processing: "#/components/schemas/ProcessingRecord"
+              rejected: "#/components/schemas/RejectedRecord"
+              published: "#/components/schemas/PublishedRecord"
+    ProveConsistencyRequest:
+      type: object
+      description: A request to prove the consistency of the registry.
+      additionalProperties: false
+      required:
+        - from
+        - to
+      properties:
+        from:
+          $ref: "#/components/schemas/AnyHash"
+          description: The starting log root hash.
+        to:
+          $ref: "#/components/schemas/AnyHash"
+          description: The ending log root hash.
+    ProveConsistencyResponse:
+      type: object
+      description: A response containing the consistency proof bundle.
+      additionalProperties: false
+      required:
+        - proof
+      properties:
+        proof:
+          type: string
+          description: The consistency proof bundle.
+          format: byte
+          example: "ZXhhbXBsZQ=="
+    ProveInclusionRequest:
+      type: object
+      description: A request to prove the inclusion of log leafs in a checkpoint.
+      additionalProperties: false
+      required:
+        - checkpoint
+        - leafs
+      properties:
+        checkpoint:
+          $ref: "#/components/schemas/MapCheckpoint"
+          description: The checkpoint to prove the inclusion for.
+        leafs:
+          type: array
+          maxItems: 1000
+          description: The log leafs to prove the inclusion for.
+          items:
+            type: object
+            description: A log leaf.
+            required:
+              - logId
+              - recordId
+            properties:
+              logId:
+                $ref: "#/components/schemas/AnyHash"
+                description: The log identifier.
+              recordId:
+                $ref: "#/components/schemas/AnyHash"
+                description: The record identifier.
+    ProveInclusionResponse:
+      type: object
+      description: A response containing the inclusion proof bundle.
+      additionalProperties: false
+      required:
+        - log
+        - map
+      properties:
+        log:
+          type: string
+          description: The log inclusion proof bundle.
+          format: byte
+          example: "ZXhhbXBsZQ=="
+        map:
+          type: string
+          description: The map inclusion proof bundle.
+          format: byte
+          example: "ZXhhbXBsZQ=="
+    SourcingRecord:
+      type: object
+      description: The package record is sourcing content.
+      required:
+        - state
+        - missingContent
+      properties:
+        state:
+          type: string
+          description: The state of the package record.
+          enum: [sourcing]
+          example: sourcing
+        missingContent:
+          type: array
+          description: The array of content digests that are missing for the package record.
+          minItems: 1
+          maxItems: 128
+          items:
+            "$ref": "#/components/schemas/AnyHash"
+    ProcessingRecord:
+      type: object
+      description: A record that is being processed.
+      required:
+        - state
+      properties:
+        state:
+          type: string
+          description: The state of the package record.
+          enum: [processing]
+          example: processing
+    RejectedRecord:
+      type: object
+      description: A rejected package record.
+      required:
+        - state
+        - reason
+      properties:
+        state:
+          type: string
+          description: The state of the package record.
+          enum: [rejected]
+          example: rejected
+        reason:
+          type: string
+          description: The reason the package record was rejected.
+          example: the first entry of the log is not `init`
+    PublishedRecord:
+      type: object
+      description: A record that has been published to the log.
+      required:
+        - state
+        - checkpoint
+        - record
+      properties:
+        state:
+          type: string
+          description: The state of the package record.
+          enum: [published]
+          example: published
+        checkpoint:
+          "$ref": "#/components/schemas/SignedMapCheckpoint"
+          description: The checkpoint of the record.
+        record:
+          "$ref": "#/components/schemas/EnvelopeBody"
+          description: The package record.
+        contentSources:
+          "$ref": "#/components/schemas/ContentSourceMap"
+          description: The content sources for the package record.
+    MapCheckpoint:
+      type: object
+      description: |
+        A registry checkpoint.
+
+        Checkpoints are hashed by concatenating the following:
+          * A prefix of the byte string `WARG-MAP-CHECKPOINT-V0`
+          * The LEB128-encoded `logLength`
+          * The LEB128-length-prefixed `logRoot`
+          * The LEB128-length-prefixed `mapRoot`
+      additionalProperties: false
+      required:
+        - logLength
+        - logRoot
+        - mapRoot
+      properties:
+        logLength:
+          type: integer
+          description: The log length of the checkpoint.
+          minimum: 1
+          example: 42
+        logRoot:
+          $ref: "#/components/schemas/AnyHash"
+          description: The log root hash of the checkpoint.
+        mapRoot:
+          $ref: "#/components/schemas/AnyHash"
+          description: The map root hash of the checkpoint.
+    SignedMapCheckpoint:
+      description: A signed registry checkpoint.
+      allOf:
+        - type: object
+          required:
+            - contents
+          properties:
+            contents:
+              $ref: "#/components/schemas/MapCheckpoint"
+        - $ref: "#/components/schemas/Signature"
+    EnvelopeBody:
+      description: A signed envelope body.
+      allOf:
+        - type: object
+          required:
+            - contentBytes
+          properties:
+            contentBytes:
+              type: string
+              description: |
+                Base64-encoded bytes of the content.
+
+                The content of an envelope body is typically a serialized protocol buffer
+                representing an operator or package record.
+              format: byte
+              maxLength: 1048576
+              example: "ZXhhbXBsZQ=="
+        - $ref: "#/components/schemas/Signature"
+    Signature:
+      type: object
+      description: Represents a signature of content.
+      required:
+        - keyId
+        - signature
+      properties:
+        keyId:
+          $ref: "#/components/schemas/AnyHash"
+          description: The signing key identifier.
+        signature:
+          type: string
+          description: The algorithm-prefixed bytes of the signature (base64 encoded).
+          pattern: ^[a-z0-9-]+:(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{4}|[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{2}={2})$
+          example: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+    ContentSourceMap:
+      type: object
+      description: The map of content digest to sources.
+      patternProperties:
+        "^[a-z0-9-]+:[a-f0-9]+$":
+          type: array
+          items:
+            "$ref": "#/components/schemas/ContentSource"
+          description: The array of sources for the content digest.
+          minItems: 1
+          maxItems: 128
+      example:
+        ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"
+        : - type: http
+            url: https://example.com/7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773
+    ContentSource:
+      description: A known content source.
+      oneOf:
+        - "$ref": "#/components/schemas/HttpSource"
+      discriminator:
+        propertyName: type
+        mapping:
+          http: "#/components/schemas/HttpSource"
+    HttpSource:
+      type: object
+      description: A known HTTP content source.
+      properties:
+        type:
+          type: string
+          description: The type of content source.
+          enum: [http]
+          example: http
+        url:
+          type: string
+          description: The URL of the content.
+          example: https://example.com/contents.wasm
+          format: uri
+    PackageNotIncludedError:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - reason
+        - logId
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [packageNotIncluded]
+          example: packageNotIncluded
+        logId:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The identifier of the log that was not included.
+    IncorrectProofError:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - reason
+        - root
+        - found
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [incorrectProof]
+          example: incorrectProof
+        root:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The map or log root hash from the checkpoint that was provided.
+        found:
+          "$ref": "#/components/schemas/AnyHash"
+          description: The hash that was found in the proof.
+    BundleFailureError:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - reason
+        - message
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code for the error.
+          example: 422
+        reason:
+          type: string
+          description: The reason why the bundle could not be generated.
+          enum: [failure]
+          example: failure
+        message:
+          type: string
+          description: The failure error message.
+          example: bundle must contain proofs for the same root

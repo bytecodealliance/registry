@@ -3,6 +3,7 @@ use clap::{Parser, ValueEnum};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
+use url::Url;
 use warg_crypto::signing::PrivateKey;
 use warg_server::{args::get_opt_content, Config, Server};
 
@@ -27,6 +28,10 @@ struct Args {
     /// The content storage directory to use.
     #[arg(long, env = "WARG_CONTENT_DIR")]
     content_dir: PathBuf,
+
+    /// The base content URL to use; defaults to the server address.
+    #[arg(long, env = "WARG_CONTENT_BASE_URL")]
+    content_base_url: Option<Url>,
 
     /// The data store to use for the server.
     #[arg(long, env = "WARG_DATA_STORE", default_value = "memory")]
@@ -106,9 +111,13 @@ async fn main() -> Result<()> {
             .parse()
             .context("failed to parse operator key")?;
 
-    let config = Config::new(operator_key, args.content_dir)
+    let mut config = Config::new(operator_key, args.content_dir)
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
+
+    if let Some(url) = args.content_base_url {
+        config = config.with_content_base_url(url);
+    }
 
     let config = match args.data_store {
         #[cfg(feature = "postgres")]
