@@ -218,8 +218,8 @@ impl DataStore for MemoryDataStore {
             use warg_protocol::Record;
             let contents = record.as_ref().contents();
             let mut contains_all = true;
-            for c in contents {
-                if !missing.contains_key(c) {
+            for key in missing.keys() {
+                if !contents.contains(key) {
                     contains_all = false;
                 }
             }

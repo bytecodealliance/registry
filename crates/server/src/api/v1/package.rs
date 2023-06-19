@@ -20,8 +20,11 @@ use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use warg_api::v1::package::{
-    ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+use warg_api::v1::{
+    package::{
+        ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+    },
+    paths::package_record_content,
 };
 use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
@@ -211,13 +214,9 @@ async fn publish_record(
         .cloned()
         .map(|hash| {
             let mut url = config.base_url.clone();
-            let full_url = &config
-                .content_path(&hash)
-                .into_os_string()
-                .into_string()
-                .unwrap();
+            let route = package_record_content(&log_id, &record_id, &hash);
             url.push('/');
-            url.push_str(full_url);
+            url.push_str(&route);
             dbg!(&url);
             (hash, ContentSource::Http { url })
         })
