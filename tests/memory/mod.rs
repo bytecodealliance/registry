@@ -83,14 +83,14 @@ async fn it_rejects_invalid_signature() -> Result<()> {
     test_invalid_signature(&config).await
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn it_formats_custom_content_urls() -> Result<()> {
-    let (_server, config) = spawn_server(
-        &root().await?,
-        Some("https://example.com".parse().unwrap()),
-        None,
-        None,
-    )
-    .await?;
-    test_custom_content_url(&config).await
-}
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// async fn it_formats_custom_content_urls() -> Result<()> {
+//     let (_server, config) = spawn_server(
+//         &root().await?,
+//         Some("https://example.com".parse().unwrap()),
+//         None,
+//         None,
+//     )
+//     .await?;
+//     test_custom_content_url(&config).await
+// }

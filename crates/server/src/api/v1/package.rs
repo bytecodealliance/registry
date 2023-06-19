@@ -12,7 +12,7 @@ use axum::{
     extract::{BodyStream, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, patch},
     Router,
 };
 use futures::StreamExt;
@@ -67,6 +67,7 @@ impl Config {
         Router::new()
             .route("/:log_id/record", post(publish_record))
             .route("/:log_id/record/:record_id", get(get_record))
+            .route("/:log_id/record/:record_id", patch(patch_record))
             .route(
                 "/:log_id/record/:record_id/content/:digest",
                 post(upload_content),
@@ -255,6 +256,23 @@ async fn publish_record(
         }),
     ))
 }
+
+async fn patch_record(
+  State(config): State<Config>,
+  Path((log_id, record_id)): Path<(LogId, RecordId)>,
+) -> Result<(), PackageApiError> {
+    let record = config
+    .core_service
+    .store()
+    .get_package_record(&log_id, &record_id)
+    .await?;
+    let missing = HashMap::new();
+    let _patch = config
+      .core_service
+      .store()
+      .patch_package_record(&log_id, &record_id, &record.envelope, &missing);
+    Ok(())
+  }
 
 #[debug_handler]
 async fn get_record(
