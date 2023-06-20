@@ -244,11 +244,11 @@ pub trait DataStore: Send + Sync {
 
     /// Gets a package record.
     async fn patch_package_record(
-      &self,
-      log_id: &LogId,
-      record_id: &RecordId,
-      record: &ProtoEnvelope<package::PackageRecord>,
-      missing: &HashMap<AnyHash, ContentSource>,
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        record: &ProtoEnvelope<package::PackageRecord>,
+        missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError>;
     /// Gets a package record.
     async fn get_package_record(

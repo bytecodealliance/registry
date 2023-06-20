@@ -223,6 +223,24 @@ impl Client {
     }
 
     /// Gets a package record from the registry.
+    pub async fn patch_package_record(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<(), ClientError> {
+        let url = self
+            .url
+            .join(&paths::package_record(log_id, record_id))
+            .unwrap();
+        dbg!(&url);
+        tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
+        let client = reqwest::Client::new();
+        let req = client.patch(url);
+        req.send().await?;
+        Ok(())
+    }
+
+    /// Gets a package record from the registry.
     pub async fn get_package_record(
         &self,
         log_id: &LogId,

@@ -161,6 +161,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             // TODO: parallelize this
             for (digest, content_source) in record.missing_content() {
                 let ContentSource::Http { url } = content_source;
+                self.api.patch_package_record(&log_id, &record.id).await?;
                 self.api
                     .upload_content(
                         Body::wrap_stream(self.content.load_content(&digest).await?.ok_or_else(
@@ -181,6 +182,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                         }
                         _ => e.into(),
                     })?;
+                dbg!("UPLOADED CONTENT");
             }
         }
 

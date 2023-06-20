@@ -3,7 +3,7 @@ use futures::Stream;
 use indexmap::IndexMap;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
-use warg_api::v1::package::{ContentSource};
+use warg_api::v1::package::ContentSource;
 use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
@@ -532,7 +532,6 @@ impl DataStore for MemoryDataStore {
         })
     }
 
-
     async fn patch_package_record(
         &self,
         log_id: &LogId,
@@ -540,16 +539,16 @@ impl DataStore for MemoryDataStore {
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
-      let mut state = self.0.write().await;
-      state.records.entry(log_id.clone()).or_default().insert(
-        record_id.clone(),
-        RecordStatus::Pending(PendingRecord::Package {
-            record: Some(record.clone()),
-            missing: missing.clone()
-        }),
-      );
+        let mut state = self.0.write().await;
+        state.records.entry(log_id.clone()).or_default().insert(
+            record_id.clone(),
+            RecordStatus::Pending(PendingRecord::Package {
+                record: Some(record.clone()),
+                missing: missing.clone(),
+            }),
+        );
 
-      Ok(())
+        Ok(())
     }
     async fn get_package_record(
         &self,

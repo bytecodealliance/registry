@@ -251,32 +251,32 @@ where
 }
 
 async fn patch_record<V>(
-  conn: &mut AsyncPgConnection,
-  log_id: &LogId,
-  record_id: &RecordId,
+    conn: &mut AsyncPgConnection,
+    log_id: &LogId,
+    record_id: &RecordId,
 ) -> Result<(), DataStoreError>
 where
-  V: Validator + 'static,
-  <V as Validator>::Error: ToString + Send + Sync,
-  DataStoreError: From<<V as Validator>::Error>,
+    V: Validator + 'static,
+    <V as Validator>::Error: ToString + Send + Sync,
+    DataStoreError: From<<V as Validator>::Error>,
 {
-  let log_id = schema::logs::table
+    let log_id = schema::logs::table
         .select(schema::logs::id)
         .filter(schema::logs::log_id.eq(TextRef(log_id)))
         .first::<i32>(conn)
         .await
         .optional()?
         .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
-  diesel::update(schema::records::table)
-    .filter(
-      schema::records::record_id
+    diesel::update(schema::records::table)
+        .filter(
+            schema::records::record_id
                 .eq(TextRef(record_id))
-                .and(schema::records::log_id.eq(log_id))
-    )
-    .set(schema::records::status.eq(RecordStatus::Pending))
-    .execute(conn)
-    .await?;
-  Ok(())
+                .and(schema::records::log_id.eq(log_id)),
+        )
+        .set(schema::records::status.eq(RecordStatus::Pending))
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 async fn get_record<V>(
@@ -760,11 +760,11 @@ impl DataStore for PostgresDataStore {
     }
 
     async fn patch_package_record(
-      &self,
-      log_id: &LogId,
-      record_id: &RecordId,
-      _record: &ProtoEnvelope<package::PackageRecord>,
-      _missing: &HashMap<AnyHash, ContentSource>,
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        _record: &ProtoEnvelope<package::PackageRecord>,
+        _missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
         patch_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
