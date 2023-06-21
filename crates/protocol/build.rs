@@ -3,9 +3,9 @@ use std::{env, io::Result, path::PathBuf, process::Command};
 
 fn main() -> Result<()> {
     verify_protoc_version(15, 0);
-    let warg_proto = PathBuf::from("../../proto/warg/protocol/warg.proto");
+    let warg_proto = PathBuf::from("proto/warg/protocol/warg.proto");
     let proto_files = vec![warg_proto];
-    let root = PathBuf::from("../../proto");
+    let root = PathBuf::from("proto");
 
     // Tell cargo to recompile if any of these proto files are changed
     for proto_file in &proto_files {
