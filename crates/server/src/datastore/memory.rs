@@ -78,6 +78,7 @@ struct State {
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
+    names: HashMap<LogId, PackageId>,
 }
 
 /// Represents an in-memory data store.
@@ -232,6 +233,7 @@ impl DataStore for MemoryDataStore {
         });
 
         let mut state = self.0.write().await;
+        state.names.entry(log_id.clone()).or_insert_with(|| package_id.clone());
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {
@@ -588,6 +590,16 @@ impl DataStore for MemoryDataStore {
             envelope,
             registry_log_index,
         })
+    }
+
+    async fn get_package_id(&self, log_id: &LogId) -> Result<PackageId, DataStoreError> {
+        self.0
+            .read()
+            .await
+            .names
+            .get(log_id)
+            .map(|package_id| package_id.clone())
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))
     }
 
     async fn verify_package_record_signature(

@@ -12,6 +12,7 @@ use tower_http::{
 };
 use tracing::{Level, Span};
 use url::Url;
+use crate::contentstore::ContentStore;
 
 pub mod v1;
 
@@ -23,9 +24,9 @@ pub fn create_router(
     content_base_url: Url,
     core: CoreService,
     temp_dir: PathBuf,
-    files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 ) -> Router {
     let router = Router::new();
     #[cfg(feature = "debug")]
@@ -37,9 +38,9 @@ pub fn create_router(
                 content_base_url,
                 core,
                 temp_dir,
-                files_dir.clone(),
                 content_policy,
                 record_policy,
+                content_store,
             ),
         )
         .layer(

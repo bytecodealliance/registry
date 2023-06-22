@@ -231,6 +231,12 @@ pub trait DataStore: Send + Sync {
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
 
+    /// Gets the package ID for the given log ID.
+    async fn get_package_id(
+        &self,
+        log_id: &LogId,
+    ) -> Result<PackageId, DataStoreError>;
+
     /// Gets an operator record.
     async fn get_operator_record(
         &self,

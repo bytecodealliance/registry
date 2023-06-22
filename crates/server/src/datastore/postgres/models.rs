@@ -58,7 +58,7 @@ impl<'a, T: std::fmt::Debug + Display> ToSql<sql_types::Text, Pg> for TextRef<'a
     }
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = logs)]
 pub struct NewLog<'a, V>
 where

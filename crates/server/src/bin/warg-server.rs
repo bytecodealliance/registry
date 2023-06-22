@@ -16,6 +16,14 @@ enum DataStoreKind {
     Memory,
 }
 
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ContentStoreKind {
+    #[default]
+    Local,
+    #[value(alias("ociv1-1"))]
+    OCIv1_1,
+}
+
 #[derive(Parser, Debug)]
 struct Args {
     /// Use verbose output
@@ -37,6 +45,10 @@ struct Args {
     /// The data store to use for the server.
     #[arg(long, env = "WARG_DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
+
+    /// The content store to use for the server.
+    #[arg(long, env = "WARG_CONTENT_STORE", default_value = "local")]
+    content_store: ContentStoreKind,
 
     /// The database connection URL if data-store is set to postgres.
     ///
@@ -110,6 +122,16 @@ async fn main() -> Result<()> {
             .with_context(|| format!("failed to decode authorized keys from {path:?}"))?;
         config = config.with_record_policy(authorized_key_policy);
     }
+    
+    let config = match args.content_store {
+        ContentStoreKind::Local => {
+            tracing::info!("using local content store");
+            config
+        }
+        ContentStoreKind::OCIv1_1 => {
+            todo!("OCIv1.1 content store is not yet implemented");
+        }
+    };
 
     let config = match args.data_store {
         #[cfg(feature = "postgres")]

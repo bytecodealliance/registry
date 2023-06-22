@@ -747,6 +747,17 @@ impl DataStore for PostgresDataStore {
         get_records(&mut conn, log_id, checkpoint_id, since, limit as i64).await
     }
 
+    async fn get_package_id(&self, log_id: &LogId) -> std::result::Result<PackageId, DataStoreError> {
+        let mut conn = self.0.get().await?;
+        schema::logs::table
+            .select(schema::logs::name)
+            .filter(schema::logs::log_id.eq(TextRef(log_id)))
+            .first::<Option<String>>(conn.as_mut())
+            .await
+            .map(|name| PackageId::new(name.unwrap()).unwrap())
+            .map_err(|_| DataStoreError::LogNotFound(log_id.clone()))
+    }
+
     async fn get_operator_record(
         &self,
         log_id: &LogId,

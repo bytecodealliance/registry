@@ -15,13 +15,16 @@ use std::{
 };
 use tokio::task::JoinHandle;
 use url::Url;
+use contentstore::ContentStore;
 use warg_crypto::signing::PrivateKey;
+use crate::contentstore::local::LocalContentStore;
 
 pub mod api;
 pub mod args;
 pub mod datastore;
 pub mod policy;
 pub mod services;
+pub mod contentstore;
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
@@ -39,6 +42,7 @@ pub struct Config {
     checkpoint_interval: Option<Duration>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 }
 
 impl std::fmt::Debug for Config {
@@ -72,12 +76,13 @@ impl Config {
             operator_key,
             addr: None,
             data_store: None,
-            content_dir,
+            content_dir: content_dir.clone(),
             content_base_url: None,
             shutdown: None,
             checkpoint_interval: None,
             content_policy: None,
             record_policy: None,
+            content_store: Arc::new(LocalContentStore::new(content_dir.join("files"))),
         }
     }
 
@@ -219,9 +224,9 @@ impl Server {
             content_base_url,
             core,
             temp_dir,
-            files_dir,
             self.config.content_policy,
             self.config.record_policy,
+            self.config.content_store,
         );
 
         Ok(InitializedServer {

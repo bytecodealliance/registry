@@ -15,6 +15,7 @@ use axum::{
 use serde::{Serialize, Serializer};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
+use crate::contentstore::ContentStore;
 
 pub mod fetch;
 pub mod package;
@@ -93,18 +94,18 @@ pub fn create_router(
     content_base_url: Url,
     core: CoreService,
     temp_dir: PathBuf,
-    files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 ) -> Router {
     let proof_config = proof::Config::new(core.clone());
     let package_config = package::Config::new(
         core.clone(),
         content_base_url,
-        files_dir,
         temp_dir,
         content_policy,
         record_policy,
+        content_store,
     );
     let fetch_config = fetch::Config::new(core);
 
