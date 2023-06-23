@@ -1,6 +1,4 @@
-use warg_crypto::{
-    hash::{Hash, SupportedDigest},
-};
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{
     fork::Fork,
@@ -53,48 +51,52 @@ impl<D: SupportedDigest> Singleton<D> {
         path: &mut Path<D>,
         key: Hash<D>,
         value: Hash<D>,
+        cur_side: Side,
     ) -> (Node<D>, bool) {
         if self.key() == &key {
-            let new_singleton = Singleton::new(key, value, path.height() + 1, path.get(path.index()));
+            let new_singleton = Singleton::new(key, value, path.height() + 1, cur_side);
             (Node::Singleton(new_singleton), false)
-        } else if self.side != path.get(path.index()) {
-            let node = Node::Singleton(Singleton::new(key, value, path.height(), path.get(path.index())));
+        } else if self.side != cur_side {
+            let node = Node::Singleton(Singleton::new(key, value, path.height(), cur_side));
             let original = Node::Singleton(Singleton::new(
                 self.key.clone(),
                 self.value.clone(),
                 path.height(),
-                path.get(path.index()).opposite(),
+                cur_side.opposite(),
             ));
-            let fork = match path.get(path.index()) {
+            let fork = match cur_side {
                 Side::Left => Fork::new(Arc::new(Link::new(node)), Arc::new(Link::new(original))),
                 Side::Right => Fork::new(Arc::new(Link::new(original)), Arc::new(Link::new(node))),
             };
             (Node::Fork(fork), false)
         } else {
-            let fork = match path.get(path.index()) {
+            let cur_path = Path::new(self.key.clone());
+            let cur_index = path.index();
+            let fork = match cur_side {
                 Side::Left => {
-                    let (down_one, _) = Node::Singleton(Singleton::new(
+                    let pre_insert = Node::Singleton(Singleton::new(
                         self.key.clone(),
                         self.value.clone(),
                         self.height - 1,
-                        path.get(path.index()),
-                    ))
-                    .insert(path, value);
+                        cur_path.get(cur_index),
+                    ));
+                    let (down_one, _) = pre_insert.insert(path, value);
+
                     Fork::new(
                         Arc::new(Link::new(down_one)),
-                        Arc::new(Link::new(Node::Empty(path.height() - 1))),
+                        Arc::new(Link::new(Node::Empty(256 - cur_index))),
                     )
                 }
                 Side::Right => {
-                    let (down_one, _) = Node::Singleton(Singleton::new(
+                    let pre_insert = Node::Singleton(Singleton::new(
                         self.key.clone(),
                         self.value.clone(),
                         self.height - 1,
-                        path.get(path.index()),
-                    ))
-                    .insert(path, value);
+                        cur_path.get(cur_index),
+                    ));
+                    let (down_one, _) = pre_insert.insert(path, value);
                     Fork::new(
-                        Arc::new(Link::new(Node::Empty(path.height() - 1))),
+                        Arc::new(Link::new(Node::Empty(256 - cur_index))),
                         Arc::new(Link::new(down_one)),
                     )
                 }

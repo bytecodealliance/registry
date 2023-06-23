@@ -166,18 +166,18 @@ impl<'de> Deserialize<'de> for PackageId {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LogId(pub AnyHash);
+pub struct LogId(AnyHash);
 
 impl LogId {
     pub fn operator_log<D: SupportedDigest>() -> Self {
         let prefix: &[u8] = b"WARG-OPERATOR-LOG-ID-V0".as_slice();
-        let hash: Hash<D> = Hash::of(Hash::<D>::of(prefix));
+        let hash: Hash<D> = Hash::of(prefix);
         Self(hash.into())
     }
 
     pub fn package_log<D: SupportedDigest>(id: &PackageId) -> Self {
         let prefix: &[u8] = b"WARG-PACKAGE-LOG-ID-V0:".as_slice();
-        let hash: Hash<D> = Hash::of(Hash::<D>::of((prefix, id)));
+        let hash: Hash<D> = Hash::of((prefix, id));
         Self(hash.into())
     }
 }
@@ -243,5 +243,23 @@ impl fmt::Display for RecordId {
 impl From<AnyHash> for RecordId {
     fn from(value: AnyHash) -> Self {
         Self(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use warg_crypto::hash::Sha256;
+    use warg_transparency::map::Map;
+
+    #[test]
+    fn log_id() {
+        let first = Map::<Sha256, LogId, &'static str>::default();
+        let second = first.insert(LogId::operator_log::<Sha256>(), "foobar");
+        let proof = second.prove(LogId::operator_log::<Sha256>()).unwrap();
+        assert_eq!(
+            second.root().clone(),
+            proof.evaluate(&LogId::operator_log::<Sha256>(), &"foobar")
+        );
     }
 }

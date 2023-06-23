@@ -1,6 +1,4 @@
-use warg_crypto::{
-    hash::{Hash, SupportedDigest},
-};
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 pub struct Path<D: SupportedDigest> {
     hash: Hash<D>,

@@ -49,7 +49,10 @@ impl<D: SupportedDigest> Node<D> {
         }
     }
 
-    pub fn prove<K: VisitBytes, V: VisitBytes + Clone>(&self, mut path: Path<D>) -> Option<Proof<D, K, V>> {
+    pub fn prove<K: VisitBytes, V: VisitBytes + Clone>(
+        &self,
+        mut path: Path<D>,
+    ) -> Option<Proof<D, K, V>> {
         match (path.next(), self) {
             (Some(_), Self::Singleton(singleton)) => {
                 if singleton.key() == path.hash() {
@@ -96,7 +99,7 @@ impl<D: SupportedDigest> Node<D> {
                             path.hash().clone(),
                             value,
                             path.height(),
-                            index,
+                            path.get(path.index() + 1),
                         ));
                         match index {
                             Side::Left => {
@@ -130,7 +133,7 @@ impl<D: SupportedDigest> Node<D> {
                     (Node::Fork(fork), new)
                 }
                 Node::Singleton(singleton) => {
-                    singleton.insert(path, path.hash().clone(), value)
+                    singleton.insert(path, path.hash().clone(), value, index)
                 }
                 Node::Leaf(_) => (Node::Leaf(value), false),
             },
