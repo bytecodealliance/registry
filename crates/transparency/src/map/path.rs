@@ -53,6 +53,10 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
     pub fn index(&self) -> usize {
         self.index
     }
+
+    pub fn height(&self) -> usize {
+        256 - self.index
+    }
 }
 
 impl<D: SupportedDigest, K: VisitBytes + Clone> Iterator for Path<D, K> {

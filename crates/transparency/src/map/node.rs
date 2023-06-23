@@ -91,79 +91,47 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
             // We are not at the end of the path. Recurse...
             Some(index) => match self.clone() {
                 Node::Empty(_) => {
-                    let singleton =
-                        Node::Singleton(Singleton::new(key, value, 256 - path.index(), index));
                     if path.index() == 1 {
+                        let singleton =
+                            Node::Singleton(Singleton::new(key, value, path.height(), index));
                         match index {
                             Side::Left => {
                                 let fork = Fork::new(
                                     Arc::new(Link::new(singleton)),
-                                    Arc::new(Link::new(Node::Empty(256 - path.index()))),
+                                    Arc::new(Link::new(Node::Empty(path.height()))),
                                 );
                                 return (Node::Fork(fork), true);
                             }
                             Side::Right => {
                                 let fork = Fork::new(
-                                    Arc::new(Link::new(Node::Empty(256 - path.index()))),
+                                    Arc::new(Link::new(Node::Empty(path.height()))),
                                     Arc::new(Link::new(singleton)),
                                 );
                                 return (Node::Fork(fork), true);
                             }
                         }
                     }
+                    let singleton =
+                        Node::Singleton(Singleton::new(key, value, path.height() + 1, index));
                     (singleton, true)
                 }
                 Node::Fork(mut fork) => {
                     // Choose the branch on the specified side.
-                    let node = fork[index].as_ref().node();
-                    // fork
-                    match node {
-                        Node::Empty(_) => {
-                            let singleton = Node::Singleton(Singleton::new(
-                                key,
-                                value,
-                                256 - path.index(),
-                                index,
-                            ));
-                            fork[index] = Arc::new(Link::new(singleton));
-                            (Node::Fork(fork), true)
-                        }
-                        Node::Singleton(singleton) => {
-                            if singleton.key() == &key {
-                                let new_singleton = Node::Singleton(Singleton::new(
-                                    key,
-                                    value,
-                                    256 - path.index(),
-                                    index,
-                                ));
-                                fork[index] = Arc::new(Link::new(new_singleton));
-                                (Node::Fork(fork), false)
-                            } else {
-                                let (new_fork, new) = node.insert(path, key, value);
-                                let new_node = Arc::new(Link::new(new_fork));
-                                fork[index] = new_node;
-                                (Node::Fork(fork), new)
-                            }
-                        }
-                        _ => {
-                            // Replace its value recursively.
-                            let (node, new) = node.insert(path, key, value);
-                            fork[index] = Arc::new(Link::new(node));
-                            (Node::Fork(fork), new)
-                        }
-                    }
+                    let (node, new) = fork[index].as_ref().node().insert(path, key, value);
+                    fork[index] = Arc::new(Link::new(node));
+                    (Node::Fork(fork), new)
                 }
                 Node::Singleton(singleton) => {
                     if singleton.key() == &key {
-                        let new_singleton = Singleton::new(key, value, 256 - path.index(), index);
+                        let new_singleton = Singleton::new(key, value, path.height() + 1, index);
                         (Node::Singleton(new_singleton), false)
                     } else if singleton.side != index {
                         let node =
-                            Node::Singleton(Singleton::new(key, value, 256 - path.index(), index));
+                            Node::Singleton(Singleton::new(key, value, path.height(), index));
                         let original = Node::Singleton(Singleton::new(
                             singleton.key,
                             singleton.value,
-                            256 - path.index(),
+                            path.height(),
                             index.opposite(),
                         ));
                         let fork = match index {
@@ -187,7 +155,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
                                 .insert(path, key, value);
                                 Fork::new(
                                     Arc::new(Link::new(down_one)),
-                                    Arc::new(Link::new(Node::Empty(256 - path.index() - 1))),
+                                    Arc::new(Link::new(Node::Empty(path.height() - 1))),
                                 )
                             }
                             Side::Right => {
@@ -199,7 +167,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
                                 ))
                                 .insert(path, key, value);
                                 Fork::new(
-                                    Arc::new(Link::new(Node::Empty(256 - path.index() - 1))),
+                                    Arc::new(Link::new(Node::Empty(path.height() - 1))),
                                     Arc::new(Link::new(down_one)),
                                 )
                             }
