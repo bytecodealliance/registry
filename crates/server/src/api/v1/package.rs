@@ -222,7 +222,6 @@ async fn publish_record(
             let mut url = config.content_base_url.clone().to_string();
             let route = package_record_content(&log_id, &record_id, &hash);
             url.push_str(&route);
-            dbg!(&url);
             (hash, ContentSource::Http { url })
         })
         .collect();

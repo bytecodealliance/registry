@@ -13,7 +13,7 @@ use diesel_async::{
 use diesel_json::Json;
 use futures::{Stream, StreamExt};
 use std::{collections::HashMap, pin::Pin};
-use warg_api::v1::package::ContentSource;
+use warg_api::v1::{package::ContentSource, paths::package_record_content};
 use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
@@ -289,7 +289,7 @@ where
     <V as Validator>::Error: ToString + Send + Sync,
     DataStoreError: From<<V as Validator>::Error>,
 {
-    let log_id = schema::logs::table
+    let log_id_num = schema::logs::table
         .select(schema::logs::id)
         .filter(schema::logs::log_id.eq(TextRef(log_id)))
         .first::<i32>(conn)
@@ -306,7 +306,7 @@ where
         .filter(
             schema::records::record_id
                 .eq(TextRef(record_id))
-                .and(schema::records::log_id.eq(log_id)),
+                .and(schema::records::log_id.eq(log_id_num)),
         )
         .first::<(RecordContent, Option<CheckpointData>)>(conn)
         .await
@@ -334,9 +334,9 @@ where
                     let mut missing_sources = HashMap::new();
                     for hash in missing {
                         missing_sources.insert(
-                            hash.0,
+                            hash.0.clone(),
                             ContentSource::Http {
-                                url: String::from("foo"),
+                                url: package_record_content(log_id, record_id, &hash.0),
                             },
                         );
                     }
@@ -765,7 +765,20 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
-        patch_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
+        let log_id = schema::logs::table
+            .select(schema::logs::id)
+            .filter(schema::logs::log_id.eq(TextRef(log_id)))
+            .first::<i32>(conn.as_mut())
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
+        match validate_record::<package::Validator>(conn.as_mut(), log_id, record_id).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
+                Err(e)
+            }
+        }
     }
 
     async fn get_package_record(

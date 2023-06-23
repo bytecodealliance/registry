@@ -233,7 +233,6 @@ impl Client {
             .url
             .join(&paths::package_record_content(log_id, record_id, digest))
             .unwrap();
-        dbg!(&url);
         tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
         let client = reqwest::Client::new();
         let req = client.patch(url);

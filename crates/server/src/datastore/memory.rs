@@ -541,44 +541,7 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
-        let mut state = self.0.write().await;
-        let State {
-            packages, records, ..
-        } = &mut *state;
-        let status = records
-            .get_mut(log_id)
-            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
-            .get_mut(record_id)
-            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
-        match status {
-            RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
-                let record = record.take().unwrap();
-                let log = packages.entry(log_id.clone()).or_default();
-                match log
-                    .validator
-                    .validate(&record)
-                    .map_err(DataStoreError::from)
-                {
-                    Ok(_) => {
-                        let index = log.entries.len();
-                        log.entries.push(record);
-                        *status = RecordStatus::Validated(Record {
-                            index,
-                            checkpoint_index: None,
-                        });
-                        Ok(())
-                    }
-                    Err(e) => {
-                        *status = RecordStatus::Rejected(RejectedRecord::Package {
-                            record,
-                            reason: e.to_string(),
-                        });
-                        Err(e)
-                    }
-                }
-            }
-            _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
-        }
+        self.validate_package_record(log_id, record_id).await
     }
     async fn get_package_record(
         &self,
