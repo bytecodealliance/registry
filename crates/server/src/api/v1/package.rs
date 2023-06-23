@@ -239,7 +239,6 @@ async fn publish_record(
             .core_service
             .submit_package_record(log_id, record_id.clone())
             .await;
-
         return Ok((
             StatusCode::ACCEPTED,
             Json(PackageRecord {
@@ -264,22 +263,13 @@ async fn patch_record(
     State(config): State<Config>,
     Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
 ) -> Result<(), PackageApiError> {
-    let record = config
-        .core_service
-        .store()
-        .get_package_record(&log_id, &record_id)
-        .await?;
     let mut missing = HashMap::new();
-    missing.insert(
-        digest,
-        ContentSource::Http {
-            url: String::from("foo"),
-        },
-    );
+    let content_url = config.content_url(&digest);
+    missing.insert(digest, ContentSource::Http { url: content_url });
     config
         .core_service
         .store()
-        .patch_package_record(&log_id, &record_id, &record.envelope, &missing)
+        .patch_package_record(&log_id, &record_id)
         .await?;
     Ok(())
 }

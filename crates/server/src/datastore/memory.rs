@@ -31,6 +31,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct Record {
     /// Index in the log's entries.
     index: usize,
@@ -38,6 +39,7 @@ struct Record {
     checkpoint_index: Option<usize>,
 }
 
+#[derive(Debug)]
 enum PendingRecord {
     Operator {
         record: Option<ProtoEnvelope<operator::OperatorRecord>>,
@@ -48,6 +50,7 @@ enum PendingRecord {
     },
 }
 
+#[derive(Debug)]
 enum RejectedRecord {
     Operator {
         record: ProtoEnvelope<operator::OperatorRecord>,
@@ -59,6 +62,7 @@ enum RejectedRecord {
     },
 }
 
+#[derive(Debug)]
 enum RecordStatus {
     Pending(PendingRecord),
     Rejected(RejectedRecord),
@@ -536,19 +540,45 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
-        state.records.entry(log_id.clone()).or_default().insert(
-            record_id.clone(),
-            RecordStatus::Pending(PendingRecord::Package {
-                record: Some(record.clone()),
-                missing: missing.clone(),
-            }),
-        );
-
-        Ok(())
+        let State {
+            packages, records, ..
+        } = &mut *state;
+        let status = records
+            .get_mut(log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?
+            .get_mut(record_id)
+            .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
+        match status {
+            RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
+                let record = record.take().unwrap();
+                let log = packages.entry(log_id.clone()).or_default();
+                match log
+                    .validator
+                    .validate(&record)
+                    .map_err(DataStoreError::from)
+                {
+                    Ok(_) => {
+                        let index = log.entries.len();
+                        log.entries.push(record);
+                        *status = RecordStatus::Validated(Record {
+                            index,
+                            checkpoint_index: None,
+                        });
+                        Ok(())
+                    }
+                    Err(e) => {
+                        *status = RecordStatus::Rejected(RejectedRecord::Package {
+                            record,
+                            reason: e.to_string(),
+                        });
+                        Err(e)
+                    }
+                }
+            }
+            _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
+        }
     }
     async fn get_package_record(
         &self,

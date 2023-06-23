@@ -227,10 +227,11 @@ impl Client {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        digest: &AnyHash,
     ) -> Result<(), ClientError> {
         let url = self
             .url
-            .join(&paths::package_record(log_id, record_id))
+            .join(&paths::package_record_content(log_id, record_id, digest))
             .unwrap();
         dbg!(&url);
         tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");

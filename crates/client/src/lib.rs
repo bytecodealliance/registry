@@ -181,7 +181,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                         }
                         _ => e.into(),
                     })?;
-                self.api.patch_package_record(&log_id, &record.id).await?;
+                self.api
+                    .patch_package_record(&log_id, &record.id, &digest)
+                    .await?;
             }
         }
 

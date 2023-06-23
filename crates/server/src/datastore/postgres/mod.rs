@@ -763,8 +763,6 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        _record: &ProtoEnvelope<package::PackageRecord>,
-        _missing: &HashMap<AnyHash, ContentSource>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.0.get().await?;
         patch_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
