@@ -8,13 +8,13 @@ use warg_crypto::{
 use super::node::Node;
 
 #[derive(Debug)]
-pub struct Link<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> {
+pub struct Link<D: SupportedDigest> {
     hash: Hash<D>,
-    node: Arc<Node<D, K>>,
+    node: Arc<Node<D>>,
 }
 
-impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Link<D, K> {
-    pub fn new(node: Node<D, K>) -> Self {
+impl<D: SupportedDigest> Link<D> {
+    pub fn new(node: Node<D>) -> Self {
         Self {
             hash: node.hash(),
             node: Arc::new(node),
@@ -25,12 +25,12 @@ impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Li
         &self.hash
     }
 
-    pub fn node(&self) -> &Node<D, K> {
+    pub fn node(&self) -> &Node<D> {
         &self.node
     }
 }
 
-impl<D: SupportedDigest, K: std::fmt::Debug + VisitBytes + Clone + PartialEq> Clone for Link<D, K> {
+impl<D: SupportedDigest> Clone for Link<D> {
     fn clone(&self) -> Self {
         Self {
             hash: self.hash.clone(),

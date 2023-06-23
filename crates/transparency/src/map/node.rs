@@ -12,14 +12,14 @@ use super::proof::Proof;
 use super::singleton::Singleton;
 
 #[derive(Debug)]
-pub enum Node<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> {
+pub enum Node<D: SupportedDigest> {
     Leaf(Hash<D>),
-    Fork(Fork<D, K>),
-    Singleton(Singleton<D, K>),
+    Fork(Fork<D>),
+    Singleton(Singleton<D>),
     Empty(usize),
 }
 
-impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Clone for Node<D, K> {
+impl<D: SupportedDigest> Clone for Node<D> {
     fn clone(&self) -> Self {
         match self {
             Self::Leaf(leaf) => Self::Leaf(leaf.clone()),
@@ -30,7 +30,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Clone for No
     }
 }
 
-impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Default for Node<D, K> {
+impl<D: SupportedDigest> Default for Node<D> {
     fn default() -> Self {
         Self::Fork(Fork::new(
             Arc::new(Link::new(Node::Empty(0))),
@@ -39,7 +39,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Default for 
     }
 }
 
-impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
+impl<D: SupportedDigest> Node<D> {
     pub fn hash(&self) -> Hash<D> {
         match self {
             Node::Leaf(hash) => hash.clone(),
@@ -49,17 +49,17 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
         }
     }
 
-    pub fn prove<V: VisitBytes + Clone>(&self, mut path: Path<D, K>) -> Option<Proof<D, K, V>> {
+    pub fn prove<K: VisitBytes, V: VisitBytes + Clone>(&self, mut path: Path<D>) -> Option<Proof<D, K, V>> {
         match (path.next(), self) {
             (Some(_), Self::Singleton(singleton)) => {
-                if singleton.key() == path.key() {
+                if singleton.key() == path.hash() {
                     Some(Proof::new(Vec::new()))
                 } else {
                     None
                 }
             }
             (Some(_), Self::Empty(_)) => {
-                self.prove::<V>(path)?;
+                self.prove::<K, V>(path)?;
                 None
             }
             (Some(idx), Self::Fork(fork)) => {
@@ -80,7 +80,7 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
     /// Returns:
     ///   * the new node that must replace the current node.
     ///   * whether or not this is a new entry in the map.
-    pub fn insert(&self, path: &mut Path<D, K>, key: K, value: Hash<D>) -> (Self, bool) {
+    pub fn insert(&self, path: &mut Path<D>, value: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
             None => (
@@ -92,8 +92,12 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
             Some(index) => match self.clone() {
                 Node::Empty(_) => {
                     if path.index() == 1 {
-                        let singleton =
-                            Node::Singleton(Singleton::new(key, value, path.height(), index));
+                        let singleton = Node::Singleton(Singleton::new(
+                            path.hash().clone(),
+                            value,
+                            path.height(),
+                            index,
+                        ));
                         match index {
                             Side::Left => {
                                 let fork = Fork::new(
@@ -111,69 +115,22 @@ impl<D: SupportedDigest, K: Debug + VisitBytes + Clone + PartialEq> Node<D, K> {
                             }
                         }
                     }
-                    let singleton =
-                        Node::Singleton(Singleton::new(key, value, path.height() + 1, index));
+                    let singleton = Node::Singleton(Singleton::new(
+                        path.hash().clone(),
+                        value,
+                        path.height() + 1,
+                        index,
+                    ));
                     (singleton, true)
                 }
                 Node::Fork(mut fork) => {
                     // Choose the branch on the specified side.
-                    let (node, new) = fork[index].as_ref().node().insert(path, key, value);
+                    let (node, new) = fork[index].as_ref().node().insert(path, value);
                     fork[index] = Arc::new(Link::new(node));
                     (Node::Fork(fork), new)
                 }
                 Node::Singleton(singleton) => {
-                    if singleton.key() == &key {
-                        let new_singleton = Singleton::new(key, value, path.height() + 1, index);
-                        (Node::Singleton(new_singleton), false)
-                    } else if singleton.side != index {
-                        let node =
-                            Node::Singleton(Singleton::new(key, value, path.height(), index));
-                        let original = Node::Singleton(Singleton::new(
-                            singleton.key,
-                            singleton.value,
-                            path.height(),
-                            index.opposite(),
-                        ));
-                        let fork = match index {
-                            Side::Left => {
-                                Fork::new(Arc::new(Link::new(node)), Arc::new(Link::new(original)))
-                            }
-                            Side::Right => {
-                                Fork::new(Arc::new(Link::new(original)), Arc::new(Link::new(node)))
-                            }
-                        };
-                        (Node::Fork(fork), false)
-                    } else {
-                        let fork = match index {
-                            Side::Left => {
-                                let (down_one, _) = Node::Singleton(Singleton::new(
-                                    singleton.key,
-                                    singleton.value,
-                                    singleton.height - 1,
-                                    index,
-                                ))
-                                .insert(path, key, value);
-                                Fork::new(
-                                    Arc::new(Link::new(down_one)),
-                                    Arc::new(Link::new(Node::Empty(path.height() - 1))),
-                                )
-                            }
-                            Side::Right => {
-                                let (down_one, _) = Node::Singleton(Singleton::new(
-                                    singleton.key,
-                                    singleton.value,
-                                    singleton.height - 1,
-                                    index,
-                                ))
-                                .insert(path, key, value);
-                                Fork::new(
-                                    Arc::new(Link::new(Node::Empty(path.height() - 1))),
-                                    Arc::new(Link::new(down_one)),
-                                )
-                            }
-                        };
-                        (Node::Fork(fork), true)
-                    }
+                    singleton.insert(path, path.hash().clone(), value)
                 }
                 Node::Leaf(_) => (Node::Leaf(value), false),
             },

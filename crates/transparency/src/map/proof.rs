@@ -62,7 +62,7 @@ where
     /// Computes the root obtained by evaluating this inclusion proof with the given leaf
     pub fn evaluate(&self, key: &K, value: &V) -> Hash<D> {
         // Get the path from bottom to top.
-        let path = ReversePath::<D>::new(&key);
+        let path = ReversePath::<D>::new(Hash::of(key));
 
         let fill = repeat(None).take(256 - self.peers.len());
         // Calculate the leaf hash.

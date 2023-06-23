@@ -1,11 +1,9 @@
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
-    VisitBytes,
 };
 
-pub struct Path<D: SupportedDigest, K: VisitBytes + Clone> {
-    key: K,
-    all: Hash<D>,
+pub struct Path<D: SupportedDigest> {
+    hash: Hash<D>,
     index: usize,
 }
 
@@ -26,28 +24,26 @@ impl Side {
     }
 }
 
-impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
-    pub(crate) fn new(key: K) -> Self {
-        let all = Hash::of(&key);
-
-        Self { key, index: 0, all }
+impl<D: SupportedDigest> Path<D> {
+    pub(crate) fn new(hash: Hash<D>) -> Self {
+        Self { hash, index: 0 }
     }
 
-    pub fn key(&self) -> &K {
-        &self.key
-    }
-
-    fn get(&self, at: usize) -> Side {
+    pub fn get(&self, at: usize) -> Side {
         let shift = 7 - at % 8;
         let byte = at / 8;
 
-        let bit_value = (self.all.bytes()[byte] >> shift) & 1;
+        let bit_value = (self.hash.bytes()[byte] >> shift) & 1;
         let is_right = bit_value == 1;
         if is_right {
             Side::Right
         } else {
             Side::Left
         }
+    }
+
+    pub fn hash(&self) -> &Hash<D> {
+        &self.hash
     }
 
     pub fn index(&self) -> usize {
@@ -59,12 +55,11 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Path<D, K> {
     }
 }
 
-impl<D: SupportedDigest, K: VisitBytes + Clone> Iterator for Path<D, K> {
+impl<D: SupportedDigest> Iterator for Path<D> {
     type Item = Side;
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.all.bit_len() {
+        if self.index == self.hash.bit_len() {
             return None;
         }
 
@@ -74,31 +69,30 @@ impl<D: SupportedDigest, K: VisitBytes + Clone> Iterator for Path<D, K> {
 }
 
 pub struct ReversePath<D: SupportedDigest> {
-    all: Hash<D>,
+    hash: Hash<D>,
     index: usize,
 }
 
 impl<D: SupportedDigest> Clone for ReversePath<D> {
     fn clone(&self) -> Self {
         Self {
-            all: self.all.clone(),
+            hash: self.hash.clone(),
             index: self.index,
         }
     }
 }
 
 impl<D: SupportedDigest> ReversePath<D> {
-    pub(crate) fn new<K: VisitBytes>(key: &K) -> Self {
-        let all = Hash::of(key);
-        let start = all.len() * 8;
+    pub(crate) fn new(hash: Hash<D>) -> Self {
+        let start = hash.bytes().len() * 8;
 
-        Self { index: start, all }
+        Self { index: start, hash }
     }
 
     fn get(&self, at: usize) -> Side {
         let shift = 7 - at % 8;
         let byte = at / 8;
-        let bit_value = (self.all.bytes()[byte] >> shift) & 1;
+        let bit_value = (self.hash.bytes()[byte] >> shift) & 1;
         let is_right = bit_value == 1;
         if is_right {
             Side::Right
@@ -137,7 +131,7 @@ mod tests {
     #[test]
     #[allow(clippy::identity_op)]
     fn test_forwards() {
-        let mut path = Path::<Sha256, &str>::new("foo");
+        let mut path = Path::<Sha256>::new(Hash::of("foo"));
         let hash: Hash<Sha256> = Hash::of("foo");
         let mut bytes = hash.bytes().iter();
 
@@ -160,7 +154,7 @@ mod tests {
     #[test]
     #[allow(clippy::identity_op)]
     fn test_backwards() {
-        let mut path = ReversePath::<Sha256>::new(&"foo");
+        let mut path = ReversePath::<Sha256>::new(Hash::of("foo"));
         let hash: Hash<Sha256> = Hash::of("foo");
         let mut bytes = hash.bytes().iter();
 

@@ -47,11 +47,15 @@ where
     K: VisitBytes + Clone + PartialEq + Debug,
     V: VisitBytes + Clone,
 {
-    link: Link<D, K>,
+    pub link: Link<D>,
     len: usize,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
+
+// impl <D, K, V>Debug for Map<D, K, V> {
+
+// }
 
 impl<D, K, V> Map<D, K, V>
 where
@@ -59,7 +63,7 @@ where
     K: VisitBytes + Clone + PartialEq + Debug,
     V: VisitBytes + Clone,
 {
-    pub(crate) fn new(link: Link<D, K>, len: usize) -> Self {
+    pub(crate) fn new(link: Link<D>, len: usize) -> Self {
         Self {
             link,
             len,
@@ -168,15 +172,15 @@ where
     /// Gets the value for a given key and a proof of its presence in this map.
     pub fn prove(&self, key: K) -> Option<Proof<D, K, V>>
 where {
-        self.link.node().prove(Path::new(key))
+        self.link.node().prove(Path::new(Hash::of(key)))
     }
 
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
     pub fn insert(&self, key: K, val: V) -> Self {
-        let mut path: Path<D, K> = Path::new(key.clone());
-        let (node, new) = self.link.node().insert(&mut path, key, Hash::of(val));
+        let mut path: Path<D> = Path::new(Hash::<D>::of(&key));
+        let (node, new) = self.link.node().insert(&mut path, Hash::of(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
@@ -185,8 +189,8 @@ where {
         let mut here = self.clone();
 
         for (key, val) in iter {
-            let mut path: Path<D, K> = Path::new(key.clone());
-            let (node, new) = here.link.node().insert(&mut path, key, Hash::of(val));
+            let mut path: Path<D> = Path::new(Hash::of(&key));
+            let (node, new) = here.link.node().insert(&mut path, Hash::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
