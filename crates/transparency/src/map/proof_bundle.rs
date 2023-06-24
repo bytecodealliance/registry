@@ -70,17 +70,6 @@ where
     }
 }
 
-impl<D> From<Option<Hash<D>>> for protobuf::OptionalHash
-where
-    D: SupportedDigest,
-{
-    fn from(value: Option<Hash<D>>) -> Self {
-        protobuf::OptionalHash {
-            hash: value.map(|h| h.bytes().to_vec()),
-        }
-    }
-}
-
 impl<D, V> TryFrom<protobuf::MapProofBundle> for ProofBundle<D, V>
 where
     D: SupportedDigest,
@@ -110,20 +99,5 @@ where
             value.hashes.into_iter().map(|h| h.try_into()).collect();
         let proof = Proof::new(peers?);
         Ok(proof)
-    }
-}
-
-impl<D> TryFrom<protobuf::OptionalHash> for Option<Hash<D>>
-where
-    D: SupportedDigest,
-{
-    type Error = Error;
-
-    fn try_from(value: protobuf::OptionalHash) -> Result<Self, Self::Error> {
-        let hash = match value.hash {
-            Some(h) => Some(h.try_into()?),
-            None => None,
-        };
-        Ok(hash)
     }
 }

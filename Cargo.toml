@@ -56,6 +56,7 @@ rust-version = "1.66.0"
 warg-api = { path = "crates/api" }
 warg-client = { path = "crates/client" }
 warg-crypto = { path = "crates/crypto" }
+warg-protobuf = { path = "proto" }
 warg-protocol = { path = "crates/protocol" }
 warg-transparency = { path = "crates/transparency" }
 warg-server = { path = "crates/server" }
