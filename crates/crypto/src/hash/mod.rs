@@ -58,7 +58,7 @@ static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
 
 // If updating this function, also update `hash_empty` in transparency map
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-  Hash::of(())
+    Hash::of(())
 }
 
 // If updating this function, also update `hash_branch` in transparency map
@@ -68,7 +68,6 @@ where
 {
     Hash::of((0b1, lhs, rhs))
 }
-
 
 pub trait SupportedDigest: Digest + private::Sealed + Sized + 'static {
     const ALGORITHM: HashAlgorithm;

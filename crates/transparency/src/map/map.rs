@@ -211,7 +211,7 @@ where {
 /// Compute the hash for an empty leaf using a given Digest algorithm.
 #[allow(dead_code)]
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-  Hash::of(())
+    Hash::of(())
 }
 
 // No associated function exists in crypto crate today, but in the event that one exists
@@ -236,11 +236,11 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use warg_crypto::hash::Sha256;
-  #[test]
-  fn empty_map() {
-    let map: Map<Sha256, &str, &str> = Map::default();
-    assert_eq!(Sha256::empty_tree_hash(256), map.link.hash());
-  }
+    use super::*;
+    use warg_crypto::hash::Sha256;
+    #[test]
+    fn empty_map() {
+        let map: Map<Sha256, &str, &str> = Map::default();
+        assert_eq!(Sha256::empty_tree_hash(256), map.link.hash());
+    }
 }
