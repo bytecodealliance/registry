@@ -90,7 +90,6 @@ impl<D: SupportedDigest> Node<D> {
                             path.hash().clone(),
                             value,
                             path.height(),
-                            path.get(path.index() + 1),
                         ));
                         match index {
                             Side::Left => {
@@ -113,7 +112,6 @@ impl<D: SupportedDigest> Node<D> {
                         path.hash().clone(),
                         value,
                         path.height() + 1,
-                        index,
                     ));
                     (singleton, true)
                 }

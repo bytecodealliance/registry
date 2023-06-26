@@ -14,17 +14,11 @@ pub struct Singleton<D: SupportedDigest> {
     pub key: Hash<D>,
     pub value: Hash<D>,
     pub height: usize,
-    pub side: Side,
 }
 
 impl<D: SupportedDigest> Singleton<D> {
-    pub fn new(key: Hash<D>, value: Hash<D>, height: usize, side: Side) -> Self {
-        Self {
-            key,
-            value,
-            height,
-            side,
-        }
+    pub fn new(key: Hash<D>, value: Hash<D>, height: usize) -> Self {
+        Self { key, value, height }
     }
 
     pub fn key(&self) -> &Hash<D> {
@@ -37,8 +31,8 @@ impl<D: SupportedDigest> Singleton<D> {
         for n in 0..self.height {
             hash = match reversed.next() {
                 Some(side) => match side {
-                    Side::Left => hash_branch(&hash, &D::empty_tree_hash(n)),
-                    Side::Right => hash_branch(&D::empty_tree_hash(n), &hash),
+                    Side::Left => hash_branch(&hash, D::empty_tree_hash(n)),
+                    Side::Right => hash_branch(D::empty_tree_hash(n), &hash),
                 },
                 None => hash,
             };
@@ -53,16 +47,16 @@ impl<D: SupportedDigest> Singleton<D> {
         value: Hash<D>,
         cur_side: Side,
     ) -> (Node<D>, bool) {
+        let cur_path = Path::new(&self.key);
         if self.key() == &key {
-            let new_singleton = Singleton::new(key, value, path.height() + 1, cur_side);
+            let new_singleton = Singleton::new(key, value, path.height() + 1);
             (Node::Singleton(new_singleton), false)
-        } else if self.side != cur_side {
-            let node = Node::Singleton(Singleton::new(key, value, path.height(), cur_side));
+        } else if cur_path.get(256 - self.height) != cur_side {
+            let node = Node::Singleton(Singleton::new(key, value, path.height()));
             let original = Node::Singleton(Singleton::new(
                 self.key.clone(),
                 self.value.clone(),
                 path.height(),
-                cur_side.opposite(),
             ));
             let fork = match cur_side {
                 Side::Left => Fork::new(Arc::new(Link::new(node)), Arc::new(Link::new(original))),
@@ -70,7 +64,6 @@ impl<D: SupportedDigest> Singleton<D> {
             };
             (Node::Fork(fork), false)
         } else {
-            let cur_path = Path::new(&self.key);
             let cur_index = path.index();
             let fork = match cur_side {
                 Side::Left => {
@@ -78,7 +71,6 @@ impl<D: SupportedDigest> Singleton<D> {
                         self.key.clone(),
                         self.value.clone(),
                         self.height - 1,
-                        cur_path.get(cur_index),
                     ));
                     let (down_one, _) = pre_insert.insert(path, value);
 
@@ -92,7 +84,6 @@ impl<D: SupportedDigest> Singleton<D> {
                         self.key.clone(),
                         self.value.clone(),
                         self.height - 1,
-                        cur_path.get(cur_index),
                     ));
                     let (down_one, _) = pre_insert.insert(path, value);
                     Fork::new(
@@ -112,7 +103,6 @@ impl<D: SupportedDigest> Clone for Singleton<D> {
             key: self.key.clone(),
             value: self.value.clone(),
             height: self.height,
-            side: self.side,
         }
     }
 }
