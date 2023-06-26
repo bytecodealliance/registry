@@ -36,7 +36,7 @@ impl<D: SupportedDigest> Node<D> {
             Node::Leaf(hash) => hash.clone(),
             Node::Fork(fork) => fork.hash(),
             Node::Singleton(singleton) => singleton.hash(),
-            Node::Empty(height) => D::empty_tree_hash(*height),
+            Node::Empty(height) => D::empty_tree_hash(*height).to_owned(),
         }
     }
 

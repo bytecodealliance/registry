@@ -45,7 +45,7 @@ mod test {
         assert_ne!(second.root(), third.root());
 
         // Ensure the empty tree has the known root.
-        assert_eq!(first.root().clone(), Sha256::empty_tree_hash(256));
+        assert_eq!(&first.root().clone(), Sha256::empty_tree_hash(256));
     }
 
     #[test]

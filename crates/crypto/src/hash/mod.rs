@@ -44,10 +44,10 @@ static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
     let mut v: Vec<Hash<Sha256>> = Vec::with_capacity(257);
     fn empty_tree_hash<D: SupportedDigest>(v: &mut Vec<Hash<D>>, height: u32) -> Hash<D> {
         let hash: Hash<D> = if height == 0 {
-            Hash::of("")
+            hash_empty()
         } else {
             let last_hash = empty_tree_hash(v, height - 1);
-            Hash::of(Hash::<Sha256>::of((0b1, &last_hash, &last_hash)))
+            hash_branch(&last_hash, &last_hash)
         };
         v.push(hash.clone());
         hash
@@ -56,15 +56,29 @@ static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
     v
 });
 
-pub trait SupportedDigest: Digest + private::Sealed + Sized {
+// If updating this function, also update `hash_empty` in transparency map
+pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
+  Hash::of(())
+}
+
+// If updating this function, also update `hash_branch` in transparency map
+pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
+where
+    D: SupportedDigest,
+{
+    Hash::of((0b1, lhs, rhs))
+}
+
+
+pub trait SupportedDigest: Digest + private::Sealed + Sized + 'static {
     const ALGORITHM: HashAlgorithm;
-    fn empty_tree_hash(height: usize) -> Hash<Self>;
+    fn empty_tree_hash(height: usize) -> &'static Hash<Self>;
 }
 
 impl SupportedDigest for Sha256 {
     const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
-    fn empty_tree_hash(height: usize) -> Hash<Sha256> {
-        EMPTY_TREE_HASH[height].to_owned()
+    fn empty_tree_hash(height: usize) -> &'static Hash<Sha256> {
+        &EMPTY_TREE_HASH[height]
     }
 }
 

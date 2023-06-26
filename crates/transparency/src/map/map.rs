@@ -207,6 +207,16 @@ where {
     }
 }
 
+// If updating this function, also update `hash_branch` in crypto crate
+/// Compute the hash for an empty leaf using a given Digest algorithm.
+#[allow(dead_code)]
+pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
+  Hash::of(())
+}
+
+// No associated function exists in crypto crate today, but in the event that one exists
+// update this function if updating the other
+/// Compute the hash for a leaf with a given value using a given Digest algorithm
 pub(crate) fn hash_leaf<D, V>(value: V) -> Hash<D>
 where
     D: SupportedDigest,
@@ -214,9 +224,23 @@ where
 {
     Hash::of(&(0b0, value))
 }
+
+// If updating this function, also update `hash_branch` in crypto crate
+/// Compute the hash for a branch node using a given Digest algorithm
 pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
     Hash::of((0b1, lhs, rhs))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use warg_crypto::hash::Sha256;
+  #[test]
+  fn empty_map() {
+    let map: Map<Sha256, &str, &str> = Map::default();
+    assert_eq!(Sha256::empty_tree_hash(256), map.link.hash());
+  }
 }
