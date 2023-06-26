@@ -52,10 +52,7 @@ impl<D: SupportedDigest> Node<D> {
                     None
                 }
             }
-            (Some(_), Self::Empty(_)) => {
-                self.prove::<K, V>(path)?;
-                None
-            }
+            (Some(_), Self::Empty(_)) => None,
             (Some(idx), Self::Fork(fork)) => {
                 let mut proof = fork[idx].as_ref().node().prove(path)?;
                 let peer = fork[idx.opposite()].as_ref().hash();
