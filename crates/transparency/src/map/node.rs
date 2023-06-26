@@ -30,15 +30,6 @@ impl<D: SupportedDigest> Clone for Node<D> {
     }
 }
 
-impl<D: SupportedDigest> Default for Node<D> {
-    fn default() -> Self {
-        Self::Fork(Fork::new(
-            Arc::new(Link::new(Node::Empty(0))),
-            Arc::new(Link::new(Node::Empty(0))),
-        ))
-    }
-}
-
 impl<D: SupportedDigest> Node<D> {
     pub fn hash(&self) -> Hash<D> {
         match self {
@@ -51,7 +42,7 @@ impl<D: SupportedDigest> Node<D> {
 
     pub fn prove<K: VisitBytes, V: VisitBytes + Clone>(
         &self,
-        mut path: Path<D>,
+        mut path: Path<'_, D>,
     ) -> Option<Proof<D, K, V>> {
         match (path.next(), self) {
             (Some(_), Self::Singleton(singleton)) => {
@@ -83,7 +74,7 @@ impl<D: SupportedDigest> Node<D> {
     /// Returns:
     ///   * the new node that must replace the current node.
     ///   * whether or not this is a new entry in the map.
-    pub fn insert(&self, path: &mut Path<D>, value: Hash<D>) -> (Self, bool) {
+    pub fn insert(&self, path: &mut Path<'_, D>, value: Hash<D>) -> (Self, bool) {
         match path.next() {
             // We are at the end of the path. Save the leaf.
             None => (

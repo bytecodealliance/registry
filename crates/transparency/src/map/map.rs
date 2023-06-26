@@ -41,21 +41,27 @@ use super::proof::Proof;
 /// to have `2^(n+1) - 1` entries (far too many!), the tree is sparse and
 /// only creates nodes as necessary to represent the contents in the tree.
 ///
+/// ## Hashing Strategy
+///
+/// #Leaf nodes
+/// Initially, all leaves have not been inserted into, so their hash value
+/// simply the hash of an empty string.  When a leaf has a value inserted, we
+/// insert the hash of the value at that node
+///
+/// #Branch nodes
+/// The value at a node is the hash of its two children, prepended with a
+/// 1 bit (e.g. 0b1 || Hash(left_val) || Hash(right_val))
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
     K: VisitBytes + Clone + PartialEq + Debug,
     V: VisitBytes + Clone,
 {
-    pub link: Link<D>,
+    link: Link<D>,
     len: usize,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
-
-// impl <D, K, V>Debug for Map<D, K, V> {
-
-// }
 
 impl<D, K, V> Map<D, K, V>
 where
@@ -172,14 +178,15 @@ where
     /// Gets the value for a given key and a proof of its presence in this map.
     pub fn prove(&self, key: K) -> Option<Proof<D, K, V>>
 where {
-        self.link.node().prove(Path::new(Hash::of(key)))
+        self.link.node().prove(Path::new(&Hash::of(key)))
     }
 
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
     pub fn insert(&self, key: K, val: V) -> Self {
-        let mut path: Path<D> = Path::new(Hash::<D>::of(&key));
+        let key_hash = Hash::<D>::of(&key);
+        let mut path: Path<'_, D> = Path::new(&key_hash);
         let (node, new) = self.link.node().insert(&mut path, Hash::of(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
@@ -189,8 +196,9 @@ where {
         let mut here = self.clone();
 
         for (key, val) in iter {
-            let mut path: Path<D> = Path::new(Hash::of(&key));
-            let (node, new) = here.link.node().insert(&mut path, Hash::of(val));
+            let key_hash = Hash::<D>::of(&key);
+            let mut path: Path<'_, D> = Path::new(&key_hash);
+            let (node, new) = here.link.node().insert(&mut path, Hash::<D>::of(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 

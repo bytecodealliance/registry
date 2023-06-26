@@ -48,7 +48,7 @@ impl<D: SupportedDigest> Singleton<D> {
 
     pub fn insert(
         &self,
-        path: &mut Path<D>,
+        path: &mut Path<'_, D>,
         key: Hash<D>,
         value: Hash<D>,
         cur_side: Side,
@@ -70,7 +70,7 @@ impl<D: SupportedDigest> Singleton<D> {
             };
             (Node::Fork(fork), false)
         } else {
-            let cur_path = Path::new(self.key.clone());
+            let cur_path = Path::new(&self.key);
             let cur_index = path.index();
             let fork = match cur_side {
                 Side::Left => {

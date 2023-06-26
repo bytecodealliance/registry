@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use warg_crypto::{
-    hash::{Hash, SupportedDigest},
-    VisitBytes,
-};
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::node::Node;
 

@@ -1,7 +1,7 @@
 use warg_crypto::hash::{Hash, SupportedDigest};
 
-pub struct Path<D: SupportedDigest> {
-    hash: Hash<D>,
+pub struct Path<'a, D: SupportedDigest> {
+    hash: &'a Hash<D>,
     index: usize,
 }
 
@@ -22,8 +22,8 @@ impl Side {
     }
 }
 
-impl<D: SupportedDigest> Path<D> {
-    pub(crate) fn new(hash: Hash<D>) -> Self {
+impl<'a, D: SupportedDigest> Path<'a, D> {
+    pub(crate) fn new(hash: &'a Hash<D>) -> Self {
         Self { hash, index: 0 }
     }
 
@@ -53,7 +53,7 @@ impl<D: SupportedDigest> Path<D> {
     }
 }
 
-impl<D: SupportedDigest> Iterator for Path<D> {
+impl<D: SupportedDigest> Iterator for Path<'_, D> {
     type Item = Side;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -102,7 +102,6 @@ impl<D: SupportedDigest> ReversePath<D> {
 impl<D: SupportedDigest> Iterator for ReversePath<D> {
     type Item = Side;
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == 0 {
             return None;
@@ -129,8 +128,8 @@ mod tests {
     #[test]
     #[allow(clippy::identity_op)]
     fn test_forwards() {
-        let mut path = Path::<Sha256>::new(Hash::of("foo"));
         let hash: Hash<Sha256> = Hash::of("foo");
+        let mut path = Path::<Sha256>::new(&hash);
         let mut bytes = hash.bytes().iter();
 
         for _ in 0..hash.len() {

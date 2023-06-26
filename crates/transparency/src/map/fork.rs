@@ -1,12 +1,8 @@
 use core::ops::{Index, IndexMut};
-use std::marker::PhantomData;
 
 use alloc::sync::Arc;
 
-use warg_crypto::{
-    hash::{Hash, SupportedDigest},
-    VisitBytes,
-};
+use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{link::Link, map::hash_branch, path::Side};
 
