@@ -46,7 +46,8 @@ use super::proof::Proof;
 /// #Leaf nodes
 /// Initially, all leaves have not been inserted into, so their hash value
 /// simply the hash of an empty string.  When a leaf has a value inserted, we
-/// insert the hash of the value at that node
+/// insert the hash of the value prepended with a 0 bit (e.g. 0b0 || Hash(value)
+/// at that node
 ///
 /// #Branch nodes
 /// The value at a node is the hash of its two children, prepended with a
@@ -187,7 +188,7 @@ where {
     pub fn insert(&self, key: K, val: V) -> Self {
         let key_hash = Hash::<D>::of(&key);
         let mut path: Path<'_, D> = Path::new(&key_hash);
-        let (node, new) = self.link.node().insert(&mut path, Hash::of(val));
+        let (node, new) = self.link.node().insert(&mut path, hash_leaf(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
@@ -198,7 +199,7 @@ where {
         for (key, val) in iter {
             let key_hash = Hash::<D>::of(&key);
             let mut path: Path<'_, D> = Path::new(&key_hash);
-            let (node, new) = here.link.node().insert(&mut path, Hash::<D>::of(val));
+            let (node, new) = here.link.node().insert(&mut path, hash_leaf(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
@@ -206,6 +207,13 @@ where {
     }
 }
 
+pub(crate) fn hash_leaf<D, V>(value: V) -> Hash<D>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    Hash::of(&(0b0, value))
+}
 pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,

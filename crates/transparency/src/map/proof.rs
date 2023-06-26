@@ -8,7 +8,7 @@ use warg_crypto::{
 };
 
 use super::{
-    map::hash_branch,
+    map::{hash_branch, hash_leaf},
     path::{ReversePath, Side},
 };
 
@@ -66,7 +66,7 @@ where
 
         let fill = repeat(None).take(256 - self.peers.len());
         // Calculate the leaf hash.
-        let mut hash = Hash::of(value);
+        let mut hash = hash_leaf(value);
 
         // Loop over each side and peer.
         let peers = fill.chain(self.peers.iter().cloned());
