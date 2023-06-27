@@ -219,7 +219,7 @@ where {
 /// Compute the hash for an empty leaf using a given Digest algorithm.
 #[allow(dead_code)]
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-    Hash::of(())
+    leaf_hash(())
 }
 
 // No associated function exists in crypto crate today, but in the event that one exists
