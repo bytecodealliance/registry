@@ -215,7 +215,7 @@ where {
     }
 }
 
-// If updating this function, also update `hash_branch` in crypto crate
+// If updating this function, also update `hash_empty` in crypto crate
 /// Compute the hash for an empty leaf using a given Digest algorithm.
 #[allow(dead_code)]
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
