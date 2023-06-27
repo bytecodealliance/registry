@@ -224,7 +224,7 @@ pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
 
 // No associated function exists in crypto crate today, but in the event that one exists
 // update this function if updating the other
-/// Compute the hash for a leaf with a given value using a given Digest algorithm
+/// Hashes a leaf node. See [Map] docs for more detail.
 pub(crate) fn hash_leaf<D, V>(value: V) -> Hash<D>
 where
     D: SupportedDigest,
