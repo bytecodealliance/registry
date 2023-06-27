@@ -63,7 +63,7 @@ use super::proof::Proof;
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     link: Link<D>,
@@ -75,7 +75,7 @@ where
 impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     pub(crate) fn new(link: Link<D>, len: usize) -> Self {
@@ -91,7 +91,7 @@ where
 impl<D, K, V> Clone for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     fn clone(&self) -> Self {
@@ -107,7 +107,7 @@ where
 impl<D, K, V> Default for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     fn default() -> Self {
@@ -123,7 +123,7 @@ where
 impl<D, K, V> Eq for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
 }
@@ -131,7 +131,7 @@ where
 impl<D, K, V> PartialEq for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -142,7 +142,7 @@ where
 impl<D, K, V> core::hash::Hash for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
@@ -153,7 +153,7 @@ where
 impl<D, K, V> Debug for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug,
+    K: VisitBytes + Clone,
     V: VisitBytes + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -164,7 +164,7 @@ where
 impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes + Clone + PartialEq + Debug + ?Sized,
+    K: VisitBytes + Clone + ?Sized,
     V: VisitBytes + Clone,
 {
     /// The hash of the root of the tree.
@@ -219,7 +219,7 @@ where {
 /// Compute the hash for an empty leaf using a given Digest algorithm.
 #[allow(dead_code)]
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-    leaf_hash(())
+    hash_leaf(())
 }
 
 // No associated function exists in crypto crate today, but in the event that one exists

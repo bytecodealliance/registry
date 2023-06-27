@@ -109,11 +109,7 @@ mod test {
 
     #[test]
     fn prove() {
-        fn check<
-            D: SupportedDigest,
-            K: std::fmt::Debug + VisitBytes + PartialEq + Clone + std::fmt::Debug,
-            V: std::fmt::Debug + VisitBytes + Clone,
-        >(
+        fn check<D: SupportedDigest, K: VisitBytes + PartialEq + Clone, V: VisitBytes + Clone>(
             tree: &Map<D, K, V>,
             key: K,
             value: V,

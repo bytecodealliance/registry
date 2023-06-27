@@ -12,6 +12,8 @@ pub use dynamic::{AnyHash, AnyHashError};
 pub use r#static::Hash;
 pub use sha2::Sha256;
 
+use crate::VisitBytes;
+
 use self::r#static::IncorrectLengthError;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -58,7 +60,16 @@ static EMPTY_TREE_HASH: Lazy<Vec<Hash<Sha256>>> = Lazy::new(|| {
 
 // If updating this function, also update `hash_empty` in transparency map
 pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
-    Hash::of(())
+    hash_leaf(())
+}
+
+// If updating this function, also update `hash_leaf` in transparency map
+pub(crate) fn hash_leaf<D, V>(value: V) -> Hash<D>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    Hash::of(&(0b0, value))
 }
 
 // If updating this function, also update `hash_branch` in transparency map
