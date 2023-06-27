@@ -65,32 +65,21 @@ impl<D: SupportedDigest> Singleton<D> {
             (Node::Fork(fork), false)
         } else {
             let cur_index = path.index();
+            let pre_insert = Node::Singleton(Singleton::new(
+                self.key.clone(),
+                self.value.clone(),
+                self.height - 1,
+            ));
+            let (down_one, _) = pre_insert.insert(path, value);
             let fork = match cur_side {
-                Side::Left => {
-                    let pre_insert = Node::Singleton(Singleton::new(
-                        self.key.clone(),
-                        self.value.clone(),
-                        self.height - 1,
-                    ));
-                    let (down_one, _) = pre_insert.insert(path, value);
-
-                    Fork::new(
-                        Arc::new(Link::new(down_one)),
-                        Arc::new(Link::new(Node::Empty(256 - cur_index))),
-                    )
-                }
-                Side::Right => {
-                    let pre_insert = Node::Singleton(Singleton::new(
-                        self.key.clone(),
-                        self.value.clone(),
-                        self.height - 1,
-                    ));
-                    let (down_one, _) = pre_insert.insert(path, value);
-                    Fork::new(
-                        Arc::new(Link::new(Node::Empty(256 - cur_index))),
-                        Arc::new(Link::new(down_one)),
-                    )
-                }
+                Side::Left => Fork::new(
+                    Arc::new(Link::new(down_one)),
+                    Arc::new(Link::new(Node::Empty(256 - cur_index))),
+                ),
+                Side::Right => Fork::new(
+                    Arc::new(Link::new(Node::Empty(256 - cur_index))),
+                    Arc::new(Link::new(down_one)),
+                ),
             };
             (Node::Fork(fork), true)
         }
