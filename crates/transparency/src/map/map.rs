@@ -43,11 +43,16 @@ use super::proof::Proof;
 ///
 /// ## Hashing Strategy
 ///
-/// #Leaf nodes
-/// Initially, all leaves have not been inserted into, so their hash value
-/// simply the hash of an empty string.  When a leaf has a value inserted, we
-/// insert the hash of the value prepended with a 0 bit (e.g. 0b0 || Hash(value)
-/// at that node
+/// ### Leaf Nodes
+///
+/// Leaf node hashes are calculated using the one-byte `0` prefix to prevent collisions with branch hashes.
+///
+/// ```hash
+/// hash(Leaf(value)) = hash(0x00 || <value>)
+/// ```
+///
+/// For leaf nodes that semantically "contain no value", the `<value>` provided is empty i.e. the zero-length byte sequence.
+///
 ///
 /// ### Branch Nodes
 ///
