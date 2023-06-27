@@ -234,7 +234,7 @@ where
 }
 
 // If updating this function, also update `hash_branch` in crypto crate
-/// Compute the hash for a branch node using a given Digest algorithm
+/// Hashes a branch node. See [Map] docs for more detail.
 pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
