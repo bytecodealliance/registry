@@ -49,9 +49,12 @@ use super::proof::Proof;
 /// insert the hash of the value prepended with a 0 bit (e.g. 0b0 || Hash(value)
 /// at that node
 ///
-/// #Branch nodes
-/// The value at a node is the hash of its two children, prepended with a
-/// 1 bit (e.g. 0b1 || Hash(left_val) || Hash(right_val))
+/// ### Branch Nodes
+///
+/// Branch node hashes are calculated using the one-byte `1` prefix to prevent collisions with branch hashes.
+/// ```hash
+/// hash(Branch(left, right)) = hash(0x01 || hash(<left>) || hash(<right>))
+/// ```
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
