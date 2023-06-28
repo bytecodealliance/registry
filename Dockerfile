@@ -7,11 +7,6 @@ RUN rustup update stable --no-self-update \
     && rustup default stable \
     && rustup target add wasm32-wasi \
     && rustup target add wasm32-unknown-unknown
-RUN mkdir -p /usr/local/protobuf \
-    && wget https://github.com/protocolbuffers/protobuf/releases/download/v22.3/protoc-22.3-linux-x86_64.zip \
-    && unzip protoc-22.3-linux-x86_64.zip -d /usr/local/protobuf \
-    && rm protoc-22.3-linux-x86_64.zip
-ENV PATH="${PATH}:/usr/local/protobuf/bin"
 RUN cargo install cargo-chef --locked
 
 # Create Chef's recipe.json which captures dependency build information.
