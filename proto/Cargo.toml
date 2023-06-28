@@ -18,6 +18,9 @@ serde = { workspace = true }
 warg-crypto = { workspace = true }
 
 [build-dependencies]
+anyhow = { workspace = true }
+prost = { workspace = true }
 prost-build = { workspace = true }
 pbjson-build = { workspace = true }
 regex = { workspace = true }
+protox = { workspace = true }
