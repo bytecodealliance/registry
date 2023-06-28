@@ -1,6 +1,5 @@
 use prost::Message;
 
-
 fn main() -> Result<()> {
     verify_protoc_version(15, 0);
     let warg_proto = PathBuf::from("warg/protocol/warg.proto");
