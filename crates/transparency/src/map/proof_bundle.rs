@@ -5,8 +5,9 @@ use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
 };
+use warg_protobuf::transparency as protobuf;
 
-use crate::{map::proof::Proof, protobuf};
+use crate::map::proof::Proof;
 
 /// A collection of inclusion proof info
 pub struct ProofBundle<D, K, V>

@@ -1,11 +1,7 @@
 use prost::Message;
 
-fn main() -> Result<()> {
-    verify_protoc_version(15, 0);
-    let warg_proto = PathBuf::from("warg/protocol/warg.proto");
-    let proofs_proto = PathBuf::from("warg/transparency/proofs.proto");
-    let proto_files = vec![warg_proto, proofs_proto];
-    let root = PathBuf::from("./");
+fn main() -> anyhow::Result<()> {
+    let proto_files = &["warg/protocol/warg.proto", "warg/transparency/proofs.proto"];
 
     // Tell cargo to recompile if any of these proto files are changed
     for proto_file in proto_files {
