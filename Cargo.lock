@@ -4011,6 +4011,7 @@ dependencies = [
  "digest",
  "hex",
  "leb128",
+ "once_cell",
  "p256",
  "pretty_assertions",
  "rand_core",

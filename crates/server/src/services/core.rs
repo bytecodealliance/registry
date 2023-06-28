@@ -203,7 +203,6 @@ impl CoreService {
         while let Some(res) = initial.next().await {
             let InitialLeaf { leaf, checkpoint } = res?;
             data.log.push(&leaf);
-
             data.map = data.map.insert(
                 leaf.log_id.clone(),
                 MapLeaf {

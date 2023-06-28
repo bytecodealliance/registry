@@ -17,6 +17,7 @@ mod node;
 mod path;
 mod proof;
 mod proof_bundle;
+mod singleton;
 
 pub use map::Map;
 pub use proof::Proof;
@@ -25,7 +26,7 @@ pub use proof_bundle::ProofBundle as MapProofBundle;
 #[cfg(test)]
 mod test {
     use warg_crypto::{
-        hash::{Hash, Sha256, SupportedDigest},
+        hash::{Sha256, SupportedDigest},
         VisitBytes,
     };
 
@@ -44,7 +45,7 @@ mod test {
         assert_ne!(second.root(), third.root());
 
         // Ensure the empty tree has the known root.
-        assert_eq!(first.root().clone(), Hash::of(0u8));
+        assert_eq!(&first.root().clone(), Sha256::empty_tree_hash(256));
     }
 
     #[test]
@@ -55,7 +56,7 @@ mod test {
         let second = first.insert("foo", "bar");
         assert_eq!(second.len(), 1);
 
-        let third = second.insert("baz", "bat");
+        let third = second.insert("bar", "bat");
         assert_eq!(third.len(), 2);
 
         let fourth = third.insert("foo", "qux");
@@ -70,7 +71,7 @@ mod test {
         let second = first.insert("foo", "bar");
         assert!(!second.is_empty());
 
-        let third = second.insert("baz", "bat");
+        let third = second.insert("bar", "bat");
         assert!(!third.is_empty());
     }
 
@@ -108,30 +109,30 @@ mod test {
 
     #[test]
     fn prove() {
-        fn check<D: SupportedDigest, K: VisitBytes + Clone, V: VisitBytes>(
+        fn check<D: SupportedDigest, K: VisitBytes + PartialEq + Clone, V: VisitBytes + Clone>(
             tree: &Map<D, K, V>,
             key: K,
             value: V,
-            peers: usize,
         ) {
-            let proof = tree.prove(&key).unwrap();
-            assert_eq!(proof.len(), peers);
+            let proof = tree.prove(key.clone()).unwrap();
             assert_eq!(tree.root().clone(), proof.evaluate(&key, &value));
         }
 
         let first = Map::<Sha256, &'static str, &'static str>::default();
-        assert!(first.prove(&"foo").is_none());
-        assert!(first.prove(&"baz").is_none());
-        assert!(first.prove(&"qux").is_none());
+        assert!(first.prove("foo").is_none());
+        assert!(first.prove("baz").is_none());
+        assert!(first.prove("qux").is_none());
 
         let second = first.insert("foo", "bar");
-        check(&second, "foo", "bar", 0);
-        assert!(second.prove(&"baz").is_none());
-        assert!(second.prove(&"qux").is_none());
+        check(&second, "foo", "bar");
+        assert!(second.prove("baz").is_none());
+        assert!(second.prove("qux").is_none());
+        let third = second.insert("bar", "bat");
+        check(&third, "foo", "bar");
+        check(&third, "bar", "bat");
+        assert!(third.prove("qux").is_none());
 
-        let third = second.insert("baz", "bat");
-        check(&third, "foo", "bar", 1);
-        check(&third, "baz", "bat", 1);
-        assert!(third.prove(&"qux").is_none());
+        let fourth = third.insert("foo", "qux");
+        check(&fourth, "foo", "qux");
     }
 }

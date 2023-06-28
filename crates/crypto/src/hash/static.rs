@@ -54,6 +54,10 @@ impl<D: SupportedDigest> Hash<D> {
     pub fn len(&self) -> usize {
         self.bytes().len()
     }
+
+    pub fn bit_len(&self) -> usize {
+        self.bytes().len() * 8
+    }
 }
 
 impl<D: SupportedDigest> VisitBytes for Hash<D> {

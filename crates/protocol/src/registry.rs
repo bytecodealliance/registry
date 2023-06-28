@@ -245,3 +245,21 @@ impl From<AnyHash> for RecordId {
         Self(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use warg_crypto::hash::Sha256;
+    use warg_transparency::map::Map;
+
+    #[test]
+    fn log_id() {
+        let first = Map::<Sha256, LogId, &'static str>::default();
+        let second = first.insert(LogId::operator_log::<Sha256>(), "foobar");
+        let proof = second.prove(LogId::operator_log::<Sha256>()).unwrap();
+        assert_eq!(
+            second.root().clone(),
+            proof.evaluate(&LogId::operator_log::<Sha256>(), &"foobar")
+        );
+    }
+}

@@ -1,11 +1,11 @@
 use core::fmt::{Debug, Formatter};
-use std::borrow::Borrow;
 use std::marker::PhantomData;
 
 use warg_crypto::hash::{Hash, SupportedDigest};
 use warg_crypto::VisitBytes;
 
 use super::link::Link;
+use super::node::Node;
 use super::path::Path;
 use super::proof::Proof;
 
@@ -43,44 +43,28 @@ use super::proof::Proof;
 ///
 /// ## Hashing Strategy
 ///
-/// Hashes for leaf and branch nodes are calculated using the following input
-/// pattern:
-///
-///   1. A single byte prefix determining the type of the node.
-///   2. Zero, one or two values.
-///
 /// ### Leaf Nodes
 ///
-/// Leaf node hashes are calculated using the following double-hashing strategy
-/// which ensures protection from concatenation-based collision attacks:
+/// Leaf node hashes are calculated using the one-byte `0` prefix to prevent collisions with branch hashes.
 ///
 /// ```hash
-/// H(0xff || H(<key>) || <value>)
+/// hash(Leaf(value)) = hash(0x00 || <value>)
 /// ```
+///
+/// For leaf nodes that semantically "contain no value", the `<value>` provided is empty i.e. the zero-length byte sequence.
+///
 ///
 /// ### Branch Nodes
 ///
-/// Branch node hashes are calculated using a bit field indicating the presence
-/// of child nodes. For example:
-///
+/// Branch node hashes are calculated using the one-byte `1` prefix to prevent collisions with branch hashes.
 /// ```hash
-/// // Both children present:
-/// H(0b11 || <left> || <right>)
-///
-/// // Left child present:
-/// H(0b10 || <left>)
-///
-/// // Right child present:
-/// H(0b01 || <right>)
-///
-/// // Empty tree:
-/// H(0b00)
+/// hash(Branch(left, right)) = hash(0x01 || hash(<left>) || hash(<right>))
 /// ```
 pub struct Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     link: Link<D>,
     len: usize,
@@ -91,8 +75,8 @@ where
 impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     pub(crate) fn new(link: Link<D>, len: usize) -> Self {
         Self {
@@ -107,8 +91,8 @@ where
 impl<D, K, V> Clone for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -123,12 +107,12 @@ where
 impl<D, K, V> Default for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     fn default() -> Self {
         Self {
-            link: Link::default(),
+            link: Link::new(Node::Empty(256)),
             len: 0,
             _key: PhantomData,
             _value: PhantomData,
@@ -139,16 +123,16 @@ where
 impl<D, K, V> Eq for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
 }
 
 impl<D, K, V> PartialEq for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         self.link.hash() == other.link.hash()
@@ -158,8 +142,8 @@ where
 impl<D, K, V> core::hash::Hash for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.link.hash().hash(state);
@@ -169,8 +153,8 @@ where
 impl<D, K, V> Debug for Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone,
+    V: VisitBytes + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("Map({:?})", self.link.hash()))
@@ -180,8 +164,8 @@ where
 impl<D, K, V> Map<D, K, V>
 where
     D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
+    K: VisitBytes + Clone + ?Sized,
+    V: VisitBytes + Clone,
 {
     /// The hash of the root of the tree.
     ///
@@ -201,21 +185,18 @@ where
     }
 
     /// Gets the value for a given key and a proof of its presence in this map.
-    pub fn prove<Q: ?Sized>(&self, key: &Q) -> Option<Proof<D, V>>
-    where
-        K: Borrow<Q>,
-        Q: VisitBytes,
-    {
-        self.link.node().prove(Path::new(key))
+    pub fn prove(&self, key: K) -> Option<Proof<D, K, V>>
+where {
+        self.link.node().prove(Path::new(&Hash::of(key)))
     }
 
     /// Insert a value into the map, creating a new map.
     ///
     /// This replaces any existing items with the same key.
     pub fn insert(&self, key: K, val: V) -> Self {
-        let mut path = Path::new(&key);
-        let leaf = hash_leaf(key, val);
-        let (node, new) = self.link.node().insert(&mut path, leaf);
+        let key_hash = Hash::<D>::of(&key);
+        let mut path: Path<'_, D> = Path::new(&key_hash);
+        let (node, new) = self.link.node().insert(&mut path, hash_leaf(val));
         Self::new(Link::new(node), self.len + usize::from(new))
     }
 
@@ -224,9 +205,9 @@ where
         let mut here = self.clone();
 
         for (key, val) in iter {
-            let mut path = Path::new(&key);
-            let leaf = hash_leaf(key, val);
-            let (node, new) = here.link.node().insert(&mut path, leaf);
+            let key_hash = Hash::<D>::of(&key);
+            let mut path: Path<'_, D> = Path::new(&key_hash);
+            let (node, new) = here.link.node().insert(&mut path, hash_leaf(val));
             here = Self::new(Link::new(node), here.len + usize::from(new));
         }
 
@@ -234,41 +215,40 @@ where
     }
 }
 
-/// Hashes a leaf node
-/// ```hash
-/// H(0xff || H(<key>) || <value>)
-/// ```
-pub(crate) fn hash_leaf<D, K, V>(key: K, value: V) -> Hash<D>
-where
-    D: SupportedDigest,
-    K: VisitBytes,
-    V: VisitBytes,
-{
-    let key_hash: Hash<D> = Hash::of(&key);
-    Hash::of(&(0xffu8, key_hash, value))
+// If updating this function, also update `hash_empty` in crypto crate
+/// Compute the hash for an empty leaf using a given Digest algorithm.
+#[allow(dead_code)]
+pub(crate) fn hash_empty<D: SupportedDigest>() -> Hash<D> {
+    hash_leaf(())
 }
 
-/// ```hash
-/// // Both children present:
-/// H(0b11 || <left> || <right>)
-///
-/// // Left child present:
-/// H(0b10 || <left>)
-///
-/// // Right child present:
-/// H(0b01 || <right>)
-///
-/// // Empty tree:
-/// H(0b00)
-/// ```
-pub(crate) fn hash_branch<D>(lhs: Option<Hash<D>>, rhs: Option<Hash<D>>) -> Hash<D>
+// No associated function exists in crypto crate today, but in the event that one exists
+// update this function if updating the other
+/// Hashes a leaf node. See [Map] docs for more detail.
+pub(crate) fn hash_leaf<D, V>(value: V) -> Hash<D>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    Hash::of(&(0b0, value))
+}
+
+// If updating this function, also update `hash_branch` in crypto crate
+/// Hashes a branch node. See [Map] docs for more detail.
+pub(crate) fn hash_branch<D>(lhs: &Hash<D>, rhs: &Hash<D>) -> Hash<D>
 where
     D: SupportedDigest,
 {
-    match (lhs, rhs) {
-        (Some(left), Some(right)) => Hash::of(&(0b11, left, right)),
-        (Some(left), None) => Hash::of(&(0b10, left)),
-        (None, Some(right)) => Hash::of(&(0b01, right)),
-        (None, None) => Hash::of(0b00u8),
+    Hash::of((0b1, lhs, rhs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use warg_crypto::hash::Sha256;
+    #[test]
+    fn empty_map() {
+        let map: Map<Sha256, &str, &str> = Map::default();
+        assert_eq!(Sha256::empty_tree_hash(256), map.link.hash());
     }
 }

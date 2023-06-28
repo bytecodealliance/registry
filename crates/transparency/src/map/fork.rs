@@ -6,16 +6,21 @@ use warg_crypto::hash::{Hash, SupportedDigest};
 
 use super::{link::Link, map::hash_branch, path::Side};
 
+#[derive(Debug)]
 pub struct Fork<D: SupportedDigest> {
-    left: Option<Arc<Link<D>>>,
-    right: Option<Arc<Link<D>>>,
+    left: Arc<Link<D>>,
+    right: Arc<Link<D>>,
 }
 
 impl<D: SupportedDigest> Fork<D> {
+    pub fn new(left: Arc<Link<D>>, right: Arc<Link<D>>) -> Self {
+        Self { left, right }
+    }
+
     pub fn hash(&self) -> Hash<D> {
-        let lhs = self.left.as_ref().map(|left| left.hash().clone());
-        let rhs = self.right.as_ref().map(|right| right.hash().clone());
-        hash_branch(lhs, rhs)
+        let lhs = self.left.as_ref().hash().clone();
+        let rhs = self.right.as_ref().hash().clone();
+        hash_branch(&lhs, &rhs)
     }
 }
 
@@ -28,17 +33,8 @@ impl<D: SupportedDigest> Clone for Fork<D> {
     }
 }
 
-impl<D: SupportedDigest> Default for Fork<D> {
-    fn default() -> Self {
-        Self {
-            left: None,
-            right: None,
-        }
-    }
-}
-
 impl<D: SupportedDigest> Index<Side> for Fork<D> {
-    type Output = Option<Arc<Link<D>>>;
+    type Output = Arc<Link<D>>;
 
     fn index(&self, index: Side) -> &Self::Output {
         match index {
