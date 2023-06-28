@@ -3055,15 +3055,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_bytes"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "416bda436f9aab92e02c8e10d49a15ddd339cea90b6e340fe51ed97abb548294"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.163"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3931,6 +3922,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "warg-protobuf"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pbjson",
+ "pbjson-build",
+ "pbjson-types",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "regex",
+ "serde",
+ "warg-crypto",
+]
+
+[[package]]
 name = "warg-protocol"
 version = "0.1.0"
 dependencies = [
@@ -3938,20 +3945,17 @@ dependencies = [
  "base64 0.21.2",
  "hex",
  "indexmap",
- "pbjson",
- "pbjson-build",
  "pbjson-types",
  "pretty_assertions",
  "prost",
- "prost-build",
  "prost-types",
- "regex",
  "semver",
  "serde",
  "serde_json",
  "serde_with",
  "thiserror",
  "warg-crypto",
+ "warg-protobuf",
  "warg-transparency",
  "wasmparser 0.107.0",
 ]
@@ -3996,19 +4000,15 @@ dependencies = [
  "anyhow",
  "ciborium",
  "criterion",
- "pbjson",
  "pbjson-build",
- "pbjson-types",
  "prost",
  "prost-build",
- "prost-types",
  "rand",
  "regex",
- "serde",
- "serde_bytes",
  "sha2",
  "thiserror",
  "warg-crypto",
+ "warg-protobuf",
 ]
 
 [[package]]

@@ -1,0 +1,23 @@
+[package]
+name = "warg-protobuf"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+rust-version = { workspace = true }
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+pbjson = { workspace = true }
+pbjson-types = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+serde = { workspace = true }
+warg-crypto = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+pbjson-build = { workspace = true }
+regex = { workspace = true }

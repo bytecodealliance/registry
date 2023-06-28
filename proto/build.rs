@@ -3,8 +3,9 @@ use std::{env, io::Result, path::PathBuf, process::Command};
 
 fn main() -> Result<()> {
     verify_protoc_version(15, 0);
-    let proofs_proto = PathBuf::from("../../proto/warg/transparency/proofs.proto");
-    let proto_files = vec![proofs_proto];
+    let warg_proto = PathBuf::from("warg/protocol/warg.proto");
+    let proofs_proto = PathBuf::from("warg/transparency/proofs.proto");
+    let proto_files = vec![warg_proto, proofs_proto];
     let root = PathBuf::from("../../proto");
 
     // Tell cargo to recompile if any of these proto files are changed
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
     let descriptor_set = std::fs::read(descriptor_path)?;
     pbjson_build::Builder::new()
         .register_descriptors(&descriptor_set)?
-        .build(&[".warg.transparency"])?;
+        .build(&[".warg.protocol", ".warg.transparency"])?;
 
     Ok(())
 }

@@ -7,14 +7,10 @@ rust-version = { workspace = true }
 
 [dependencies]
 warg-crypto = { workspace = true }
+warg-protobuf = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-serde = { workspace = true }
-serde_bytes = { workspace = true }
 prost = { workspace = true }
-prost-types = { workspace = true }
-pbjson = { workspace = true }
-pbjson-types = { workspace = true }
 
 [build-dependencies]
 prost-build = { workspace = true }
