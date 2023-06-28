@@ -25,8 +25,7 @@ various component tooling.
 
 ## Prerequisites
 
-1. The latest [stable Rust](https://www.rust-lang.org/tools/install).
-2. A [protobuf compiler](http://google.github.io/proto-lens/installing-protoc.html).
+- The latest [stable Rust](https://www.rust-lang.org/tools/install).
 
 ## Installation
 
