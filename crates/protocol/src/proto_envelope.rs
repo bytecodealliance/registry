@@ -1,4 +1,3 @@
-use crate::protobuf;
 use anyhow::Error;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use prost::Message;
@@ -7,6 +6,7 @@ use serde_with::{base64::Base64, serde_as};
 use std::fmt;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
+use warg_protobuf::protocol as protobuf;
 
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case

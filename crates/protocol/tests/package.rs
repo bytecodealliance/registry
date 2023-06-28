@@ -7,9 +7,9 @@ use std::{
 };
 use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
+use warg_protobuf::protocol as protobuf;
 use warg_protocol::{
     package::{self, Validator},
-    protobuf,
     registry::RecordId,
     ProtoEnvelope,
 };

@@ -6,15 +6,13 @@ use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
 };
+use warg_protobuf::transparency as protobuf;
 
-use crate::{
-    log::{
-        node::Node,
-        proof::{ConsistencyProof, InclusionProof},
-        sparse_data::SparseLogData,
-        LogData,
-    },
-    protobuf,
+use crate::log::{
+    node::Node,
+    proof::{ConsistencyProof, InclusionProof},
+    sparse_data::SparseLogData,
+    LogData,
 };
 
 /// A collection of inclusion proof info
