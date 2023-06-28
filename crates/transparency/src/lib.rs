@@ -14,8 +14,3 @@ extern crate std;
 
 pub mod log;
 pub mod map;
-
-/// Types for converting to and from protobuf
-pub(crate) mod protobuf {
-    pub use warg_protobuf::transparency::*;
-}

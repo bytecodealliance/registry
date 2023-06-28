@@ -1,8 +1,10 @@
-use crate::{protobuf, registry::RecordId};
 use anyhow::{Context, Error};
 use prost::Message;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
+use warg_protobuf::protocol as protobuf;
+
+use crate::{pbjson_to_prost_timestamp, prost_to_pbjson_timestamp, registry::RecordId};
 
 mod model;
 mod validate;
@@ -32,7 +34,7 @@ impl TryFrom<protobuf::OperatorRecord> for model::OperatorRecord {
         };
         let version = record.version;
         let pbjson_timestamp = record.time.context(InvalidTimestampError)?;
-        let prost_timestamp = protobuf::pbjson_to_prost_timestamp(pbjson_timestamp);
+        let prost_timestamp = pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
         let entries: Result<Vec<model::OperatorEntry>, Error> = record
@@ -121,7 +123,7 @@ impl<'a> From<&'a model::OperatorRecord> for protobuf::OperatorRecord {
         protobuf::OperatorRecord {
             prev: record.prev.as_ref().map(|hash| hash.to_string()),
             version: record.version,
-            time: Some(protobuf::prost_to_pbjson_timestamp(record.timestamp.into())),
+            time: Some(prost_to_pbjson_timestamp(record.timestamp.into())),
             entries: record.entries.iter().map(|entry| entry.into()).collect(),
         }
     }

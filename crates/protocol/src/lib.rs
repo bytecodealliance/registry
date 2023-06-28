@@ -34,22 +34,19 @@ pub trait Validator:
     fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error>;
 }
 
-/// Types for converting to and from protobuf
-pub mod protobuf {
-    pub use warg_protobuf::protocol::*;
+/// Helpers for converting to and from protobuf
 
-    pub fn prost_to_pbjson_timestamp(timestamp: prost_types::Timestamp) -> pbjson_types::Timestamp {
-        pbjson_types::Timestamp {
-            seconds: timestamp.seconds,
-            nanos: timestamp.nanos,
-        }
+fn prost_to_pbjson_timestamp(timestamp: prost_types::Timestamp) -> pbjson_types::Timestamp {
+    pbjson_types::Timestamp {
+        seconds: timestamp.seconds,
+        nanos: timestamp.nanos,
     }
+}
 
-    pub fn pbjson_to_prost_timestamp(timestamp: pbjson_types::Timestamp) -> prost_types::Timestamp {
-        prost_types::Timestamp {
-            seconds: timestamp.seconds,
-            nanos: timestamp.nanos,
-        }
+fn pbjson_to_prost_timestamp(timestamp: pbjson_types::Timestamp) -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: timestamp.seconds,
+        nanos: timestamp.nanos,
     }
 }
 
