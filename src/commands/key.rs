@@ -1,4 +1,4 @@
-use crate::signing::{delete_signing_key, get_signing_key_entry, set_signing_key};
+use crate::keyring::{delete_signing_key, get_signing_key_entry, set_signing_key};
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm};
