@@ -94,11 +94,11 @@ pub struct KeySetCommand {
 impl KeySetCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let key: PrivateKey =
+        let key_str =
             rpassword::prompt_password("input signing key (expected format is `<alg>:<base64>`): ")
-                .context("failed to read signing key")?
-                .parse()
-                .context("signing key is not in the correct format")?;
+                .context("failed to read signing key")?;
+        let key =
+            PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
 
         set_signing_key(&self.host, &self.key_name, &key)?;
 

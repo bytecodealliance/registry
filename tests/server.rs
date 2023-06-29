@@ -5,7 +5,6 @@ use reqwest::StatusCode;
 use std::{
     borrow::Cow,
     fs,
-    str::FromStr,
     time::{Duration, SystemTime},
 };
 use url::Url;
@@ -40,7 +39,7 @@ async fn test_initial_checkpoint(config: &Config) -> Result<()> {
     assert_eq!(checkpoint.as_ref().log_length, 1);
 
     // Ensure the response was signed with the operator key
-    let operator_key = PrivateKey::from_str(test_operator_key())?;
+    let operator_key = test_operator_key();
     assert_eq!(
         checkpoint.key_id().to_string(),
         operator_key.public_key().fingerprint().to_string()
@@ -62,7 +61,7 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
 
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
         &id,
@@ -110,7 +109,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
 
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     let digest = publish_wit(
         &client,
         &id,
@@ -160,7 +159,7 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
     // This should be rejected by policy because it is not valid WebAssembly
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     match publish(
         &client,
         &id,
@@ -218,7 +217,7 @@ async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
     // Start by publishing a new component package
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     publish_component(
         &client,
         &id,
@@ -254,7 +253,7 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
     // Start by publishing a new component package
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     publish_component(
         &client,
         &id,
@@ -294,7 +293,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
         .join(&paths::publish_package_record(&log_id))
         .unwrap();
 
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     let record = ProtoEnvelope::signed_contents(
         &signing_key,
         PackageRecord {
@@ -346,7 +345,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
 
     let id = PackageId::new(PACKAGE_ID)?;
     let client = create_client(config)?;
-    let signing_key = test_signing_key().parse().unwrap();
+    let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
         &id,

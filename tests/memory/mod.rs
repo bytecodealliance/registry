@@ -3,7 +3,6 @@
 use super::{support::*, *};
 use anyhow::Result;
 use warg_client::api;
-use warg_crypto::signing::PrivateKey;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_starts_with_initial_checkpoint() -> Result<()> {
@@ -59,11 +58,7 @@ async fn it_rejects_unauthorized_signing_key() -> Result<()> {
         None,
         Some(vec![(
             "test".to_string(),
-            test_signing_key()
-                .parse::<PrivateKey>()
-                .unwrap()
-                .public_key()
-                .fingerprint(),
+            test_signing_key().public_key().fingerprint(),
         )]),
     )
     .await?;

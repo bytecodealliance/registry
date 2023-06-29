@@ -35,11 +35,7 @@ async fn it_works_with_postgres() -> TestResult {
         Some(data_store()?),
         Some(vec![(
             "test".to_string(),
-            test_signing_key()
-                .parse::<PrivateKey>()
-                .unwrap()
-                .public_key()
-                .fingerprint(),
+            test_signing_key().public_key().fingerprint(),
         )]),
     )
     .await?;
