@@ -41,7 +41,7 @@ impl<'a, D: SupportedDigest> Path<'a, D> {
     }
 
     pub fn hash(&self) -> &Hash<D> {
-        &self.hash
+        self.hash
     }
 
     pub fn index(&self) -> usize {

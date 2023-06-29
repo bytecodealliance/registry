@@ -79,9 +79,9 @@ where
                     };
                 }
                 None => match side {
-                    Side::Left => hash = hash_branch(&hash, &D::empty_tree_hash(i)),
+                    Side::Left => hash = hash_branch(&hash, D::empty_tree_hash(i)),
                     Side::Right => {
-                        hash = hash_branch(&D::empty_tree_hash(i), &hash);
+                        hash = hash_branch(D::empty_tree_hash(i), &hash);
                     }
                 },
             }
@@ -114,7 +114,7 @@ mod tests {
 
         let root = c.root().clone();
 
-        let p = c.prove(&"baz").unwrap();
+        let p = c.prove("baz").unwrap();
 
         assert_eq!(root, p.evaluate(&"baz", &b"bat".as_slice()));
         assert_ne!(root, p.evaluate(&"other", &b"bar".as_slice()));
