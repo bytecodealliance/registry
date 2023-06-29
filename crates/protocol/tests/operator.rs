@@ -9,7 +9,7 @@ use warg_crypto::hash::Sha256;
 use warg_crypto::signing;
 use warg_protobuf::protocol as protobuf;
 use warg_protocol::{
-    operator::{self, Validator},
+    operator::{self, LogState},
     registry::RecordId,
     ProtoEnvelope,
 };
@@ -32,7 +32,7 @@ fn test_operator_logs() {
     }
 }
 
-fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
+fn validate_input(input: Vec<EnvelopeData>) -> Result<LogState> {
     input
         .into_iter()
         .scan(None, |last, e_data| {
@@ -47,7 +47,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<Validator> {
 
             Some(envelope)
         })
-        .try_fold(Validator::new(), |mut validator, record| {
+        .try_fold(LogState::new(), |mut validator, record| {
             validator.validate(&record)?;
             Ok(validator)
         })
@@ -125,6 +125,6 @@ pub struct EnvelopeData {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Output {
-    Valid(Validator),
+    Valid(LogState),
     Error(String),
 }

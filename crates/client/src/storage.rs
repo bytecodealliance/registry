@@ -103,9 +103,9 @@ pub trait ContentStorage: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct OperatorInfo {
-    /// The current validation state of the operator.
+    /// The current operator log state
     #[serde(default)]
-    pub state: operator::Validator,
+    pub state: operator::LogState,
 }
 
 /// Represents information about a registry package.
@@ -117,9 +117,9 @@ pub struct PackageInfo {
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
-    /// The current validation state of the package.
+    /// The current package log state
     #[serde(default)]
-    pub state: package::Validator,
+    pub state: package::LogState,
 }
 
 impl PackageInfo {
@@ -128,7 +128,7 @@ impl PackageInfo {
         Self {
             id: id.into(),
             checkpoint: None,
-            state: package::Validator::default(),
+            state: package::LogState::default(),
         }
     }
 }
