@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use secrecy::SecretString;
 use std::{net::SocketAddr, path::PathBuf};
+use oci_distribution::secrets::RegistryAuth::Anonymous;
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
@@ -49,6 +50,10 @@ struct Args {
     /// The content store to use for the server.
     #[arg(long, env = "WARG_CONTENT_STORE", default_value = "local")]
     content_store: ContentStoreKind,
+
+    /// The OCI registry URL if content store is set to oci.
+    #[arg(long, env = "WARG_OCI_REGISTRY_URL", default_value = "localhost:5000")]
+    oci_registry_url: Option<String>,
 
     /// The database connection URL if data-store is set to postgres.
     ///
@@ -107,7 +112,7 @@ async fn main() -> Result<()> {
     let operator_key =
         PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
 
-    let mut config = Config::new(operator_key, args.content_dir)
+    let mut config = Config::new(operator_key, args.content_dir.clone())
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
 
@@ -129,7 +134,9 @@ async fn main() -> Result<()> {
             config
         }
         ContentStoreKind::OCIv1_1 => {
-            todo!("OCIv1.1 content store is not yet implemented");
+            use warg_server::contentstore::oci::ociv1_1::OCIv1_1ContentStore;
+            tracing::info!("using OCIv1.1 content store");
+            config.with_content_store(OCIv1_1ContentStore::new(args.oci_registry_url.unwrap(), Anonymous, &args.content_dir).await)
         }
     };
 

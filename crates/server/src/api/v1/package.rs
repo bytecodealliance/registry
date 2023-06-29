@@ -227,14 +227,22 @@ async fn publish_record(
 
     let record_id = RecordId::package_record::<Sha256>(&record);
     let mut missing = HashSet::<&AnyHash>::new();
+    let version = crate::datastore::get_version_for_release(record.as_ref());
     for key in record.as_ref().contents() {
-        if !config
-            .content_store
-            .content_present(&body.id, key)
-            .await
-            .map_err(PackageApiError::internal_error)?
-        {
-            missing.insert(key);
+        match version {
+            Some(version) => {
+                if !config
+                    .content_store
+                    .content_present(&body.id, key, version.to_string())
+                    .await
+                    .map_err(PackageApiError::internal_error)?
+                {
+                    missing.insert(key);
+                }
+            }
+            None => {
+                missing.insert(key);
+            }
         }
     }
 
@@ -379,12 +387,13 @@ async fn upload_content(
     // Only persist the file if the content was successfully processed
     res?;
 
+    let version = crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id).await?;
     let package_id = config.core_service.store().get_package_id(&log_id).await?;
     let mut tmp_file = tokio::fs::File::open(&tmp_path)
         .await
         .map_err(PackageApiError::internal_error)?;
 
-    config.content_store.store_content(&package_id, &digest, &mut tmp_file)
+    config.content_store.store_content(&package_id, &digest, version.to_string(), &mut tmp_file)
         .await
         .map_err(PackageApiError::internal_error)?;
 
@@ -459,8 +468,12 @@ async fn fetch_content(
     tracing::info!("fetching content for record `{record_id}` from `{log_id}`");
 
     let package_id = config.core_service.store().get_package_id(&log_id).await?;
-
-    let file = config.content_store.fetch_content(&package_id, &digest)
+    let version = crate::datastore::get_release_version(
+        config.core_service.store(),
+        &log_id,
+        &record_id,
+    ).await?;
+    let file = config.content_store.fetch_content(&package_id, &digest, version.to_string())
         .await
         .map_err(PackageApiError::not_found)?;
 

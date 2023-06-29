@@ -28,33 +28,44 @@ fn content_file_name(digest: &AnyHash) -> String {
 
 #[axum::async_trait]
 impl ContentStore for LocalContentStore {
+    /// Fetch content for a given package.
     async fn fetch_content(
         &self,
         _package_id: &PackageId,
         digest: &AnyHash,
+        _version: String,
     ) -> Result<File, ContentStoreError> {
         File::open(self.content_path(digest))
             .await
             .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))
     }
 
+    /// Store content for a given package.
     async fn store_content(
         &self,
         _package_id: &PackageId,
         digest: &AnyHash,
+        _version: String,
         content: &mut File
-    ) -> Result<(), ContentStoreError> {
-        let mut stored_file = File::create(self.content_path(digest))
+    ) -> Result<String, ContentStoreError> {
+        let file_path = self.content_path(digest);
+        let mut stored_file = File::create(file_path.clone())
             .await
             .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))?;
 
         copy(content, &mut stored_file)
             .await
             .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))?;
-        Ok(())
+        Ok(file_path.to_string_lossy().to_string())
     }
 
-    async fn content_present(&self, _package_id: &PackageId, digest: &AnyHash) -> Result<bool, ContentStoreError> {
+    /// Check if the content is present in the store.
+    async fn content_present(
+        &self,
+        _package_id: &PackageId,
+        digest: &AnyHash,
+        _version: String,
+    ) -> Result<bool, ContentStoreError> {
         let path = self.content_path(digest);
         Path::new(&path).try_exists().map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))
     }

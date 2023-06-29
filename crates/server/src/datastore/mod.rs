@@ -1,20 +1,19 @@
-use futures::Stream;
 use std::{collections::HashSet, pin::Pin};
+
+use futures::Stream;
 use thiserror::Error;
+
+pub use memory::*;
+use PackageEntry::Release;
+#[cfg(feature = "postgres")]
+pub use postgres::*;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
-use warg_protocol::{
-    operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
-    ProtoEnvelope, SerdeEnvelope,
-};
+use warg_protocol::{operator, package, ProtoEnvelope, registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId}, SerdeEnvelope, Version};
+use warg_protocol::package::PackageEntry;
 
 mod memory;
 #[cfg(feature = "postgres")]
 mod postgres;
-
-pub use memory::*;
-#[cfg(feature = "postgres")]
-pub use postgres::*;
 
 #[derive(Debug, Error)]
 pub enum DataStoreError {
@@ -80,8 +79,8 @@ pub enum RecordStatus {
 
 /// Represents a record in a log.
 pub struct Record<T>
-where
-    T: Clone,
+    where
+        T: Clone,
 {
     /// The status of the record.
     pub status: RecordStatus,
@@ -269,4 +268,20 @@ pub trait DataStore: Send + Sync {
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         anyhow::bail!("not implemented")
     }
+}
+
+pub fn get_version_for_release(record: &package::PackageRecord) -> Option<&Version> {
+    record.entries.iter().find_map(|entry| {
+        match entry {
+            Release { version,  content: _ } => Some(version),
+            _ => None,
+        }
+    })
+}
+
+pub async fn get_release_version(data_store: &dyn DataStore, log_id: &LogId, record_id: &RecordId) -> Result<Version, DataStoreError> {
+    let record = data_store.get_package_record(&log_id, &record_id).await?;
+    get_version_for_release(&record.envelope.as_ref())
+        .cloned()
+        .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))
 }

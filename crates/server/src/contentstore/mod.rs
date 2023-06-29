@@ -4,6 +4,7 @@ use thiserror::Error;
 use warg_protocol::registry::PackageId;
 
 pub mod local;
+pub mod oci;
 
 #[derive(Debug, Error)]
 pub enum ContentStoreError {
@@ -22,6 +23,7 @@ pub trait ContentStore: Send + Sync {
         &self,
         package_id: &PackageId,
         digest: &AnyHash,
+        version: String,
     ) -> Result<File, ContentStoreError>;
 
     /// Store content for a given package.
@@ -29,12 +31,14 @@ pub trait ContentStore: Send + Sync {
         &self,
         package_id: &PackageId,
         digest: &AnyHash,
+        version: String,
         content: &mut File
-    ) -> Result<(), ContentStoreError>;
+    ) -> Result<String, ContentStoreError>;
 
     async fn content_present(
         &self,
         package_id: &PackageId,
         digest: &AnyHash,
+        version: String,
     ) -> Result<bool, ContentStoreError>;
 }

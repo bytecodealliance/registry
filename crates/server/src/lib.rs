@@ -108,6 +108,14 @@ impl Config {
         self
     }
 
+    /// Specify the content store to use.
+    ///
+    /// If this is not specified, the server will use a local content store.
+    pub fn with_content_store(mut self, store: impl ContentStore + 'static) -> Self {
+        self.content_store = Arc::new(store);
+        self
+    }
+
     /// Specify the data store to use via a boxed data store.
     ///
     /// If this is not specified, the server will use an in-memory data store.
