@@ -1,9 +1,12 @@
 //! Commands for the `warg` tool.
 
+use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
+use url::Url;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
+use warg_crypto::signing::PrivateKey;
 
 mod config;
 mod download;
@@ -12,6 +15,8 @@ mod key;
 mod publish;
 mod run;
 mod update;
+
+use crate::keyring::get_signing_key;
 
 pub use self::config::*;
 pub use self::download::*;
@@ -30,6 +35,9 @@ pub struct CommonOptions {
     /// The name to use for the signing key.
     #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
     pub key_name: String,
+    /// The path to the signing key file.
+    #[clap(long, value_name = "KEY_FILE", env = "WARG_SIGNING_KEY_FILE")]
+    pub key_file: Option<PathBuf>,
     /// The path to the client configuration file to use.
     ///
     /// If not specified, the following locations are searched in order: `./warg-config.json`, `<system-config-dir>/warg/config.json`.
@@ -65,6 +73,28 @@ impl CommonOptions {
 
                 FileSystemClient::new_with_config(self.registry.as_deref(), config)
             }
+        }
+    }
+
+    /// Gets the signing key for the given registry URL.
+    pub fn signing_key(&self, registry_url: &str) -> Result<PrivateKey> {
+        if let Some(file) = &self.key_file {
+            let key_str = std::fs::read_to_string(file)
+                .with_context(|| format!("failed to read key from {file:?}"))?
+                .trim_end()
+                .to_string();
+            PrivateKey::decode(key_str)
+                .with_context(|| format!("failed to parse key from {file:?}"))
+        } else {
+            let url: Url = registry_url
+                .parse()
+                .with_context(|| format!("failed to parse registry URL `{registry_url}`"))?;
+
+            let host = url
+                .host_str()
+                .with_context(|| format!("registry URL `{url}` has no host"))?;
+
+            get_signing_key(host, &self.key_name)
         }
     }
 }

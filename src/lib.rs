@@ -3,6 +3,6 @@
 #![deny(missing_docs)]
 
 pub mod commands;
-pub mod signing;
+pub mod keyring;
 // FIXME: delete
 mod demo;

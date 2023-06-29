@@ -1,12 +1,10 @@
 use super::CommonOptions;
-use crate::signing::get_signing_key;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
 use std::{future::Future, path::PathBuf, time::Duration};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
-use url::Url;
 use warg_client::{
     storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
     FileSystemClient,
@@ -51,24 +49,6 @@ where
         }
         None => Ok(Some(entry(client).await?)),
     }
-}
-
-/// Submits a publish to the registry.
-async fn submit(client: &FileSystemClient, info: PublishInfo, key_name: &str) -> Result<RecordId> {
-    let registry_url = client.url();
-
-    let url: Url = client
-        .url()
-        .parse()
-        .with_context(|| format!("failed to parse registry URL `{registry_url}`"))?;
-
-    let host = url
-        .host_str()
-        .ok_or_else(|| anyhow!("registry URL `{url}` has no host"))?;
-
-    let signing_key = get_signing_key(host, key_name)?;
-
-    Ok(client.publish_with_info(&signing_key, info).await?)
 }
 
 /// Publish a package to a warg registry.
@@ -132,16 +112,17 @@ impl PublishInitCommand {
         .await?
         {
             Some(entry) => {
-                let record_id = submit(
-                    &client,
-                    PublishInfo {
-                        id: self.id.clone(),
-                        head: None,
-                        entries: vec![entry],
-                    },
-                    &self.common.key_name,
-                )
-                .await?;
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client
+                    .publish_with_info(
+                        &signing_key,
+                        PublishInfo {
+                            id: self.id.clone(),
+                            head: None,
+                            entries: vec![entry],
+                        },
+                    )
+                    .await?;
 
                 if self.no_wait {
                     println!("submitted record `{record_id}` for publishing");
@@ -215,16 +196,17 @@ impl PublishReleaseCommand {
         .await?
         {
             Some(entry) => {
-                let record_id = submit(
-                    &client,
-                    PublishInfo {
-                        id: self.id.clone(),
-                        head: None,
-                        entries: vec![entry],
-                    },
-                    &self.common.key_name,
-                )
-                .await?;
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client
+                    .publish_with_info(
+                        &signing_key,
+                        PublishInfo {
+                            id: self.id.clone(),
+                            head: None,
+                            entries: vec![entry],
+                        },
+                    )
+                    .await?;
 
                 if self.no_wait {
                     println!("submitted record `{record_id}` for publishing");
@@ -382,7 +364,8 @@ impl PublishSubmitCommand {
             Some(info) => {
                 println!("submitting publish for package `{id}`...", id = info.id);
 
-                let record_id = submit(&client, info.clone(), &self.common.key_name).await?;
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
 
                 client.registry().store_publish(None).await?;
 
