@@ -70,8 +70,8 @@ enum RecordStatus {
 
 #[derive(Default)]
 struct State {
-    operators: HashMap<LogId, Log<operator::Validator, operator::OperatorRecord>>,
-    packages: HashMap<LogId, Log<package::Validator, package::PackageRecord>>,
+    operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
+    packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,

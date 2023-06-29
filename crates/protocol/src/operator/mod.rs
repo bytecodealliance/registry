@@ -7,10 +7,10 @@ use warg_protobuf::protocol as protobuf;
 use crate::{pbjson_to_prost_timestamp, prost_to_pbjson_timestamp, registry::RecordId};
 
 mod model;
-mod validate;
+mod state;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use validate::{Head, ValidationError, Validator};
+pub use state::{LogState, ValidationError};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;

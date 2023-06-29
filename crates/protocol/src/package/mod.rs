@@ -7,10 +7,10 @@ use warg_protobuf::protocol as protobuf;
 use crate::{pbjson_to_prost_timestamp, prost_to_pbjson_timestamp, registry::RecordId};
 
 mod model;
-mod validate;
+mod state;
 
 pub use model::{PackageEntry, PackageRecord, Permission};
-pub use validate::{Head, Release, ReleaseState, ValidationError, Validator};
+pub use state::{LogState, Release, ReleaseState, ValidationError};
 
 /// The currently supported package protocol version.
 pub const PACKAGE_RECORD_VERSION: u32 = 0;

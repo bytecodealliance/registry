@@ -59,7 +59,7 @@ pub enum ValidationError {
     TimestampLowerThanPrevious,
 }
 
-/// Information about the current validation head of the operator log.
+/// Information about the current head of the operator log.
 ///
 /// A head is the last validated record digest and timestamp.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,10 +72,10 @@ pub struct Head {
     pub timestamp: SystemTime,
 }
 
-/// A validator for operator records.
+/// Calculated state for an operator log.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
-pub struct Validator {
+pub struct LogState {
     /// The hash algorithm used by the operator log.
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,13 +91,13 @@ pub struct Validator {
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
-impl Validator {
-    /// Create a new operator log validator.
+impl LogState {
+    /// Create a new operator log state.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Gets the current head of the validator.
+    /// Gets the current head of the log.
     ///
     /// Returns `None` if no records have been validated yet.
     pub fn head(&self) -> &Option<Head> {
@@ -379,7 +379,7 @@ impl Validator {
     }
 }
 
-impl crate::Validator for Validator {
+impl crate::Validator for LogState {
     type Record = model::OperatorRecord;
     type Error = ValidationError;
 
@@ -423,12 +423,12 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = Validator::default();
+        let mut validator = LogState::default();
         validator.validate(&envelope).unwrap();
 
         assert_eq!(
             validator,
-            Validator {
+            LogState {
                 head: Some(Head {
                     digest: RecordId::operator_record::<Sha256>(&envelope),
                     timestamp,
@@ -462,10 +462,10 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = Validator::default();
+        let mut validator = LogState::default();
         validator.validate(&envelope).unwrap();
 
-        let expected = Validator {
+        let expected = LogState {
             head: Some(Head {
                 digest: RecordId::operator_record::<Sha256>(&envelope),
                 timestamp,
