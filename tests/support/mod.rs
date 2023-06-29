@@ -24,12 +24,14 @@ use warg_server::{
 };
 use wit_parser::{Resolve, UnresolvedPackage};
 
-pub fn test_operator_key() -> &'static str {
-    "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk="
+pub fn test_operator_key() -> PrivateKey {
+    let key = "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=";
+    PrivateKey::decode(key.to_string()).unwrap()
 }
 
-pub fn test_signing_key() -> &'static str {
-    "ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
+pub fn test_signing_key() -> PrivateKey {
+    let key = "ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew=";
+    PrivateKey::decode(key.to_string()).unwrap()
 }
 
 pub fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
@@ -98,7 +100,7 @@ pub async fn spawn_server(
     authorized_keys: Option<Vec<(String, KeyID)>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
     let shutdown = CancellationToken::new();
-    let mut config = Config::new(test_operator_key().parse()?, root.join("server"))
+    let mut config = Config::new(test_operator_key(), root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100))

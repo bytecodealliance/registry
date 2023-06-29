@@ -106,10 +106,10 @@ async fn main() -> Result<()> {
     args.init_tracing();
     tracing::debug!("args: {args:?}");
 
-    let operator_key: PrivateKey =
-        get_opt_content("operator-key", args.operator_key_file, args.operator_key)?
-            .parse()
-            .context("failed to parse operator key")?;
+    let operator_key_str =
+        get_opt_content("operator-key", args.operator_key_file, args.operator_key)?;
+    let operator_key =
+        PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
 
     let mut config = Config::new(operator_key, args.content_dir)
         .with_addr(args.listen)

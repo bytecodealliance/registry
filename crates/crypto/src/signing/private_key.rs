@@ -1,10 +1,8 @@
 use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use core::fmt;
 use p256;
-use secrecy::{ExposeSecret, Secret, Zeroize};
+use secrecy::{zeroize::Zeroizing, ExposeSecret, Secret, Zeroize};
 use signature::Signer;
-use std::str::FromStr;
 use thiserror::Error;
 
 pub use signature::Error as SignatureError;
@@ -17,6 +15,35 @@ pub enum PrivateKeyInner {
 }
 
 impl PrivateKey {
+    /// Decode a key from the given string in `<algo>:<base64 data>` form.
+    pub fn decode(s: String) -> Result<Self, PrivateKeyParseError> {
+        let s = Zeroizing::new(s);
+
+        let Some((algo, b64_data)) = s.split_once(':') else {
+            return Err(PrivateKeyParseError::MissingColon)
+        };
+
+        let algo = algo.parse::<SignatureAlgorithm>()?;
+        let bytes = STANDARD.decode(b64_data)?;
+
+        let key = match algo {
+            SignatureAlgorithm::EcdsaP256 => PrivateKeyInner::EcdsaP256(
+                p256::ecdsa::SigningKey::from_bytes(bytes.as_slice().into())?,
+            ),
+        };
+
+        Ok(PrivateKey(Secret::from(key)))
+    }
+
+    /// Encode the key as a string in `<algo>:<base64 data>` form.
+    pub fn encode(&self) -> Zeroizing<String> {
+        Zeroizing::new(format!(
+            "{algo}:{b64}",
+            algo = self.signature_algorithm(),
+            b64 = STANDARD.encode(self.bytes())
+        ))
+    }
+
     /// Get the signature algorithm used for by this key
     pub fn signature_algorithm(&self) -> SignatureAlgorithm {
         match self.0.expose_secret() {
@@ -47,27 +74,20 @@ impl PrivateKey {
     }
 }
 
-impl fmt::Display for PrivateKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}",
-            self.signature_algorithm(),
-            STANDARD.encode(self.bytes()),
-        )
-    }
-}
+// Note: FromStr isn't used because it makes it too easy to leave behind an
+// unzeroized copy of the sensitive encoded key.
+impl TryFrom<String> for PrivateKey {
+    type Error = PrivateKeyParseError;
 
-impl FromStr for PrivateKey {
-    type Err = PrivateKeyParseError;
+    fn try_from(key: String) -> Result<Self, PrivateKeyParseError> {
+        let key = Zeroizing::new(key);
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split(|c| c == ':').collect();
-        if parts.len() != 2 {
-            return Err(PrivateKeyParseError::IncorrectStructure(parts.len()));
-        }
-        let algo = parts[0].parse::<SignatureAlgorithm>()?;
-        let bytes = STANDARD.decode(parts[1])?;
+        let Some((algo, b64_data)) = key.split_once(':') else {
+            return Err(PrivateKeyParseError::MissingColon)
+        };
+
+        let algo = algo.parse::<SignatureAlgorithm>()?;
+        let bytes = STANDARD.decode(b64_data)?;
 
         let key = match algo {
             SignatureAlgorithm::EcdsaP256 => PrivateKeyInner::EcdsaP256(
@@ -81,8 +101,8 @@ impl FromStr for PrivateKey {
 
 #[derive(Error, Debug)]
 pub enum PrivateKeyParseError {
-    #[error("expected 2 parts, found {0}")]
-    IncorrectStructure(usize),
+    #[error("expected algorithm followed by colon")]
+    MissingColon,
 
     #[error("unable to parse signature algorithm")]
     SignatureAlgorithmParseError(#[from] SignatureAlgorithmParseError),
@@ -123,7 +143,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let key_str = "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=";
-        let pub_key: PrivateKey = key_str.parse().unwrap();
-        assert_eq!(key_str, &format!("{pub_key}"));
+        let key = PrivateKey::decode(key_str.to_string()).unwrap();
+        assert_eq!(key_str, &*key.encode());
     }
 }
