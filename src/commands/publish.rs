@@ -58,6 +58,8 @@ pub enum PublishCommand {
     Init(PublishInitCommand),
     /// Release a package version.
     Release(PublishReleaseCommand),
+    /// Yank a package version.
+    Yank(PublishYankCommand),
     /// Start a new pending publish.
     Start(PublishStartCommand),
     /// List the records in a pending publish.
@@ -76,6 +78,7 @@ impl PublishCommand {
         match self {
             Self::Init(cmd) => cmd.exec().await,
             Self::Release(cmd) => cmd.exec().await,
+            Self::Yank(cmd) => cmd.exec().await,
             Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
@@ -235,6 +238,76 @@ impl PublishReleaseCommand {
     }
 }
 
+/// Yank a package release from a warg registry.
+#[derive(Args)]
+#[clap(disable_version_flag = true)]
+pub struct PublishYankCommand {
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
+    /// The identifier of the package being yanked.
+    #[clap(long, short, value_name = "PACKAGE")]
+    pub id: PackageId,
+    /// The version of the package being yanked.
+    #[clap(long, short, value_name = "VERSION")]
+    pub version: Version,
+    /// Whether to wait for the publish to complete.
+    #[clap(long)]
+    pub no_wait: bool,
+}
+
+impl PublishYankCommand {
+    /// Executes the command.
+    pub async fn exec(self) -> Result<()> {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        let version = self.version.clone();
+        match enqueue(&client, &self.id, move |_| async move {
+            Ok(PublishEntry::Yank { version })
+        })
+        .await?
+        {
+            Some(entry) => {
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client
+                    .publish_with_info(
+                        &signing_key,
+                        PublishInfo {
+                            id: self.id.clone(),
+                            head: None,
+                            entries: vec![entry],
+                        },
+                    )
+                    .await?;
+
+                if self.no_wait {
+                    println!("submitted record `{record_id}` for publishing");
+                } else {
+                    client
+                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .await?;
+
+                    println!(
+                        "yanked version {version} of package `{id}`",
+                        version = self.version,
+                        id = self.id
+                    );
+                }
+            }
+            None => {
+                println!(
+                    "added yank of version {version} for package `{id}` to pending publish",
+                    version = self.version,
+                    id = self.id
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Start a new pending publish.
 #[derive(Args)]
 #[clap(disable_version_flag = true)]
@@ -303,6 +376,9 @@ impl PublishListCommand {
                         }
                         PublishEntry::Release { version, content } => {
                             println!("release {version} with content digest `{content}`")
+                        }
+                        PublishEntry::Yank { version } => {
+                            println!("yank {version}")
                         }
                     }
                 }
@@ -377,19 +453,16 @@ impl PublishSubmitCommand {
                         .await?;
 
                     for entry in &info.entries {
+                        let id = &info.id;
                         match entry {
                             PublishEntry::Init => {
-                                println!(
-                                    "published initialization of package `{id}`",
-                                    id = info.id
-                                );
+                                println!("published initialization of package `{id}`");
                             }
                             PublishEntry::Release { version, .. } => {
-                                println!(
-                                    "published version {version} of package `{id}`",
-                                    version = version,
-                                    id = info.id,
-                                );
+                                println!("published version {version} of package `{id}`");
+                            }
+                            PublishEntry::Yank { version } => {
+                                println!("yanked version {version} of package `{id}`")
                             }
                         }
                     }
