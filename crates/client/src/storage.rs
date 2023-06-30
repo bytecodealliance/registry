@@ -146,6 +146,11 @@ pub enum PublishEntry {
         /// The content digest of the release.
         content: AnyHash,
     },
+    /// A release is being yanked.
+    Yank {
+        /// The version of the release being yanked.
+        version: Version,
+    },
 }
 
 /// Represents information about a package publish.
@@ -184,6 +189,9 @@ impl PublishInfo {
                 }
                 PublishEntry::Release { version, content } => {
                     entries.push(package::PackageEntry::Release { version, content });
+                }
+                PublishEntry::Yank { version } => {
+                    entries.push(package::PackageEntry::Yank { version })
                 }
             }
         }
