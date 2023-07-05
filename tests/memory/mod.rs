@@ -28,6 +28,23 @@ async fn it_publishes_a_component() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_yanks_a_package() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
+    test_package_yanking(&config).await?;
+
+    // There should be three entries in the registry
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let checkpoint = client.latest_checkpoint().await?;
+    assert_eq!(
+        checkpoint.as_ref().log_length,
+        3,
+        "expected three log entries (initial + release + yank)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_publishes_a_wit_package() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_wit_publishing(&config).await?;

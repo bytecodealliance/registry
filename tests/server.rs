@@ -12,7 +12,11 @@ use warg_api::v1::{
     package::{ContentSource, PackageRecordState, PublishRecordRequest},
     paths,
 };
-use warg_client::{api, storage::RegistryStorage, ClientError, Config};
+use warg_client::{
+    api,
+    storage::{PublishEntry, PublishInfo, RegistryStorage},
+    ClientError, Config,
+};
 use warg_crypto::{hash::Sha256, signing::PrivateKey, Encode, Signable};
 use warg_protocol::{
     package::{PackageEntry, PackageRecord, PACKAGE_RECORD_VERSION},
@@ -100,6 +104,48 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     // Assert that a different version can't be downloaded
     assert!(client.download(&id, &"0.2.0".parse()?).await?.is_none());
 
+    Ok(())
+}
+
+async fn test_package_yanking(config: &Config) -> Result<()> {
+    const PACKAGE_ID: &str = "test:yankee";
+    const PACKAGE_VERSION: &str = "0.1.0";
+
+    // Publish release
+    let id = PackageId::new(PACKAGE_ID)?;
+    let client = create_client(config)?;
+    let signing_key = test_signing_key();
+    publish(
+        &client,
+        &id,
+        PACKAGE_VERSION,
+        wat::parse_str("(component)")?,
+        true,
+        &signing_key,
+    )
+    .await?;
+
+    // Yank release
+    let record_id = client
+        .publish_with_info(
+            &signing_key,
+            PublishInfo {
+                id: id.clone(),
+                head: None,
+                entries: vec![PublishEntry::Yank {
+                    version: PACKAGE_VERSION.parse()?,
+                }],
+            },
+        )
+        .await?;
+    client
+        .wait_for_publish(&id, &record_id, Duration::from_millis(100))
+        .await?;
+
+    // Assert that the package is yanked
+    client.upsert([&id]).await?;
+    let opt = client.download(&id, &PACKAGE_VERSION.parse()?).await?;
+    assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
 }
 
