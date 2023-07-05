@@ -43,6 +43,7 @@ async fn it_works_with_postgres() -> TestResult {
     // This should be the same set of tests as in `tests/memory/mod.rs`
     test_initial_checkpoint(&config).await?;
     test_component_publishing(&config).await?;
+    test_package_yanking(&config).await?;
     test_wit_publishing(&config).await?;
     test_wasm_content_policy(&config).await?;
     test_unauthorized_signing_key(&config).await?;
@@ -53,6 +54,7 @@ async fn it_works_with_postgres() -> TestResult {
 
     let mut packages = vec![
         PackageId::new("test:component")?,
+        PackageId::new("test:yankee")?,
         PackageId::new("test:wit-package")?,
         PackageId::new("test:unauthorized-key")?,
     ];
@@ -62,8 +64,8 @@ async fn it_works_with_postgres() -> TestResult {
     let checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
         checkpoint.as_ref().log_length,
-        packages.len() as u32 + 1, /* initial checkpoint */
-        "expected {len} packages plus the initial checkpoint",
+        packages.len() as u32 + 2, /* publishes + initial checkpoint + yank */
+        "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
     );
 
@@ -80,8 +82,8 @@ async fn it_works_with_postgres() -> TestResult {
     let checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
         checkpoint.as_ref().log_length,
-        packages.len() as u32 + 1, /* initial checkpoint */
-        "expected {len} packages plus the initial checkpoint",
+        packages.len() as u32 + 2, /* publishes + initial checkpoint + yank*/
+        "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
     );
 
@@ -94,6 +96,9 @@ async fn it_works_with_postgres() -> TestResult {
 
     // Finally, after a restart, ensure the packages can be downloaded
     for package in packages {
+        if package.name() == "yankee" {
+            continue;
+        }
         client
             .download(&package, &"0.1.0".parse()?)
             .await?
