@@ -1,16 +1,58 @@
-# WASI SIG Registries
+# WebAssembly Registry (Warg)
 
-This repository is the home of the WASI Registries Special
-Interest Group.
+This document introduces the registry project's scope and
+design proposed by the Bytecode Alliance SIG Registries group,
+commonly known as ***WebAssembly Registry (Warg)***.
 
-# Meetings
 
-SIG Registry meetings are held weekly.
+## Process
+
+SIG Registeries meetings are held weekly.
 To attend, please [join the Google group](https://groups.google.com/g/ba-sig-registries) for the calendar invite.
-The meeting notes are kept at
-[here](https://github.com/bytecodealliance/meetings/tree/main/sig-registries).
-See the calendar invite for instructions on how to add to the agenda.
+The calendar invite provides instructions for adding to the agenda.
+See [past meeting notes](https://github.com/bytecodealliance/meetings/tree/main/sig-registries).
 
-## Phases
+Design process [phases](phases.md).
 
-Design work on Registries proceeds in design [phases](phases.md).
+
+## Design Decisions
+
+#### WebAssembly binary packages
+*Warg* is primarily designed for publishing and fetching
+WebAssembly binary packages, both core modules as well as
+components and component interfaces.
+
+#### From development to deployment
+Both libraries and interfaces published for software
+developers as well as deployment artifacts can be published
+to *Warg* registries.
+
+#### Federation of registries
+Anyone can run their own registry and import (and optionally
+mirror) packages from other registries. Creating your own
+private or public registry allows you to implement your own
+policies for publishing packages, define access controls,
+and secure network traffic.
+
+#### Verifiable logs
+Package releases are published to immutable logs signed by
+their maintainers. Clients, third-party monitors, and
+importing registries can cryptographically verify a registry's
+state and history of state changes to detect a compromised or
+malicious registry.
+
+#### Content hosting optionality
+*Warg* primarily interacts with package release logs with content
+hashes. The registry itself or other services, such as blob
+stores and OCI registries, can host package contents.
+
+
+## Scope for the Specification and Reference Implementation
+Anything that involves client-to-registry, monitor-to-registry,
+or registry-to-registry interaction needs to be clearly defined
+in the [Warg Specification](specification.md).
+
+The reference implementation prioritizes a minimal design that
+is usable but not necessarily highly scalable or full-featured.
+This encourages other [Warg Specification](specification.md) compliant
+implementations to be developed for more extensive requirements.
