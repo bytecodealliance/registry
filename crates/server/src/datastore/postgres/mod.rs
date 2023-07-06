@@ -790,4 +790,17 @@ impl DataStore for PostgresDataStore {
         package::PackageRecord::verify(key, record.content_bytes(), record.signature())
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
+
+    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+        let mut conn = self.0.get().await?;
+        let names = schema::logs::table
+            .select(schema::logs::name)
+            .load::<Option<String>>(&mut conn)
+            .await?
+            .into_iter()
+            .flatten()
+            .filter_map(|name| name.parse().ok())
+            .collect();
+        Ok(names)
+    }
 }
