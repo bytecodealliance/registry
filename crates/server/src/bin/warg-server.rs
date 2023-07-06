@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
@@ -50,6 +50,11 @@ struct Args {
     #[cfg(feature = "postgres")]
     #[arg(long, env = "WARG_DATABASE_URL_FILE", conflicts_with = "database_url")]
     database_url_file: Option<PathBuf>,
+
+    /// Run database migrations
+    #[cfg(feature = "postgres")]
+    #[arg(long)]
+    database_run_migrations: bool,
 
     /// The operator key.
     ///
@@ -101,7 +106,12 @@ async fn main() -> Result<()> {
             tracing::info!("using postgres data store");
             let database_url =
                 get_opt_secret("database-url", args.database_url_file, args.database_url)?;
-            config.with_data_store(PostgresDataStore::new(database_url.expose_secret())?)
+            let pg_store = PostgresDataStore::new(database_url)?;
+            if args.database_run_migrations {
+                tracing::info!("running any pending database migration(s)");
+                pg_store.run_pending_migrations().await?;
+            }
+            config.with_data_store(pg_store)
         }
         DataStoreKind::Memory => {
             tracing::info!("using memory data store");

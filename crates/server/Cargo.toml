@@ -28,13 +28,14 @@ serde = { workspace = true }
 bytes = { workspace = true }
 wasmparser = { workspace = true }
 secrecy = { workspace = true }
-diesel = { workspace = true, features = ["serde_json", "chrono"], optional = true }
+diesel = { workspace = true, features = ["postgres", "serde_json", "chrono"], optional = true }
 diesel-async = { workspace = true, features = ["postgres", "deadpool"], optional = true }
 diesel_json = { workspace = true, optional = true}
+diesel_migrations = { workspace = true, optional = true }
 diesel-derive-enum = { workspace = true, optional = true, features = ["postgres"] }
 serde_json = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 
 [features]
 default = []
-postgres = ["diesel", "diesel-async", "diesel_json", "diesel-derive-enum", "serde_json", "chrono"]
+postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "serde_json", "chrono"]
