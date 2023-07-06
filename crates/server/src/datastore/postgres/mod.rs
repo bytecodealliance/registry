@@ -3,7 +3,7 @@ use self::models::{
     RecordContent, RecordStatus, TextRef,
 };
 use super::{DataStore, DataStoreError, InitialLeaf, Record};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
     pooled_connection::{deadpool::Pool, AsyncDieselConnectionManager},
@@ -11,7 +11,11 @@ use diesel_async::{
     AsyncConnection, AsyncPgConnection, RunQueryDsl,
 };
 use diesel_json::Json;
+use diesel_migrations::{
+    embed_migrations, EmbeddedMigrations, HarnessWithOutput, MigrationHarness,
+};
 use futures::{Stream, StreamExt};
+use secrecy::{ExposeSecret, SecretString};
 use std::{collections::HashSet, pin::Pin};
 use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
@@ -335,13 +339,42 @@ where
     })
 }
 
-pub struct PostgresDataStore(Pool<AsyncPgConnection>);
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/datastore/postgres/migrations");
+
+pub struct PostgresDataStore {
+    url: SecretString,
+    pool: Pool<AsyncPgConnection>,
+}
 
 impl PostgresDataStore {
-    pub fn new(url: impl Into<String>) -> Result<Self> {
-        let config = AsyncDieselConnectionManager::new(url);
+    pub fn new(url: SecretString) -> Result<Self> {
+        let config = AsyncDieselConnectionManager::new(url.expose_secret());
         let pool = Pool::builder(config).build()?;
-        Ok(Self(pool))
+        Ok(Self { url, pool })
+    }
+
+    pub async fn run_pending_migrations(&self) -> Result<()> {
+        let mut conn = diesel::pg::PgConnection::establish(self.url.expose_secret())?;
+
+        // Send migration output to tracing::info
+        struct TracingWriter;
+        impl std::io::Write for TracingWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                tracing::info!("{}", String::from_utf8_lossy(buf).trim_end());
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut harness =
+            HarnessWithOutput::new(&mut conn, std::io::LineWriter::new(TracingWriter));
+
+        harness
+            .run_pending_migrations(MIGRATIONS)
+            .map_err(|err| anyhow!("migrations failed: {err:?}"))?;
+
+        Ok(())
     }
 }
 
@@ -354,7 +387,7 @@ impl DataStore for PostgresDataStore {
         DataStoreError,
     > {
         // The returned future will keep the connection from the pool until dropped
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
 
         // This is an unfortunate query that will scan the entire records table
         // and join it with the logs and checkpoints tables.
@@ -396,7 +429,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         record: &ProtoEnvelope<operator::OperatorRecord>,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         insert_record::<operator::Validator>(
             conn.as_mut(),
             log_id,
@@ -414,7 +447,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         reason: &str,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -431,7 +464,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -457,7 +490,7 @@ impl DataStore for PostgresDataStore {
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         insert_record::<package::Validator>(
             conn.as_mut(),
             log_id,
@@ -475,7 +508,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         reason: &str,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -492,7 +525,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -516,7 +549,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         schema::contents::table
             .inner_join(schema::records::table)
             .inner_join(schema::logs::table.on(schema::logs::id.eq(schema::records::log_id)))
@@ -540,7 +573,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         digest: &AnyHash,
     ) -> Result<bool, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         conn.transaction::<_, DataStoreError, _>(|conn| {
             // Diesel currently doesn't support joins for updates
             // See: https://github.com/diesel-rs/diesel/issues/1478
@@ -609,7 +642,7 @@ impl DataStore for PostgresDataStore {
 
         let expected_count = participants.len();
         assert!(expected_count > 0);
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
 
         conn.transaction::<_, DataStoreError, _>(|conn| {
             async move {
@@ -655,7 +688,7 @@ impl DataStore for PostgresDataStore {
     }
 
     async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
 
         let checkpoint = schema::checkpoints::table
             .order_by(schema::checkpoints::id.desc())
@@ -680,7 +713,7 @@ impl DataStore for PostgresDataStore {
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -699,7 +732,7 @@ impl DataStore for PostgresDataStore {
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
             .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -716,7 +749,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<Record<operator::OperatorRecord>, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         get_record::<operator::Validator>(conn.as_mut(), log_id, record_id).await
     }
 
@@ -725,7 +758,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<Record<package::PackageRecord>, DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         get_record::<package::Validator>(conn.as_mut(), log_id, record_id).await
     }
 
@@ -734,7 +767,7 @@ impl DataStore for PostgresDataStore {
         log_id: &LogId,
         record: &ProtoEnvelope<package::PackageRecord>,
     ) -> Result<(), DataStoreError> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
 
         let validator = schema::logs::table
             .select(schema::logs::validator)

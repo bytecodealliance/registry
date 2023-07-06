@@ -9,7 +9,8 @@ use warg_server::datastore::{DataStore, PostgresDataStore};
 fn data_store() -> Result<Box<dyn DataStore>> {
     Ok(Box::new(PostgresDataStore::new(
         std::env::var("WARG_DATABASE_URL")
-            .context("failed to get `WARG_DATABASE_URL` environment variable")?,
+            .context("failed to get `WARG_DATABASE_URL` environment variable")?
+            .into(),
     )?))
 }
 
