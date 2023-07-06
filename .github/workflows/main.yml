@@ -23,9 +23,9 @@ jobs:
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
     - name: Build all crates
-      run: cargo build --all
+      run: cargo build --all --features warg-server/debug
     - name: Run all tests
-      run: cargo test --all
+      run: cargo test --all --features warg-server/debug
 
   test-postgres:
     name: Run PostgreSQL tests
