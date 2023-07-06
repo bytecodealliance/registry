@@ -793,7 +793,7 @@ impl DataStore for PostgresDataStore {
 
     #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
-        let mut conn = self.0.get().await?;
+        let mut conn = self.pool.get().await?;
         let names = schema::logs::table
             .select(schema::logs::name)
             .load::<Option<String>>(&mut conn)
