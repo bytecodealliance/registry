@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::storage::PackageInfo;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
@@ -283,23 +283,21 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         let info = self.fetch_package(id).await?;
         let log_id = LogId::package_log::<Sha256>(&info.id);
 
-        match info
-            .state
-            .releases()
-            .filter_map(|r| {
-                if !requirement.matches(&r.version) {
-                    return None;
-                }
-
-                Some((&r.record_id, &r.version, r.content()?))
-            })
-            .max_by(|(_, a, ..), (_, b, ..)| a.cmp(b))
-        {
-            Some((record_id, version, digest)) => Ok(Some(PackageDownload {
-                version: version.clone(),
-                digest: digest.clone(),
-                path: self.download_content(&log_id, record_id, digest).await?,
-            })),
+        match info.state.find_latest_release(requirement) {
+            Some(release) => {
+                let digest = release
+                    .content()
+                    .context("invalid state: not yanked but missing content")?
+                    .clone();
+                let path = self
+                    .download_content(&log_id, &release.record_id, &digest)
+                    .await?;
+                Ok(Some(PackageDownload {
+                    version: release.version.clone(),
+                    digest,
+                    path,
+                }))
+            }
             None => Ok(None),
         }
     }
