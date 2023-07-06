@@ -791,6 +791,7 @@ impl DataStore for PostgresDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 
+    #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         let mut conn = self.0.get().await?;
         let names = schema::logs::table

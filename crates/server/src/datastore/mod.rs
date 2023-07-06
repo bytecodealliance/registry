@@ -261,6 +261,7 @@ pub trait DataStore: Send + Sync {
     ) -> Result<(), DataStoreError>;
 
     // Returns a list of package names, for debugging only.
+    #[cfg(feature = "debug")]
     #[doc(hidden)]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         anyhow::bail!("not implemented")
