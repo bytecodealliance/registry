@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
-use warg_server::{args::get_opt_content, Config, Server};
+use warg_server::{args::get_opt_secret, Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
@@ -15,7 +16,7 @@ enum DataStoreKind {
     Memory,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 struct Args {
     /// Use verbose output
     #[arg(short, long, env = "WARG_VERBOSE", action = clap::ArgAction::Count)]
@@ -43,9 +44,9 @@ struct Args {
     /// to avoid exposing sensitive information.
     #[cfg(feature = "postgres")]
     #[arg(long, env = "WARG_DATABASE_URL")]
-    database_url: Option<String>,
+    database_url: Option<SecretString>,
 
-    /// The path to the operator key.
+    /// The path to the database connection URL file.
     #[cfg(feature = "postgres")]
     #[arg(long, env = "WARG_DATABASE_URL_FILE", conflicts_with = "database_url")]
     database_url_file: Option<PathBuf>,
@@ -54,7 +55,7 @@ struct Args {
     ///
     /// Prefer using `operator-key-file`, or environment variable variation.
     #[arg(long, env = "WARG_OPERATOR_KEY")]
-    operator_key: Option<String>,
+    operator_key: Option<SecretString>,
 
     /// The path to the operator key.
     #[arg(long, env = "WARG_OPERATOR_KEY_FILE", conflicts_with = "operator_key")]
@@ -74,32 +75,6 @@ impl Args {
     }
 }
 
-impl std::fmt::Debug for Args {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = f.debug_struct("Args");
-
-        s.field("verbose", &self.verbose)
-            .field("listen", &self.listen)
-            .field("content_dir", &self.content_dir)
-            .field("data_store", &self.data_store)
-            .field(
-                "operator_key",
-                &self.operator_key.as_ref().map(|_| "<redacted>"),
-            )
-            .field("operator_key_file", &self.operator_key_file);
-
-        #[cfg(feature = "postgres")]
-        s.field(
-            "database_url",
-            &self.database_url.as_ref().map(|_| "<redacted>"),
-        );
-        #[cfg(feature = "postgres")]
-        s.field("database_url_file", &self.database_url_file);
-
-        s.finish()
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -107,7 +82,7 @@ async fn main() -> Result<()> {
     tracing::debug!("args: {args:?}");
 
     let operator_key_str =
-        get_opt_content("operator-key", args.operator_key_file, args.operator_key)?;
+        get_opt_secret("operator-key", args.operator_key_file, args.operator_key)?;
     let operator_key =
         PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
 
@@ -125,8 +100,8 @@ async fn main() -> Result<()> {
             use warg_server::datastore::PostgresDataStore;
             tracing::info!("using postgres data store");
             let database_url =
-                get_opt_content("database-url", args.database_url_file, args.database_url)?;
-            config.with_data_store(PostgresDataStore::new(database_url)?)
+                get_opt_secret("database-url", args.database_url_file, args.database_url)?;
+            config.with_data_store(PostgresDataStore::new(database_url.expose_secret())?)
         }
         DataStoreKind::Memory => {
             tracing::info!("using memory data store");

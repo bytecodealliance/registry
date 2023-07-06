@@ -27,6 +27,7 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 bytes = { workspace = true }
 wasmparser = { workspace = true }
+secrecy = { workspace = true }
 diesel = { workspace = true, features = ["serde_json", "chrono"], optional = true }
 diesel-async = { workspace = true, features = ["postgres", "deadpool"], optional = true }
 diesel_json = { workspace = true, optional = true}

@@ -4077,6 +4077,7 @@ dependencies = [
  "diesel_json",
  "futures",
  "indexmap",
+ "secrecy",
  "serde",
  "serde_json",
  "tempfile",
