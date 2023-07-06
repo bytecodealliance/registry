@@ -16,6 +16,9 @@ use url::Url;
 
 pub mod v1;
 
+#[cfg(feature = "debug")]
+pub mod debug;
+
 /// Creates the router for the API.
 pub fn create_router(
     content_base_url: Url,
@@ -25,7 +28,10 @@ pub fn create_router(
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
-    Router::new()
+    let router = Router::new();
+    #[cfg(feature = "debug")]
+    let router = router.nest("/debug", debug::Config::new(core.clone()).into_router());
+    router
         .nest(
             "/v1",
             v1::create_router(

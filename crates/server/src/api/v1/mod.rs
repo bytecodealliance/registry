@@ -25,7 +25,7 @@ pub mod proof;
 /// This extractor returns an API error on rejection.
 #[derive(FromRequest)]
 #[from_request(via(axum::Json), rejection(Error))]
-pub struct Json<T>(T);
+pub struct Json<T>(pub T);
 
 impl<T> IntoResponse for Json<T>
 where

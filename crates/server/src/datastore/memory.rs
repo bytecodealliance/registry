@@ -2,7 +2,7 @@ use super::{DataStore, DataStoreError, InitialLeaf};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     pin::Pin,
     sync::Arc,
 };
@@ -72,6 +72,7 @@ enum RecordStatus {
 struct State {
     operators: HashMap<LogId, Log<operator::Validator, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::Validator, package::PackageRecord>>,
+    package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
 }
@@ -211,7 +212,7 @@ impl DataStore for MemoryDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        _package_id: &PackageId,
+        package_id: &PackageId,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -231,6 +232,7 @@ impl DataStore for MemoryDataStore {
                 missing: missing.iter().map(|&d| d.clone()).collect(),
             }),
         );
+        state.package_ids.insert(package_id.clone());
 
         assert!(prev.is_none());
         Ok(())
@@ -600,5 +602,10 @@ impl DataStore for MemoryDataStore {
 
         package::PackageRecord::verify(key, record.content_bytes(), record.signature())
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
+    }
+
+    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+        let state = self.0.read().await;
+        Ok(state.package_ids.iter().cloned().collect())
     }
 }

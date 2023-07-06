@@ -259,4 +259,10 @@ pub trait DataStore: Send + Sync {
         log_id: &LogId,
         record: &ProtoEnvelope<package::PackageRecord>,
     ) -> Result<(), DataStoreError>;
+
+    // Returns a list of package names, for debugging only.
+    #[doc(hidden)]
+    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+        anyhow::bail!("not implemented")
+    }
 }

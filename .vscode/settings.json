@@ -1,6 +1,9 @@
 {
     "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.cargo.features": ["postgres"],
+    "rust-analyzer.cargo.features": [
+        "debug",
+        "postgres",
+    ],
     "protoc": {
         "options": [
             "--proto_path=${workspaceFolder}/proto",
