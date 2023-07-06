@@ -604,6 +604,7 @@ impl DataStore for MemoryDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 
+    #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         let state = self.0.read().await;
         Ok(state.package_ids.iter().cloned().collect())
