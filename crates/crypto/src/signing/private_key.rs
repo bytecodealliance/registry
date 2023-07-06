@@ -1,7 +1,7 @@
 use super::{PublicKey, Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use p256;
-use secrecy::{zeroize::Zeroizing, ExposeSecret, Secret, Zeroize};
+use secrecy::{zeroize::Zeroizing, ExposeSecret, Secret, SecretString, SecretVec, Zeroize};
 use signature::Signer;
 use thiserror::Error;
 
@@ -16,19 +16,19 @@ pub enum PrivateKeyInner {
 
 impl PrivateKey {
     /// Decode a key from the given string in `<algo>:<base64 data>` form.
-    pub fn decode(s: String) -> Result<Self, PrivateKeyParseError> {
-        let s = Zeroizing::new(s);
+    pub fn decode(s: impl Into<SecretString>) -> Result<Self, PrivateKeyParseError> {
+        let s = s.into();
 
-        let Some((algo, b64_data)) = s.split_once(':') else {
+        let Some((algo, b64_data)) = s.expose_secret().split_once(':') else {
             return Err(PrivateKeyParseError::MissingColon)
         };
 
         let algo = algo.parse::<SignatureAlgorithm>()?;
-        let bytes = STANDARD.decode(b64_data)?;
+        let bytes: SecretVec<u8> = STANDARD.decode(b64_data)?.into();
 
         let key = match algo {
             SignatureAlgorithm::EcdsaP256 => PrivateKeyInner::EcdsaP256(
-                p256::ecdsa::SigningKey::from_bytes(bytes.as_slice().into())?,
+                p256::ecdsa::SigningKey::from_slice(bytes.expose_secret())?,
             ),
         };
 
