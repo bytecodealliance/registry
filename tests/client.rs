@@ -83,6 +83,10 @@ async fn client_incrementally_fetches() -> Result<()> {
     // Fetch the package log
     client.upsert([&id]).await?;
 
+    // Ensure that the package is in the packages list
+    let packages = client.registry().load_packages().await?;
+    assert_eq!(packages[0].id.as_ref(), PACKAGE_ID);
+
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
