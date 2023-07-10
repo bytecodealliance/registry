@@ -19,11 +19,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 # before building the project thereby limiting unnecessary rebuilding if only
 # source code is changed.
 FROM chef AS builder
+ARG FEATURES=postgres
 WORKDIR /usr/src/bytecodealliance/registry
 COPY --from=planner /usr/src/bytecodealliance/registry/recipe.json ./
-RUN cargo chef cook --release --workspace --features "postgres" --recipe-path recipe.json
+RUN cargo chef cook --release --workspace --features "$FEATURES" --recipe-path recipe.json
 COPY . .
-RUN cargo build --release --workspace --features "postgres" 
+RUN cargo build --release --workspace --features "$FEATURES"
 
 # A minimal container with just the warg-server binary. It uses a slim base
 # image instead of distroless for ease of installing the libpq5 library which
