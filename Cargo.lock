@@ -4182,13 +4182,9 @@ name = "warg-transparency"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ciborium",
  "criterion",
- "pbjson-build",
  "prost",
- "prost-build",
  "rand",
- "regex",
  "sha2",
  "thiserror",
  "warg-crypto",

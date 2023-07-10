@@ -12,13 +12,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 prost = { workspace = true }
 
-[build-dependencies]
-prost-build = { workspace = true }
-pbjson-build = { workspace = true }
-regex = { workspace = true }
-
 [dev-dependencies]
-ciborium = { workspace = true }
 criterion = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
