@@ -6,7 +6,7 @@ use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
-use warg_server::{args::get_opt_secret, Config, Server};
+use warg_server::{args::get_opt_secret, policy::record::AuthorizedKeyPolicy, Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
@@ -65,6 +65,10 @@ struct Args {
     /// The path to the operator key.
     #[arg(long, env = "WARG_OPERATOR_KEY_FILE", conflicts_with = "operator_key")]
     operator_key_file: Option<PathBuf>,
+
+    /// The path to the authorized keys record policy file.
+    #[arg(long, env = "WARG_AUTHORIZED_KEYS_FILE")]
+    authorized_keys_file: Option<PathBuf>,
 }
 
 impl Args {
@@ -97,6 +101,14 @@ async fn main() -> Result<()> {
 
     if let Some(url) = args.content_base_url {
         config = config.with_content_base_url(url);
+    }
+
+    if let Some(path) = args.authorized_keys_file {
+        let authorized_keys_data = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read authorized keys from {path:?}"))?;
+        let authorized_key_policy: AuthorizedKeyPolicy = toml::from_str(&authorized_keys_data)
+            .with_context(|| format!("failed to decode authorized keys from {path:?}"))?;
+        config = config.with_record_policy(authorized_key_policy);
     }
 
     let config = match args.data_store {

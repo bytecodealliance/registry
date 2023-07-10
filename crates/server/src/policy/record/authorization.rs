@@ -1,5 +1,6 @@
 use super::{RecordPolicy, RecordPolicyError, RecordPolicyResult};
 use anyhow::{bail, Result};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use warg_crypto::signing::KeyID;
 use warg_protocol::{package::PackageRecord, registry::PackageId, ProtoEnvelope};
@@ -7,10 +8,11 @@ use wasmparser::names::KebabStr;
 
 /// A policy that ensures a published record is authorized by
 /// the key signing the record.
-#[derive(Default)]
+#[derive(Default, Deserialize)]
 pub struct AuthorizedKeyPolicy {
+    #[serde(skip)]
     keys: HashSet<KeyID>,
-    namespaces: HashMap<String, HashSet<KeyID>>,
+    namespace_keys: HashMap<String, HashSet<KeyID>>,
 }
 
 impl AuthorizedKeyPolicy {
@@ -34,7 +36,10 @@ impl AuthorizedKeyPolicy {
             bail!("namespace `{namespace}` is not a legal kebab-case identifier");
         }
 
-        self.namespaces.entry(namespace).or_default().insert(key);
+        self.namespace_keys
+            .entry(namespace)
+            .or_default()
+            .insert(key);
         Ok(self)
     }
 }
@@ -47,7 +52,7 @@ impl RecordPolicy for AuthorizedKeyPolicy {
     ) -> RecordPolicyResult<()> {
         if !self.keys.contains(record.key_id())
             && !self
-                .namespaces
+                .namespace_keys
                 .get(id.namespace())
                 .map(|keys| keys.contains(record.key_id()))
                 .unwrap_or(false)

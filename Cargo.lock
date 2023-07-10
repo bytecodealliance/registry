@@ -4165,6 +4165,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "toml 0.7.6",
  "tower",
  "tower-http",
  "tracing",
