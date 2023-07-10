@@ -1,0 +1,17 @@
+# fly.toml app configuration file generated for ba-preview-registry on 2023-07-10T14:27:25-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "ba-preview-registry"
+primary_region = "ord"
+
+[build]
+  image = "registry.fly.io/ba-preview-registry"
+
+[env]
+  WARG_LISTEN = "0.0.0.0:8090"
+
+[http_service]
+  internal_port = 8090
+  force_https = true
