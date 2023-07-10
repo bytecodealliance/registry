@@ -26,6 +26,7 @@ use warg_protocol::{
 const TEMP_DIRECTORY: &str = "temp";
 const PENDING_PUBLISH_FILE: &str = "pending-publish.json";
 const LOCK_FILE_NAME: &str = ".lock";
+const PACKAGE_LOGS_DIR: &str = "package-logs";
 
 /// Represents a package storage using the local file system.
 pub struct FileSystemRegistryStorage {
@@ -70,7 +71,7 @@ impl FileSystemRegistryStorage {
     }
 
     fn package_path(&self, id: &PackageId) -> PathBuf {
-        self.base_dir.join(
+        self.base_dir.join(PACKAGE_LOGS_DIR).join(
             LogId::package_log::<Sha256>(id)
                 .to_string()
                 .replace(':', "/"),
@@ -95,11 +96,12 @@ impl RegistryStorage for FileSystemRegistryStorage {
     async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();
 
-        for entry in WalkDir::new(&self.base_dir) {
+        let packages_dir = self.base_dir.join(PACKAGE_LOGS_DIR);
+        for entry in WalkDir::new(&packages_dir) {
             let entry = entry.with_context(|| {
                 anyhow!(
                     "failed to walk directory `{path}`",
-                    path = self.base_dir.display()
+                    path = packages_dir.display()
                 )
             })?;
 
