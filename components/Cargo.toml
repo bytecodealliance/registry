@@ -1,0 +1,14 @@
+[workspace]
+
+members = [
+  "validation"
+]
+
+[workspace.dependencies]
+wit-bindgen = { version = "0.8.0", default_features = false }
+warg-crypto = { path = "../crates/crypto" }
+warg-transparency = { path = "../crates/transparency" }
+warg-protocol = { path = "../crates/protocol" }
+warg-api = { path = "../crates/api" }
+lazy_static = "1.4.0"
+hex = "0.4.3"

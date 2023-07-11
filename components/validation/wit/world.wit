@@ -1,0 +1,74 @@
+package component:validation
+
+/// An example world for the component to target.
+interface validating {
+  record proto-envelope-body {
+      content-bytes: list<u8>,
+      key-id: string,
+      signature: string
+  }
+  record package-info {
+      name: string,
+      checkpoint: option<string>,
+      state: validator,
+      heads: list<log-leaf>
+  }
+  record validator {
+      algorithm: option<hash-algorithm>,
+      head: option<head>,
+      permissions: list<permission-entry>,
+      releases: list<release>,
+      keys: option<list<key-entry>>,
+  }
+  enum hash-algorithm {
+      sha256
+  }
+  record log-leaf {
+      log-id: string,
+      record-id: string
+  }
+  record head {
+      digest: record-id,
+      timestamp: option<string>
+  }
+  enum permission {
+      release,
+      yank
+  }
+  record permission-entry {
+    key-id: string,
+    permissions: list<permission>
+  }
+  record release {
+      version: string,
+      by: string,
+      timestamp: string,
+      state: release-state
+  }
+  record key-entry {
+      key-id: string,
+      public-key: string
+    }
+  record dyn-hash {
+      algo: hash-algorithm,
+      bytes: list<u8>
+  }
+  variant record-id {
+    dyn-hash(dyn-hash)
+  }
+  record released {
+    content: dyn-hash
+  }
+  record yanked {
+    by: string,
+    timestamp: string
+  }
+  variant release-state {
+    released(released),
+    yanked(yanked)
+  }
+  validate: func(package-records: list<proto-envelope-body>) -> package-info
+}
+world validation {
+  export validating
+}                
