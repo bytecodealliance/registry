@@ -498,9 +498,9 @@ components:
       required:
         - checkpoint
       properties:
-        checkpoint:
+        root:
           $ref: "#/components/schemas/AnyHash"
-          description: The registry checkpoint hash to fetch from.
+          description: The registry checkpoint root hash to fetch from.
         limit:
           type: integer
           description: The limit of operator and packages records to return for the fetch request.
