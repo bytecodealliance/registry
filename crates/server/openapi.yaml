@@ -496,7 +496,7 @@ components:
       description: A request to fetch logs from the registry.
       additionalProperties: false
       required:
-        - checkpoint
+        - root
       properties:
         root:
           $ref: "#/components/schemas/AnyHash"
