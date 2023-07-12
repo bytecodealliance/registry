@@ -13,7 +13,7 @@ use warg_protocol::{
   package,
   proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody}, 
   SerdeEnvelope,
-  registry::{MapCheckpoint, RecordId, LogId, LogLeaf, MapLeaf},
+  registry::{MapCheckpoint, RecordId, LogId, LogLeaf, MapLeaf, PackageId},
 };
 use warg_crypto::{signing, Decode, hash::{Hash, Sha256, HashAlgorithm, AnyHash}};
 use warg_transparency::{log::LogProofBundle, map::MapProofBundle};
@@ -38,16 +38,46 @@ pub struct PackageInfo {
     // pub checkpoint: Option<String>,
     /// The current validation state of the package.
     // #[serde(default)]
-    pub state: package::Validator,
+    pub state: package::LogState,
+}
+
+impl PackageInfo {
+  /// Creates a new package info for the given package name and url.
+  pub fn new(name: impl Into<String>, 
+  ) -> Self {
+      Self {
+          name: name.into(),
+          checkpoint: None,
+          state: package::LogState::default(),
+      }
+  }
 }
 
 #[derive(Debug)]
 struct ProtoBody(validationbindings::validating::ProtoEnvelopeBody);
 
+impl<Content> TryFrom<ProtoBody> for ProtoEnvelope<Content>
+where
+    Content: Decode,
+{
+    type Error = Error;
+
+    fn try_from(value: ProtoBody) -> Result<Self, Self::Error> {
+        let contents = Content::decode(&value.0.content_bytes)?;
+        let envelope = ProtoEnvelope {
+            contents,
+            content_bytes: value.0.content_bytes,
+            key_id: value.0.key_id.into(),
+            signature: signing::Signature::from_str(&value.0.signature).unwrap(),
+        };
+        Ok(envelope)
+    }
+}
+
 impl bindings::exports::component::validation::validating::Validating for Component {
     fn validate(
         package_records: Vec<validationbindings::validating::ProtoEnvelopeBody>,
-    ) -> validationbindings::validating::PackageInfo {
+    ) -> Result<validationbindings::validating::PackageInfo, ()> {
         let mut package = PackageInfo::new("funny");
         let mut permissions = Vec::new();
         let mut releases = Vec::new();
@@ -55,12 +85,11 @@ impl bindings::exports::component::validation::validating::Validating for Compon
         let mut heads = Vec::with_capacity(1);
         for package_record in package_records {
             let rec: ProtoBody = ProtoBody(package_record);
-            let record: Result<ProtoEnvelope<package::model::PackageRecord>, Error> =
-                rec.try_into();
+            let record: Result<ProtoEnvelope<package::PackageRecord>, Error> = rec.try_into();
             let record = record.unwrap();
             let res = package.state.validate(&record);
             for (key, value) in &package.state.permissions {
-                permissions.push(validationbindings::PermissionEntry {
+                permissions.push(validationbindings::validating::PermissionEntry {
                     key_id: key.to_string(),
                     permissions: value
                         .into_iter()
@@ -70,14 +99,14 @@ impl bindings::exports::component::validation::validating::Validating for Compon
             }
             for (key, value) in &package.state.releases {
                 let t: DateTime<Utc> = value.timestamp.into();
-                releases.push(validationbindings::Release {
+                releases.push(validationbindings::validating::Release {
                     version: key.to_string(),
                     by: value.by.to_string(),
                     timestamp: t.to_rfc3339(),
                     state: match &value.state {
                         package::ReleaseState::Released { content } => {
-                            validationbindings::ReleaseState::Released(validationbindings::Released {
-                                content: validationbindings::AnyHash {
+                            validationbindings::validating::ReleaseState::Released(validationbindings::validating::Released {
+                                content: validationbindings::validating::AnyHash {
                                     algo: validationbindings::validating::HashAlgorithm::Sha256,
                                     bytes: content.bytes().to_vec(),
                                 },
@@ -85,7 +114,7 @@ impl bindings::exports::component::validation::validating::Validating for Compon
                         }
                         package::ReleaseState::Yanked { by, timestamp } => {
                             let ts: DateTime<Utc> = (*timestamp).into();
-                            validationbindings::ReleaseState::Yanked(validationbindings::Yanked {
+                            validationbindings::validating::ReleaseState::Yanked(validationbindings::validating::Yanked {
                                 by: by.to_string(),
                                 timestamp: ts.to_string(),
                             })
@@ -94,25 +123,25 @@ impl bindings::exports::component::validation::validating::Validating for Compon
                 })
             }
             for (key, value) in &package.state.keys {
-                keys.push(validationbindings::KeyEntry {
+                keys.push(validationbindings::validating::KeyEntry {
                     key_id: key.to_string(),
                     public_key: value.to_string(),
                 })
             }
         }
         if let Some(head) = package.state.head() {
-            heads.push(validationbindings::LogLeaf {
-                log_id: LogId::package_log::<Sha256>("funny").to_string(),
+            heads.push(validationbindings::validating::LogLeaf {
+                log_id: LogId::package_log::<Sha256>(&PackageId::new("foo:bar").unwrap()).to_string(),
                 record_id: head.digest.clone().to_string(),
             });
         }
-        return validationbindings::PackageInfo {
+        return Ok(validationbindings::validating::PackageInfo {
             name: package.name,
             checkpoint: package.checkpoint,
-            state: validationbindings::Validator {
+            state: validationbindings::validating::Validator {
                 algorithm: Some(validationbindings::validating::HashAlgorithm::Sha256),
-                head: Some(validationbindings::Head {
-                    digest: validationbindings::RecordId::AnyHash(validationbindings::AnyHash {
+                head: Some(validationbindings::validating::Head {
+                    digest: validationbindings::validating::RecordId::AnyHash(validationbindings::validating::AnyHash {
                         algo: validationbindings::validating::HashAlgorithm::Sha256,
                         bytes: package
                             .state
@@ -131,7 +160,7 @@ impl bindings::exports::component::validation::validating::Validating for Compon
                 keys: Some(keys),
             },
             heads,
-        };
+        });
     }
 }
 bindings::export!(Component);

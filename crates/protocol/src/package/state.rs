@@ -142,19 +142,19 @@ pub struct LogState {
     /// The hash algorithm used by the package log.
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    algorithm: Option<HashAlgorithm>,
+    pub algorithm: Option<HashAlgorithm>,
     /// The current head of the validator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    head: Option<Head>,
+    pub head: Option<Head>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
+    pub permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
     /// The releases in the package log.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    releases: IndexMap<Version, Release>,
+    pub releases: IndexMap<Version, Release>,
     /// The keys known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    keys: IndexMap<signing::KeyID, signing::PublicKey>,
+    pub keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
 impl LogState {

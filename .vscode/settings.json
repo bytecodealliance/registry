@@ -8,5 +8,10 @@
         "options": [
             "--proto_path=${workspaceFolder}/proto",
         ]
-    }
+    },
+    "rust-analyzer.linkedProjects": [
+      "./components/validation/Cargo.toml",
+      "./components/validation/Cargo.toml"
+    ],
+    "rust-analyzer.showUnlinkedFileNotification": false
 }

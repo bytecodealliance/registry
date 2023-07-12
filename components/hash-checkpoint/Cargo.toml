@@ -1,0 +1,22 @@
+[package]
+name = "hash-checkpoint"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wit-bindgen = { version = "0.7.0", default_features = false }
+warg-crypto = { workspace = true }
+warg-protocol = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "component:hash-checkpoint"
+
+[package.metadata.component.target]
+path = "wit"
+
+[package.metadata.component.dependencies]

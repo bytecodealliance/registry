@@ -49,15 +49,15 @@ interface validating {
       key-id: string,
       public-key: string
     }
-  record dyn-hash {
+  record any-hash {
       algo: hash-algorithm,
       bytes: list<u8>
   }
   variant record-id {
-    dyn-hash(dyn-hash)
+    any-hash(any-hash)
   }
   record released {
-    content: dyn-hash
+    content: any-hash
   }
   record yanked {
     by: string,
@@ -67,7 +67,7 @@ interface validating {
     released(released),
     yanked(yanked)
   }
-  validate: func(package-records: list<proto-envelope-body>) -> package-info
+  validate: func(package-records: list<proto-envelope-body>) -> result<package-info>
 }
 world validation {
   export validating

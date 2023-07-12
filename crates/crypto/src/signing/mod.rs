@@ -7,7 +7,7 @@ use crate::hash::HashAlgorithm;
 
 mod private_key;
 mod public_key;
-mod signature;
+pub mod signature;
 
 pub use self::private_key::{PrivateKey, PrivateKeyParseError, SignatureError};
 pub use self::public_key::{KeyID, PublicKey, PublicKeyParseError};

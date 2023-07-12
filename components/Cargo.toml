@@ -1,7 +1,8 @@
 [workspace]
 
 members = [
-  "validation"
+  "validation",
+  "hash-checkpoint"
 ]
 
 [workspace.dependencies]

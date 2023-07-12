@@ -1,0 +1,20 @@
+package component:hash-checkpoint
+
+/// An example world for the component to target.
+interface hashing {
+  record contents {
+    log-root: string,
+    log-length: u32,
+    map-root: string
+  }
+
+  type key-id = string
+
+  type signature = string
+
+  hash-checkpoint: func(contents: contents, key-id: key-id, signature: signature) -> string
+}
+
+world hash {
+    export hashing
+}                

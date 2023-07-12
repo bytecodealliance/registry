@@ -14,13 +14,13 @@ use warg_protobuf::protocol as protobuf;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtoEnvelope<Contents> {
     /// The content represented by content_bytes
-    contents: Contents,
+    pub contents: Contents,
     /// The serialized representation of the content
-    content_bytes: Vec<u8>,
+    pub content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
-    key_id: signing::KeyID,
+    pub key_id: signing::KeyID,
     /// The signature for the content_bytes
-    signature: signing::Signature,
+    pub signature: signing::Signature,
 }
 
 impl<Contents> ProtoEnvelope<Contents> {

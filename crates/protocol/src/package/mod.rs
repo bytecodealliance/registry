@@ -6,7 +6,7 @@ use warg_protobuf::protocol as protobuf;
 
 use crate::{pbjson_to_prost_timestamp, prost_to_pbjson_timestamp, registry::RecordId};
 
-mod model;
+pub mod model;
 mod state;
 
 pub use model::{PackageEntry, PackageRecord, Permission};

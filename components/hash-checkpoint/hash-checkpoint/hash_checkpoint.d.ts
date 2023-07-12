@@ -1,0 +1,10 @@
+import { ImportsEnvironment } from './imports/environment';
+import { ImportsExit } from './imports/exit';
+import { ImportsPreopens } from './imports/preopens';
+import { ImportsStderr } from './imports/stderr';
+import { ImportsStdin } from './imports/stdin';
+import { ImportsStdout } from './imports/stdout';
+import { ImportsFilesystem } from './imports/filesystem';
+import { ImportsStreams } from './imports/streams';
+import { ExportsComponentHashCheckpointHashing } from './exports/component-hash-checkpoint-hashing';
+export const hashing: typeof ExportsComponentHashCheckpointHashing;

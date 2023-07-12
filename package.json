@@ -1,0 +1,28 @@
+{
+  "name": "bytecodealliance-registry",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">   <h1><code>WebAssembly Registry (Warg)</code></h1>",
+  "main": "index.js",
+  "type": "module",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JAFLabs/bytecodealliance-registry.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JAFLabs/bytecodealliance-registry/issues"
+  },
+  "homepage": "https://github.com/JAFLabs/bytecodealliance-registry#readme",
+  "dependencies": {
+    "@bytecodealliance/preview2-shim": "^0.0.10"
+  }
+}
