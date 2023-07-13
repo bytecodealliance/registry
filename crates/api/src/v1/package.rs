@@ -21,6 +21,26 @@ pub enum ContentSource {
     },
 }
 
+/// Represents the supported kinds of content upload endpoints.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum UploadEndpoint {
+    /// Content may be uploaded via HTTP POST to the given URL.
+    /// If the endpoint responds with "201 Created" and a Location header, that
+    /// header's value will be the content source.
+    HttpPost {
+        /// The URL to POST content to.
+        url: String,
+    },
+}
+
+/// Information about missing content.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MissingContent {
+    /// Upload endpoint(s) that may be used to provide missing content.
+    pub upload: Vec<UploadEndpoint>,
+}
+
 /// Represents a request to publish a record to a package log.
 #[derive(Serialize, Deserialize)]
 #[serde(rename = "camelCase")]
@@ -45,13 +65,13 @@ pub struct PackageRecord {
 }
 
 impl PackageRecord {
-    /// Gets the missing content digests of the record.
-    pub fn missing_content(&self) -> &[AnyHash] {
+    /// Gets the missing content of the record.
+    pub fn missing_content(&self) -> impl Iterator<Item = (&AnyHash, &MissingContent)> {
         match &self.state {
             PackageRecordState::Sourcing {
                 missing_content, ..
-            } => missing_content,
-            _ => &[],
+            } => itertools::Either::Left(missing_content.iter()),
+            _ => itertools::Either::Right(std::iter::empty()),
         }
     }
 }
@@ -69,7 +89,7 @@ pub enum PackageRecordState {
     #[serde(rename_all = "camelCase")]
     Sourcing {
         /// The digests of the missing content.
-        missing_content: Vec<AnyHash>,
+        missing_content: HashMap<AnyHash, MissingContent>,
     },
     /// The package record is processing.
     #[serde(rename_all = "camelCase")]
