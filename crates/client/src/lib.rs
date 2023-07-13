@@ -13,7 +13,10 @@ use storage::{
 use thiserror::Error;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
-    package::{PackageError, PackageRecord, PackageRecordState, PublishRecordRequest},
+    package::{
+        MissingContent, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+        UploadEndpoint,
+    },
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
@@ -29,8 +32,8 @@ use warg_protocol::{
 pub mod api;
 mod config;
 pub mod lock;
-pub mod storage;
 mod registry_url;
+pub mod storage;
 pub use self::config::*;
 pub use self::registry_url::RegistryUrl;
 
@@ -156,34 +159,33 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })
             })?;
 
-        let missing = record.missing_content();
-        if !missing.is_empty() {
-            // Upload the missing content
-            // TODO: parallelize this
-            for digest in record.missing_content() {
-                self.api
-                    .upload_content(
-                        &log_id,
-                        &record.id,
-                        digest,
-                        Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
-                            || ClientError::ContentNotFound {
-                                digest: digest.clone(),
-                            },
-                        )?),
-                    )
-                    .await
-                    .map_err(|e| match e {
-                        api::ClientError::Package(PackageError::Rejection(reason)) => {
-                            ClientError::PublishRejected {
-                                id: package.id.clone(),
-                                record_id: record.id.clone(),
-                                reason,
-                            }
+        // TODO: parallelize this
+        for (digest, MissingContent { upload }) in record.missing_content() {
+            // Upload the missing content, if the registry supports it
+            let Some(UploadEndpoint::HttpPost {url}) = upload.first() else {
+                continue;
+            };
+
+            self.api
+                .upload_content(
+                    url,
+                    Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
+                        || ClientError::ContentNotFound {
+                            digest: digest.clone(),
+                        },
+                    )?),
+                )
+                .await
+                .map_err(|e| match e {
+                    api::ClientError::Package(PackageError::Rejection(reason)) => {
+                        ClientError::PublishRejected {
+                            id: package.id.clone(),
+                            record_id: record.id.clone(),
+                            reason,
                         }
-                        _ => e.into(),
-                    })?;
-            }
+                    }
+                    _ => e.into(),
+                })?;
         }
 
         Ok(record.id)
