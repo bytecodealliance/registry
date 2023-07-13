@@ -496,9 +496,9 @@ components:
       description: A request to fetch logs from the registry.
       additionalProperties: false
       required:
-        - checkpoint_id
+        - checkpointId
       properties:
-        checkpoint_id:
+        checkpointId:
           $ref: "#/components/schemas/AnyHash"
           description: The registry checkpoint ID hash to fetch from.
         limit:
