@@ -349,8 +349,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         checkpoint: &SerdeEnvelope<MapCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        let root: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
-        tracing::info!("updating to checkpoint `{root}`");
+        let checkpoint_id: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        tracing::info!("updating to checkpoint `{checkpoint_id}`");
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
 
@@ -382,7 +382,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             let response: FetchLogsResponse = self
                 .api
                 .fetch_logs(FetchLogsRequest {
-                    root: Cow::Borrowed(&root),
+                    checkpoint_id: Cow::Borrowed(&checkpoint_id),
                     operator: operator
                         .state
                         .head()
