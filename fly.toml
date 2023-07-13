@@ -11,7 +11,12 @@ primary_region = "ord"
 
 [env]
   WARG_LISTEN = "0.0.0.0:8090"
+  WARG_DATA_STORE = "postgres"
+  WARG_CONTENT_DIR = "/tmp"
 
 [http_service]
   internal_port = 8090
   force_https = true
+
+[experimental]
+cmd = ["--database-run-migrations"]
