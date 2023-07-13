@@ -91,7 +91,7 @@ async fn fetch_logs(
         .store()
         .get_operator_records(
             &LogId::operator_log::<Sha256>(),
-            &body.root,
+            &body.checkpoint_id,
             body.operator.as_deref(),
             limit,
         )
@@ -108,7 +108,7 @@ async fn fetch_logs(
         let records: Vec<ProtoEnvelopeBody> = config
             .core_service
             .store()
-            .get_package_records(&id, &body.root, since.as_ref(), limit)
+            .get_package_records(&id, &body.checkpoint_id, since.as_ref(), limit)
             .await?
             .into_iter()
             .map(Into::into)

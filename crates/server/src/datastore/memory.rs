@@ -424,7 +424,7 @@ impl DataStore for MemoryDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -435,7 +435,7 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        if let Some(checkpoint_index) = state.checkpoints.get_index_of(root) {
+        if let Some(checkpoint_index) = state.checkpoints.get_index_of(checkpoint_id) {
             let start = match since {
                 Some(since) => match &state.records[log_id][since] {
                     RecordStatus::Validated(record) => record.index + 1,
@@ -447,14 +447,14 @@ impl DataStore for MemoryDataStore {
             let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
             Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
         } else {
-            Err(DataStoreError::CheckpointNotFound(root.clone()))
+            Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()))
         }
     }
 
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
@@ -465,7 +465,7 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        if let Some(checkpoint_index) = state.checkpoints.get_index_of(root) {
+        if let Some(checkpoint_index) = state.checkpoints.get_index_of(checkpoint_id) {
             let start = match since {
                 Some(since) => match &state.records[log_id][since] {
                     RecordStatus::Validated(record) => record.index + 1,
@@ -477,7 +477,7 @@ impl DataStore for MemoryDataStore {
             let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
             Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
         } else {
-            Err(DataStoreError::CheckpointNotFound(root.clone()))
+            Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()))
         }
     }
 
