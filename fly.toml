@@ -12,11 +12,15 @@ primary_region = "ord"
 [env]
   WARG_LISTEN = "0.0.0.0:8090"
   WARG_DATA_STORE = "postgres"
-  WARG_CONTENT_DIR = "/tmp"
+  WARG_CONTENT_DIR = "/mnt/registry_content"
+
+[[mounts]]
+  source = "preview_registry_content"
+  destination = "/mnt/registry_content"
 
 [http_service]
   internal_port = 8090
   force_https = true
 
 [experimental]
-cmd = ["--database-run-migrations"]
+  cmd = ["--database-run-migrations"]
