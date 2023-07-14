@@ -13,6 +13,7 @@ primary_region = "ord"
   WARG_LISTEN = "0.0.0.0:8090"
   WARG_DATA_STORE = "postgres"
   WARG_CONTENT_DIR = "/mnt/registry_content"
+  WARG_CONTENT_BASE_URL = "https://preview-registry.bytecodealliance.org"
 
 [[mounts]]
   source = "preview_registry_content"

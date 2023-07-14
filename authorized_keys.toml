@@ -1,3 +1,4 @@
 [namespace_keys]
-lann = ["sha256:860aa709220e3f077f3f8666ee28a37f98ff98583f383c8e2b13cf66ba758093"]
-fake = ["fake-key"]
+
+[package_keys]
+"lann:test" = ["sha256:860aa709220e3f077f3f8666ee28a37f98ff98583f383c8e2b13cf66ba758093"]
