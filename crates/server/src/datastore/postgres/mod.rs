@@ -33,17 +33,17 @@ mod schema;
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
-    root: &AnyHash,
+    checkpoint_id: &AnyHash,
     since: Option<&RecordId>,
     limit: i64,
 ) -> Result<Vec<ProtoEnvelope<R>>, DataStoreError> {
     let checkpoint_id = schema::checkpoints::table
         .select(schema::checkpoints::id)
-        .filter(schema::checkpoints::checkpoint_id.eq(TextRef(root)))
+        .filter(schema::checkpoints::checkpoint_id.eq(TextRef(checkpoint_id)))
         .first::<i32>(conn)
         .await
         .optional()?
-        .ok_or_else(|| DataStoreError::CheckpointNotFound(root.clone()))?;
+        .ok_or_else(|| DataStoreError::CheckpointNotFound(checkpoint_id.clone()))?;
 
     let mut query = schema::records::table
         .into_boxed()
@@ -780,7 +780,7 @@ impl DataStore for PostgresDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -793,13 +793,13 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, root, since, limit as i64).await
+        get_records(&mut conn, log_id, checkpoint_id, since, limit as i64).await
     }
 
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
@@ -812,7 +812,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, root, since, limit as i64).await
+        get_records(&mut conn, log_id, checkpoint_id, since, limit as i64).await
     }
 
     async fn get_operator_record(

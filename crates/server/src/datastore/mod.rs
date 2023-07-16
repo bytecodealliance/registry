@@ -230,20 +230,20 @@ pub trait DataStore: Send + Sync {
     /// Gets the latest checkpoint.
     async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError>;
 
-    /// Gets the operator records for the given registry root.
+    /// Gets the operator records for the given registry checkpoint ID hash.
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
 
-    /// Gets the package records for the given registry root.
+    /// Gets the package records for the given registry checkpoint ID hash.
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        root: &AnyHash,
+        checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;

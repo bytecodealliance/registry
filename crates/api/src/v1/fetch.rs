@@ -42,8 +42,8 @@ pub struct FetchDependenciesRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchLogsRequest<'a> {
-    /// The root checkpoint hash of the registry.
-    pub root: Cow<'a, AnyHash>,
+    /// The root checkpoint ID hash of the registry.
+    pub checkpoint_id: Cow<'a, AnyHash>,
     /// The limit for the number of operator and package records to fetch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,

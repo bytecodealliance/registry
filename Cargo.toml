@@ -21,22 +21,22 @@ bytes = { workspace = true }
 p256 = { workspace = true }
 rand_core = { workspace = true }
 url = { workspace = true }
-keyring = "2.0.3"
+keyring = "2.0.4"
 dialoguer = "0.10.4"
 rpassword = "7.2.0"
 
 # TODO: remove these demo-related dependencies
-wasmtime = "9.0"
-wasmtime-wasi = "9.0"
+wasmtime = "10.0"
+wasmtime-wasi = "10.0"
 
 [dev-dependencies]
 reqwest = { workspace = true }
 serde_json = { workspace = true }
 warg-server = { workspace = true }
 warg-api = { workspace = true }
-wat = "1.0.66"
-wit-component = "0.11.0"
-wit-parser = "0.8.0"
+wat = "1.0.67"
+wit-component = "0.12.0"
+wit-parser = "0.9.0"
 testresult = "0.3.0"
 
 [features]
@@ -60,24 +60,24 @@ warg-protobuf = { path = "proto" }
 warg-protocol = { path = "crates/protocol" }
 warg-transparency = { path = "crates/transparency" }
 warg-server = { path = "crates/server" }
-clap = { version = "4.3.0", features = ["derive", "env"] }
-thiserror = "1.0.40"
+clap = { version = "4.3.11", features = ["derive", "env"] }
+thiserror = "1.0.43"
 anyhow = "1.0.71"
-serde = { version = "1.0.163", features = ["derive", "rc"] }
-serde_json = "1.0.96"
-tokio = { version = "1.28.1", features = ["full"] }
+serde = { version = "1.0.171", features = ["derive", "rc"] }
+serde_json = "1.0.102"
+tokio = { version = "1.29.1", features = ["full"] }
 tokio-util = "0.7.8"
 serde_with = { version = "3.0.0", features = ["base64"] }
-indexmap = { version = "1.9.3", features = ["serde"] }
-tempfile = "3.5.0"
+indexmap = { version = "2.0.0", features = ["serde"] }
+tempfile = "3.6.0"
 reqwest = { version = "0.11.18", features = ["json", "stream"] }
 futures-util = "0.3.28"
-async-trait = "0.1.68"
+async-trait = "0.1.71"
 bytes = "1.4.0"
 hex = "0.4.3"
 base64 = "0.21.2"
 leb128 = "0.2.5"
-sha2 = "0.10.6"
+sha2 = "0.10.7"
 digest = "0.10.7"
 rand_core = "0.6.4"
 p256 = "0.13.2"
@@ -90,32 +90,32 @@ pbjson-types = "0.5.1"
 semver = { version = "1.0.17", features = ["serde"] }
 axum = { version = "0.6.18", features = ["http2", "headers", "macros"] }
 tower = "0.4.13"
-tower-http = { version = "0.4.0", features = ["fs"] }
+tower-http = { version = "0.4.1", features = ["fs"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 futures = "0.3.28"
-serde_bytes = "0.11.9"
-pretty_assertions = "1.3.0"
+serde_bytes = "0.11.11"
+pretty_assertions = "1.4.0"
 prost-build = "0.11.9"
 pbjson-build = "0.5.1"
 ciborium = "0.2.1"
 criterion = "0.5.1"
 rand = "0.8.5"
-url = "2.3.1"
-libc = "0.2.144"
-itertools = "0.10.5"
+url = "2.4.0"
+libc = "0.2.147"
+itertools = "0.11.0"
 dirs = "5.0.1"
-once_cell = "1.17.1"
+once_cell = "1.18.0"
 walkdir = "2.3.3"
 normpath = "1.1.1"
 pathdiff = "0.2.1"
 diesel = "2.1.0"
-diesel-async = "0.3.0"
-diesel_json = "0.2.0"
+diesel-async = "0.3.1"
+diesel_json = "0.2.1"
 diesel_migrations = "2.1.0"
-diesel-derive-enum = "2.0.1"
-chrono = "0.4.24"
+diesel-derive-enum = "2.1.0"
+chrono = "0.4.26"
 regex = "1"
 wasmparser = { path = "../mine/wasm-tools/crates/wasmparser" }
-protox = "0.3.3"
-toml = "0.7.4"
+protox = "0.4.1"
+toml = "0.7.6"
