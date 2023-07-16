@@ -1,3 +1,5 @@
+use crate::api::v1::package::Dependency;
+
 use super::{DataStore, DataStoreError, InitialLeaf};
 use futures::Stream;
 use indexmap::IndexMap;
@@ -75,6 +77,7 @@ struct State {
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
+    dependencies: HashMap<LogId, HashMap<RecordId, Vec<Dependency>>>,
 }
 
 fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> usize {
@@ -209,6 +212,36 @@ impl DataStore for MemoryDataStore {
         }
     }
 
+    async fn get_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<Vec<Dependency>, DataStoreError> {
+        let mut state = self.0.write().await;
+        let dependencies = state
+            .dependencies
+            .entry(log_id.clone()).or_default()
+            .get(record_id);
+        if let Some(deps) = dependencies {
+          Ok(deps.clone())
+        } else {
+          Ok(Vec::new())
+        }
+    }
+    async fn store_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        dependencies: Vec<Dependency>,
+    ) -> Result<(), DataStoreError> {
+        let mut state = self.0.write().await;
+        state
+            .dependencies
+            .entry(log_id.clone())
+            .or_default()
+            .insert(record_id.clone(), dependencies);
+        Ok(())
+    }
     async fn store_package_record(
         &self,
         log_id: &LogId,
@@ -216,6 +249,7 @@ impl DataStore for MemoryDataStore {
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
+        // dependencies: Vec<Dependency>
     ) -> Result<(), DataStoreError> {
         // Ensure the set of missing hashes is a subset of the record contents.
         debug_assert!({

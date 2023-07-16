@@ -1,3 +1,4 @@
+use crate::api::v1::package::Dependency;
 use futures::Stream;
 use std::{collections::HashSet, pin::Pin};
 use thiserror::Error;
@@ -146,6 +147,18 @@ pub trait DataStore: Send + Sync {
         record_id: &RecordId,
     ) -> Result<(), DataStoreError>;
 
+    async fn get_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<Vec<Dependency>, DataStoreError>;
+
+    async fn store_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        dependencies: Vec<Dependency>,
+    ) -> Result<(), DataStoreError>;
     /// Stores the given package record.
     ///
     /// The `missing` set is the set of content digests that are currently
@@ -157,6 +170,7 @@ pub trait DataStore: Send + Sync {
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
+        // dependencies: Vec<Dependency>
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given package record.

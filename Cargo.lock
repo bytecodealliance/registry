@@ -4158,6 +4158,7 @@ dependencies = [
  "diesel_migrations",
  "futures",
  "indexmap 1.9.3",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -4175,6 +4176,7 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",
+ "wasm-deps",
  "wasmparser 0.107.0",
 ]
 
@@ -4315,6 +4317,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed9d5b4305409d1fc9482fee2d7f9bcbf24b3972bf59817ef757e23982242a93"
 
 [[package]]
+name = "wasm-deps"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "wasmparser 0.107.0",
+]
+
+[[package]]
 name = "wasm-encoder"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4333,7 +4343,7 @@ dependencies = [
  "indexmap 1.9.3",
  "serde",
  "wasm-encoder",
- "wasmparser 0.107.0",
+ "wasmparser 0.107.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4357,6 +4367,14 @@ checksum = "2c437373cac5ea84f1113d648d51f71751ffbe3d90c00ae67618cf20d0b5ee7b"
 dependencies = [
  "indexmap 1.9.3",
  "url",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.107.0"
+dependencies = [
+ "indexmap 2.0.0",
+ "semver",
 ]
 
 [[package]]
@@ -4955,7 +4973,7 @@ dependencies = [
  "log",
  "wasm-encoder",
  "wasm-metadata",
- "wasmparser 0.107.0",
+ "wasmparser 0.107.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wit-parser 0.8.0",
 ]
 
