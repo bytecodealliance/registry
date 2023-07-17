@@ -166,7 +166,7 @@ impl IntoResponse for PackageApiError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Dependency {
     pub log_id: LogId,
     pub record_id: RecordId,
@@ -289,7 +289,7 @@ async fn publish_record(
                                                         record_id.clone(),
                                                         split_name[0].to_string(),
                                                         "url".to_string(),
-                                                        "*".to_string(),
+                                                        metadata.range.to_string(),
                                                         metadata.location.to_string(),
                                                         metadata.integrity.to_string(),
                                                     ));
@@ -481,7 +481,7 @@ async fn upload_content(
                                 record_id.clone(),
                                 split_name[0].to_string(),
                                 "url".to_string(),
-                                "*".to_string(),
+                                metadata.range.to_string(),
                                 metadata.location.to_string(),
                                 metadata.integrity.to_string(),
                             ));
