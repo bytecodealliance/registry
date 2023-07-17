@@ -66,18 +66,22 @@ impl PackageRecord {
 #[allow(clippy::large_enum_variant)]
 pub enum PackageRecordState {
     /// The package record needs content sources.
+    #[serde(rename_all = "camelCase")]
     Sourcing {
         /// The digests of the missing content.
         missing_content: Vec<AnyHash>,
     },
     /// The package record is processing.
+    #[serde(rename_all = "camelCase")]
     Processing,
     /// The package record is rejected.
+    #[serde(rename_all = "camelCase")]
     Rejected {
         /// The reason the record was rejected.
         reason: String,
     },
     /// The package record was successfully published to the log.
+    #[serde(rename_all = "camelCase")]
     Published {
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,
