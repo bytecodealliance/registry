@@ -220,12 +220,13 @@ impl DataStore for MemoryDataStore {
         let mut state = self.0.write().await;
         let dependencies = state
             .dependencies
-            .entry(log_id.clone()).or_default()
+            .entry(log_id.clone())
+            .or_default()
             .get(record_id);
         if let Some(deps) = dependencies {
-          Ok(deps.clone())
+            Ok(deps.clone())
         } else {
-          Ok(Vec::new())
+            Ok(Vec::new())
         }
     }
     async fn store_dependencies(

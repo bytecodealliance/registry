@@ -269,16 +269,32 @@ async fn publish_record(
                                         | ImplementationImport::Relative(metadata)
                                         | ImplementationImport::Locked(metadata)
                                         | ImplementationImport::Unlocked(metadata) => {
-                                            deps.push(Dependency::new(
-                                                log_id.clone(),
-                                                record_id.clone(),
-                                                metadata.name.to_string(),
-                                                "url".to_string(),
-                                                "1".to_string(),
-                                                // metadata.version.map(|v| {}),
-                                                metadata.location.to_string(),
-                                                metadata.integrity.to_string(),
-                                            ));
+                                            let split_name: Vec<&str> =
+                                                metadata.name.split('@').collect();
+                                            match split_name.len() {
+                                                2 => {
+                                                    deps.push(Dependency::new(
+                                                        log_id.clone(),
+                                                        record_id.clone(),
+                                                        split_name[0].to_string(),
+                                                        "url".to_string(),
+                                                        split_name[1].to_string(),
+                                                        metadata.location.to_string(),
+                                                        metadata.integrity.to_string(),
+                                                    ));
+                                                }
+                                                _ => {
+                                                    deps.push(Dependency::new(
+                                                        log_id.clone(),
+                                                        record_id.clone(),
+                                                        split_name[0].to_string(),
+                                                        "url".to_string(),
+                                                        "*".to_string(),
+                                                        metadata.location.to_string(),
+                                                        metadata.integrity.to_string(),
+                                                    ));
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -293,6 +309,11 @@ async fn publish_record(
                 }
             }
         }
+        config
+            .core_service
+            .store()
+            .store_dependencies(&log_id, &record_id, deps)
+            .await?;
         config
             .core_service
             .submit_package_record(log_id, record_id.clone())
@@ -436,25 +457,38 @@ async fn upload_content(
         match import.name {
             // ComponentExternName::Kebab { .. } => {}
             // ComponentExternName::Interface { .. } => {}
-            ComponentExternName::Implementation(impl_import) => {
-                match impl_import {
-                    ImplementationImport::Url(metadata)
-                    | ImplementationImport::Relative(metadata)
-                    | ImplementationImport::Locked(metadata)
-                    | ImplementationImport::Unlocked(metadata) => {
-                        deps.push(Dependency::new(
-                            log_id.clone(),
-                            record_id.clone(),
-                            metadata.name.to_string(),
-                            "url".to_string(),
-                            "1".to_string(),
-                            // metadata.version.map(|v| {}),
-                            metadata.location.to_string(),
-                            metadata.integrity.to_string(),
-                        ));
+            ComponentExternName::Implementation(impl_import) => match impl_import {
+                ImplementationImport::Url(metadata)
+                | ImplementationImport::Relative(metadata)
+                | ImplementationImport::Locked(metadata)
+                | ImplementationImport::Unlocked(metadata) => {
+                    let split_name: Vec<&str> = metadata.name.split('@').collect();
+                    match split_name.len() {
+                        2 => {
+                            deps.push(Dependency::new(
+                                log_id.clone(),
+                                record_id.clone(),
+                                split_name[0].to_string(),
+                                "url".to_string(),
+                                split_name[1].to_string(),
+                                metadata.location.to_string(),
+                                metadata.integrity.to_string(),
+                            ));
+                        }
+                        _ => {
+                            deps.push(Dependency::new(
+                                log_id.clone(),
+                                record_id.clone(),
+                                split_name[0].to_string(),
+                                "url".to_string(),
+                                "*".to_string(),
+                                metadata.location.to_string(),
+                                metadata.integrity.to_string(),
+                            ));
+                        }
                     }
                 }
-            }
+            },
             _ => {
                 return Err(PackageApiError(PackageError::NotSupported(
                     "Cant use kebab".to_string(),
