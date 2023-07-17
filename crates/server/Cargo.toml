@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 bytes = { workspace = true }
 wasmparser = { workspace = true }
-wasm-deps = { path = "../../../mine/wasm-tools/crates/wasm-deps" }
+wasm-deps = { git = "https://github.com/macovedj/wasm-tools", branch = "deps" }
 secrecy = { workspace = true }
 toml = { workspace = true }
 diesel = { workspace = true, features = ["postgres", "serde_json", "chrono"], optional = true }

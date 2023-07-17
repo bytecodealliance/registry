@@ -119,6 +119,6 @@ diesel_migrations = "2.1.0"
 diesel-derive-enum = "2.1.0"
 chrono = "0.4.26"
 regex = "1"
-wasmparser = { path = "../mine/wasm-tools/crates/wasmparser" }
+wasmparser = { git = "https://github.com/macovedj/wasm-tools", branch = "deps"}
 protox = "0.4.1"
 toml = "0.7.6"
