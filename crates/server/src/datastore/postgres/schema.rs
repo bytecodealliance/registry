@@ -76,4 +76,10 @@ diesel::joinable!(contents -> records (record_id));
 diesel::joinable!(records -> checkpoints (checkpoint_id));
 diesel::joinable!(records -> logs (log_id));
 
-diesel::allow_tables_to_appear_in_same_query!(checkpoints, contents, dependencies, logs, records,);
+diesel::allow_tables_to_appear_in_same_query!(
+    checkpoints,
+    contents,
+    dependencies,
+    logs,
+    records,
+);

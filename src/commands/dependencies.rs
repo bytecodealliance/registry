@@ -1,4 +1,5 @@
 use super::CommonOptions;
+use async_recursion::async_recursion;
 use anyhow::Result;
 use clap::Args;
 use ptree::{output::print_tree, TreeBuilder};
@@ -54,16 +55,44 @@ impl DependenciesCommand {
         Ok(())
     }
 
+    #[async_recursion]
+    async fn get_dependencies<'a>(http_client: &reqwest::Client, client: &FileSystemClient, pkg_id: &PackageId, child: &'a mut TreeBuilder) -> Result<&'a mut TreeBuilder> {
+      let pkg = client.registry().load_package(pkg_id).await?;
+            match pkg {
+                Some(package) => {
+                    let record_id = &package.state.releases().last().unwrap().record_id;
+                    let log_id = LogId::package_log::<Sha256>(pkg_id);
+                    let mut req_body = HashMap::new();
+                    req_body.insert("logId", log_id.to_string());
+                    req_body.insert("recordId", record_id.to_string());
+                    let res = http_client
+                        .post("http://127.0.0.1:8090/v1/fetch/dependencies")
+                        .json(&req_body)
+                        .send()
+                        .await?
+                        .json::<FetchDependenciesResponse>()
+                        .await?;
+                    for dep in res.dependencies {
+                        let pkg_id = PackageId::new(&dep.name)?;
+                        let grand_child = child.begin_child(format!("{0} ({1})", dep.name, dep.version));
+                        Self::get_dependencies(http_client, client, &pkg_id, grand_child).await?;
+                        grand_child.end_child();
+                    }
+                }
+                None => {
+                    dbg!("STUFF");
+                }
+            }
+      Ok(child)
+    }
+
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
-        println!("  id: {id}", id = info.id);
-        let log_id = LogId::package_log::<Sha256>(&info.id);
-        println!("  log id: {log_id}");
-        println!("  versions:");
         info.state.releases().for_each(|r| {
             if let Some(content) = r.content() {
                 Self::print_release(&r.record_id, &r.version, content);
             }
         });
+        let log_id = LogId::package_log::<Sha256>(&info.id);
         let record_id = &info.state.releases().last().unwrap().record_id;
         let http_client = reqwest::Client::new();
         let mut req_body = HashMap::new();
@@ -77,45 +106,11 @@ impl DependenciesCommand {
             .json::<FetchDependenciesResponse>()
             .await?;
         let mut tree = TreeBuilder::new(info.id.to_string());
-        dbg!(&res);
         for dep in res.dependencies {
-            let mut node = String::from(&dep.name);
-            node.push_str(" (");
-            node.push_str(&dep.version);
-            node.push(')');
-            let child = tree.begin_child(node);
-            let pkg_id = PackageId::new(&dep.name)?;
-            let pkg = client.registry().load_package(&pkg_id).await?;
-            match pkg {
-                Some(package) => {
-                    let record_id = &package.state.releases().last().unwrap().record_id;
-                    let log_id = LogId::package_log::<Sha256>(&pkg_id);
-                    let mut req_body = HashMap::new();
-                    req_body.insert("logId", log_id.to_string());
-                    req_body.insert("recordId", record_id.to_string());
-                    let res = http_client
-                        .post("http://127.0.0.1:8090/v1/fetch/dependencies")
-                        .json(&req_body)
-                        .send()
-                        .await?
-                        .json::<FetchDependenciesResponse>()
-                        .await?;
-                    for dep in res.dependencies {
-                        let mut node = String::from(&dep.name);
-                        node.push_str(" (");
-                        node.push_str(&dep.version);
-                        node.push(')');
-                        let grand_child = child.begin_child(node);
-                        grand_child.end_child();
-                    }
-                    child.end_child();
-                }
-                None => {
-                    dbg!("STUFF");
-                }
-            }
-
-            // .end_child();
+          let child = tree.begin_child(format!("{0} ({1})", dep.name, dep.version));
+          let pkg_id = PackageId::new(&dep.name)?;
+          let child = Self::get_dependencies(&http_client, client, &pkg_id, child).await?;
+          child.end_child();
         }
         let built = tree.build();
         print_tree(&built)?;

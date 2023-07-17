@@ -4296,6 +4296,7 @@ name = "warg-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-recursion",
  "async-trait",
  "bytes",
  "clap",
@@ -4415,7 +4416,7 @@ dependencies = [
  "warg-crypto",
  "warg-protobuf",
  "warg-transparency",
- "wasmparser 0.107.0",
+ "wasmparser 0.107.0 (git+https://github.com/macovedj/wasm-tools?branch=deps)",
 ]
 
 [[package]]
@@ -4453,7 +4454,7 @@ dependencies = [
  "warg-protocol",
  "warg-transparency",
  "wasm-deps",
- "wasmparser 0.107.0",
+ "wasmparser 0.107.0 (git+https://github.com/macovedj/wasm-tools?branch=deps)",
 ]
 
 [[package]]
@@ -4595,9 +4596,10 @@ checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
 [[package]]
 name = "wasm-deps"
 version = "0.1.0"
+source = "git+https://github.com/macovedj/wasm-tools?branch=deps#51d5364229ad7a9d14f1f1a212137ebd0a7c56c8"
 dependencies = [
  "anyhow",
- "wasmparser 0.107.0",
+ "wasmparser 0.107.0 (git+https://github.com/macovedj/wasm-tools?branch=deps)",
 ]
 
 [[package]]
@@ -4649,18 +4651,19 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.107.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29e3ac9b780c7dda0cac7a52a5d6d2d6707cc6e3451c9db209b6c758f40d7acb"
 dependencies = [
- "indexmap 2.0.0",
+ "indexmap 1.9.3",
  "semver",
 ]
 
 [[package]]
 name = "wasmparser"
 version = "0.107.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e3ac9b780c7dda0cac7a52a5d6d2d6707cc6e3451c9db209b6c758f40d7acb"
+source = "git+https://github.com/macovedj/wasm-tools?branch=deps#51d5364229ad7a9d14f1f1a212137ebd0a7c56c8"
 dependencies = [
- "indexmap 1.9.3",
+ "indexmap 2.0.0",
  "semver",
 ]
 
