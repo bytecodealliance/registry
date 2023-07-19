@@ -29,6 +29,8 @@ fn data_store() -> Result<Box<dyn DataStore>> {
 /// out to multiple tests.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_works_with_postgres() -> TestResult {
+    tracing_subscriber::fmt().with_test_writer().init();
+
     let root = root().await?;
     let (server, config) = spawn_server(
         &root,

@@ -192,7 +192,7 @@ impl Server {
             .config
             .data_store
             .unwrap_or_else(|| Box::<MemoryDataStore>::default());
-        let (core, handle) = CoreService::spawn(
+        let (core, handle) = CoreService::start(
             self.config.operator_key,
             store,
             self.config
@@ -244,7 +244,7 @@ impl Server {
         }
 
         tracing::info!("waiting for core service to stop");
-        handle.stop().await;
+        handle.await?;
         tracing::info!("server shutdown complete");
 
         Ok(())

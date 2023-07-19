@@ -22,7 +22,7 @@ pub mod debug;
 /// Creates the router for the API.
 pub fn create_router(
     content_base_url: Url,
-    core: Arc<CoreService>,
+    core: CoreService,
     temp_dir: PathBuf,
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,

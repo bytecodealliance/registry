@@ -80,7 +80,7 @@ where
     Hash::of((0b1, lhs, rhs))
 }
 
-pub trait SupportedDigest: Digest + private::Sealed + Sized + 'static {
+pub trait SupportedDigest: Digest + private::Sealed + Default + Sized + 'static {
     const ALGORITHM: HashAlgorithm;
     fn empty_tree_hash(height: usize) -> &'static Hash<Self>;
 }
@@ -101,6 +101,12 @@ mod private {
 
 impl<D: SupportedDigest> From<Hash<D>> for AnyHash {
     fn from(value: Hash<D>) -> Self {
+        (&value).into()
+    }
+}
+
+impl<D: SupportedDigest> From<&Hash<D>> for AnyHash {
+    fn from(value: &Hash<D>) -> Self {
         AnyHash {
             algo: D::ALGORITHM,
             bytes: value.digest.to_vec(),
