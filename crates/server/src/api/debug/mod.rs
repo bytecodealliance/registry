@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::get, Router,
 };
@@ -9,11 +7,11 @@ use crate::{api::v1::Json, services::CoreService};
 
 #[derive(Clone)]
 pub struct Config {
-    core_service: Arc<CoreService>,
+    core_service: CoreService,
 }
 
 impl Config {
-    pub fn new(core_service: Arc<CoreService>) -> Self {
+    pub fn new(core_service: CoreService) -> Self {
         Self { core_service }
     }
 

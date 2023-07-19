@@ -10,7 +10,6 @@ use axum::{
     Router,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
 use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, MapCheckpoint};
@@ -21,11 +20,11 @@ const MAX_RECORDS_LIMIT: u16 = 1000;
 
 #[derive(Clone)]
 pub struct Config {
-    core_service: Arc<CoreService>,
+    core_service: CoreService,
 }
 
 impl Config {
-    pub fn new(core_service: Arc<CoreService>) -> Self {
+    pub fn new(core_service: CoreService) -> Self {
         Self { core_service }
     }
 

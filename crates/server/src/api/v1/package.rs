@@ -33,7 +33,7 @@ use warg_protocol::{
 
 #[derive(Clone)]
 pub struct Config {
-    core_service: Arc<CoreService>,
+    core_service: CoreService,
     content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
@@ -43,7 +43,7 @@ pub struct Config {
 
 impl Config {
     pub fn new(
-        core_service: Arc<CoreService>,
+        core_service: CoreService,
         content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,

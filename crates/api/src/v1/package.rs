@@ -89,7 +89,7 @@ pub enum PackageRecordState {
     },
     /// The package record was successfully published to the log.
     Published {
-        /// The checkpoint that the recorded was included in.
+        /// The checkpoint that the record was included in.
         checkpoint: SerdeEnvelope<MapCheckpoint>,
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,

@@ -91,13 +91,13 @@ pub async fn not_found() -> impl IntoResponse {
 
 pub fn create_router(
     content_base_url: Url,
-    core: Arc<CoreService>,
+    core: CoreService,
     temp_dir: PathBuf,
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
-    let proof_config = proof::Config::new(core.log_data().clone(), core.map_data().clone());
+    let proof_config = proof::Config::new(core.clone());
     let package_config = package::Config::new(
         core.clone(),
         content_base_url,

@@ -1,10 +1,8 @@
 use super::Json;
-use crate::services::{DataServiceError, LogData, MapData};
+use crate::services::{CoreService, CoreServiceError};
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Router,
 };
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use warg_api::v1::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
@@ -12,13 +10,12 @@ use warg_crypto::hash::{Hash, Sha256};
 
 #[derive(Clone)]
 pub struct Config {
-    log: Arc<RwLock<LogData>>,
-    map: Arc<RwLock<MapData>>,
+    core: CoreService,
 }
 
 impl Config {
-    pub fn new(log: Arc<RwLock<LogData>>, map: Arc<RwLock<MapData>>) -> Self {
-        Self { log, map }
+    pub fn new(core: CoreService) -> Self {
+        Self { core }
     }
 
     pub fn into_router(self) -> Router {
@@ -40,17 +37,23 @@ impl ProofApiError {
     }
 }
 
-impl From<DataServiceError> for ProofApiError {
-    fn from(value: DataServiceError) -> Self {
+impl From<CoreServiceError> for ProofApiError {
+    fn from(value: CoreServiceError) -> Self {
         Self(match value {
-            DataServiceError::RootNotFound(root) => ProofError::RootNotFound(root.into()),
-            DataServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
-            DataServiceError::BundleFailure(e) => ProofError::BundleFailure(e.to_string()),
-            DataServiceError::PackageNotIncluded(id) => ProofError::PackageLogNotIncluded(id),
-            DataServiceError::IncorrectProof { root, found } => ProofError::IncorrectProof {
-                root: root.into(),
-                found: found.into(),
-            },
+            CoreServiceError::RootNotFound(root) => ProofError::RootNotFound(root),
+            CoreServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
+            CoreServiceError::BundleFailure(e) => ProofError::BundleFailure(e.to_string()),
+            CoreServiceError::PackageNotIncluded(id) => ProofError::PackageLogNotIncluded(id),
+            CoreServiceError::IncorrectProof { root, found } => {
+                ProofError::IncorrectProof { root, found }
+            }
+            other => {
+                tracing::error!("Unhandled CoreServiceError: {other:?}");
+                ProofError::Message {
+                    status: 500,
+                    message: "Internal service error".to_string(),
+                }
+            }
         })
     }
 }
@@ -66,8 +69,6 @@ async fn prove_consistency(
     State(config): State<Config>,
     Json(body): Json<ConsistencyRequest<'static>>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
-    let log = config.log.as_ref().read().await;
-
     let from: Hash<Sha256> = body
         .from
         .into_owned()
@@ -79,7 +80,7 @@ async fn prove_consistency(
         .try_into()
         .map_err(ProofApiError::bad_request)?;
 
-    let bundle = log.consistency(&from, &to)?;
+    let bundle = config.core.log_consistency_proof(&from, &to).await?;
 
     Ok(Json(ConsistencyResponse {
         proof: bundle.encode(),
@@ -101,15 +102,15 @@ async fn prove_inclusion(
         .try_into()
         .map_err(ProofApiError::bad_request)?;
 
-    let log_bundle = {
-        let log = config.log.as_ref().read().await;
-        log.inclusion(&log_root, body.leafs.as_ref())?
-    };
+    let log_bundle = config
+        .core
+        .log_inclusion_proofs(&log_root, &body.leafs)
+        .await?;
 
-    let map_bundle = {
-        let map = config.map.as_ref().read().await;
-        map.inclusion(&map_root, body.leafs.as_ref())?
-    };
+    let map_bundle = config
+        .core
+        .map_inclusion_proofs(&map_root, &body.leafs)
+        .await?;
 
     Ok(Json(InclusionResponse {
         log: log_bundle.encode(),
