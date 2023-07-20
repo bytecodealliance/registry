@@ -34,11 +34,10 @@ diesel-async = { workspace = true, features = ["postgres", "deadpool"], optional
 diesel_json = { workspace = true, optional = true}
 diesel_migrations = { workspace = true, optional = true }
 diesel-derive-enum = { workspace = true, optional = true, features = ["postgres"] }
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
 chrono = { workspace = true, optional = true }
-oci-distribution = { git = "https://github.com/krustlet/oci-distribution", branch = "main" }
+oci-distribution = { git = "https://github.com/devigned/oci-distribution", branch = "os-wasi" }
 
 [features]
 default = []
-debug = []
-postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "serde_json", "chrono"]
+postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "chrono"]

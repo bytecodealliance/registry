@@ -9,6 +9,8 @@ use oci_distribution::{
     Reference,
     secrets::RegistryAuth,
 };
+use oci_distribution::config::{Architecture, ConfigFile, Config as DistConfig, Os};
+use serde_json;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Handle;
@@ -22,8 +24,9 @@ use crate::{
     contentstore::ContentStoreError::ContentStoreInternalError,
 };
 
-// const COMPONENT_CONFIG_MEDIA_TYPE: &str = "application/vnd.bytecodealliance.component.v1+config";
-const WASM_LAYER_MEDIA_TYPE: &str = "application/vnd.bytecodealliance.wasm.content.layer.v1+wasm";
+const COMPONENT_ARTIFACT_TYPE: &str = "application/vnd.bytecodealliance.component.v1+wasm";
+const WASM_LAYER_MEDIA_TYPE: &str = "application/vnd.bytecodealliance.wasm.component.layer.v0+wasm";
+// const COMPONENT_COMPOSE_MANIFEST_MEDIA_TYPE: &str = "application/vnd.bytecodealliance.component.compose.v0+yaml";
 
 /// Client for interacting with an OCI registry
 pub struct Client {
@@ -99,7 +102,7 @@ impl Client {
         &self,
         reference: impl AsRef<str>,
         file: &mut File,
-        _digest: &AnyHash,
+        digest: &AnyHash,
     ) -> Result<String, ContentStoreError> {
         let reference: Reference = reference
             .as_ref()
@@ -107,16 +110,28 @@ impl Client {
             .with_context(|| format!("cannot parse reference {}", reference.as_ref()))
             .map_err(|e| ContentStoreInternalError(e.to_string()))?;
 
-        let oci_config = Config::oci_v1("{}".as_bytes().to_vec(), None);
+        let entrypoint = format!("/{}", digest.to_string().strip_prefix("sha256:").unwrap());
+        let config = ConfigFile {
+            architecture: Architecture::Wasm,
+            os: Os::Wasi,
+            config: Some(DistConfig {
+                // use the sha256 hash as the file name for the entrypoint
+                entrypoint: vec![entrypoint],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let config_data = serde_json::to_vec(&config)
+            .map_err(|e| ContentStoreInternalError(e.to_string()))?;
+        let oci_config = Config::oci_v1(config_data, None);
         let mut layers = Vec::new();
         let wasm_layer = Self::wasm_layer(file)
             .await
             .context("cannot create wasm layer")
             .map_err(|e| ContentStoreInternalError(e.to_string()))?;
         layers.insert(0, wasm_layer);
-        let manifest = OciImageManifest::build(&layers, &oci_config, None);
-        // TODO: add artifactType to describe the mediaType for the component.
-        // Candidate mediaType: "application/vnd.bytecodealliance.wasm.component.v1+config"
+        let mut manifest = OciImageManifest::build(&layers, &oci_config, None);
+        manifest.artifact_type = Some(COMPONENT_ARTIFACT_TYPE.to_string());
 
         // TODO: fix the higher-level lifetime error that occurs when not using block_in_place and
         // block_on.
