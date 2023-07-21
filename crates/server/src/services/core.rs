@@ -25,7 +25,7 @@ use warg_transparency::{
     map::{Map, MapProofBundle},
 };
 
-use crate::datastore::{DataStore, DataStoreError, InitialLeaf};
+use crate::datastore::{DataStore, DataStoreError};
 
 #[derive(Clone)]
 pub struct CoreService<Digest: SupportedDigest = Sha256> {
@@ -50,16 +50,16 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
             store,
             state: Default::default(),
         };
-        let pending_entries = inner.initialize().await?;
+        inner.initialize().await?;
 
         // Spawn state update task
         let inner = Arc::new(inner);
         let (submit_entry_tx, submit_entry_rx) = tokio::sync::mpsc::channel(4);
-        let handle = tokio::spawn(inner.clone().process_state_updates(
-            pending_entries,
-            submit_entry_rx,
-            checkpoint_interval,
-        ));
+        let handle = tokio::spawn(
+            inner
+                .clone()
+                .process_state_updates(submit_entry_rx, checkpoint_interval),
+        );
 
         let svc = Self {
             inner,
@@ -176,41 +176,37 @@ struct Inner<Digest: SupportedDigest> {
 impl<Digest: SupportedDigest> Inner<Digest> {
     // Load state from DataStore or initialize empty state, returning any
     // entries that are not yet part of a checkpoint.
-    async fn initialize(&mut self) -> Result<Vec<LogLeaf>, CoreServiceError> {
-        let initial = self.store.get_initial_leaves().await?.peekable();
-        pin_mut!(initial);
+    async fn initialize(&mut self) -> Result<(), CoreServiceError> {
+        tracing::debug!("Initializing CoreService");
 
-        // If there are no stored log entries, initialize a new state
-        if initial.as_mut().peek().await.is_none() {
-            self.initialize_new().await?;
-            return Ok(vec![]);
+        let published = self.store.get_all_validated_records().await?.peekable();
+        pin_mut!(published);
+
+        // If there are no published records, initialize a new state
+        if published.as_mut().peek().await.is_none() {
+            tracing::debug!("No existing records; initializing new state");
+            return self.initialize_new().await;
         }
 
-        // Reconstruct internal state from previously-stored log entires
+        // Reconstruct internal state from previously-stored data
+        let mut checkpoints = self.store.get_all_checkpoints().await?;
+        let mut checkpoints_by_len: HashMap<usize, MapCheckpoint> = Default::default();
+        while let Some(checkpoint) = checkpoints.next().await {
+            let checkpoint = checkpoint?;
+            checkpoints_by_len.insert(checkpoint.log_length as usize, checkpoint);
+        }
+
         let state = self.state.get_mut();
-        let mut pending_entries = vec![];
-        let mut last_checkpoint = Hash::<Digest>::of(()).into();
-
-        while let Some(res) = initial.next().await {
-            let InitialLeaf { leaf, checkpoint } = res?;
-
-            // Push the entry itself
-            state.push_entry(leaf.clone());
-
-            // Update per-checkpoint state and track any entries that aren't
-            // yet part of a checkpoint
-            if let Some(checkpoint) = checkpoint {
-                if last_checkpoint != checkpoint {
-                    state.checkpoint(); // for the side-effect of updating map_index
-                    last_checkpoint = checkpoint;
-                }
-                pending_entries.clear();
-            } else {
-                pending_entries.push(leaf);
+        while let Some(entry) = published.next().await {
+            state.push_entry(entry?);
+            if let Some(stored_checkpoint) = checkpoints_by_len.get(&state.log.length()) {
+                // Validate stored checkpoint (and update internal state as a side-effect)
+                let computed_checkpoint = state.checkpoint();
+                assert!(stored_checkpoint == &computed_checkpoint);
             }
         }
 
-        Ok(pending_entries)
+        Ok(())
     }
 
     async fn initialize_new(&mut self) -> Result<(), CoreServiceError> {
@@ -236,14 +232,20 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             .store_operator_record(&log_id, &record_id, &signed_init_record)
             .await?;
         self.store
-            .validate_operator_record(&log_id, &record_id)
+            .commit_operator_record(&log_id, &record_id, 0)
             .await?;
 
         // Update state with init record
         let entry = LogLeaf { log_id, record_id };
         state.push_entry(entry.clone());
 
-        self.update_checkpoint(vec![entry]).await;
+        // "zero" checkpoint to be updated
+        let mut checkpoint = MapCheckpoint {
+            log_root: Hash::<Digest>::default().into(),
+            log_length: 0,
+            map_root: Hash::<Digest>::default().into(),
+        };
+        self.update_checkpoint(&mut checkpoint).await;
 
         Ok(())
     }
@@ -251,70 +253,79 @@ impl<Digest: SupportedDigest> Inner<Digest> {
     // Runs the service's state update loop.
     async fn process_state_updates(
         self: Arc<Self>,
-        mut pending_entries: Vec<LogLeaf>,
         mut submit_entry_rx: mpsc::Receiver<LogLeaf>,
         checkpoint_interval: Duration,
     ) {
+        let mut checkpoint = self
+            .store
+            .get_latest_checkpoint()
+            .await
+            .unwrap()
+            .into_contents();
         let mut checkpoint_interval = tokio::time::interval(checkpoint_interval);
         checkpoint_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {
                 entry = submit_entry_rx.recv() => match entry {
-                    Some(entry) => {
-                        if self.process_package_entry(&entry).await.is_ok() {
-                            pending_entries.push(entry);
-                        }
-                    }
+                    Some(entry) => self.process_package_entry(&entry).await,
                     None => break, // Channel closed
                 },
-                _ = checkpoint_interval.tick() => {
-                    let new_entries = std::mem::take(&mut pending_entries);
-                    self.update_checkpoint(new_entries).await;
-                },
+                _ = checkpoint_interval.tick() => self.update_checkpoint(&mut checkpoint).await,
             }
         }
     }
 
     // Processes a submitted package entry
-    async fn process_package_entry(&self, entry: &LogLeaf) -> Result<(), ()> {
+    async fn process_package_entry(&self, entry: &LogLeaf) {
+        tracing::debug!("Processing entry {entry:?}");
+
+        let mut state = self.state.write().await;
         let LogLeaf { log_id, record_id } = entry;
 
         // Validate and commit the package entry to the store
-        self.store
-            .validate_package_record(log_id, record_id)
-            .await
-            .map_err(|err| match err {
+        let registry_log_index = state.log.length().try_into().unwrap();
+        let commit_res = self
+            .store
+            .commit_package_record(log_id, record_id, registry_log_index)
+            .await;
+
+        if let Err(err) = commit_res {
+            match err {
                 DataStoreError::Rejection(_)
                 | DataStoreError::OperatorValidationFailed(_)
                 | DataStoreError::PackageValidationFailed(_) => {
                     // The record failed to validate and was rejected; do not include it in the next checkpoint
+                    tracing::debug!("record `{record_id}` rejected: {err:?}");
                 }
                 e => {
                     // TODO: this should be made more robust with a proper reliable message
                     // queue with retry logic
                     tracing::error!("failed to validate package record `{record_id}`: {e}");
                 }
-            })?;
+            }
+            return;
+        }
 
-        let mut state = self.state.write().await;
         state.push_entry(entry.clone());
-        Ok(())
     }
 
     // Store a checkpoint including the given new entries
-    async fn update_checkpoint(&self, new_entries: Vec<LogLeaf>) {
-        if new_entries.is_empty() {
+    async fn update_checkpoint(&self, current_checkpoint: &mut MapCheckpoint) {
+        let mut state = self.state.write().await;
+        if state.log.length() == (current_checkpoint.log_length as usize) {
             return;
         }
-        let checkpoint = self.state.write().await.checkpoint();
+        let next_checkpoint = state.checkpoint();
+        tracing::debug!("Updating to checkpoint {next_checkpoint:?}");
         let signed_checkpoint =
-            SerdeEnvelope::signed_contents(&self.operator_key, checkpoint.clone()).unwrap();
+            SerdeEnvelope::signed_contents(&self.operator_key, next_checkpoint.clone()).unwrap();
         let checkpoint_id = Hash::<Digest>::of(signed_checkpoint.as_ref()).into();
         self.store
-            .store_checkpoint(&checkpoint_id, signed_checkpoint, &new_entries)
+            .store_checkpoint(&checkpoint_id, signed_checkpoint)
             .await
             .unwrap();
+        *current_checkpoint = next_checkpoint;
     }
 }
 
@@ -391,5 +402,5 @@ pub enum CoreServiceError {
     #[error("data store error: {0}")]
     DataStore(#[from] DataStoreError),
     #[error("initialization failed: {0}")]
-    IniitializationFailure(String),
+    InitializationFailure(String),
 }
