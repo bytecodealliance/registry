@@ -289,7 +289,7 @@ async fn get_record(
                 id: record_id,
                 state: PackageRecordState::Published {
                     record: record.envelope.into(),
-                    checkpoint: record.checkpoint.unwrap(),
+                    registry_log_index: record.registry_log_index.unwrap(),
                     content_sources,
                 },
             }))

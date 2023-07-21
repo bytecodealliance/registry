@@ -9,7 +9,7 @@ use crate::{ByteVisitor, VisitBytes};
 
 use super::{Output, SupportedDigest};
 
-#[derive(PartialOrd, Ord)]
+#[derive(Default, PartialOrd, Ord)]
 pub struct Hash<D: SupportedDigest> {
     pub(crate) digest: Output<D>,
 }

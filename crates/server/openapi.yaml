@@ -746,9 +746,9 @@ components:
           description: The state of the package record.
           enum: [published]
           example: published
-        checkpoint:
-          "$ref": "#/components/schemas/SignedMapCheckpoint"
-          description: The checkpoint of the record.
+        registryLogIndex:
+          type: number
+          description: The index of the record in the registry log.
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
           description: The package record.

@@ -33,6 +33,7 @@ CREATE TABLE records (
   id SERIAL PRIMARY KEY,
   log_id INTEGER NOT NULL REFERENCES logs(id),
   record_id TEXT NOT NULL UNIQUE,
+  registry_log_index INTEGER UNIQUE,
   checkpoint_id INTEGER REFERENCES checkpoints(id),
   content BYTEA NOT NULL,
   status record_status NOT NULL DEFAULT 'pending',

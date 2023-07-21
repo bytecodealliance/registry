@@ -98,10 +98,10 @@ where
     pub status: RecordStatus,
     /// The envelope containing the record contents.
     pub envelope: ProtoEnvelope<T>,
-    /// The checkpoint of the record.
+    /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
+    pub registry_log_index: Option<u32>,
 }
 
 /// Implemented by data stores.
@@ -135,15 +135,16 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Validates the given operator record.
+    /// Commits the given operator record.
     ///
     /// The record must be in a pending state.
     ///
     /// If validation succeeds, the record will be considered part of the log.
-    async fn validate_operator_record(
+    async fn commit_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u32,
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
@@ -169,15 +170,16 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Validates the given package record.
+    /// Commits the given package record.
     ///
     /// The record must be in a pending state.
     ///
     /// If validation succeeds, the record will be considered part of the log.
-    async fn validate_package_record(
+    async fn commit_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u32,
     ) -> Result<(), DataStoreError>;
 
     /// Determines if the given content digest is missing for the record.
@@ -210,7 +212,6 @@ pub trait DataStore: Send + Sync {
         &self,
         checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
-        participants: &[LogLeaf],
     ) -> Result<(), DataStoreError>;
 
     /// Gets the latest checkpoint.
