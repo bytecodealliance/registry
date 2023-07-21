@@ -123,11 +123,12 @@ pub async fn spawn_server(
         config = config.with_boxed_data_store(store);
     }
 
-    let mut server = Server::new(config);
-    let addr = server.bind()?;
+    let server = Server::new(config).initialize().await?;
+
+    let addr = server.local_addr()?;
 
     let task = tokio::spawn(async move {
-        server.run().await.unwrap();
+        server.serve().await.unwrap();
     });
 
     let instance = ServerInstance {
