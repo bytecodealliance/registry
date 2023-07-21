@@ -34,6 +34,11 @@ where
     D: SupportedDigest,
     V: VisitBytes,
 {
+    /// Returns the number of entries in the log.
+    pub fn length(&self) -> usize {
+        self.length
+    }
+
     fn get_digest(&self, node: Node) -> Hash<D> {
         self.tree[node.index()].clone()
     }

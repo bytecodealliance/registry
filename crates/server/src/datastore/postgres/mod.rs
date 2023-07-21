@@ -1,8 +1,8 @@
 use self::models::{
-    Checkpoint, CheckpointData, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText,
-    RecordContent, RecordStatus, TextRef,
+    Checkpoint, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText, RecordContent,
+    RecordStatus, TextRef,
 };
-use super::{DataStore, DataStoreError, InitialLeaf, Record};
+use super::{DataStore, DataStoreError, Record};
 use anyhow::{anyhow, Result};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
@@ -35,10 +35,10 @@ async fn get_records<R: Decode>(
     since: Option<&RecordId>,
     limit: i64,
 ) -> Result<Vec<ProtoEnvelope<R>>, DataStoreError> {
-    let checkpoint_id = schema::checkpoints::table
-        .select(schema::checkpoints::id)
+    let checkpoint_length = schema::checkpoints::table
+        .select(schema::checkpoints::log_length)
         .filter(schema::checkpoints::checkpoint_id.eq(TextRef(checkpoint_id)))
-        .first::<i32>(conn)
+        .first::<i64>(conn)
         .await
         .optional()?
         .ok_or_else(|| DataStoreError::CheckpointNotFound(checkpoint_id.clone()))?;
@@ -51,7 +51,7 @@ async fn get_records<R: Decode>(
         .filter(
             schema::records::log_id
                 .eq(log_id)
-                .and(schema::records::checkpoint_id.le(checkpoint_id))
+                .and(schema::records::registry_log_index.lt(checkpoint_length))
                 .and(schema::records::status.eq(RecordStatus::Validated)),
         );
 
@@ -190,16 +190,18 @@ async fn reject_record(
     Ok(())
 }
 
-async fn validate_record<V>(
+async fn commit_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
     record_id: &RecordId,
+    registry_log_index: u64,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
     <V as Validator>::Error: ToString + Send + Sync,
     DataStoreError: From<<V as Validator>::Error>,
 {
+    let registry_log_index: i64 = registry_log_index.try_into().unwrap();
     conn.transaction::<_, DataStoreError, _>(|conn| {
         async move {
             // Get the record content and validator
@@ -242,7 +244,10 @@ where
             // Finally, mark the record as validated
             diesel::update(schema::records::table)
                 .filter(schema::records::id.eq(id))
-                .set(schema::records::status.eq(RecordStatus::Validated))
+                .set((
+                    schema::records::status.eq(RecordStatus::Validated),
+                    schema::records::registry_log_index.eq(Some(registry_log_index)),
+                ))
                 .execute(conn)
                 .await?;
 
@@ -263,6 +268,11 @@ where
     <V as Validator>::Error: ToString + Send + Sync,
     DataStoreError: From<<V as Validator>::Error>,
 {
+    let checkpoint = schema::checkpoints::table
+        .order_by(schema::checkpoints::id.desc())
+        .first::<Checkpoint>(conn)
+        .await?;
+
     let log_id = schema::logs::table
         .select(schema::logs::id)
         .filter(schema::logs::log_id.eq(TextRef(log_id)))
@@ -271,18 +281,14 @@ where
         .optional()?
         .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-    let (record, checkpoint) = schema::records::table
-        .left_join(schema::checkpoints::table)
-        .select((
-            RecordContent::as_select(),
-            Option::<CheckpointData>::as_select(),
-        ))
+    let record = schema::records::table
+        .select(RecordContent::as_select())
         .filter(
             schema::records::record_id
                 .eq(TextRef(record_id))
                 .and(schema::records::log_id.eq(log_id)),
         )
-        .first::<(RecordContent, Option<CheckpointData>)>(conn)
+        .first::<RecordContent>(conn)
         .await
         .optional()?
         .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
@@ -309,7 +315,7 @@ where
                 }
             }
             RecordStatus::Validated => {
-                if checkpoint.is_some() {
+                if record.registry_log_index.unwrap() < checkpoint.log_length {
                     super::RecordStatus::Published
                 } else {
                     super::RecordStatus::Validated
@@ -325,17 +331,7 @@ where
                 message: e.to_string(),
             }
         })?,
-        checkpoint: checkpoint.map(|c| {
-            SerdeEnvelope::from_parts_unchecked(
-                MapCheckpoint {
-                    log_root: c.log_root.0,
-                    log_length: c.log_length as u32,
-                    map_root: c.map_root.0,
-                },
-                c.key_id.0,
-                c.signature.0,
-            )
-        }),
+        registry_log_index: record.registry_log_index.map(|idx| idx.try_into().unwrap()),
     })
 }
 
@@ -380,45 +376,54 @@ impl PostgresDataStore {
 
 #[axum::async_trait]
 impl DataStore for PostgresDataStore {
-    async fn get_initial_leaves(
+    async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     > {
         // The returned future will keep the connection from the pool until dropped
         let mut conn = self.pool.get().await?;
 
+        Ok(schema::checkpoints::table
+            .order_by(schema::checkpoints::id.desc())
+            .load_stream::<Checkpoint>(&mut conn)
+            .await?
+            .map(|checkpoint| -> Result<MapCheckpoint, DataStoreError> {
+                let checkpoint = checkpoint?;
+                Ok(MapCheckpoint {
+                    log_root: checkpoint.log_root.0,
+                    log_length: checkpoint.log_length as u32,
+                    map_root: checkpoint.map_root.0,
+                })
+            })
+            .boxed())
+    }
+
+    async fn get_all_validated_records(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
+    {
+        // The returned future will keep the connection from the pool until dropped
+        let mut conn = self.pool.get().await?;
+
         // This is an unfortunate query that will scan the entire records table
-        // and join it with the logs and checkpoints tables.
+        // and join it with the logs table.
         // In the future, we should figure out a faster way for the transparency service
         // to create its initial state.
         Ok(Box::pin(
             schema::records::table
                 .inner_join(schema::logs::table)
-                .left_outer_join(schema::checkpoints::table)
-                .select((
-                    schema::logs::log_id,
-                    schema::records::record_id,
-                    schema::checkpoints::checkpoint_id.nullable(),
-                ))
+                .select((schema::logs::log_id, schema::records::record_id))
                 .filter(schema::records::status.eq(RecordStatus::Validated))
                 .order_by(schema::records::id)
-                .load_stream::<(
-                    ParsedText<AnyHash>,
-                    ParsedText<AnyHash>,
-                    Option<ParsedText<AnyHash>>,
-                )>(&mut conn)
+                .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>)>(&mut conn)
                 .await?
                 .map(|r| {
-                    r.map_err(Into::into)
-                        .map(|(log_id, record_id, checkpoint_id)| InitialLeaf {
-                            leaf: LogLeaf {
-                                log_id: log_id.0.into(),
-                                record_id: record_id.0.into(),
-                            },
-                            checkpoint: checkpoint_id.map(|c| c.0),
-                        })
+                    r.map_err(Into::into).map(|(log_id, record_id)| LogLeaf {
+                        log_id: log_id.0.into(),
+                        record_id: record_id.0.into(),
+                    })
                 }),
         ))
     }
@@ -459,10 +464,11 @@ impl DataStore for PostgresDataStore {
         reject_record(conn.as_mut(), log_id, record_id, reason).await
     }
 
-    async fn validate_operator_record(
+    async fn commit_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
@@ -473,7 +479,14 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<operator::LogState>(conn.as_mut(), log_id, record_id).await {
+        match commit_record::<operator::LogState>(
+            conn.as_mut(),
+            log_id,
+            record_id,
+            registry_log_index,
+        )
+        .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -520,10 +533,11 @@ impl DataStore for PostgresDataStore {
         reject_record(conn.as_mut(), log_id, record_id, reason).await
     }
 
-    async fn validate_package_record(
+    async fn commit_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
@@ -534,7 +548,14 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match validate_record::<package::LogState>(conn.as_mut(), log_id, record_id).await {
+        match commit_record::<package::LogState>(
+            conn.as_mut(),
+            log_id,
+            record_id,
+            registry_log_index,
+        )
+        .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
@@ -633,15 +654,7 @@ impl DataStore for PostgresDataStore {
         &self,
         checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
-        participants: &[LogLeaf],
     ) -> Result<(), DataStoreError> {
-        let participants = participants
-            .iter()
-            .map(|l| l.record_id.to_string())
-            .collect::<Vec<_>>();
-
-        let expected_count = participants.len();
-        assert!(expected_count > 0);
         let mut conn = self.pool.get().await?;
 
         conn.transaction::<_, DataStoreError, _>(|conn| {
@@ -653,7 +666,7 @@ impl DataStore for PostgresDataStore {
                 } = checkpoint.as_ref();
 
                 // Insert the checkpoint
-                let id = diesel::insert_into(schema::checkpoints::table)
+                diesel::insert_into(schema::checkpoints::table)
                     .values(NewCheckpoint {
                         checkpoint_id: TextRef(checkpoint_id),
                         log_root: TextRef(log_root),
@@ -665,18 +678,6 @@ impl DataStore for PostgresDataStore {
                     .returning(schema::checkpoints::id)
                     .get_result::<i32>(conn)
                     .await?;
-
-                // Update all the participants
-                let count = diesel::update(schema::records::table)
-                    .filter(schema::records::record_id.eq_any(participants))
-                    .set(schema::records::checkpoint_id.eq(id))
-                    .execute(conn)
-                    .await?;
-
-                assert_eq!(
-                    count, expected_count,
-                    "failed to checkpoint: failed to update all participants"
-                );
 
                 Ok(())
             }
@@ -695,10 +696,12 @@ impl DataStore for PostgresDataStore {
             .first::<Checkpoint>(&mut conn)
             .await?;
 
+        let log_length = checkpoint.log_length.try_into().unwrap();
+
         Ok(SerdeEnvelope::from_parts_unchecked(
             MapCheckpoint {
                 log_root: checkpoint.log_root.0,
-                log_length: checkpoint.log_length as u32,
+                log_length,
                 map_root: checkpoint.map_root.0,
             },
             checkpoint.key_id.0,

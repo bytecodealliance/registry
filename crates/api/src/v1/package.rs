@@ -6,8 +6,8 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, MapCheckpoint, PackageId, RecordId},
-    ProtoEnvelopeBody, SerdeEnvelope,
+    registry::{LogId, PackageId, RecordId},
+    ProtoEnvelopeBody,
 };
 
 /// Represents the supported kinds of content sources.
@@ -45,16 +45,6 @@ pub struct PackageRecord {
 }
 
 impl PackageRecord {
-    /// Gets the checkpoint of the record.
-    ///
-    /// Returns `None` if the record hasn't been published yet.
-    pub fn checkpoint(&self) -> Option<&SerdeEnvelope<MapCheckpoint>> {
-        match &self.state {
-            PackageRecordState::Published { checkpoint, .. } => Some(checkpoint),
-            _ => None,
-        }
-    }
-
     /// Gets the missing content digests of the record.
     pub fn missing_content(&self) -> &[AnyHash] {
         match &self.state {
@@ -89,10 +79,10 @@ pub enum PackageRecordState {
     },
     /// The package record was successfully published to the log.
     Published {
-        /// The checkpoint that the record was included in.
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,
+        /// The index of the record in the registry log.
+        registry_log_index: u32,
         /// The content sources of the record.
         content_sources: HashMap<AnyHash, Vec<ContentSource>>,
     },

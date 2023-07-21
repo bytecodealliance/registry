@@ -63,17 +63,6 @@ pub enum DataStoreError {
     Diesel(#[from] diesel::result::Error),
 }
 
-/// Represents a leaf used to initialize the core service.
-pub struct InitialLeaf {
-    /// The log leaf.
-    pub leaf: LogLeaf,
-    /// The checkpoint of the leaf.
-    ///
-    /// A value of `None` indicates the leaf needs to be included in the
-    /// next checkpoint.
-    pub checkpoint: Option<AnyHash>,
-}
-
 /// Represents the status of a record.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordStatus {
@@ -98,24 +87,31 @@ where
     pub status: RecordStatus,
     /// The envelope containing the record contents.
     pub envelope: ProtoEnvelope<T>,
-    /// The checkpoint of the record.
+    /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
+    pub registry_log_index: Option<u64>,
 }
 
 /// Implemented by data stores.
 #[axum::async_trait]
 pub trait DataStore: Send + Sync {
-    /// Gets a stream of initial leaves in the store.
+    /// Gets a stream of all checkpoints.
     ///
     /// This is an expensive operation and should only be performed on startup.
-    async fn get_initial_leaves(
+    async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     >;
+
+    /// Gets a stream of all validated records.
+    ///
+    /// This is an expensive operation and should only be performed on startup.
+    async fn get_all_validated_records(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>;
 
     /// Stores the given operator record.
     async fn store_operator_record(
@@ -135,15 +131,16 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Validates the given operator record.
+    /// Commits the given operator record.
     ///
     /// The record must be in a pending state.
     ///
     /// If validation succeeds, the record will be considered part of the log.
-    async fn validate_operator_record(
+    async fn commit_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
@@ -169,15 +166,16 @@ pub trait DataStore: Send + Sync {
         reason: &str,
     ) -> Result<(), DataStoreError>;
 
-    /// Validates the given package record.
+    /// Commits the given package record.
     ///
     /// The record must be in a pending state.
     ///
     /// If validation succeeds, the record will be considered part of the log.
-    async fn validate_package_record(
+    async fn commit_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError>;
 
     /// Determines if the given content digest is missing for the record.
@@ -210,7 +208,6 @@ pub trait DataStore: Send + Sync {
         &self,
         checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
-        participants: &[LogLeaf],
     ) -> Result<(), DataStoreError>;
 
     /// Gets the latest checkpoint.
