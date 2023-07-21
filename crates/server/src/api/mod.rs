@@ -33,7 +33,7 @@ pub fn create_router(
     let router = router.nest("/debug", debug::Config::new(core.clone()).into_router());
     router
         .nest(
-            "/v1",
+            "/warg/v1",
             v1::create_router(
                 content_base_url,
                 core,

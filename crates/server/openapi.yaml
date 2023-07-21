@@ -27,7 +27,7 @@ tags:
     description: API for proving the integrity of the registry.
 
 servers:
-  - url: http://localhost:8090/v1
+  - url: http://localhost:8090/warg/v1
     description: Local development server
 
 paths:
