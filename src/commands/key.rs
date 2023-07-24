@@ -5,6 +5,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm};
 use keyring::{Entry, Error as KeyringError};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
+use warg_client::RegistryUrl;
 use warg_crypto::signing::PrivateKey;
 
 /// Manage signing keys for interacting with a registry.
@@ -45,26 +46,26 @@ struct KeyringEntryArgs {
     /// The name to use for the signing key.
     #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
     pub name: String,
-    /// The host name of the registry to create a signing key for.
-    #[clap(value_name = "HOST")]
-    pub host: String,
+    /// The URL of the registry to create a signing key for.
+    #[clap(value_name = "URL")]
+    pub url: RegistryUrl,
 }
 
 impl KeyringEntryArgs {
     fn get_entry(&self) -> Result<Entry> {
-        get_signing_key_entry(&self.host, &self.name)
+        get_signing_key_entry(&self.url, &self.name)
     }
 
     fn get_key(&self) -> Result<PrivateKey> {
-        get_signing_key(&self.host, &self.name)
+        get_signing_key(&self.url, &self.name)
     }
 
     fn set_entry(&self, key: &PrivateKey) -> Result<()> {
-        set_signing_key(&self.host, &self.name, key)
+        set_signing_key(&self.url, &self.name, key)
     }
 
     fn delete_entry(&self) -> Result<()> {
-        delete_signing_key(&self.host, &self.name)
+        delete_signing_key(&self.url, &self.name)
     }
 }
 
@@ -72,9 +73,9 @@ impl std::fmt::Display for KeyringEntryArgs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "`{name}` for registry `{host}`",
+            "`{name}` for registry `{url}`",
             name = self.name,
-            host = self.host
+            url = self.url
         )
     }
 }
@@ -97,9 +98,9 @@ impl KeyNewCommand {
             }
             Ok(_) | Err(KeyringError::Ambiguous(_)) => {
                 bail!(
-                    "a signing key `{name}` already exists for registry `{host}`",
+                    "a signing key `{name}` already exists for registry `{url}`",
                     name = self.keyring_entry.name,
-                    host = self.keyring_entry.host
+                    url = self.keyring_entry.url
                 );
             }
             Err(e) => {
@@ -186,8 +187,8 @@ impl KeyDeleteCommand {
             );
         } else {
             println!(
-                "skipping deletion of signing key for registry `{host}`",
-                host = self.keyring_entry.host,
+                "skipping deletion of signing key for registry `{url}`",
+                url = self.keyring_entry.url,
             );
         }
 

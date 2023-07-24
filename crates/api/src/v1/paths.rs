@@ -1,6 +1,5 @@
 //! The paths of the Warg REST API.
 
-use warg_crypto::hash::AnyHash;
 use warg_protocol::registry::{LogId, RecordId};
 
 /// The path of the "fetch logs" API.
@@ -21,11 +20,6 @@ pub fn publish_package_record(log_id: &LogId) -> String {
 /// The path for a package record.
 pub fn package_record(log_id: &LogId, record_id: &RecordId) -> String {
     format!("v1/package/{log_id}/record/{record_id}")
-}
-
-/// The path for a package record's content.
-pub fn package_record_content(log_id: &LogId, record_id: &RecordId, digest: &AnyHash) -> String {
-    format!("v1/package/{log_id}/record/{record_id}/content/{digest}")
 }
 
 /// The path for proving checkpoint consistency.
