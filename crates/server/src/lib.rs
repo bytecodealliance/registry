@@ -152,6 +152,19 @@ impl Server {
         Self { config }
     }
 
+    /// Initializes the server and starts serving.
+    ///
+    /// Equivalent to calling [`Server::initialize`] followed by
+    /// [`InitializedServer::serve`].
+    pub async fn run(self) -> Result<()> {
+        self.initialize().await?.serve().await
+    }
+
+    /// Initializes the server's internal state, background task(s), and
+    /// listening socket, returning an [`InitializedServer`]. To actually begin
+    /// serving, call [`InitializedServer::serve`].
+    ///
+    /// Useful for tests that need full initialization before running.
     pub async fn initialize(self) -> Result<InitializedServer> {
         let addr = self
             .config
@@ -218,12 +231,9 @@ impl Server {
             shutdown: self.config.shutdown,
         })
     }
-
-    pub async fn run(self) -> Result<()> {
-        self.initialize().await?.serve().await
-    }
 }
 
+/// Represents an initialized warg registry server.
 pub struct InitializedServer {
     listener: TcpListener,
     router: Router,
@@ -232,10 +242,14 @@ pub struct InitializedServer {
 }
 
 impl InitializedServer {
+    /// Returns the listening address of the server. If a random listening
+    /// port was requested (i.e. `:0`), this returns the actual bound port.
     pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.listener.local_addr()
     }
 
+    /// Serves the server's services. On server shutdown, awaits completion of
+    /// background task(s) before returning.
     pub async fn serve(self) -> Result<()> {
         let addr = self.local_addr()?;
 
