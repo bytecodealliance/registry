@@ -30,7 +30,9 @@ pub mod api;
 mod config;
 pub mod lock;
 pub mod storage;
+mod registry_url;
 pub use self::config::*;
+pub use self::registry_url::RegistryUrl;
 
 /// A client for a Warg registry.
 pub struct Client<R, C> {
@@ -51,7 +53,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     }
 
     /// Gets the URL of the client.
-    pub fn url(&self) -> &str {
+    pub fn url(&self) -> &RegistryUrl {
         self.api.url()
     }
 
@@ -580,7 +582,7 @@ impl FileSystemClient {
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
-            url,
+            registry_url: url,
             registries_dir,
             content_dir,
         } = config.storage_paths_for_url(url)?;
@@ -595,7 +597,9 @@ impl FileSystemClient {
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content,
+            url.into_url(),
+            packages,
+            content,
         )?))
     }
 
@@ -607,12 +611,12 @@ impl FileSystemClient {
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
         let StoragePaths {
-            url,
+            registry_url,
             registries_dir,
             content_dir,
         } = config.storage_paths_for_url(url)?;
         Self::new(
-            url,
+            registry_url.into_url(),
             FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )

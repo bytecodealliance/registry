@@ -4,7 +4,7 @@ use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
-use url::Url;
+use warg_client::RegistryUrl;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::signing::PrivateKey;
 
@@ -77,7 +77,7 @@ impl CommonOptions {
     }
 
     /// Gets the signing key for the given registry URL.
-    pub fn signing_key(&self, registry_url: &str) -> Result<PrivateKey> {
+    pub fn signing_key(&self, registry_url: &RegistryUrl) -> Result<PrivateKey> {
         if let Some(file) = &self.key_file {
             let key_str = std::fs::read_to_string(file)
                 .with_context(|| format!("failed to read key from {file:?}"))?
@@ -86,15 +86,7 @@ impl CommonOptions {
             PrivateKey::decode(key_str)
                 .with_context(|| format!("failed to parse key from {file:?}"))
         } else {
-            let url: Url = registry_url
-                .parse()
-                .with_context(|| format!("failed to parse registry URL `{registry_url}`"))?;
-
-            let host = url
-                .host_str()
-                .with_context(|| format!("registry URL `{url}` has no host"))?;
-
-            get_signing_key(host, &self.key_name)
+            get_signing_key(registry_url, &self.key_name)
         }
     }
 }
