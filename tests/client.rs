@@ -80,6 +80,9 @@ async fn client_incrementally_fetches() -> Result<()> {
     // Recreate the client with the same config
     let client = create_client(&config)?;
 
+    // Regression test: update on empty registry storage
+    client.update().await?;
+
     // Fetch the package log
     client.upsert([&id]).await?;
 
