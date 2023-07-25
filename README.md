@@ -108,23 +108,23 @@ A new package can be initialized by running:
 warg publish init hello
 ```
 
-This creates a new package named `hello` in the registry.
+This creates a new package in the `example` namespace with the package ID `hello`.
 
 A version of the package can be published by running:
 
 ```
-warg publish release --name hello --version 0.1.0 hello.wasm
+warg publish release --id example:hello --version 0.1.0 hello.wasm
 ```
 
-This publishes a package named `hello` with version `0.1.0` and content from 
+This publishes a package named `hello` in the `example` namespace with version `0.1.0` and content from 
 `hello.wasm`.
 
 Alternatively, the above can be batched into a single publish operation:
 
 ```
-warg publish start hello
-warg publish init hello
-warg publish release --name hello --version 0.1.0 hello.wasm
+warg publish start example:hello
+warg publish init example:hello
+warg publish release --id example:hello --version 0.1.0 hello.wasm
 warg publish submit
 ```
 
@@ -145,16 +145,16 @@ A demo module that implements a simple "grep" tool is available in `demo/simple-
 To publish the demo module:
 
 ```
-warg publish start simple-grep
-warg publish init simple-grep
-warg publish release --name simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
+warg publish start demo:simple-grep
+warg publish init demo:simple-grep
+warg publish release --id demo:simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
 warg publish submit
 ```
 
 To run the demo package:
 
 ```
-echo 'hello world' | warg run simple-grep hello
+echo 'hello world' | warg run demo:simple-grep hello
 ```
 
 This should download and run the package, and print out the line `hello world` as it matches the pattern `hello`.
