@@ -108,7 +108,7 @@ A new package can be initialized by running:
 warg publish init hello
 ```
 
-This creates a new package in the `test` namespace with the package ID `hello`.
+This creates a new package in the `example` namespace with the package ID `hello`.
 
 A version of the package can be published by running:
 
