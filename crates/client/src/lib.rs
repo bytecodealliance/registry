@@ -13,7 +13,10 @@ use storage::{
 use thiserror::Error;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
-    package::{PackageError, PackageRecord, PackageRecordState, PublishRecordRequest},
+    package::{
+        MissingContent, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+        UploadEndpoint,
+    },
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
@@ -29,8 +32,10 @@ use warg_protocol::{
 pub mod api;
 mod config;
 pub mod lock;
+mod registry_url;
 pub mod storage;
 pub use self::config::*;
+pub use self::registry_url::RegistryUrl;
 
 /// A client for a Warg registry.
 pub struct Client<R, C> {
@@ -51,7 +56,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     }
 
     /// Gets the URL of the client.
-    pub fn url(&self) -> &str {
+    pub fn url(&self) -> &RegistryUrl {
         self.api.url()
     }
 
@@ -154,34 +159,33 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })
             })?;
 
-        let missing = record.missing_content();
-        if !missing.is_empty() {
-            // Upload the missing content
-            // TODO: parallelize this
-            for digest in record.missing_content() {
-                self.api
-                    .upload_content(
-                        &log_id,
-                        &record.id,
-                        digest,
-                        Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
-                            || ClientError::ContentNotFound {
-                                digest: digest.clone(),
-                            },
-                        )?),
-                    )
-                    .await
-                    .map_err(|e| match e {
-                        api::ClientError::Package(PackageError::Rejection(reason)) => {
-                            ClientError::PublishRejected {
-                                id: package.id.clone(),
-                                record_id: record.id.clone(),
-                                reason,
-                            }
+        // TODO: parallelize this
+        for (digest, MissingContent { upload }) in record.missing_content() {
+            // Upload the missing content, if the registry supports it
+            let Some(UploadEndpoint::HttpPost {url}) = upload.first() else {
+                continue;
+            };
+
+            self.api
+                .upload_content(
+                    url,
+                    Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
+                        || ClientError::ContentNotFound {
+                            digest: digest.clone(),
+                        },
+                    )?),
+                )
+                .await
+                .map_err(|e| match e {
+                    api::ClientError::Package(PackageError::Rejection(reason)) => {
+                        ClientError::PublishRejected {
+                            id: package.id.clone(),
+                            record_id: record.id.clone(),
+                            reason,
                         }
-                        _ => e.into(),
-                    })?;
-            }
+                    }
+                    _ => e.into(),
+                })?;
         }
 
         Ok(record.id)
@@ -580,7 +584,7 @@ impl FileSystemClient {
         config: &Config,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
-            url,
+            registry_url: url,
             registries_dir,
             content_dir,
         } = config.storage_paths_for_url(url)?;
@@ -595,7 +599,9 @@ impl FileSystemClient {
         };
 
         Ok(StorageLockResult::Acquired(Self::new(
-            url, packages, content,
+            url.into_url(),
+            packages,
+            content,
         )?))
     }
 
@@ -607,12 +613,12 @@ impl FileSystemClient {
     /// This method blocks if storage locks cannot be acquired.
     pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
         let StoragePaths {
-            url,
+            registry_url,
             registries_dir,
             content_dir,
         } = config.storage_paths_for_url(url)?;
         Self::new(
-            url,
+            registry_url.into_url(),
             FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
         )

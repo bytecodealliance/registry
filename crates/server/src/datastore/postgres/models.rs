@@ -107,6 +107,7 @@ pub struct Checkpoint {
 #[diesel(table_name = records)]
 pub struct RecordContent {
     pub status: RecordStatus,
+    pub registry_log_index: Option<i64>,
     pub reason: Option<String>,
     pub content: Vec<u8>,
 }

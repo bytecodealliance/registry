@@ -1,28 +1,18 @@
-use super::{
-    data::log::LogData,
-    transparency::{VerifiableLog, VerifiableMap},
-    MapData,
-};
-use crate::{
-    datastore::{DataStore, DataStoreError, InitialLeaf},
-    services::{data, transparency},
-};
-use anyhow::Result;
-use futures::StreamExt;
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use futures::{pin_mut, StreamExt};
+use thiserror::Error;
 use tokio::{
-    sync::{
-        mpsc::{self, Sender},
-        RwLock,
-    },
+    sync::{mpsc, RwLock},
     task::JoinHandle,
+    time::MissedTickBehavior,
 };
-use tokio_util::sync::CancellationToken;
 use warg_crypto::{
-    hash::{AnyHash, Hash, HashAlgorithm, Sha256},
+    hash::{AnyHash, Hash, Sha256, SupportedDigest},
     signing::PrivateKey,
 };
 use warg_protocol::{
@@ -30,268 +20,387 @@ use warg_protocol::{
     registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
     ProtoEnvelope, SerdeEnvelope,
 };
-use warg_transparency::log::LogBuilder;
+use warg_transparency::{
+    log::{LogBuilder, LogData, LogProofBundle, Node, VecLog},
+    map::{Map, MapProofBundle},
+};
 
-fn init_envelope(signing_key: &PrivateKey) -> ProtoEnvelope<operator::OperatorRecord> {
-    let init_record = operator::OperatorRecord {
-        prev: None,
-        version: 0,
-        timestamp: SystemTime::now(),
-        entries: vec![operator::OperatorEntry::Init {
-            hash_algorithm: HashAlgorithm::Sha256,
-            key: signing_key.public_key(),
-        }],
-    };
-    ProtoEnvelope::signed_contents(signing_key, init_record).unwrap()
+use crate::datastore::{DataStore, DataStoreError};
+
+#[derive(Clone)]
+pub struct CoreService<Digest: SupportedDigest = Sha256> {
+    inner: Arc<Inner<Digest>>,
+
+    // Channel sender used by `submit_package_record` to serialize submissions.
+    submit_entry_tx: mpsc::Sender<LogLeaf>,
 }
 
-/// Used to stop the core service.
-pub struct StopHandle {
-    token: CancellationToken,
-    join: Vec<JoinHandle<()>>,
-}
-
-impl StopHandle {
-    /// Stops the core service and waits for all tasks to complete.
-    pub async fn stop(self) {
-        self.token.cancel();
-        futures::future::join_all(self.join).await;
-    }
-}
-
-#[derive(Debug)]
-struct SubmitPackageRecord {
-    log_id: LogId,
-    record_id: RecordId,
-}
-
-#[derive(Default)]
-struct InitializationData {
-    log: VerifiableLog,
-    map: VerifiableMap,
-    log_data: LogData,
-    map_data: MapData,
-    leaves: Vec<LogLeaf>,
-}
-
-pub struct CoreService {
-    log: Arc<RwLock<LogData>>,
-    map: Arc<RwLock<MapData>>,
-    submit_record_tx: Sender<SubmitPackageRecord>,
-    store: Box<dyn DataStore>,
-}
-
-impl CoreService {
-    /// Spawn the core service with the given operator signing key.
-    pub async fn spawn(
-        signing_key: PrivateKey,
+impl<Digest: SupportedDigest> CoreService<Digest> {
+    /// Starts the `CoreService`, returning a `clone`able handle to the
+    /// service and a [`JoinHandle`] which should be awaited after dropping all
+    /// copies of the service handle to allow for graceful shutdown.
+    pub async fn start(
+        operator_key: PrivateKey,
         store: Box<dyn DataStore>,
         checkpoint_interval: Duration,
-    ) -> Result<(Arc<Self>, StopHandle), DataStoreError> {
-        let data = Self::initialize(&signing_key, store.as_ref()).await?;
-        let token = CancellationToken::new();
-        let (log_tx, log_rx) = mpsc::channel(4);
-
-        // Spawn the transparency service
-        let transparency = transparency::spawn(transparency::Input {
-            token: token.clone(),
-            checkpoint_interval,
-            log: data.log,
-            map: data.map,
-            leaves: data.leaves,
-            signing_key,
-            log_rx,
-        });
-
-        // Spawn the data service
-        let data = data::spawn(data::Input {
-            token: token.clone(),
-            log_data: data.log_data,
-            log_rx: transparency.log_rx,
-            map_data: data.map_data,
-            map_rx: transparency.map_rx,
-        });
-
-        let (submit_record_tx, mut submit_record_rx) = mpsc::channel(4);
-        let core = Arc::new(Self {
-            log: data.log_data,
-            map: data.map_data,
-            submit_record_tx,
+    ) -> Result<(Self, JoinHandle<()>), CoreServiceError> {
+        // Build service
+        let mut inner = Inner {
+            operator_key,
             store,
-        });
+            state: Default::default(),
+        };
+        inner.initialize().await?;
 
-        let spawn_token = token.clone();
-        let task_core = core.clone();
-        let mut signatures = transparency.signature_rx;
-        let handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = spawn_token.cancelled() => {
-                        break;
-                    }
-                    message = submit_record_rx.recv() => match message {
-                        Some(SubmitPackageRecord {
-                            log_id, record_id
-                        }) => {
-                            // Validate the package record
-                            match task_core.store.validate_package_record(&log_id, &record_id).await {
-                                Ok(()) => {
-                                    // Send the record to the transparency service to be included in the next checkpoint
-                                    let leaf = LogLeaf { log_id, record_id };
-                                    log_tx.send(leaf).await.unwrap();
-                                }
-                                Err(e) => match e {
-                                    DataStoreError::Rejection(_)
-                                    | DataStoreError::OperatorValidationFailed(_)
-                                    | DataStoreError::PackageValidationFailed(_) => {
-                                        // The record failed to validate and was rejected; do not include it in the next checkpoint
-                                    }
-                                    e => {
-                                        // TODO: this should be made more robust with a proper reliable message
-                                        // queue with retry logic
-                                        tracing::error!("failed to validate package record `{record_id}`: {e}");
-                                    }
-                                }
-                            }
-                        }
-                        None => break,
-                    },
-                    signature = signatures.recv() => {
-                        if let Some(signature) = signature {
-                            let checkpoint_id = Hash::<Sha256>::of(signature.envelope.as_ref()).into();
-                            task_core.store.store_checkpoint(&checkpoint_id, signature.envelope, &signature.leaves).await.unwrap();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-
-        tracing::debug!("core service is running");
-
-        let join = vec![
-            transparency.log_handle,
-            transparency.map_handle,
-            transparency.sign_handle,
-            data.log_handle,
-            data.map_handle,
-            handle,
-        ];
-
-        Ok((core, StopHandle { token, join }))
-    }
-
-    /// Get the log data associated with the core service.
-    pub fn log_data(&self) -> &Arc<RwLock<LogData>> {
-        &self.log
-    }
-
-    /// Get the map data associated with the core service.
-    pub fn map_data(&self) -> &Arc<RwLock<MapData>> {
-        &self.map
-    }
-
-    async fn initialize(
-        signing_key: &PrivateKey,
-        store: &dyn DataStore,
-    ) -> Result<InitializationData, DataStoreError> {
-        tracing::debug!("initializing core service");
-        let mut data = InitializationData::default();
-        let mut last_checkpoint = None;
-        let mut initial = store.get_initial_leaves().await?;
-        while let Some(res) = initial.next().await {
-            let InitialLeaf { leaf, checkpoint } = res?;
-            data.log.push(&leaf);
-            data.map = data.map.insert(
-                leaf.log_id.clone(),
-                MapLeaf {
-                    record_id: leaf.record_id.clone(),
-                },
-            );
-
-            match checkpoint {
-                Some(checkpoint) => {
-                    if last_checkpoint.as_ref() != Some(&checkpoint) {
-                        data.map_data.insert(data.map.clone());
-                        last_checkpoint = Some(checkpoint);
-                    }
-                }
-                None => data.leaves.push(leaf.clone()),
-            }
-
-            data.log_data.push(leaf);
-        }
-
-        if data.log.is_empty() {
-            return Self::init_operator_log(signing_key, store).await;
-        }
-
-        tracing::debug!("core service initialized");
-        Ok(data)
-    }
-
-    async fn init_operator_log(
-        signing_key: &PrivateKey,
-        store: &dyn DataStore,
-    ) -> Result<InitializationData, DataStoreError> {
-        let init = init_envelope(signing_key);
-        let log_id = LogId::operator_log::<Sha256>();
-        let record_id = RecordId::operator_record::<Sha256>(&init);
-
-        store
-            .store_operator_record(&log_id, &record_id, &init)
-            .await?;
-
-        // TODO: ensure the operator record passes all policy checks
-
-        store.validate_operator_record(&log_id, &record_id).await?;
-
-        let leaf = LogLeaf { log_id, record_id };
-        let mut data = InitializationData::default();
-        data.log.push(&leaf);
-
-        data.map = data.map.insert(
-            leaf.log_id.clone(),
-            MapLeaf {
-                record_id: leaf.record_id.clone(),
-            },
+        // Spawn state update task
+        let inner = Arc::new(inner);
+        let (submit_entry_tx, submit_entry_rx) = tokio::sync::mpsc::channel(4);
+        let handle = tokio::spawn(
+            inner
+                .clone()
+                .process_state_updates(submit_entry_rx, checkpoint_interval),
         );
 
-        data.log_data.push(leaf.clone());
-        data.map_data.insert(data.map.clone());
-
-        let checkpoint = data.log.checkpoint();
-        let log_root: AnyHash = checkpoint.root().into();
-        let log_length = checkpoint.length() as u32;
-
-        let checkpoint = MapCheckpoint {
-            log_root,
-            log_length,
-            map_root: data.map.root().clone().into(),
+        let svc = Self {
+            inner,
+            submit_entry_tx,
         };
-
-        let checkpoint = SerdeEnvelope::signed_contents(signing_key, checkpoint).unwrap();
-        let checkpoint_id = Hash::<Sha256>::of(checkpoint.as_ref()).into();
-        store
-            .store_checkpoint(&checkpoint_id, checkpoint, &[leaf])
-            .await?;
-
-        Ok(data)
+        Ok((svc, handle))
     }
-}
 
-impl CoreService {
-    /// Gets the data store associated with the core service.
+    /// Constructs a log consistency proof between the given log tree roots.
+    pub async fn log_consistency_proof(
+        &self,
+        old_root: &Hash<Digest>,
+        new_root: &Hash<Digest>,
+    ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
+        let state = self.inner.state.read().await;
+
+        let old_length = state.get_log_len_at(old_root)?;
+        let new_length = state.get_log_len_at(new_root)?;
+
+        let proof = state.log.prove_consistency(old_length, new_length);
+        LogProofBundle::bundle(vec![proof], vec![], &state.log)
+            .map_err(CoreServiceError::BundleFailure)
+    }
+
+    /// Constructs log inclusion proofs for the given entries at the given log tree root.
+    pub async fn log_inclusion_proofs(
+        &self,
+        root: &Hash<Digest>,
+        entries: &[LogLeaf],
+    ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
+        let state = self.inner.state.read().await;
+
+        let log_length = state.get_log_len_at(root)?;
+
+        let proofs = entries
+            .iter()
+            .map(|entry| {
+                let node = state
+                    .leaf_index
+                    .get(entry)
+                    .ok_or_else(|| CoreServiceError::LeafNotFound(entry.clone()))?;
+                Ok(state.log.prove_inclusion(*node, log_length))
+            })
+            .collect::<Result<Vec<_>, CoreServiceError>>()?;
+
+        LogProofBundle::bundle(vec![], proofs, &state.log).map_err(CoreServiceError::BundleFailure)
+    }
+
+    /// Constructs map inclusion proofs for the given entries at the given map tree root.
+    pub async fn map_inclusion_proofs(
+        &self,
+        root: &Hash<Digest>,
+        entries: &[LogLeaf],
+    ) -> Result<MapProofBundle<Digest, LogId, MapLeaf>, CoreServiceError> {
+        let state = self.inner.state.read().await;
+
+        let map = state
+            .map_index
+            .get(root)
+            .ok_or_else(|| CoreServiceError::RootNotFound(root.into()))?;
+
+        let proofs = entries
+            .iter()
+            .map(|entry| {
+                let LogLeaf { log_id, record_id } = entry;
+
+                let proof = map
+                    .prove(log_id.clone())
+                    .ok_or_else(|| CoreServiceError::PackageNotIncluded(log_id.clone()))?;
+
+                let map_leaf = MapLeaf {
+                    record_id: record_id.clone(),
+                };
+                let found_root = proof.evaluate(log_id, &map_leaf);
+                if &found_root != root {
+                    return Err(CoreServiceError::IncorrectProof {
+                        root: root.into(),
+                        found: found_root.into(),
+                    });
+                }
+
+                Ok(proof)
+            })
+            .collect::<Result<Vec<_>, CoreServiceError>>()?;
+
+        Ok(MapProofBundle::bundle(proofs))
+    }
+
+    /// Gets the data store associated with the transparency service.
     pub fn store(&self) -> &dyn DataStore {
-        self.store.as_ref()
+        self.inner.store.as_ref()
     }
 
     /// Submits a package record to be processed.
     pub async fn submit_package_record(&self, log_id: LogId, record_id: RecordId) {
-        self.submit_record_tx
-            .send(SubmitPackageRecord { log_id, record_id })
+        self.submit_entry_tx
+            .send(LogLeaf { log_id, record_id })
+            .await
+            .unwrap()
+    }
+}
+
+struct Inner<Digest: SupportedDigest> {
+    // Operator signing key
+    operator_key: PrivateKey,
+
+    // DataStore persists transparency state.
+    store: Box<dyn DataStore>,
+
+    // In-memory transparency state.
+    state: RwLock<State<Digest>>,
+}
+
+impl<Digest: SupportedDigest> Inner<Digest> {
+    // Load state from DataStore or initialize empty state, returning any
+    // entries that are not yet part of a checkpoint.
+    async fn initialize(&mut self) -> Result<(), CoreServiceError> {
+        tracing::debug!("Initializing CoreService");
+
+        let published = self.store.get_all_validated_records().await?.peekable();
+        pin_mut!(published);
+
+        // If there are no published records, initialize a new state
+        if published.as_mut().peek().await.is_none() {
+            tracing::debug!("No existing records; initializing new state");
+            return self.initialize_new().await;
+        }
+
+        // Reconstruct internal state from previously-stored data
+        let mut checkpoints = self.store.get_all_checkpoints().await?;
+        let mut checkpoints_by_len: HashMap<usize, MapCheckpoint> = Default::default();
+        while let Some(checkpoint) = checkpoints.next().await {
+            let checkpoint = checkpoint?;
+            checkpoints_by_len.insert(checkpoint.log_length as usize, checkpoint);
+        }
+
+        let state = self.state.get_mut();
+        while let Some(entry) = published.next().await {
+            state.push_entry(entry?);
+            if let Some(stored_checkpoint) = checkpoints_by_len.get(&state.log.length()) {
+                // Validate stored checkpoint (and update internal state as a side-effect)
+                let computed_checkpoint = state.checkpoint();
+                assert!(stored_checkpoint == &computed_checkpoint);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn initialize_new(&mut self) -> Result<(), CoreServiceError> {
+        let state = self.state.get_mut();
+
+        // Construct operator init record
+        let init_record = operator::OperatorRecord {
+            prev: None,
+            version: 0,
+            timestamp: SystemTime::now(),
+            entries: vec![operator::OperatorEntry::Init {
+                hash_algorithm: Digest::ALGORITHM,
+                key: self.operator_key.public_key(),
+            }],
+        };
+        let signed_init_record =
+            ProtoEnvelope::signed_contents(&self.operator_key, init_record).unwrap();
+        let log_id = LogId::operator_log::<Digest>();
+        let record_id = RecordId::operator_record::<Digest>(&signed_init_record);
+
+        // Store init record
+        self.store
+            .store_operator_record(&log_id, &record_id, &signed_init_record)
+            .await?;
+        self.store
+            .commit_operator_record(&log_id, &record_id, 0)
+            .await?;
+
+        // Update state with init record
+        let entry = LogLeaf { log_id, record_id };
+        state.push_entry(entry.clone());
+
+        // "zero" checkpoint to be updated
+        let mut checkpoint = MapCheckpoint {
+            log_root: Hash::<Digest>::default().into(),
+            log_length: 0,
+            map_root: Hash::<Digest>::default().into(),
+        };
+        self.update_checkpoint(&mut checkpoint).await;
+
+        Ok(())
+    }
+
+    // Runs the service's state update loop.
+    async fn process_state_updates(
+        self: Arc<Self>,
+        mut submit_entry_rx: mpsc::Receiver<LogLeaf>,
+        checkpoint_interval: Duration,
+    ) {
+        let mut checkpoint = self
+            .store
+            .get_latest_checkpoint()
+            .await
+            .unwrap()
+            .into_contents();
+        let mut checkpoint_interval = tokio::time::interval(checkpoint_interval);
+        checkpoint_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                entry = submit_entry_rx.recv() => match entry {
+                    Some(entry) => self.process_package_entry(&entry).await,
+                    None => break, // Channel closed
+                },
+                _ = checkpoint_interval.tick() => self.update_checkpoint(&mut checkpoint).await,
+            }
+        }
+    }
+
+    // Processes a submitted package entry
+    async fn process_package_entry(&self, entry: &LogLeaf) {
+        tracing::debug!("Processing entry {entry:?}");
+
+        let mut state = self.state.write().await;
+        let LogLeaf { log_id, record_id } = entry;
+
+        // Validate and commit the package entry to the store
+        let registry_log_index = state.log.length().try_into().unwrap();
+        let commit_res = self
+            .store
+            .commit_package_record(log_id, record_id, registry_log_index)
+            .await;
+
+        if let Err(err) = commit_res {
+            match err {
+                DataStoreError::Rejection(_)
+                | DataStoreError::OperatorValidationFailed(_)
+                | DataStoreError::PackageValidationFailed(_) => {
+                    // The record failed to validate and was rejected; do not include it in the next checkpoint
+                    tracing::debug!("record `{record_id}` rejected: {err:?}");
+                }
+                e => {
+                    // TODO: this should be made more robust with a proper reliable message
+                    // queue with retry logic
+                    tracing::error!("failed to validate package record `{record_id}`: {e}");
+                }
+            }
+            return;
+        }
+
+        state.push_entry(entry.clone());
+    }
+
+    // Store a checkpoint including the given new entries
+    async fn update_checkpoint(&self, current_checkpoint: &mut MapCheckpoint) {
+        let mut state = self.state.write().await;
+        if state.log.length() == (current_checkpoint.log_length as usize) {
+            return;
+        }
+        let next_checkpoint = state.checkpoint();
+        tracing::debug!("Updating to checkpoint {next_checkpoint:?}");
+        let signed_checkpoint =
+            SerdeEnvelope::signed_contents(&self.operator_key, next_checkpoint.clone()).unwrap();
+        let checkpoint_id = Hash::<Digest>::of(signed_checkpoint.as_ref()).into();
+        self.store
+            .store_checkpoint(&checkpoint_id, signed_checkpoint)
             .await
             .unwrap();
+        *current_checkpoint = next_checkpoint;
     }
+}
+
+type VerifiableMap<Digest> = Map<Digest, LogId, MapLeaf>;
+
+#[derive(Default)]
+struct State<Digest: SupportedDigest> {
+    // The verifiable log of all package log entries
+    log: VecLog<Digest, LogLeaf>,
+    // Index log tree nodes by entry
+    leaf_index: HashMap<LogLeaf, Node>,
+    // Index log size by log tree root
+    root_index: HashMap<Hash<Digest>, usize>,
+
+    // The verifiable map of package logs' latest entries (log_id -> record_id)
+    map: VerifiableMap<Digest>,
+    // Index verifiable map snapshots by root (at checkpoints only)
+    map_index: HashMap<Hash<Digest>, VerifiableMap<Digest>>,
+}
+
+impl<Digest: SupportedDigest> State<Digest> {
+    fn push_entry(&mut self, entry: LogLeaf) {
+        let node = self.log.push(&entry);
+        self.leaf_index.insert(entry.clone(), node);
+
+        let log_checkpoint = self.log.checkpoint();
+        self.root_index
+            .insert(log_checkpoint.root(), log_checkpoint.length());
+
+        self.map = self.map.insert(
+            entry.log_id.clone(),
+            MapLeaf {
+                record_id: entry.record_id.clone(),
+            },
+        );
+    }
+
+    fn checkpoint(&mut self) -> MapCheckpoint {
+        let log_checkpoint = self.log.checkpoint();
+        let map_root = self.map.root();
+
+        // Update map snapshot
+        if log_checkpoint.length() > 0 {
+            self.map_index.insert(map_root.clone(), self.map.clone());
+        }
+
+        MapCheckpoint {
+            log_length: log_checkpoint.length().try_into().unwrap(),
+            log_root: log_checkpoint.root().into(),
+            map_root: map_root.into(),
+        }
+    }
+
+    fn get_log_len_at(&self, log_root: &Hash<Digest>) -> Result<usize, CoreServiceError> {
+        self.root_index
+            .get(log_root)
+            .cloned()
+            .ok_or_else(|| CoreServiceError::RootNotFound(log_root.into()))
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum CoreServiceError {
+    #[error("root `{0}` was not found")]
+    RootNotFound(AnyHash),
+    #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
+    LeafNotFound(LogLeaf),
+    #[error("failed to bundle proofs: `{0}`")]
+    BundleFailure(anyhow::Error),
+    #[error("failed to prove inclusion of package `{0}`")]
+    PackageNotIncluded(LogId),
+    #[error("failed to prove inclusion: found root `{found}` but was given root `{root}`")]
+    IncorrectProof { root: AnyHash, found: AnyHash },
+    #[error("data store error: {0}")]
+    DataStore(#[from] DataStoreError),
+    #[error("initialization failed: {0}")]
+    InitializationFailure(String),
 }

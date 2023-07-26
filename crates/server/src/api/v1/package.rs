@@ -16,13 +16,14 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use url::Url;
 use warg_api::v1::package::{
-    ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+    ContentSource, MissingContent, PackageError, PackageRecord, PackageRecordState,
+    PublishRecordRequest, UploadEndpoint,
 };
 use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
@@ -33,7 +34,7 @@ use warg_protocol::{
 
 #[derive(Clone)]
 pub struct Config {
-    core_service: Arc<CoreService>,
+    core_service: CoreService,
     content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
@@ -43,7 +44,7 @@ pub struct Config {
 
 impl Config {
     pub fn new(
-        core_service: Arc<CoreService>,
+        core_service: CoreService,
         content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,
@@ -90,6 +91,26 @@ impl Config {
             .join(&self.content_file_name(digest))
             .unwrap()
             .to_string()
+    }
+
+    fn build_missing_content<'a>(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        missing_digests: impl IntoIterator<Item = &'a AnyHash>,
+    ) -> HashMap<AnyHash, MissingContent> {
+        missing_digests
+            .into_iter()
+            .map(|digest| {
+                let url = format!("v1/package/{log_id}/record/{record_id}/content/{digest}");
+                (
+                    digest.clone(),
+                    MissingContent {
+                        upload: vec![UploadEndpoint::HttpPost { url }],
+                    },
+                )
+            })
+            .collect()
     }
 }
 
@@ -231,13 +252,12 @@ async fn publish_record(
         ));
     }
 
+    let missing_content = config.build_missing_content(&log_id, &record_id, missing);
     Ok((
         StatusCode::ACCEPTED,
         Json(PackageRecord {
             id: record_id,
-            state: PackageRecordState::Sourcing {
-                missing_content: missing.into_iter().cloned().collect(),
-            },
+            state: PackageRecordState::Sourcing { missing_content },
         }),
     ))
 }
@@ -254,12 +274,13 @@ async fn get_record(
         .await?;
 
     match record.status {
-        RecordStatus::MissingContent(missing) => Ok(Json(PackageRecord {
-            id: record_id,
-            state: PackageRecordState::Sourcing {
-                missing_content: missing,
-            },
-        })),
+        RecordStatus::MissingContent(missing) => {
+            let missing_content = config.build_missing_content(&log_id, &record_id, &missing);
+            Ok(Json(PackageRecord {
+                id: record_id,
+                state: PackageRecordState::Sourcing { missing_content },
+            }))
+        }
         // Validated is considered still processing until included in a checkpoint
         RecordStatus::Pending | RecordStatus::Validated => Ok(Json(PackageRecord {
             id: record_id,
@@ -275,21 +296,23 @@ async fn get_record(
                 .as_ref()
                 .contents()
                 .into_iter()
-                .map(|d| {
+                .map(|digest| {
                     (
-                        d.clone(),
+                        digest.clone(),
                         vec![ContentSource::Http {
-                            url: config.content_url(d),
+                            url: config.content_url(digest),
                         }],
                     )
                 })
                 .collect();
 
+            let registry_log_index = record.registry_log_index.unwrap().try_into().unwrap();
+
             Ok(Json(PackageRecord {
                 id: record_id,
                 state: PackageRecordState::Published {
                     record: record.envelope.into(),
-                    checkpoint: record.checkpoint.unwrap(),
+                    registry_log_index,
                     content_sources,
                 },
             }))
@@ -361,7 +384,7 @@ async fn upload_content(
     {
         config
             .core_service
-            .submit_package_record(log_id, record_id.clone())
+            .submit_package_record(log_id, record_id)
             .await;
     }
 

@@ -1,12 +1,11 @@
 //! A module for Warg registry API clients.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
-use reqwest::{Body, IntoUrl, Response, StatusCode, Url};
+use reqwest::{Body, IntoUrl, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use thiserror::Error;
-use url::Host;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
     package::{
@@ -26,6 +25,8 @@ use warg_transparency::{
     log::{ConsistencyProofError, InclusionProofError, LogProofBundle, ProofBundle},
     map::MapProofBundle,
 };
+
+use crate::registry_url::RegistryUrl;
 
 /// Represents an error that occurred while communicating with the registry.
 #[derive(Debug, Error)]
@@ -122,14 +123,14 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 /// Represents a Warg API client for communicating with
 /// a Warg registry server.
 pub struct Client {
-    url: Url,
+    url: RegistryUrl,
     client: reqwest::Client,
 }
 
 impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl) -> Result<Self> {
-        let url = Self::validate_url(url)?;
+        let url = RegistryUrl::new(url)?;
         Ok(Self {
             url,
             client: reqwest::Client::new(),
@@ -137,56 +138,13 @@ impl Client {
     }
 
     /// Gets the URL of the API client.
-    pub fn url(&self) -> &str {
-        self.url.as_str()
-    }
-
-    /// Parses and validates the given URL.
-    ///
-    /// Returns the validated URL on success.
-    pub fn validate_url(url: impl IntoUrl) -> Result<Url> {
-        // Default to a HTTPS scheme if none is provided
-        let url: Url = if !url.as_str().contains("://") {
-            Url::parse(&format!("https://{url}", url = url.as_str()))
-                .context("failed to parse registry server URL")?
-        } else {
-            url.into_url()
-                .context("failed to parse registry server URL")?
-        };
-
-        match url.scheme() {
-            "https" => {}
-            "http" => {
-                // Only allow HTTP connections to loopback
-                match url
-                    .host()
-                    .ok_or_else(|| anyhow!("expected a host for URL `{url}`"))?
-                {
-                    Host::Domain(d) => {
-                        if d != "localhost" {
-                            bail!("an unsecured connection is not permitted to `{d}`");
-                        }
-                    }
-                    Host::Ipv4(ip) => {
-                        if !ip.is_loopback() {
-                            bail!("an unsecured connection is not permitted to address `{ip}`");
-                        }
-                    }
-                    Host::Ipv6(ip) => {
-                        if !ip.is_loopback() {
-                            bail!("an unsecured connection is not permitted to address `{ip}`");
-                        }
-                    }
-                }
-            }
-            _ => bail!("expected a HTTPS scheme for URL `{url}`"),
-        }
-        Ok(url)
+    pub fn url(&self) -> &RegistryUrl {
+        &self.url
     }
 
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, ClientError> {
-        let url = self.url.join(paths::fetch_checkpoint()).unwrap();
+        let url = self.url.join(paths::fetch_checkpoint());
         tracing::debug!("getting latest checkpoint at `{url}`");
         into_result::<_, FetchError>(reqwest::get(url).await?).await
     }
@@ -196,7 +154,7 @@ impl Client {
         &self,
         request: FetchLogsRequest<'_>,
     ) -> Result<FetchLogsResponse, ClientError> {
-        let url = self.url.join(paths::fetch_logs()).unwrap();
+        let url = self.url.join(paths::fetch_logs());
         tracing::debug!("fetching logs at `{url}`");
 
         let response = self.client.post(url).json(&request).send().await?;
@@ -209,10 +167,7 @@ impl Client {
         log_id: &LogId,
         request: PublishRecordRequest<'_>,
     ) -> Result<PackageRecord, ClientError> {
-        let url = self
-            .url
-            .join(&paths::publish_package_record(log_id))
-            .unwrap();
+        let url = self.url.join(&paths::publish_package_record(log_id));
         tracing::debug!(
             "appending record to package `{id}` at `{url}`",
             id = request.id
@@ -228,10 +183,7 @@ impl Client {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<PackageRecord, ClientError> {
-        let url = self
-            .url
-            .join(&paths::package_record(log_id, record_id))
-            .unwrap();
+        let url = self.url.join(&paths::package_record(log_id, record_id));
         tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
 
         let response = reqwest::get(url).await?;
@@ -283,7 +235,7 @@ impl Client {
 
     /// Proves the inclusion of the given package log heads in the registry.
     pub async fn prove_inclusion(&self, request: InclusionRequest<'_>) -> Result<(), ClientError> {
-        let url = self.url.join(paths::prove_inclusion()).unwrap();
+        let url = self.url.join(paths::prove_inclusion());
         tracing::debug!("proving checkpoint inclusion at `{url}`");
 
         let response = into_result::<InclusionResponse, ProofError>(
@@ -303,7 +255,7 @@ impl Client {
         &self,
         request: ConsistencyRequest<'_>,
     ) -> Result<(), ClientError> {
-        let url = self.url.join(paths::prove_consistency()).unwrap();
+        let url = self.url.join(paths::prove_consistency());
         let response = into_result::<ConsistencyResponse, ProofError>(
             self.client.post(url).json(&request).send().await?,
         )
@@ -349,15 +301,12 @@ impl Client {
     /// Uploads package content to the registry.
     pub async fn upload_content(
         &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-        digest: &AnyHash,
+        url: &str,
         content: impl Into<Body>,
     ) -> Result<String, ClientError> {
-        let url = self
-            .url
-            .join(&paths::package_record_content(log_id, record_id, digest))
-            .unwrap();
+        // Upload URLs may be relative to the registry URL.
+        let url = self.url.join(url);
+
         tracing::debug!("uploading content to `{url}`");
 
         let response = self.client.post(url).body(content).send().await?;

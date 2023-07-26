@@ -4105,6 +4105,7 @@ dependencies = [
 name = "warg-api"
 version = "0.1.0"
 dependencies = [
+ "itertools 0.11.0",
  "serde",
  "serde_with",
  "thiserror",
@@ -4132,6 +4133,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "tracing",
  "tracing-subscriber",
  "url",
  "warg-api",

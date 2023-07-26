@@ -6,8 +6,8 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, MapCheckpoint, PackageId, RecordId},
-    ProtoEnvelopeBody, SerdeEnvelope,
+    registry::{LogId, PackageId, RecordId},
+    ProtoEnvelopeBody,
 };
 
 /// Represents the supported kinds of content sources.
@@ -19,6 +19,26 @@ pub enum ContentSource {
         /// The URL of the content.
         url: String,
     },
+}
+
+/// Represents the supported kinds of content upload endpoints.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum UploadEndpoint {
+    /// Content may be uploaded via HTTP POST to the given URL.
+    /// If the endpoint responds with "201 Created" and a Location header, that
+    /// header's value will be the content source.
+    HttpPost {
+        /// The URL to POST content to.
+        url: String,
+    },
+}
+
+/// Information about missing content.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MissingContent {
+    /// Upload endpoint(s) that may be used to provide missing content.
+    pub upload: Vec<UploadEndpoint>,
 }
 
 /// Represents a request to publish a record to a package log.
@@ -45,23 +65,13 @@ pub struct PackageRecord {
 }
 
 impl PackageRecord {
-    /// Gets the checkpoint of the record.
-    ///
-    /// Returns `None` if the record hasn't been published yet.
-    pub fn checkpoint(&self) -> Option<&SerdeEnvelope<MapCheckpoint>> {
-        match &self.state {
-            PackageRecordState::Published { checkpoint, .. } => Some(checkpoint),
-            _ => None,
-        }
-    }
-
-    /// Gets the missing content digests of the record.
-    pub fn missing_content(&self) -> &[AnyHash] {
+    /// Gets the missing content of the record.
+    pub fn missing_content(&self) -> impl Iterator<Item = (&AnyHash, &MissingContent)> {
         match &self.state {
             PackageRecordState::Sourcing {
                 missing_content, ..
-            } => missing_content,
-            _ => &[],
+            } => itertools::Either::Left(missing_content.iter()),
+            _ => itertools::Either::Right(std::iter::empty()),
         }
     }
 }
@@ -76,23 +86,27 @@ impl PackageRecord {
 #[allow(clippy::large_enum_variant)]
 pub enum PackageRecordState {
     /// The package record needs content sources.
+    #[serde(rename_all = "camelCase")]
     Sourcing {
         /// The digests of the missing content.
-        missing_content: Vec<AnyHash>,
+        missing_content: HashMap<AnyHash, MissingContent>,
     },
     /// The package record is processing.
+    #[serde(rename_all = "camelCase")]
     Processing,
     /// The package record is rejected.
+    #[serde(rename_all = "camelCase")]
     Rejected {
         /// The reason the record was rejected.
         reason: String,
     },
     /// The package record was successfully published to the log.
+    #[serde(rename_all = "camelCase")]
     Published {
-        /// The checkpoint that the recorded was included in.
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,
+        /// The index of the record in the registry log.
+        registry_log_index: u32,
         /// The content sources of the record.
         content_sources: HashMap<AnyHash, Vec<ContentSource>>,
     },

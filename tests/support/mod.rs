@@ -7,6 +7,7 @@ use std::{
 };
 use tokio::{fs, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use tracing::subscriber::DefaultGuard;
 use url::Url;
 use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo},
@@ -44,13 +45,14 @@ pub fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
 pub struct ServerInstance {
     task: Option<JoinHandle<()>>,
     shutdown: CancellationToken,
+    _subscriber_guard: DefaultGuard,
 }
 
 impl Drop for ServerInstance {
     fn drop(&mut self) {
         futures::executor::block_on(async move {
             self.shutdown.cancel();
-            self.task.take().unwrap().await.ok();
+            self.task.take().unwrap().await.unwrap();
         });
     }
 }
@@ -92,6 +94,15 @@ pub async fn root() -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Sets up logging for the current thread, active until the returned guard is dropped.
+fn thread_test_logging() -> DefaultGuard {
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .finish();
+    tracing::subscriber::set_default(subscriber)
+}
+
 /// Spawns a server as a background task.
 pub async fn spawn_server(
     root: &Path,
@@ -99,6 +110,8 @@ pub async fn spawn_server(
     data_store: Option<Box<dyn DataStore>>,
     authorized_keys: Option<Vec<(String, KeyID)>>,
 ) -> Result<(ServerInstance, warg_client::Config)> {
+    let _subscriber_guard = thread_test_logging();
+
     let shutdown = CancellationToken::new();
     let mut config = Config::new(test_operator_key(), root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
@@ -123,16 +136,20 @@ pub async fn spawn_server(
         config = config.with_boxed_data_store(store);
     }
 
-    let mut server = Server::new(config);
-    let addr = server.bind()?;
+    let server = Server::new(config).initialize().await?;
+
+    let addr = server.local_addr()?;
+    tracing::debug!("Test server running at {addr}");
 
     let task = tokio::spawn(async move {
-        server.run().await.unwrap();
+        let _subscriber_guard = thread_test_logging();
+        server.serve().await.unwrap();
     });
 
     let instance = ServerInstance {
         task: Some(task),
         shutdown,
+        _subscriber_guard,
     };
 
     let config = warg_client::Config {

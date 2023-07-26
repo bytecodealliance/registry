@@ -45,6 +45,10 @@ impl<Contents> SerdeEnvelope<Contents> {
         })
     }
 
+    pub fn into_contents(self) -> Contents {
+        self.contents
+    }
+
     pub fn key_id(&self) -> &signing::KeyID {
         &self.key_id
     }
