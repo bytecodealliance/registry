@@ -40,4 +40,5 @@ oci-distribution = { git = "https://github.com/devigned/oci-distribution", branc
 
 [features]
 default = []
+debug = []
 postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "chrono"]
