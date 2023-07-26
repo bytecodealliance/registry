@@ -1,6 +1,8 @@
+use crate::contentstore::local::LocalContentStore;
 use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use axum::Router;
+use contentstore::ContentStore;
 use datastore::DataStore;
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
@@ -15,16 +17,14 @@ use std::{
 };
 use tokio::task::JoinHandle;
 use url::Url;
-use contentstore::ContentStore;
 use warg_crypto::signing::PrivateKey;
-use crate::contentstore::local::LocalContentStore;
 
 pub mod api;
 pub mod args;
+pub mod contentstore;
 pub mod datastore;
 pub mod policy;
 pub mod services;
-pub mod contentstore;
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);

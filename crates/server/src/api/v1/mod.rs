@@ -1,3 +1,4 @@
+use crate::contentstore::ContentStore;
 use crate::{
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
@@ -15,7 +16,6 @@ use axum::{
 use serde::{Serialize, Serializer};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
-use crate::contentstore::ContentStore;
 
 pub mod fetch;
 pub mod package;

@@ -233,7 +233,10 @@ impl DataStore for MemoryDataStore {
         });
 
         let mut state = self.0.write().await;
-        state.names.entry(log_id.clone()).or_insert_with(|| package_id.clone());
+        state
+            .names
+            .entry(log_id.clone())
+            .or_insert_with(|| package_id.clone());
         let prev = state.records.entry(log_id.clone()).or_default().insert(
             record_id.clone(),
             RecordStatus::Pending(PendingRecord::Package {

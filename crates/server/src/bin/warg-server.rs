@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
+use oci_distribution::secrets::RegistryAuth::Anonymous;
 use secrecy::SecretString;
 use std::{net::SocketAddr, path::PathBuf};
-use oci_distribution::secrets::RegistryAuth::Anonymous;
 use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
             .with_context(|| format!("failed to decode authorized keys from {path:?}"))?;
         config = config.with_record_policy(authorized_key_policy);
     }
-    
+
     let config = match args.content_store {
         ContentStoreKind::Local => {
             tracing::info!("using local content store");
@@ -136,7 +136,14 @@ async fn main() -> Result<()> {
         ContentStoreKind::OCIv1_1 => {
             use warg_server::contentstore::oci::ociv1_1::OCIv1_1ContentStore;
             tracing::info!("using OCIv1.1 content store");
-            config.with_content_store(OCIv1_1ContentStore::new(args.oci_registry_url.unwrap(), Anonymous, &args.content_dir).await)
+            config.with_content_store(
+                OCIv1_1ContentStore::new(
+                    args.oci_registry_url.unwrap(),
+                    Anonymous,
+                    &args.content_dir,
+                )
+                .await,
+            )
         }
     };
 

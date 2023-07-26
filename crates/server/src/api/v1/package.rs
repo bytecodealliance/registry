@@ -1,14 +1,15 @@
-use std::collections::HashSet;
 use super::{Json, Path};
 use crate::{
+    contentstore::ContentStore,
     datastore::{DataStoreError, RecordStatus},
     policy::{
         content::{ContentPolicy, ContentPolicyError},
         record::{RecordPolicy, RecordPolicyError},
     },
     services::CoreService,
-    contentstore::ContentStore,
 };
+use axum::body::StreamBody;
+use axum::http::header;
 use axum::{
     debug_handler,
     extract::{BodyStream, State},
@@ -18,14 +19,13 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
-use axum::body::StreamBody;
-use axum::http::header;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use url::Url;
 use tokio_util::io::ReaderStream;
+use url::Url;
 use warg_api::v1::package::{
     ContentSource, MissingContent, PackageError, PackageRecord, PackageRecordState,
     PublishRecordRequest, UploadEndpoint,
@@ -70,17 +70,20 @@ impl Config {
         Router::new()
             .route("/:log_id/record", post(publish_record))
             .route("/:log_id/record/:record_id", get(get_record))
-            .route("/:log_id/record/:record_id/content/:digest", post(upload_content))
-            .route("/:log_id/record/:record_id/content/:digest", get(fetch_content))
+            .route(
+                "/:log_id/record/:record_id/content/:digest",
+                post(upload_content),
+            )
+            .route(
+                "/:log_id/record/:record_id/content/:digest",
+                get(fetch_content),
+            )
             .with_state(self)
     }
 
-    fn content_url(&self,
-                   log_id: &LogId,
-                   record_id: &RecordId,
-                   digest: &AnyHash) -> String {
+    fn content_url(&self, log_id: &LogId, record_id: &RecordId, digest: &AnyHash) -> String {
         format!(
-            "{url}/{log_id}/record/{record_id}/content/{digest}",
+            "{url}v1/package/{log_id}/record/{record_id}/content/{digest}",
             url = self.content_base_url,
         )
     }
@@ -387,13 +390,17 @@ async fn upload_content(
     // Only persist the file if the content was successfully processed
     res?;
 
-    let version = crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id).await?;
+    let version =
+        crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id)
+            .await?;
     let package_id = config.core_service.store().get_package_id(&log_id).await?;
     let mut tmp_file = tokio::fs::File::open(&tmp_path)
         .await
         .map_err(PackageApiError::internal_error)?;
 
-    config.content_store.store_content(&package_id, &digest, version.to_string(), &mut tmp_file)
+    config
+        .content_store
+        .store_content(&package_id, &digest, version.to_string(), &mut tmp_file)
         .await
         .map_err(PackageApiError::internal_error)?;
 
@@ -412,7 +419,10 @@ async fn upload_content(
 
     Ok((
         StatusCode::CREATED,
-        [(header::LOCATION, config.content_url(&log_id, &record_id, &digest))],
+        [(
+            header::LOCATION,
+            config.content_url(&log_id, &record_id, &digest),
+        )],
     ))
 }
 
@@ -468,12 +478,12 @@ async fn fetch_content(
     tracing::info!("fetching content for record `{record_id}` from `{log_id}`");
 
     let package_id = config.core_service.store().get_package_id(&log_id).await?;
-    let version = crate::datastore::get_release_version(
-        config.core_service.store(),
-        &log_id,
-        &record_id,
-    ).await?;
-    let file = config.content_store.fetch_content(&package_id, &digest, version.to_string())
+    let version =
+        crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id)
+            .await?;
+    let file = config
+        .content_store
+        .fetch_content(&package_id, &digest, version.to_string())
         .await
         .map_err(PackageApiError::not_found)?;
 

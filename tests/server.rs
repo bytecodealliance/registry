@@ -421,8 +421,8 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
         .await?;
 
     let expected_url = format!(
-        "https://example.com/content/{digest}",
-        digest = digest.to_string().replace(':', "-")
+        "https://example.com/v1/package/{log_id}/record/{record_id}/content/{digest}",
+        record_id = record.id,
     );
 
     match record.state {

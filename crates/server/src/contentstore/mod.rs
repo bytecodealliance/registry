@@ -1,6 +1,6 @@
+use thiserror::Error;
 use tokio::fs::File;
 use warg_crypto::hash::AnyHash;
-use thiserror::Error;
 use warg_protocol::registry::PackageId;
 
 pub mod local;
@@ -32,7 +32,7 @@ pub trait ContentStore: Send + Sync {
         package_id: &PackageId,
         digest: &AnyHash,
         version: String,
-        content: &mut File
+        content: &mut File,
     ) -> Result<String, ContentStoreError>;
 
     async fn content_present(

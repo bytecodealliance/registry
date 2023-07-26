@@ -1,3 +1,4 @@
+use crate::contentstore::ContentStore;
 use crate::{
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
@@ -12,7 +13,6 @@ use tower_http::{
 };
 use tracing::{Level, Span};
 use url::Url;
-use crate::contentstore::ContentStore;
 
 pub mod v1;
 

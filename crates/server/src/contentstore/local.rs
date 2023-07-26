@@ -1,9 +1,9 @@
+use crate::contentstore::{ContentStore, ContentStoreError};
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::copy;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::registry::PackageId;
-use crate::contentstore::{ContentStore, ContentStoreError};
 
 #[derive(Clone)]
 pub struct LocalContentStore {
@@ -46,7 +46,7 @@ impl ContentStore for LocalContentStore {
         _package_id: &PackageId,
         digest: &AnyHash,
         _version: String,
-        content: &mut File
+        content: &mut File,
     ) -> Result<String, ContentStoreError> {
         let file_path = self.content_path(digest);
         let mut stored_file = File::create(file_path.clone())
@@ -67,6 +67,8 @@ impl ContentStore for LocalContentStore {
         _version: String,
     ) -> Result<bool, ContentStoreError> {
         let path = self.content_path(digest);
-        Path::new(&path).try_exists().map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))
+        Path::new(&path)
+            .try_exists()
+            .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))
     }
 }

@@ -2,14 +2,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use oci_distribution::config::{Architecture, Config as DistConfig, ConfigFile, Os};
 use oci_distribution::{
     client,
     client::{ClientProtocol, Config, ImageLayer},
     manifest::OciImageManifest,
-    Reference,
     secrets::RegistryAuth,
+    Reference,
 };
-use oci_distribution::config::{Architecture, ConfigFile, Config as DistConfig, Os};
 use serde_json;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,8 +20,7 @@ use tokio::task::block_in_place;
 use warg_crypto::hash::AnyHash;
 
 use crate::{
-    contentstore::ContentStoreError,
-    contentstore::ContentStoreError::ContentStoreInternalError,
+    contentstore::ContentStoreError, contentstore::ContentStoreError::ContentStoreInternalError,
 };
 
 const COMPONENT_ARTIFACT_TYPE: &str = "application/vnd.bytecodealliance.component.v1+wasm";
@@ -52,7 +51,10 @@ impl Client {
         digest: &AnyHash,
     ) -> Result<File, ContentStoreError> {
         let path = self.cached_content_path(digest);
-        if Path::new(&path).try_exists().map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))? {
+        if Path::new(&path)
+            .try_exists()
+            .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))?
+        {
             let file = File::open(path)
                 .await
                 .map_err(|e| ContentStoreError::ContentStoreInternalError(e.to_string()))?;
@@ -69,18 +71,13 @@ impl Client {
         // block_on.
         let result = block_in_place(|| {
             Handle::current().block_on(async move {
-                let mut oci = self
-                    .oci_client
-                    .write()
-                    .await;
-                oci
-                    .pull(&reference, &self.auth, vec![WASM_LAYER_MEDIA_TYPE])
+                let mut oci = self.oci_client.write().await;
+                oci.pull(&reference, &self.auth, vec![WASM_LAYER_MEDIA_TYPE])
                     .await
             })
         });
 
-        let image = result
-            .map_err(|e| ContentStoreInternalError(e.to_string()))?;
+        let image = result.map_err(|e| ContentStoreInternalError(e.to_string()))?;
 
         let layer = image
             .layers
@@ -90,8 +87,7 @@ impl Client {
         let mut file = File::create(self.cached_content_path(digest))
             .await
             .map_err(|e| ContentStoreInternalError(e.to_string()))?;
-        file
-            .write_all(&layer.data)
+        file.write_all(&layer.data)
             .await
             .map_err(|e| ContentStoreInternalError(e.to_string()))?;
         Ok(file)
@@ -121,8 +117,8 @@ impl Client {
             }),
             ..Default::default()
         };
-        let config_data = serde_json::to_vec(&config)
-            .map_err(|e| ContentStoreInternalError(e.to_string()))?;
+        let config_data =
+            serde_json::to_vec(&config).map_err(|e| ContentStoreInternalError(e.to_string()))?;
         let oci_config = Config::oci_v1(config_data, None);
         let mut layers = Vec::new();
         let wasm_layer = Self::wasm_layer(file)
@@ -135,15 +131,11 @@ impl Client {
 
         // TODO: fix the higher-level lifetime error that occurs when not using block_in_place and
         // block_on.
-        let result= block_in_place(|| {
+        let result = block_in_place(|| {
             Handle::current().block_on(async move {
                 tracing::log::trace!("Pushing component to {:?}", reference);
-                let mut oci = self
-                    .oci_client
-                    .write()
-                    .await;
-                oci
-                    .push(&reference, &layers, oci_config, &self.auth, Some(manifest))
+                let mut oci = self.oci_client.write().await;
+                oci.push(&reference, &layers, oci_config, &self.auth, Some(manifest))
                     .await
             })
         });
@@ -154,7 +146,10 @@ impl Client {
             .map_err(|e| ContentStoreInternalError(e.to_string()))
     }
 
-    pub async fn content_exists(&self, reference: impl AsRef<str>) -> Result<bool, ContentStoreError> {
+    pub async fn content_exists(
+        &self,
+        reference: impl AsRef<str>,
+    ) -> Result<bool, ContentStoreError> {
         let reference: Reference = reference
             .as_ref()
             .parse()
@@ -163,10 +158,7 @@ impl Client {
             .unwrap();
 
         let mut oci = self.oci_client.write().await;
-        match oci
-            .fetch_manifest_digest(&reference, &self.auth)
-            .await
-        {
+        match oci.fetch_manifest_digest(&reference, &self.auth).await {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -177,7 +169,9 @@ impl Client {
         tracing::log::trace!("Reading wasm component from {:?}", file);
 
         let mut contents = vec![];
-        file.read_to_end(&mut contents).await.context("cannot read wasm component")?;
+        file.read_to_end(&mut contents)
+            .await
+            .context("cannot read wasm component")?;
 
         Ok(ImageLayer::new(
             contents,
