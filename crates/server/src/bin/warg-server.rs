@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use oci_distribution::secrets::RegistryAuth::Anonymous;
 use secrecy::SecretString;
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
@@ -21,8 +20,11 @@ enum DataStoreKind {
 enum ContentStoreKind {
     #[default]
     Local,
+    #[cfg(feature = "oci")]
     #[value(alias("ociv1-1"))]
     OCIv1_1,
+    #[cfg(feature = "s3")]
+    S3,
 }
 
 #[derive(Parser, Debug)]
@@ -52,6 +54,7 @@ struct Args {
     content_store: ContentStoreKind,
 
     /// The OCI registry URL if content store is set to oci.
+    #[cfg(feature = "oci")]
     #[arg(long, env = "WARG_OCI_REGISTRY_URL", default_value = "localhost:5000")]
     oci_registry_url: Option<String>,
 
@@ -72,6 +75,31 @@ struct Args {
     #[cfg(feature = "postgres")]
     #[arg(long)]
     database_run_migrations: bool,
+
+    /// The S3 compatible endpoint.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_ENDPOINT")]
+    s3_endpoint: Option<Url>,
+
+    /// The S3 compatible API key secret.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_API_KEY_ID")]
+    s3_api_key_id: Option<SecretString>,
+
+    /// The S3 compatible API key secret.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_API_KEY_SECRET")]
+    s3_api_key_secret: Option<SecretString>,
+
+    /// The S3 compatible region.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_REGION", default_value = "auto")]
+    s3_region: Option<String>,
+
+    /// The S3 compatible region.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_BUCKET_NAME", default_value = "warg-registry")]
+    s3_bucket_name: Option<String>,
 
     /// The operator key.
     ///
@@ -133,13 +161,45 @@ async fn main() -> Result<()> {
             tracing::info!("using local content store");
             config
         }
+        #[cfg(feature = "oci")]
         ContentStoreKind::OCIv1_1 => {
+            use oci_distribution::secrets::RegistryAuth::Anonymous;
             use warg_server::contentstore::oci::ociv1_1::OCIv1_1ContentStore;
             tracing::info!("using OCIv1.1 content store");
             config.with_content_store(
                 OCIv1_1ContentStore::new(
                     args.oci_registry_url.unwrap(),
                     Anonymous,
+                    &args.content_dir,
+                )
+                .await,
+            )
+        }
+        #[cfg(feature = "s3")]
+        ContentStoreKind::S3 => {
+            use warg_server::contentstore::s3::S3ContentStore;
+            tracing::info!("using s3 content store");
+            config.with_content_store(
+                S3ContentStore::new(
+                    args.s3_endpoint
+                        .with_context(|| "must specify the s3 compatible endpoint: --s3-endpoint")
+                        .unwrap(),
+                    args.s3_api_key_id
+                        .with_context(|| {
+                            "must specify the s3 compatible API key ID: --s3-api-key-id"
+                        })
+                        .unwrap(),
+                    args.s3_api_key_secret
+                        .with_context(|| {
+                            "must specify the s3 compatible API key secret: --s3-api-key-secret"
+                        })
+                        .unwrap(),
+                    args.s3_region
+                        .with_context(|| "must specify the s3 compatible region")
+                        .unwrap(),
+                    args.s3_bucket_name
+                        .with_context(|| "must specify the s3 compatible bucket name")
+                        .unwrap(),
                     &args.content_dir,
                 )
                 .await,

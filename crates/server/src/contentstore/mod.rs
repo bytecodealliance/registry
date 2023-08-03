@@ -4,7 +4,10 @@ use warg_crypto::hash::AnyHash;
 use warg_protocol::registry::PackageId;
 
 pub mod local;
+#[cfg(feature = "oci")]
 pub mod oci;
+#[cfg(feature = "s3")]
+pub mod s3;
 
 #[derive(Debug, Error)]
 pub enum ContentStoreError {
