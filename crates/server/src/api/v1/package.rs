@@ -262,7 +262,7 @@ async fn publish_record(
                         for import in parser.parse(bytes).unwrap() {
                             match import.name {
                                 // ComponentExternName::Kebab { .. } => {}
-                                // ComponentExternName::Interface { .. } => {}
+                                ComponentExternName::Interface { .. } => {}
                                 ComponentExternName::Implementation(impl_import) => {
                                     match impl_import {
                                         ImplementationImport::Url(metadata)
@@ -456,7 +456,7 @@ async fn upload_content(
     for import in parser.parse(bytes).unwrap() {
         match import.name {
             // ComponentExternName::Kebab { .. } => {}
-            // ComponentExternName::Interface { .. } => {}
+            ComponentExternName::Interface { .. } => {}
             ComponentExternName::Implementation(impl_import) => match impl_import {
                 ImplementationImport::Url(metadata)
                 | ImplementationImport::Relative(metadata)

@@ -6,7 +6,11 @@ authors = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+wat = { path = "../mine/wasm-tools/crates/wat" }
+wasm-encoder = { path = "../mine/wasm-tools/crates/wasm-encoder" }
 warg-crypto = { workspace = true }
+wasm-bundle = { workspace = true }
+wasm-lock = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
 clap = { workspace = true }
@@ -38,7 +42,6 @@ reqwest = { workspace = true }
 serde_json = { workspace = true }
 warg-server = { workspace = true }
 warg-api = { workspace = true }
-wat = "1.0.67"
 wit-component = "0.12.0"
 wit-parser = "0.9.0"
 testresult = "0.3.0"
@@ -120,6 +123,8 @@ diesel_migrations = "2.1.0"
 diesel-derive-enum = "2.1.0"
 chrono = "0.4.26"
 regex = "1"
-wasmparser = { git = "https://github.com/macovedj/wasm-tools", branch = "deps"}
+wasm-bundle = { path = "../mine/wasm-tools/crates/wasm-bundle" }
+wasm-lock = { path = "../mine/wasm-tools/crates/wasm-lock" }
+wasmparser = { path = "../mine/wasm-tools/crates/wasmparser" }
 protox = "0.4.1"
 toml = "0.7.6"

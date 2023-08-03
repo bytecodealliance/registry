@@ -140,7 +140,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 content,
             } = entry
             {
-                let mut url = "http://127.0.0.1:8090/content/sha256-".to_string();
+                let mut url = self.url().to_string();
+                url.push_str("content/sha256-");
                 let full_hash = content.to_string();
                 let mut split = full_hash.split(':');
                 split.next();

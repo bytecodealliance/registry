@@ -86,7 +86,7 @@ impl VisitBytes for LogLeaf {
 /// where both parts are also valid WIT identifiers (i.e. kebab-cased).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct PackageId {
-    id: String,
+    pub id: String,
     colon: usize,
 }
 

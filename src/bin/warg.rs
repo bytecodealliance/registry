@@ -3,8 +3,8 @@ use clap::Parser;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
-    ConfigCommand, DependenciesCommand, DownloadCommand, InfoCommand, KeyCommand, PublishCommand,
-    RunCommand, UpdateCommand,
+    BundleCommand, ConfigCommand, DependenciesCommand, DownloadCommand, InfoCommand, KeyCommand,
+    LockCommand, PublishCommand, RunCommand, UpdateCommand,
 };
 use warg_client::ClientError;
 
@@ -25,6 +25,8 @@ enum WargCli {
     Config(ConfigCommand),
     Info(InfoCommand),
     Key(KeyCommand),
+    Lock(LockCommand),
+    Bundle(BundleCommand),
     Dependencies(DependenciesCommand),
     Download(DownloadCommand),
     Update(UpdateCommand),
@@ -43,6 +45,8 @@ async fn main() -> Result<()> {
         WargCli::Config(cmd) => cmd.exec().await,
         WargCli::Info(cmd) => cmd.exec().await,
         WargCli::Key(cmd) => cmd.exec().await,
+        WargCli::Lock(cmd) => cmd.exec().await,
+        WargCli::Bundle(cmd) => cmd.exec().await,
         WargCli::Dependencies(cmd) => cmd.exec().await,
         WargCli::Download(cmd) => cmd.exec().await,
         WargCli::Update(cmd) => cmd.exec().await,
