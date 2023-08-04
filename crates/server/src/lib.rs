@@ -1,5 +1,6 @@
 use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
+use axum::Router;
 use datastore::DataStore;
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
@@ -12,6 +13,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::task::JoinHandle;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
 
@@ -24,6 +26,8 @@ pub mod services;
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
+type ShutdownFut = Pin<Box<dyn Future<Output = ()> + Send + Sync>>;
+
 /// The server configuration.
 pub struct Config {
     operator_key: PrivateKey,
@@ -31,7 +35,7 @@ pub struct Config {
     data_store: Option<Box<dyn DataStore>>,
     content_dir: PathBuf,
     content_base_url: Option<Url>,
-    shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
+    shutdown: Option<ShutdownFut>,
     checkpoint_interval: Option<Duration>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
@@ -140,22 +144,28 @@ impl Config {
 /// Represents the warg registry server.
 pub struct Server {
     config: Config,
-    listener: Option<TcpListener>,
 }
 
 impl Server {
     /// Creates a new server with the given configuration.
     pub fn new(config: Config) -> Self {
-        Self {
-            config,
-            listener: None,
-        }
+        Self { config }
     }
 
-    /// Binds the server to the configured address.
+    /// Initializes the server and starts serving.
     ///
-    /// Returns the address the server bound to.
-    pub fn bind(&mut self) -> Result<SocketAddr> {
+    /// Equivalent to calling [`Server::initialize`] followed by
+    /// [`InitializedServer::serve`].
+    pub async fn run(self) -> Result<()> {
+        self.initialize().await?.serve().await
+    }
+
+    /// Initializes the server's internal state, background task(s), and
+    /// listening socket, returning an [`InitializedServer`]. To actually begin
+    /// serving, call [`InitializedServer::serve`].
+    ///
+    /// Useful for tests that need full initialization before running.
+    pub async fn initialize(self) -> Result<InitializedServer> {
         let addr = self
             .config
             .addr
@@ -164,24 +174,7 @@ impl Server {
         tracing::debug!("binding server to address `{addr}`");
         let listener = TcpListener::bind(addr)
             .with_context(|| format!("failed to bind to address `{addr}`"))?;
-
-        let addr = listener
-            .local_addr()
-            .context("failed to get local address for listen socket")?;
-
-        tracing::debug!("server bound to address `{addr}`");
-        self.config.addr = Some(addr);
-        self.listener = Some(listener);
-        Ok(addr)
-    }
-
-    /// Runs the server.
-    pub async fn run(mut self) -> Result<()> {
-        if self.listener.is_none() {
-            self.bind()?;
-        }
-
-        let listener = self.listener.unwrap();
+        let addr = listener.local_addr()?;
 
         tracing::debug!(
             "using server configuration: {config:?}",
@@ -192,7 +185,7 @@ impl Server {
             .config
             .data_store
             .unwrap_or_else(|| Box::<MemoryDataStore>::default());
-        let (core, handle) = CoreService::spawn(
+        let (core, core_handle) = CoreService::start(
             self.config.operator_key,
             store,
             self.config
@@ -217,25 +210,54 @@ impl Server {
             )
         })?;
 
-        let content_base_url = self.config.content_base_url.unwrap_or_else(|| {
-            Url::parse(&format!("http://{addr}", addr = self.config.addr.unwrap())).unwrap()
-        });
+        let content_base_url = self
+            .config
+            .content_base_url
+            .unwrap_or_else(|| Url::parse(&format!("http://{addr}")).unwrap());
 
-        let server = axum::Server::from_tcp(listener)?.serve(
-            create_router(
-                content_base_url,
-                core,
-                temp_dir,
-                files_dir,
-                self.config.content_policy,
-                self.config.record_policy,
-            )
-            .into_make_service(),
+        let router = create_router(
+            content_base_url,
+            core,
+            temp_dir,
+            files_dir,
+            self.config.content_policy,
+            self.config.record_policy,
         );
 
-        tracing::info!("listening on {addr}", addr = self.config.addr.unwrap());
+        Ok(InitializedServer {
+            listener,
+            router,
+            core_handle,
+            shutdown: self.config.shutdown,
+        })
+    }
+}
 
-        if let Some(shutdown) = self.config.shutdown {
+/// Represents an initialized warg registry server.
+pub struct InitializedServer {
+    listener: TcpListener,
+    router: Router,
+    core_handle: JoinHandle<()>,
+    shutdown: Option<ShutdownFut>,
+}
+
+impl InitializedServer {
+    /// Returns the listening address of the server. If a random listening
+    /// port was requested (i.e. `:0`), this returns the actual bound port.
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
+
+    /// Serves the server's services. On server shutdown, awaits completion of
+    /// background task(s) before returning.
+    pub async fn serve(self) -> Result<()> {
+        let addr = self.local_addr()?;
+
+        let server = axum::Server::from_tcp(self.listener)?.serve(self.router.into_make_service());
+
+        tracing::info!("listening on {addr}");
+
+        if let Some(shutdown) = self.shutdown {
             tracing::debug!("server is running with a shutdown signal");
             server.with_graceful_shutdown(shutdown).await?;
         } else {
@@ -244,9 +266,9 @@ impl Server {
         }
 
         tracing::info!("waiting for core service to stop");
-        handle.stop().await;
-        tracing::info!("server shutdown complete");
+        self.core_handle.await?;
 
+        tracing::info!("server shutdown complete");
         Ok(())
     }
 }

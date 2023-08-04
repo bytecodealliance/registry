@@ -1,6 +1,6 @@
 use crate::api::v1::package::Dependency;
 
-use super::{DataStore, DataStoreError, InitialLeaf};
+use super::{DataStore, DataStoreError};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
@@ -17,10 +17,14 @@ use warg_protocol::{
     ProtoEnvelope, SerdeEnvelope,
 };
 
+struct Entry<R> {
+    registry_index: u64,
+    record_content: ProtoEnvelope<R>,
+}
+
 struct Log<V, R> {
     validator: V,
-    entries: Vec<ProtoEnvelope<R>>,
-    checkpoint_indices: Vec<usize>,
+    entries: Vec<Entry<R>>,
 }
 
 impl<V, R> Default for Log<V, R>
@@ -31,7 +35,6 @@ where
         Self {
             validator: V::default(),
             entries: Vec::new(),
-            checkpoint_indices: Vec::new(),
         }
     }
 }
@@ -39,8 +42,8 @@ where
 struct Record {
     /// Index in the log's entries.
     index: usize,
-    /// Index in the checkpoints map.
-    checkpoint_index: Option<usize>,
+    /// Index in the registry's log.
+    registry_index: u64,
 }
 
 enum PendingRecord {
@@ -80,13 +83,6 @@ struct State {
     dependencies: HashMap<LogId, HashMap<RecordId, Vec<Dependency>>>,
 }
 
-fn get_records_before_checkpoint(indices: &[usize], checkpoint_index: usize) -> usize {
-    indices
-        .iter()
-        .filter(|index| **index <= checkpoint_index)
-        .count()
-}
-
 /// Represents an in-memory data store.
 ///
 /// Data is not persisted between restarts of the server.
@@ -109,12 +105,19 @@ impl Default for MemoryDataStore {
 
 #[axum::async_trait]
 impl DataStore for MemoryDataStore {
-    async fn get_initial_leaves(
+    async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<InitialLeaf, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     > {
+        Ok(Box::pin(futures::stream::empty()))
+    }
+
+    async fn get_all_validated_records(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
+    {
         Ok(Box::pin(futures::stream::empty()))
     }
 
@@ -164,10 +167,11 @@ impl DataStore for MemoryDataStore {
         Ok(())
     }
 
-    async fn validate_operator_record(
+    async fn commit_operator_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -192,10 +196,13 @@ impl DataStore for MemoryDataStore {
                 {
                     Ok(_) => {
                         let index = log.entries.len();
-                        log.entries.push(record);
+                        log.entries.push(Entry {
+                            registry_index: registry_log_index,
+                            record_content: record,
+                        });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            checkpoint_index: None,
+                            registry_index: registry_log_index,
                         });
                         Ok(())
                     }
@@ -301,10 +308,11 @@ impl DataStore for MemoryDataStore {
         Ok(())
     }
 
-    async fn validate_package_record(
+    async fn commit_package_record(
         &self,
         log_id: &LogId,
         record_id: &RecordId,
+        registry_log_index: u64,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -329,10 +337,13 @@ impl DataStore for MemoryDataStore {
                 {
                     Ok(_) => {
                         let index = log.entries.len();
-                        log.entries.push(record);
+                        log.entries.push(Entry {
+                            registry_index: registry_log_index,
+                            record_content: record,
+                        });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            checkpoint_index: None,
+                            registry_index: registry_log_index,
                         });
                         Ok(())
                     }
@@ -415,37 +426,13 @@ impl DataStore for MemoryDataStore {
         &self,
         checkpoint_id: &AnyHash,
         checkpoint: SerdeEnvelope<MapCheckpoint>,
-        participants: &[LogLeaf],
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
-        let (index, prev) = state
+        let (_, prev) = state
             .checkpoints
             .insert_full(checkpoint_id.clone(), checkpoint);
         assert!(prev.is_none());
-
-        for leaf in participants {
-            if let Some(log) = state.operators.get_mut(&leaf.log_id) {
-                log.checkpoint_indices.push(index);
-            } else if let Some(log) = state.packages.get_mut(&leaf.log_id) {
-                log.checkpoint_indices.push(index);
-            } else {
-                unreachable!("log not found");
-            }
-
-            match state
-                .records
-                .get_mut(&leaf.log_id)
-                .unwrap()
-                .get_mut(&leaf.record_id)
-                .unwrap()
-            {
-                RecordStatus::Validated(record) => {
-                    record.checkpoint_index = Some(index);
-                }
-                _ => unreachable!(),
-            }
-        }
 
         Ok(())
     }
@@ -470,20 +457,27 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        if let Some(checkpoint_index) = state.checkpoints.get_index_of(checkpoint_id) {
-            let start = match since {
-                Some(since) => match &state.records[log_id][since] {
-                    RecordStatus::Validated(record) => record.index + 1,
-                    _ => unreachable!(),
-                },
-                None => 0,
-            };
+        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
+            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        };
 
-            let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
-            Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
-        } else {
-            Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()))
-        }
+        let start_log_idx = match since {
+            Some(since) => match &state.records[log_id][since] {
+                RecordStatus::Validated(record) => record.index + 1,
+                _ => unreachable!(),
+            },
+            None => 0,
+        };
+        let end_registry_idx = checkpoint.as_ref().log_length as u64;
+
+        Ok(log
+            .entries
+            .iter()
+            .skip(start_log_idx)
+            .take_while(|entry| entry.registry_index < end_registry_idx)
+            .map(|entry| entry.record_content.clone())
+            .take(limit as usize)
+            .collect())
     }
 
     async fn get_package_records(
@@ -500,20 +494,27 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        if let Some(checkpoint_index) = state.checkpoints.get_index_of(checkpoint_id) {
-            let start = match since {
-                Some(since) => match &state.records[log_id][since] {
-                    RecordStatus::Validated(record) => record.index + 1,
-                    _ => unreachable!(),
-                },
-                None => 0,
-            };
+        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
+            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        };
 
-            let end = get_records_before_checkpoint(&log.checkpoint_indices, checkpoint_index);
-            Ok(log.entries[start..std::cmp::min(end, start + limit as usize)].to_vec())
-        } else {
-            Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()))
-        }
+        let start_log_idx = match since {
+            Some(since) => match &state.records[log_id][since] {
+                RecordStatus::Validated(record) => record.index + 1,
+                _ => unreachable!(),
+            },
+            None => 0,
+        };
+        let end_registry_idx = checkpoint.as_ref().log_length as u64;
+
+        Ok(log
+            .entries
+            .iter()
+            .skip(start_log_idx)
+            .take_while(|entry| entry.registry_index < end_registry_idx)
+            .map(|entry| entry.record_content.clone())
+            .take(limit as usize)
+            .collect())
     }
 
     async fn get_operator_record(
@@ -529,7 +530,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, checkpoint) = match status {
+        let (status, envelope, registry_log_index) = match status {
             RecordStatus::Pending(PendingRecord::Operator { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -544,16 +545,20 @@ impl DataStore for MemoryDataStore {
                     .get(log_id)
                     .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-                let checkpoint = r.checkpoint_index.map(|i| state.checkpoints[i].clone());
+                let published_length = state
+                    .checkpoints
+                    .last()
+                    .map(|(_, c)| c.as_ref().log_length)
+                    .unwrap_or_default() as u64;
 
                 (
-                    if checkpoint.is_some() {
+                    if r.registry_index < published_length {
                         super::RecordStatus::Published
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index].clone(),
-                    checkpoint,
+                    log.entries[r.index].record_content.clone(),
+                    Some(r.registry_index),
                 )
             }
             _ => return Err(DataStoreError::RecordNotFound(record_id.clone())),
@@ -562,7 +567,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            checkpoint,
+            registry_log_index,
         })
     }
 
@@ -579,7 +584,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, checkpoint) = match status {
+        let (status, envelope, registry_log_index) = match status {
             RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -594,16 +599,20 @@ impl DataStore for MemoryDataStore {
                     .get(log_id)
                     .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-                let checkpoint = r.checkpoint_index.map(|i| state.checkpoints[i].clone());
+                let published_length = state
+                    .checkpoints
+                    .last()
+                    .map(|(_, c)| c.as_ref().log_length)
+                    .unwrap_or_default() as u64;
 
                 (
-                    if checkpoint.is_some() {
+                    if r.registry_index < published_length {
                         super::RecordStatus::Published
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index].clone(),
-                    checkpoint,
+                    log.entries[r.index].record_content.clone(),
+                    Some(r.registry_index),
                 )
             }
             _ => return Err(DataStoreError::RecordNotFound(record_id.clone())),
@@ -612,7 +621,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            checkpoint,
+            registry_log_index,
         })
     }
 

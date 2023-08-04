@@ -24,11 +24,11 @@ const MAX_RECORDS_LIMIT: u16 = 1000;
 
 #[derive(Clone)]
 pub struct Config {
-    core_service: Arc<CoreService>,
+    core_service: CoreService,
 }
 
 impl Config {
-    pub fn new(core_service: Arc<CoreService>) -> Self {
+    pub fn new(core_service: CoreService) -> Self {
         Self { core_service }
     }
 

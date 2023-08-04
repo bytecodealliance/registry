@@ -97,6 +97,10 @@ impl RegistryStorage for FileSystemRegistryStorage {
         let mut packages = Vec::new();
 
         let packages_dir = self.base_dir.join(PACKAGE_LOGS_DIR);
+        if !packages_dir.exists() {
+            return Ok(vec![]);
+        }
+
         for entry in WalkDir::new(&packages_dir) {
             let entry = entry.with_context(|| {
                 anyhow!(

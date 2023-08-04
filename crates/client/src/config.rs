@@ -1,10 +1,9 @@
 //! Module for client configuration.
 
-use crate::{api, ClientError};
+use crate::{ClientError, RegistryUrl};
 use anyhow::{anyhow, Context, Result};
 use normpath::PathExt;
 use once_cell::sync::Lazy;
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{
     env::current_dir,
@@ -63,7 +62,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// Paths used for storage
 pub struct StoragePaths {
     /// The registry URL relating to the storage paths.
-    pub url: Url,
+    pub registry_url: RegistryUrl,
     /// The path to the registry storage directory.
     pub registries_dir: PathBuf,
     /// The path to the content storage directory.
@@ -242,16 +241,16 @@ impl Config {
         &self,
         url: Option<&str>,
     ) -> Result<StoragePaths, ClientError> {
-        let url = api::Client::validate_url(
+        let registry_url = RegistryUrl::new(
             url.or(self.default_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
         )?;
 
-        let host = url.host().unwrap().to_string().to_ascii_lowercase();
-        let registries_dir = self.registries_dir()?.join(host);
+        let label = registry_url.safe_label();
+        let registries_dir = self.registries_dir()?.join(label);
         let content_dir = self.content_dir()?;
         Ok(StoragePaths {
-            url,
+            registry_url,
             registries_dir,
             content_dir,
         })

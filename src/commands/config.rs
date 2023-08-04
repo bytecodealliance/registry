@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use warg_client::{api, Config};
+use warg_client::{Config, RegistryUrl};
 
 /// Creates a new warg configuration file.
 #[derive(Args)]
@@ -46,7 +46,7 @@ impl ConfigCommand {
 
         let default_url = self
             .registry
-            .map(api::Client::validate_url)
+            .map(RegistryUrl::new)
             .transpose()?
             .map(|u| u.to_string());
 

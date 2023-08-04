@@ -63,7 +63,7 @@ diesel::table! {
         id -> Int4,
         log_id -> Int4,
         record_id -> Text,
-        checkpoint_id -> Nullable<Int4>,
+        registry_log_index -> Nullable<Int8>,
         content -> Bytea,
         status -> RecordStatus,
         reason -> Nullable<Text>,
@@ -73,7 +73,6 @@ diesel::table! {
 }
 
 diesel::joinable!(contents -> records (record_id));
-diesel::joinable!(records -> checkpoints (checkpoint_id));
 diesel::joinable!(records -> logs (log_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
