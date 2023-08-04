@@ -10,8 +10,8 @@ use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
-use warg_api::v1::package::ContentSource;
 use thiserror::Error;
+use warg_api::v1::package::ContentSource;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
     package::{

@@ -13,9 +13,8 @@ use warg_protocol::{
     Version,
 };
 use wasm_encoder::{
-    Component, ComponentExternName, ComponentImportSection,
-    ComponentInstanceSection, ComponentTypeRef, ImplementationImport, ImportMetadata,
-    ComponentTypeSection,
+    Component, ComponentExternName, ComponentImportSection, ComponentInstanceSection,
+    ComponentTypeRef, ComponentTypeSection, ImplementationImport, ImportMetadata,
 };
 use wasm_lock::Lock;
 
@@ -105,12 +104,8 @@ impl LockCommand {
                 let mut type_section = ComponentTypeSection::new();
                 imp_section.import(import, ty);
                 // component.section(&imp_section);
-                let locked = lock.parse(
-                    &bytes,
-                    &mut component,
-                    &mut imp_section,
-                    &mut inst_section,
-                )?;
+                let locked =
+                    lock.parse(&bytes, &mut component, &mut imp_section, &mut inst_section)?;
                 fs::write("./locked.wasm", locked.as_slice())?;
             }
             let version = &r.version.to_string();

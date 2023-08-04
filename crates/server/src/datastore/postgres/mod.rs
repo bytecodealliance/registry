@@ -2,7 +2,8 @@ use crate::api::v1::package::Dependency;
 
 use self::models::{
     Checkpoint, CheckpointData, Dependency as DependencyMod, NewCheckpoint, NewContent,
-    NewDependency, NewLog, NewRecord, ParsedText, RecordContent, RecordStatus, TextRef};
+    NewDependency, NewLog, NewRecord, ParsedText, RecordContent, RecordStatus, TextRef,
+};
 use super::{DataStore, DataStoreError, Record};
 use anyhow::{anyhow, Result};
 use diesel::{insert_into, prelude::*, result::DatabaseErrorKind, sql_types::Text};

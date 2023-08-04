@@ -11,10 +11,8 @@ use warg_client::{
     storage::{PackageInfo, RegistryStorage},
     FileSystemClient,
 };
-use warg_crypto::hash::{Sha256};
-use warg_protocol::{
-    registry::{LogId, PackageId},
-};
+use warg_crypto::hash::Sha256;
+use warg_protocol::registry::{LogId, PackageId};
 use wasm_bundle::Bundler;
 
 /// Bundle With Registry Dependencies
