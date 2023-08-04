@@ -1,5 +1,6 @@
 use super::{Json, Path};
 use crate::{
+    contentstore::ContentStore,
     datastore::{DataStoreError, RecordStatus},
     policy::{
         content::{ContentPolicy, ContentPolicyError},
@@ -7,6 +8,8 @@ use crate::{
     },
     services::CoreService,
 };
+use axum::body::StreamBody;
+use axum::http::header;
 use axum::{
     debug_handler,
     extract::{BodyStream, State},
@@ -16,10 +19,12 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 use url::Url;
 use warg_api::v1::package::{
     ContentSource, MissingContent, PackageError, PackageRecord, PackageRecordState,
@@ -36,28 +41,28 @@ use warg_protocol::{
 pub struct Config {
     core_service: CoreService,
     content_base_url: Url,
-    files_dir: PathBuf,
     temp_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 }
 
 impl Config {
     pub fn new(
         core_service: CoreService,
         content_base_url: Url,
-        files_dir: PathBuf,
         temp_dir: PathBuf,
         content_policy: Option<Arc<dyn ContentPolicy>>,
         record_policy: Option<Arc<dyn RecordPolicy>>,
+        content_store: Arc<dyn ContentStore>,
     ) -> Self {
         Self {
             core_service,
             content_base_url,
-            files_dir,
             temp_dir,
             content_policy,
             record_policy,
+            content_store,
         }
     }
 
@@ -69,28 +74,18 @@ impl Config {
                 "/:log_id/record/:record_id/content/:digest",
                 post(upload_content),
             )
+            .route(
+                "/:log_id/record/:record_id/content/:digest",
+                get(fetch_content),
+            )
             .with_state(self)
     }
 
-    fn content_present(&self, digest: &AnyHash) -> bool {
-        self.content_path(digest).is_file()
-    }
-
-    fn content_file_name(&self, digest: &AnyHash) -> String {
-        digest.to_string().replace(':', "-")
-    }
-
-    fn content_path(&self, digest: &AnyHash) -> PathBuf {
-        self.files_dir.join(self.content_file_name(digest))
-    }
-
-    fn content_url(&self, digest: &AnyHash) -> String {
-        self.content_base_url
-            .join("content/")
-            .unwrap()
-            .join(&self.content_file_name(digest))
-            .unwrap()
-            .to_string()
+    fn content_url(&self, log_id: &LogId, record_id: &RecordId, digest: &AnyHash) -> String {
+        format!(
+            "{url}v1/package/{log_id}/record/{record_id}/content/{digest}",
+            url = self.content_base_url,
+        )
     }
 
     fn build_missing_content<'a>(
@@ -135,6 +130,13 @@ impl PackageApiError {
     fn unsupported(message: impl ToString) -> Self {
         Self(PackageError::Message {
             status: StatusCode::NOT_IMPLEMENTED.as_u16(),
+            message: message.to_string(),
+        })
+    }
+
+    fn not_found(message: impl ToString) -> Self {
+        Self(PackageError::Message {
+            status: StatusCode::NOT_FOUND.as_u16(),
             message: message.to_string(),
         })
     }
@@ -227,8 +229,25 @@ async fn publish_record(
         .await?;
 
     let record_id = RecordId::package_record::<Sha256>(&record);
-    let mut missing = record.as_ref().contents();
-    missing.retain(|d| !config.content_present(d));
+    let mut missing = HashSet::<&AnyHash>::new();
+    let version = crate::datastore::get_version_for_release(record.as_ref());
+    for key in record.as_ref().contents() {
+        match version {
+            Some(version) => {
+                if !config
+                    .content_store
+                    .content_present(&body.id, key, version.to_string())
+                    .await
+                    .map_err(PackageApiError::internal_error)?
+                {
+                    missing.insert(key);
+                }
+            }
+            None => {
+                missing.insert(key);
+            }
+        }
+    }
 
     config
         .core_service
@@ -240,7 +259,7 @@ async fn publish_record(
     if missing.is_empty() {
         config
             .core_service
-            .submit_package_record(log_id, record_id.clone())
+            .submit_package_record(log_id.clone(), record_id.clone())
             .await;
 
         return Ok((
@@ -300,7 +319,7 @@ async fn get_record(
                     (
                         digest.clone(),
                         vec![ContentSource::Http {
-                            url: config.content_url(digest),
+                            url: config.content_url(&log_id, &record_id, digest),
                         }],
                     )
                 })
@@ -371,8 +390,18 @@ async fn upload_content(
     // Only persist the file if the content was successfully processed
     res?;
 
-    tmp_path
-        .persist(config.content_path(&digest))
+    let version =
+        crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id)
+            .await?;
+    let package_id = config.core_service.store().get_package_id(&log_id).await?;
+    let mut tmp_file = tokio::fs::File::open(&tmp_path)
+        .await
+        .map_err(PackageApiError::internal_error)?;
+
+    config
+        .content_store
+        .store_content(&package_id, &digest, version.to_string(), &mut tmp_file)
+        .await
         .map_err(PackageApiError::internal_error)?;
 
     // If this is the last content needed, submit the record for processing now
@@ -384,13 +413,16 @@ async fn upload_content(
     {
         config
             .core_service
-            .submit_package_record(log_id, record_id)
+            .submit_package_record(log_id.clone(), record_id.clone())
             .await;
     }
 
     Ok((
         StatusCode::CREATED,
-        [(axum::http::header::LOCATION, config.content_url(&digest))],
+        [(
+            header::LOCATION,
+            config.content_url(&log_id, &record_id, &digest),
+        )],
     ))
 }
 
@@ -436,4 +468,32 @@ async fn process_content(
     }
 
     Ok(())
+}
+
+#[debug_handler]
+async fn fetch_content(
+    State(config): State<Config>,
+    Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
+) -> Result<impl IntoResponse, PackageApiError> {
+    tracing::info!("fetching content for record `{record_id}` from `{log_id}`");
+
+    let package_id = config.core_service.store().get_package_id(&log_id).await?;
+    let version =
+        crate::datastore::get_release_version(config.core_service.store(), &log_id, &record_id)
+            .await?;
+    let file = config
+        .content_store
+        .fetch_content(&package_id, &digest, version.to_string())
+        .await
+        .map_err(PackageApiError::not_found)?;
+
+    let stream = ReaderStream::new(file);
+    let body = StreamBody::new(stream);
+    let disposition = &format!("attachment; filename=\"{digest}\"", digest = digest.clone());
+    let headers = [
+        (header::CONTENT_TYPE, "application/wasm; charset=utf-8"),
+        (header::CONTENT_DISPOSITION, &String::from(disposition)),
+    ];
+
+    Ok((headers, body).into_response())
 }

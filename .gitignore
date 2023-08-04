@@ -1,3 +1,7 @@
 /content
 /target
 *.swp
+content
+
+.env
+

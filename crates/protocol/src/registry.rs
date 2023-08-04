@@ -246,6 +246,12 @@ impl From<AnyHash> for RecordId {
     }
 }
 
+impl From<RecordId> for AnyHash {
+    fn from(id: RecordId) -> AnyHash {
+        id.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

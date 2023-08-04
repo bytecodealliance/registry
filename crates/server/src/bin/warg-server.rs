@@ -16,6 +16,17 @@ enum DataStoreKind {
     Memory,
 }
 
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ContentStoreKind {
+    #[default]
+    Local,
+    #[cfg(feature = "oci")]
+    #[value(alias("ociv1-1"))]
+    OCIv1_1,
+    #[cfg(feature = "s3")]
+    S3,
+}
+
 #[derive(Parser, Debug)]
 struct Args {
     /// Use verbose output
@@ -38,6 +49,15 @@ struct Args {
     #[arg(long, env = "WARG_DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
 
+    /// The content store to use for the server.
+    #[arg(long, env = "WARG_CONTENT_STORE", default_value = "local")]
+    content_store: ContentStoreKind,
+
+    /// The OCI registry URL if content store is set to oci.
+    #[cfg(feature = "oci")]
+    #[arg(long, env = "WARG_OCI_REGISTRY_URL", default_value = "localhost:5000")]
+    oci_registry_url: Option<String>,
+
     /// The database connection URL if data-store is set to postgres.
     ///
     /// Prefer using `database-url-file`, or environment variable variation,
@@ -55,6 +75,36 @@ struct Args {
     #[cfg(feature = "postgres")]
     #[arg(long)]
     database_run_migrations: bool,
+
+    /// The S3 compatible endpoint.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_ENDPOINT")]
+    s3_endpoint: Option<Url>,
+
+    /// The S3 compatible API key secret.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_API_KEY_ID")]
+    s3_api_key_id: Option<SecretString>,
+
+    /// The S3 compatible API key secret.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_API_KEY_SECRET")]
+    s3_api_key_secret: Option<SecretString>,
+
+    /// The S3 compatible region.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_REGION", default_value = "auto")]
+    s3_region: Option<String>,
+
+    /// The S3 compatible region.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_BUCKET_NAME", default_value = "warg-registry")]
+    s3_bucket_name: Option<String>,
+
+    /// The S3 compatible presign time to live in u64 seconds.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_PRESIGN_TTL", default_value = "3600")]
+    s3_presign_ttl: Option<u64>,
 
     /// The operator key.
     ///
@@ -95,7 +145,7 @@ async fn main() -> Result<()> {
     let operator_key =
         PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
 
-    let mut config = Config::new(operator_key, args.content_dir)
+    let mut config = Config::new(operator_key, args.content_dir.clone())
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
 
@@ -110,6 +160,64 @@ async fn main() -> Result<()> {
             .with_context(|| format!("failed to decode authorized keys from {path:?}"))?;
         config = config.with_record_policy(authorized_key_policy);
     }
+
+    let config = match args.content_store {
+        ContentStoreKind::Local => {
+            tracing::info!("using local content store");
+            config
+        }
+        #[cfg(feature = "oci")]
+        ContentStoreKind::OCIv1_1 => {
+            use oci_distribution::secrets::RegistryAuth::Anonymous;
+            use warg_server::contentstore::oci::ociv1_1::OCIv1_1ContentStore;
+            tracing::info!("using OCIv1.1 content store");
+            config.with_content_store(
+                OCIv1_1ContentStore::new(
+                    args.oci_registry_url.unwrap(),
+                    Anonymous,
+                    &args.content_dir,
+                )
+                .await,
+            )
+        }
+        #[cfg(feature = "s3")]
+        ContentStoreKind::S3 => {
+            use warg_server::contentstore::s3::S3ContentStore;
+            tracing::info!("using s3 content store");
+            config.with_content_store(
+                S3ContentStore::new(
+                    args.s3_endpoint
+                        .with_context(|| "must specify the s3 compatible endpoint: --s3-endpoint")
+                        .unwrap(),
+                    args.s3_api_key_id
+                        .with_context(|| {
+                            "must specify the s3 compatible API key ID: --s3-api-key-id"
+                        })
+                        .unwrap(),
+                    args.s3_api_key_secret
+                        .with_context(|| {
+                            "must specify the s3 compatible API key secret: --s3-api-key-secret"
+                        })
+                        .unwrap(),
+                    args.s3_region
+                        .with_context(|| "must specify the s3 compatible region: --s3-region")
+                        .unwrap(),
+                    args.s3_bucket_name
+                        .with_context(|| {
+                            "must specify the s3 compatible bucket name: --s3-bucket-name"
+                        })
+                        .unwrap(),
+                    &args.content_dir,
+                    args.s3_presign_ttl
+                        .with_context(|| {
+                            "must specify the s3 compatible presign time to live: --s3-presign-ttl"
+                        })
+                        .unwrap(),
+                )
+                .await,
+            )
+        }
+    };
 
     let config = match args.data_store {
         #[cfg(feature = "postgres")]

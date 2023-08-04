@@ -1,20 +1,23 @@
-use futures::Stream;
 use std::{collections::HashSet, pin::Pin};
-use thiserror::Error;
-use warg_crypto::{hash::AnyHash, signing::KeyID};
-use warg_protocol::{
-    operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
-    ProtoEnvelope, SerdeEnvelope,
-};
 
-mod memory;
-#[cfg(feature = "postgres")]
-mod postgres;
+use futures::Stream;
+use thiserror::Error;
 
 pub use memory::*;
 #[cfg(feature = "postgres")]
 pub use postgres::*;
+use warg_crypto::{hash::AnyHash, signing::KeyID};
+use warg_protocol::package::PackageEntry;
+use warg_protocol::{
+    operator, package,
+    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
+    ProtoEnvelope, SerdeEnvelope, Version,
+};
+use PackageEntry::Release;
+
+mod memory;
+#[cfg(feature = "postgres")]
+mod postgres;
 
 #[derive(Debug, Error)]
 pub enum DataStoreError {
@@ -231,6 +234,9 @@ pub trait DataStore: Send + Sync {
         limit: u16,
     ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
 
+    /// Gets the package ID for the given log ID.
+    async fn get_package_id(&self, log_id: &LogId) -> Result<PackageId, DataStoreError>;
+
     /// Gets an operator record.
     async fn get_operator_record(
         &self,
@@ -263,4 +269,25 @@ pub trait DataStore: Send + Sync {
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         anyhow::bail!("not implemented")
     }
+}
+
+pub fn get_version_for_release(record: &package::PackageRecord) -> Option<&Version> {
+    record.entries.iter().find_map(|entry| match entry {
+        Release {
+            version,
+            content: _,
+        } => Some(version),
+        _ => None,
+    })
+}
+
+pub async fn get_release_version(
+    data_store: &dyn DataStore,
+    log_id: &LogId,
+    record_id: &RecordId,
+) -> Result<Version, DataStoreError> {
+    let record = data_store.get_package_record(&log_id, &record_id).await?;
+    get_version_for_release(&record.envelope.as_ref())
+        .cloned()
+        .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))
 }

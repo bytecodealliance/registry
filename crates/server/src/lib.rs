@@ -1,6 +1,8 @@
+use crate::contentstore::local::LocalContentStore;
 use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use axum::Router;
+use contentstore::ContentStore;
 use datastore::DataStore;
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
@@ -19,6 +21,7 @@ use warg_crypto::signing::PrivateKey;
 
 pub mod api;
 pub mod args;
+pub mod contentstore;
 pub mod datastore;
 pub mod policy;
 pub mod services;
@@ -39,6 +42,7 @@ pub struct Config {
     checkpoint_interval: Option<Duration>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 }
 
 impl std::fmt::Debug for Config {
@@ -72,12 +76,13 @@ impl Config {
             operator_key,
             addr: None,
             data_store: None,
-            content_dir,
+            content_dir: content_dir.clone(),
             content_base_url: None,
             shutdown: None,
             checkpoint_interval: None,
             content_policy: None,
             record_policy: None,
+            content_store: Arc::new(LocalContentStore::new(content_dir.join("files"))),
         }
     }
 
@@ -100,6 +105,14 @@ impl Config {
     /// If this is not specified, the server will use an in-memory data store.
     pub fn with_data_store(mut self, store: impl DataStore + 'static) -> Self {
         self.data_store = Some(Box::new(store));
+        self
+    }
+
+    /// Specify the content store to use.
+    ///
+    /// If this is not specified, the server will use a local content store.
+    pub fn with_content_store(mut self, store: impl ContentStore + 'static) -> Self {
+        self.content_store = Arc::new(store);
         self
     }
 
@@ -219,9 +232,9 @@ impl Server {
             content_base_url,
             core,
             temp_dir,
-            files_dir,
             self.config.content_policy,
             self.config.record_policy,
+            self.config.content_store,
         );
 
         Ok(InitializedServer {

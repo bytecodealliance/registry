@@ -19,7 +19,7 @@ tempfile = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true, features = ["trace", "cors"]}
+tower-http = { workspace = true, features = ["trace", "cors"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 indexmap = { workspace = true }
@@ -29,15 +29,24 @@ bytes = { workspace = true }
 wasmparser = { workspace = true }
 secrecy = { workspace = true }
 toml = { workspace = true }
+serde_json = { workspace = true, optional = true }
 diesel = { workspace = true, features = ["postgres", "serde_json", "chrono"], optional = true }
 diesel-async = { workspace = true, features = ["postgres", "deadpool"], optional = true }
-diesel_json = { workspace = true, optional = true}
+diesel_json = { workspace = true, optional = true }
 diesel_migrations = { workspace = true, optional = true }
 diesel-derive-enum = { workspace = true, optional = true, features = ["postgres"] }
-serde_json = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-credential-types = { workspace = true, optional = true }
+aws-smithy-client = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-proxy = { workspace = true, optional = true }
+oci-distribution = { git = "https://github.com/devigned/oci-distribution", branch = "os-wasi", optional = true }
 
 [features]
 default = []
 debug = []
-postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "serde_json", "chrono"]
+postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "chrono", "serde_json"]
+s3 = ["aws-config", "aws-sdk-s3", "aws-credential-types", "aws-smithy-client", "hyper", "hyper-proxy"]
+oci = ["oci-distribution", "serde_json"]

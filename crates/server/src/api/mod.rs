@@ -1,3 +1,4 @@
+use crate::contentstore::ContentStore;
 use crate::{
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
@@ -7,7 +8,6 @@ use std::{path::PathBuf, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeDir,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
@@ -24,9 +24,9 @@ pub fn create_router(
     content_base_url: Url,
     core: CoreService,
     temp_dir: PathBuf,
-    files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    content_store: Arc<dyn ContentStore>,
 ) -> Router {
     let router = Router::new();
     #[cfg(feature = "debug")]
@@ -38,12 +38,11 @@ pub fn create_router(
                 content_base_url,
                 core,
                 temp_dir,
-                files_dir.clone(),
                 content_policy,
                 record_policy,
+                content_store,
             ),
         )
-        .nest_service("/content", ServeDir::new(files_dir))
         .layer(
             ServiceBuilder::new()
                 .layer(
