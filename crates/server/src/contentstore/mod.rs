@@ -1,3 +1,4 @@
+use hyper::Uri;
 use thiserror::Error;
 use tokio::fs::File;
 use warg_crypto::hash::AnyHash;
@@ -16,6 +17,28 @@ pub enum ContentStoreError {
 
     #[error("content store internal error: {0}")]
     ContentStoreInternalError(String),
+}
+
+pub enum ContentStoreUriSigning {
+    None,
+    Presigned(Box<dyn PresignedContentStore>),
+}
+
+/// Implemented by content stores that support presigned URIs.
+#[axum::async_trait]
+pub trait PresignedContentStore {
+    async fn read_uri(
+        &self,
+        package_id: &PackageId,
+        digest: &AnyHash,
+        version: String,
+    ) -> Result<Uri, ContentStoreError>;
+    async fn write_uri(
+        &self,
+        package_id: &PackageId,
+        digest: &AnyHash,
+        version: String,
+    ) -> Result<Uri, ContentStoreError>;
 }
 
 /// Implemented by content stores.
@@ -44,4 +67,8 @@ pub trait ContentStore: Send + Sync {
         digest: &AnyHash,
         version: String,
     ) -> Result<bool, ContentStoreError>;
+
+    async fn uri_signing(&self) -> ContentStoreUriSigning {
+        ContentStoreUriSigning::None
+    }
 }

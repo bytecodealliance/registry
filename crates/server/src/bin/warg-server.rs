@@ -101,6 +101,11 @@ struct Args {
     #[arg(long, env = "WARG_S3_BUCKET_NAME", default_value = "warg-registry")]
     s3_bucket_name: Option<String>,
 
+    /// The S3 compatible presign time to live in u64 seconds.
+    #[cfg(feature = "s3")]
+    #[arg(long, env = "WARG_S3_PRESIGN_TTL", default_value = "3600")]
+    s3_presign_ttl: Option<u64>,
+
     /// The operator key.
     ///
     /// Prefer using `operator-key-file`, or environment variable variation.
@@ -195,12 +200,19 @@ async fn main() -> Result<()> {
                         })
                         .unwrap(),
                     args.s3_region
-                        .with_context(|| "must specify the s3 compatible region")
+                        .with_context(|| "must specify the s3 compatible region: --s3-region")
                         .unwrap(),
                     args.s3_bucket_name
-                        .with_context(|| "must specify the s3 compatible bucket name")
+                        .with_context(|| {
+                            "must specify the s3 compatible bucket name: --s3-bucket-name"
+                        })
                         .unwrap(),
                     &args.content_dir,
+                    args.s3_presign_ttl
+                        .with_context(|| {
+                            "must specify the s3 compatible presign time to live: --s3-presign-ttl"
+                        })
+                        .unwrap(),
                 )
                 .await,
             )

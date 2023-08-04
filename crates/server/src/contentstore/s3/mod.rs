@@ -1,8 +1,11 @@
 use crate::contentstore::ContentStoreError::ContentStoreInternalError;
-use crate::contentstore::{ContentStore, ContentStoreError};
+use crate::contentstore::{
+    ContentStore, ContentStoreError, ContentStoreUriSigning, PresignedContentStore,
+};
 use aws_credential_types::Credentials;
 use aws_sdk_s3;
 use aws_sdk_s3::config::Region;
+use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use axum::http::HeaderValue;
 use futures::TryStreamExt;
@@ -13,6 +16,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::info;
@@ -20,10 +24,12 @@ use url::Url;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::registry::PackageId;
 
+#[derive(Debug, Clone)]
 pub struct S3ContentStore {
     client: aws_sdk_s3::Client,
     // on R2 there is a max number of buckets per account (default: 1000)
     bucket_name: String,
+    presign_ttl: u64,
     temp_dir: PathBuf,
 }
 
@@ -35,6 +41,7 @@ impl S3ContentStore {
         region: String,
         bucket_name: String,
         temp_dir: &PathBuf,
+        presign_ttl: u64,
     ) -> Self {
         let creds = Credentials::new(
             access_key_id.expose_secret().to_string(),
@@ -44,8 +51,8 @@ impl S3ContentStore {
             "warg-s3-static-provider",
         );
         let config_builder = aws_config::from_env()
-            .region(Region::new(region))
-            .endpoint_url(endpoint)
+            .region(Region::new(region.clone()))
+            .endpoint_url(endpoint.clone())
             .credentials_provider(creds);
         let config = match env::var("HTTP_PROXY") {
             Ok(proxy_env) => {
@@ -71,6 +78,7 @@ impl S3ContentStore {
             client,
             bucket_name,
             temp_dir: temp_dir.clone(),
+            presign_ttl,
         }
     }
 
@@ -92,6 +100,15 @@ impl S3ContentStore {
             version,
             Self::content_file_name(digest)
         )
+    }
+
+    fn get_presign_config(&self) -> Result<PresigningConfig, ContentStoreError> {
+        Ok(PresigningConfig::builder()
+            .expires_in(Duration::from_secs(self.presign_ttl))
+            .build()
+            .map_err(|e| {
+                ContentStoreInternalError(format!("cannot build presigning config: {}", e))
+            })?)
     }
 }
 
@@ -212,5 +229,60 @@ impl ContentStore for S3ContentStore {
             .await
             .map(|_| true)
             .or_else(|_| Ok(false))
+    }
+
+    async fn uri_signing(&self) -> ContentStoreUriSigning {
+        ContentStoreUriSigning::Presigned(Box::new(self.clone()))
+    }
+}
+
+#[axum::async_trait]
+impl PresignedContentStore for S3ContentStore {
+    async fn read_uri(
+        &self,
+        package_id: &PackageId,
+        digest: &AnyHash,
+        version: String,
+    ) -> Result<Uri, ContentStoreError> {
+        let config = self.get_presign_config()?;
+
+        let presigned = self
+            .client
+            .get_object()
+            .bucket(self.bucket_name.clone())
+            .key(S3ContentStore::content_store_name(
+                package_id, &version, digest,
+            ))
+            .presigned(config)
+            .await
+            .map_err(|e| {
+                ContentStoreInternalError(format!("cannot generate presigned Uri: {e}"))
+            })?;
+
+        Ok(presigned.uri().clone())
+    }
+
+    async fn write_uri(
+        &self,
+        package_id: &PackageId,
+        digest: &AnyHash,
+        version: String,
+    ) -> Result<Uri, ContentStoreError> {
+        let config = self.get_presign_config()?;
+
+        let presigned = self
+            .client
+            .put_object()
+            .bucket(self.bucket_name.clone())
+            .key(S3ContentStore::content_store_name(
+                package_id, &version, digest,
+            ))
+            .presigned(config)
+            .await
+            .map_err(|e| {
+                ContentStoreInternalError(format!("cannot generate presigned Uri: {e}"))
+            })?;
+
+        Ok(presigned.uri().clone())
     }
 }
