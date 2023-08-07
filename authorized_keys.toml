@@ -1,6 +1,7 @@
 [namespace_keys]
 "peterhuene" = ["sha256:1e4642089cefa79e792451b8d5e782ae6712e55ca8eea38cf56c92793faa2e90"]
 "pchickey" = ["sha256:6cc3bbe999b7fab65ad57bdb870e138e0780e5805cba42e816c0e38b4cbdb386"]
+wasi = ["sha256:da355a8d3ede4cc1e35811dd098c134b213e281d45fda2a5d0deb3037af20d35"]
 
 [package_keys]
 "lann:test" = ["sha256:860aa709220e3f077f3f8666ee28a37f98ff98583f383c8e2b13cf66ba758093"]
