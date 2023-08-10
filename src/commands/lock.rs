@@ -1,3 +1,4 @@
+use async_recursion::async_recursion;
 use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
@@ -14,7 +15,7 @@ use warg_protocol::{
 };
 use wasm_encoder::{
     Component, ComponentExternName, ComponentImportSection, ComponentInstanceSection,
-    ComponentTypeRef, ComponentTypeSection, ImplementationImport, ImportMetadata,
+    ComponentTypeRef, ComponentTypeSection, ImplementationImport, ImportMetadata, InstanceSection, ComponentExportKind, ComponentExportSection,
 };
 use wasm_lock::Lock;
 
@@ -56,36 +57,87 @@ impl LockCommand {
 
         Ok(())
     }
-
-    async fn lock(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
-        let mut composed = Component::new();
+    #[async_recursion]
+    async fn lock_deps<'a>(
+        client: &FileSystemClient,
+        global_instantiation_args: &'a mut Vec<Vec<String>>,
+        component_index: i32,
+        packages: &mut Vec<String>,
+        component: &'a mut Component,
+        imports: &'a mut ComponentImportSection,
+        instances: &'a mut ComponentInstanceSection,
+    ) -> Result<(&'a mut ComponentImportSection, &'a mut ComponentInstanceSection, &'a mut Component, &'a mut Vec<Vec<String>>)> {
+        dbg!(component_index);
         let mut content_path =
             String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
-        let imports = ComponentImportSection::new();
-        // imports.import(component_extern_name)
-        // info.state.releases().for_each(|r| {
-        //   if let Some(content) = r.content() {
-        //         // let top_meta = ImportMetadata {
-        //         //   // name: &info.id.to_string(),
+        let temp_args: Vec<(&str, ComponentExportKind, u32)> = Vec::new();
+        for (i, package) in packages.iter().enumerate() {
+            let id = PackageId::new(package.to_string())?;
+            let info = client.registry().load_package(&id).await?;
+            if let Some(inf) = info {
 
-        //         // }
-        //         dbg!(&info);
-        //         Self::print_release(&r.record_id, &r.version, content);
-        //     }
-        // });
+              let release = inf.state.releases().last();
+              if let Some(r) = release {
+                  let state = &r.state;
+                  if let ReleaseState::Released { content } = state {
+                      let full_digest = content.to_string();
+                      let digest = full_digest.split(':').last().unwrap();
+                      content_path.push_str(&digest);
+                      let path = Path::new(&content_path);
+                      let bytes = fs::read(path)?;
+                      // let dep = wasmprinter::print_bytes(&bytes)?;
+                      // dbg!(&dep);
+                      let mut lock = Lock::new();
+
+                      let mut cur_packages: Vec<String> = Vec::new();
+                      let mut nested_packages = lock.parse(
+                          &bytes,
+                          component,
+                          imports,
+                          instances,
+                          &mut cur_packages,
+                      )?.clone();
+                      // instances.instantiate(component_index as u32 + i as u32 + 1, temp_args.clone());
+                      // dbg!(&cur_packages);
+                      // dbg!(nested_packages);
+                      global_instantiation_args.push(cur_packages.clone());
+                      Self::lock_deps(client, global_instantiation_args, component_index + (i as i32) + 1, &mut cur_packages, component, imports, instances).await?;
+                    }
+                  }
+                }
+        }
+        // instances.instantiate(component_index as u32, temp_args);
+        // component.section(imports);
+        Ok((imports, instances, component, global_instantiation_args))
+    }
+
+    async fn lock(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
+        let mut content_path =
+            String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
+        let mut packages = Vec::new();
+        let mut imports = ComponentImportSection::new();
+        // let import = ComponentExternName::Implementation(
+        //   ImplementationImport::Locked(ImportMetadata {
+        //     name: &info.id.id,
+        //     location: "",
+        //     integrity: Some("asldkjf"),
+        //     range: Some("1.0.0")
+        //   }));
+        //   let ty = ComponentTypeRef::Component(0);
+
+        // imports.import(import, ty);
+        let mut component = Component::new();
+        let mut inst_section = ComponentInstanceSection::new();
         let release = info.state.releases().last();
         if let Some(r) = release {
             let state = &r.state;
             if let ReleaseState::Released { content } = state {
                 let full_digest = content.to_string();
                 let digest = full_digest.split(':').last().unwrap();
-                let mut content_path =
-                    String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
                 content_path.push_str(&digest);
                 let path = Path::new(&content_path);
                 let bytes = fs::read(path)?;
                 let mut lock = Lock::new();
-                let mut component = Component::new();
 
                 let mut name = info.id.to_string();
                 name.push_str("/bar");
@@ -99,49 +151,57 @@ impl LockCommand {
                     },
                 ));
                 let ty = ComponentTypeRef::Component(0);
-                let mut inst_section = ComponentInstanceSection::new();
-                let mut imp_section = ComponentImportSection::new();
                 let mut type_section = ComponentTypeSection::new();
-                imp_section.import(import, ty);
+                imports.import(import, ty);
                 // component.section(&imp_section);
-                let locked =
-                    lock.parse(&bytes, &mut component, &mut imp_section, &mut inst_section)?;
-                fs::write("./locked.wasm", locked.as_slice())?;
+                let locked = lock.parse(
+                    &bytes,
+                    &mut component,
+                    &mut imports,
+                    &mut inst_section,
+                    &mut packages,
+                )?;
             }
-            let version = &r.version.to_string();
-            let metadata = ImportMetadata {
-                name: &info.id.to_string(),
-                location: "",
-                integrity: Some("asldkjgd"),
-                range: Some(version),
-            };
-            let extern_name =
-                ComponentExternName::Implementation(ImplementationImport::Locked(metadata));
-            // imports.import(extern_name);
         }
-        let log_id = LogId::package_log::<Sha256>(&info.id);
-        let record_id = &info.state.releases().last().unwrap().record_id;
-        // let http_client = reqwest::Client::new();
-        // let mut req_body = HashMap::new();
-        // req_body.insert("logId", log_id.to_string());
-        // req_body.insert("recordId", record_id.to_string());
-        // let res = http_client
-        //     .post("http://127.0.0.1:8090/v1/fetch/dependencies")
-        //     .json(&req_body)
-        //     .send()
-        //     .await?
-        //     .json::<FetchDependenciesResponse>()
-        //     .await?;
-        // let mut tree = TreeBuilder::new(info.id.to_string());
-        // for dep in res.dependencies {
-        //   let child = tree.begin_child(format!("{0} ({1})", dep.name, dep.version));
-        //   let pkg_name = &dep.name.split('/').next().unwrap();
-        //   let pkg_id = PackageId::new(pkg_name.to_string())?;
-        //   let child = Self::get_dependencies(&http_client, client, &pkg_id, child).await?;
-        //   child.end_child();
-        // }
-        // let built = tree.build();
-        // print_tree(&built)?;
+        let mut global_instantiation_args = Vec::new();
+        let mut instantation_args = Vec::new();
+        for package in packages.clone() {
+          instantation_args.push(package);
+        }
+        global_instantiation_args.push(instantation_args);
+        let (locked_imports, locked_instances, locked_component, global_instantiation_args) = Self::lock_deps(
+            client,
+            &mut global_instantiation_args,
+            0,
+            &mut packages,
+            &mut component,
+            &mut imports,
+            &mut inst_section,
+        )
+        .await?;
+        
+        dbg!(&global_instantiation_args);
+        global_instantiation_args.reverse();
+        let number_of_components = global_instantiation_args.len();
+        for (i, comp) in global_instantiation_args.iter().enumerate() {
+          let mut temp_args: Vec<(&str, ComponentExportKind, u32)> = Vec::new();
+          for (j, arg_name) in comp.iter().enumerate() {
+            let arg = ComponentExportKind::Instance {
+
+            };
+            temp_args.push((&arg_name, arg, (i + j - 1) as u32));
+          }
+          locked_instances.instantiate((number_of_components - i - 1) as u32, temp_args);
+        }
+        locked_component.section(locked_imports);
+        locked_component.section(locked_instances);
+        let mut exports = ComponentExportSection::new();
+        let export = ComponentExternName::Kebab("bundled");
+        exports.export(export, ComponentExportKind::Instance, number_of_components as u32 - 1, None);
+        component.section(&exports);
+        fs::write("./locked.wasm", &component.as_slice())?;
+        // let log_id = LogId::package_log::<Sha256>(&info.id);
+        // let record_id = &info.state.releases().last().unwrap().record_id;
         Ok(())
     }
 

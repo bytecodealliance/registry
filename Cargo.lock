@@ -4335,7 +4335,6 @@ dependencies = [
  "anyhow",
  "async-recursion",
  "async-trait",
- "bytes",
  "clap",
  "dialoguer",
  "futures",
@@ -4712,6 +4711,9 @@ name = "wasm-lock"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
+ "warg-client",
+ "warg-protocol",
  "wasm-encoder 0.31.0",
  "wasmparser 0.109.0",
 ]

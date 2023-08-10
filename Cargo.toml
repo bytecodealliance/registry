@@ -22,7 +22,6 @@ futures = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 async-trait = { workspace = true }
-bytes = { workspace = true }
 p256 = { workspace = true }
 rand_core = { workspace = true }
 url = { workspace = true }
