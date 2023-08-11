@@ -17,7 +17,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator,
-    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
+    registry::{Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope,
 };
 use warg_transparency::{
@@ -190,9 +190,9 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         // Reconstruct internal state from previously-stored data
         let mut checkpoints = self.store.get_all_checkpoints().await?;
-        let mut checkpoints_by_len: HashMap<usize, MapCheckpoint> = Default::default();
+        let mut checkpoints_by_len: HashMap<usize, Checkpoint> = Default::default();
         while let Some(checkpoint) = checkpoints.next().await {
-            let checkpoint = checkpoint?;
+            let checkpoint = checkpoint?.checkpoint;
             checkpoints_by_len.insert(checkpoint.log_length as usize, checkpoint);
         }
 
@@ -240,7 +240,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         state.push_entry(entry.clone());
 
         // "zero" checkpoint to be updated
-        let mut checkpoint = MapCheckpoint {
+        let mut checkpoint = Checkpoint {
             log_root: Hash::<Digest>::default().into(),
             log_length: 0,
             map_root: Hash::<Digest>::default().into(),
@@ -261,7 +261,9 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             .get_latest_checkpoint()
             .await
             .unwrap()
-            .into_contents();
+            .into_contents()
+            .checkpoint;
+
         let mut checkpoint_interval = tokio::time::interval(checkpoint_interval);
         checkpoint_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -311,21 +313,27 @@ impl<Digest: SupportedDigest> Inner<Digest> {
     }
 
     // Store a checkpoint including the given new entries
-    async fn update_checkpoint(&self, current_checkpoint: &mut MapCheckpoint) {
-        let mut state = self.state.write().await;
-        if state.log.length() == (current_checkpoint.log_length as usize) {
-            return;
+    async fn update_checkpoint(&self, checkpoint: &mut Checkpoint) {
+        {
+            // Recalculate the checkpoint if necessary
+            let mut state = self.state.write().await;
+            if state.log.length() != (checkpoint.log_length as usize) {
+                *checkpoint = state.checkpoint();
+                tracing::debug!("Updating to checkpoint {checkpoint:?}");
+            }
         }
-        let next_checkpoint = state.checkpoint();
-        tracing::debug!("Updating to checkpoint {next_checkpoint:?}");
-        let signed_checkpoint =
-            SerdeEnvelope::signed_contents(&self.operator_key, next_checkpoint.clone()).unwrap();
-        let checkpoint_id = Hash::<Digest>::of(signed_checkpoint.as_ref()).into();
-        self.store
-            .store_checkpoint(&checkpoint_id, signed_checkpoint)
-            .await
-            .unwrap();
-        *current_checkpoint = next_checkpoint;
+
+        if let Err(err) = self.sign_and_store_checkpoint(checkpoint.clone()).await {
+            tracing::error!("Error storing checkpoint {checkpoint:?}: {err:?}");
+        }
+    }
+
+    async fn sign_and_store_checkpoint(&self, checkpoint: Checkpoint) -> anyhow::Result<()> {
+        let checkpoint_id = Hash::<Digest>::of(&checkpoint).into();
+        let timestamped = TimestampedCheckpoint::now(checkpoint.clone())?;
+        let signed = SerdeEnvelope::signed_contents(&self.operator_key, timestamped)?;
+        self.store.store_checkpoint(&checkpoint_id, signed).await?;
+        Ok(())
     }
 }
 
@@ -363,7 +371,7 @@ impl<Digest: SupportedDigest> State<Digest> {
         );
     }
 
-    fn checkpoint(&mut self) -> MapCheckpoint {
+    fn checkpoint(&mut self) -> Checkpoint {
         let log_checkpoint = self.log.checkpoint();
         let map_root = self.map.root();
 
@@ -372,7 +380,7 @@ impl<Digest: SupportedDigest> State<Digest> {
             self.map_index.insert(map_root.clone(), self.map.clone());
         }
 
-        MapCheckpoint {
+        Checkpoint {
             log_length: log_checkpoint.length().try_into().unwrap(),
             log_root: log_checkpoint.root().into(),
             map_root: map_root.into(),

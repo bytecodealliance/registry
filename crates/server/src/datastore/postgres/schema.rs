@@ -17,6 +17,7 @@ diesel::table! {
         signature -> Text,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        timestamp -> Int8,
     }
 }
 

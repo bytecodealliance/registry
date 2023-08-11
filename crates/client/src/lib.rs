@@ -25,7 +25,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
+    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
@@ -350,10 +350,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
     async fn update_checkpoint<'a>(
         &self,
-        checkpoint: &SerdeEnvelope<MapCheckpoint>,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        let checkpoint_id: AnyHash = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+        let checkpoint = &ts_checkpoint.as_ref().checkpoint;
+        let checkpoint_id: AnyHash = Hash::<Sha256>::of(checkpoint).into();
         tracing::info!("updating to checkpoint `{checkpoint_id}`");
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
@@ -464,7 +465,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(InclusionRequest {
-                    checkpoint: Cow::Borrowed(checkpoint.as_ref()),
+                    checkpoint: Cow::Borrowed(checkpoint),
                     leafs: Cow::Borrowed(&leafs),
                 })
                 .await?;
@@ -473,8 +474,8 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         if let Some(from) = self.registry.load_checkpoint().await? {
             self.api
                 .prove_log_consistency(ConsistencyRequest {
-                    from: Cow::Borrowed(&from.as_ref().log_root),
-                    to: Cow::Borrowed(&checkpoint.as_ref().log_root),
+                    from: Cow::Borrowed(&from.as_ref().checkpoint.log_root),
+                    to: Cow::Borrowed(&ts_checkpoint.as_ref().checkpoint.log_root),
                 })
                 .await?;
         }
@@ -486,7 +487,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             self.registry.store_package(package).await?;
         }
 
-        self.registry.store_checkpoint(checkpoint).await?;
+        self.registry.store_checkpoint(ts_checkpoint).await?;
 
         Ok(())
     }

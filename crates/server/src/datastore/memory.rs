@@ -11,7 +11,7 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
+    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -76,7 +76,7 @@ struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_ids: BTreeSet<PackageId>,
-    checkpoints: IndexMap<AnyHash, SerdeEnvelope<MapCheckpoint>>,
+    checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
 }
 
@@ -105,7 +105,7 @@ impl DataStore for MemoryDataStore {
     async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<TimestampedCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     > {
         Ok(Box::pin(futures::stream::empty()))
@@ -390,19 +390,20 @@ impl DataStore for MemoryDataStore {
     async fn store_checkpoint(
         &self,
         checkpoint_id: &AnyHash,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
+        ts_checkpoint: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
-        let (_, prev) = state
+        state
             .checkpoints
-            .insert_full(checkpoint_id.clone(), checkpoint);
-        assert!(prev.is_none());
+            .insert(checkpoint_id.clone(), ts_checkpoint);
 
         Ok(())
     }
 
-    async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError> {
+    async fn get_latest_checkpoint(
+        &self,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
         let state = self.0.read().await;
         let checkpoint = state.checkpoints.values().last().unwrap();
         Ok(checkpoint.clone())
@@ -433,7 +434,7 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().log_length as u64;
+        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
 
         Ok(log
             .entries
@@ -470,7 +471,7 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().log_length as u64;
+        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
 
         Ok(log
             .entries
@@ -513,7 +514,7 @@ impl DataStore for MemoryDataStore {
                 let published_length = state
                     .checkpoints
                     .last()
-                    .map(|(_, c)| c.as_ref().log_length)
+                    .map(|(_, c)| c.as_ref().checkpoint.log_length)
                     .unwrap_or_default() as u64;
 
                 (
@@ -567,7 +568,7 @@ impl DataStore for MemoryDataStore {
                 let published_length = state
                     .checkpoints
                     .last()
-                    .map(|(_, c)| c.as_ref().log_length)
+                    .map(|(_, c)| c.as_ref().checkpoint.log_length)
                     .unwrap_or_default() as u64;
 
                 (

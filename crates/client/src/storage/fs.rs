@@ -19,7 +19,7 @@ use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
 use warg_crypto::hash::{AnyHash, Digest, Hash, Sha256};
 use warg_protocol::{
-    registry::{LogId, MapCheckpoint, PackageId},
+    registry::{LogId, PackageId, TimestampedCheckpoint},
     SerdeEnvelope,
 };
 
@@ -85,12 +85,15 @@ impl FileSystemRegistryStorage {
 
 #[async_trait]
 impl RegistryStorage for FileSystemRegistryStorage {
-    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>> {
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>> {
         load(&self.base_dir.join("checkpoint")).await
     }
 
-    async fn store_checkpoint(&self, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()> {
-        store(&self.base_dir.join("checkpoint"), checkpoint).await
+    async fn store_checkpoint(
+        &self,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<()> {
+        store(&self.base_dir.join("checkpoint"), ts_checkpoint).await
     }
 
     async fn load_packages(&self) -> Result<Vec<PackageInfo>> {

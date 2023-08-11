@@ -4,7 +4,7 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
+    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope,
 };
 
@@ -102,7 +102,7 @@ pub trait DataStore: Send + Sync {
     async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<TimestampedCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     >;
 
@@ -207,11 +207,13 @@ pub trait DataStore: Send + Sync {
     async fn store_checkpoint(
         &self,
         checkpoint_id: &AnyHash,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
+        ts_checkpoint: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError>;
 
     /// Gets the latest checkpoint.
-    async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError>;
+    async fn get_latest_checkpoint(
+        &self,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
 
     /// Gets the operator records for the given registry checkpoint ID hash.
     async fn get_operator_records(

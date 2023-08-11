@@ -62,9 +62,9 @@ async fn it_works_with_postgres() -> TestResult {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
-        checkpoint.as_ref().log_length,
+        ts_checkpoint.as_ref().checkpoint.log_length,
         packages.len() as u32 + 2, /* publishes + initial checkpoint + yank */
         "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
@@ -80,9 +80,9 @@ async fn it_works_with_postgres() -> TestResult {
     packages.push(PackageId::new("test:unknown-key")?);
 
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
-        checkpoint.as_ref().log_length,
+        ts_checkpoint.as_ref().checkpoint.log_length,
         packages.len() as u32 + 2, /* publishes + initial checkpoint + yank*/
         "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
