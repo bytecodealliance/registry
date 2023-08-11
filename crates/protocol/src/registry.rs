@@ -3,6 +3,7 @@ use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::time::SystemTime;
 use warg_crypto::hash::{AnyHash, Hash, HashAlgorithm, SupportedDigest};
 use warg_crypto::prefix::VisitPrefixEncode;
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
@@ -10,19 +11,15 @@ use wasmparser::names::KebabStr;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MapCheckpoint {
+pub struct Checkpoint {
     pub log_root: AnyHash,
     pub log_length: u32,
     pub map_root: AnyHash,
 }
 
-impl Signable for MapCheckpoint {
-    const PREFIX: &'static [u8] = b"WARG-MAP-CHECKPOINT-SIGNATURE-V0";
-}
-
-impl prefix::VisitPrefixEncode for MapCheckpoint {
+impl prefix::VisitPrefixEncode for Checkpoint {
     fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
-        visitor.visit_str_raw("WARG-MAP-CHECKPOINT-V0");
+        visitor.visit_str_raw("WARG-CHECKPOINT-V0");
         visitor.visit_unsigned(self.log_length as u64);
         visitor.visit_str(&self.log_root.to_string());
         visitor.visit_str(&self.map_root.to_string());
@@ -30,7 +27,49 @@ impl prefix::VisitPrefixEncode for MapCheckpoint {
 }
 
 // Manual impls of VisitBytes for VisitPrefixEncode to avoid conflict with blanket impls
-impl VisitBytes for MapCheckpoint {
+impl VisitBytes for Checkpoint {
+    fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
+        self.visit_bv(visitor);
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimestampedCheckpoint {
+    #[serde(flatten)]
+    pub checkpoint: Checkpoint,
+    pub timestamp: u64,
+}
+
+impl TimestampedCheckpoint {
+    pub fn new(checkpoint: Checkpoint, time: SystemTime) -> anyhow::Result<Self> {
+        Ok(Self {
+            checkpoint,
+            timestamp: time.duration_since(std::time::UNIX_EPOCH)?.as_secs(),
+        })
+    }
+
+    pub fn now(checkpoint: Checkpoint) -> anyhow::Result<Self> {
+        Self::new(checkpoint, SystemTime::now())
+    }
+}
+
+impl Signable for TimestampedCheckpoint {
+    const PREFIX: &'static [u8] = b"WARG-CHECKPOINT-SIGNATURE-V0";
+}
+
+impl prefix::VisitPrefixEncode for TimestampedCheckpoint {
+    fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
+        visitor.visit_str_raw("WARG-TIMESTAMPED-CHECKPOINT-V0");
+        visitor.visit_unsigned(self.checkpoint.log_length as u64);
+        visitor.visit_str(&self.checkpoint.log_root.to_string());
+        visitor.visit_str(&self.checkpoint.map_root.to_string());
+        visitor.visit_unsigned(self.timestamp);
+    }
+}
+
+// Manual impls of VisitBytes for VisitPrefixEncode to avoid conflict with blanket impls
+impl VisitBytes for TimestampedCheckpoint {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.visit_bv(visitor);
     }

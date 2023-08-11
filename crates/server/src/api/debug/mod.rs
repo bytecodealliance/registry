@@ -92,7 +92,7 @@ async fn get_package_info(
         .get_latest_checkpoint()
         .await
         .context("get_latest_checkpoint")?;
-    let checkpoint_id = Hash::<Sha256>::of(checkpoint.as_ref()).into();
+    let checkpoint_id = Hash::<Sha256>::of(&checkpoint.as_ref().checkpoint).into();
 
     let log_id = LogId::package_log::<Sha256>(&package_id);
     let records = store

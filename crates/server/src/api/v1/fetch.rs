@@ -12,7 +12,7 @@ use axum::{
 use std::collections::HashMap;
 use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
 use warg_crypto::hash::Sha256;
-use warg_protocol::registry::{LogId, MapCheckpoint};
+use warg_protocol::registry::{LogId, TimestampedCheckpoint};
 use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
 
 const DEFAULT_RECORDS_LIMIT: u16 = 100;
@@ -126,7 +126,7 @@ async fn fetch_logs(
 #[debug_handler]
 async fn fetch_checkpoint(
     State(config): State<Config>,
-) -> Result<Json<SerdeEnvelope<MapCheckpoint>>, FetchApiError> {
+) -> Result<Json<SerdeEnvelope<TimestampedCheckpoint>>, FetchApiError> {
     Ok(Json(
         config.core_service.store().get_latest_checkpoint().await?,
     ))
