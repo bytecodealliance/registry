@@ -1,17 +1,7 @@
 use super::CommonOptions;
 use anyhow::Result;
-use async_recursion::async_recursion;
 use clap::Args;
-use ptree::{output::print_tree, TreeBuilder};
-use reqwest;
-use std::collections::HashMap;
 use std::fs;
-use warg_api::v1::fetch::FetchDependenciesResponse;
-use warg_client::{
-    storage::{PackageInfo, RegistryStorage},
-    FileSystemClient,
-};
-use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, PackageId};
 use wasm_bundle::Bundler;
 
