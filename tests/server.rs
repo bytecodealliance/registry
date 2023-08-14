@@ -27,7 +27,6 @@ use wit_component::DecodedWasm;
 
 mod support;
 
-#[cfg(not(feature = "postgres"))]
 mod memory;
 #[cfg(feature = "postgres")]
 mod postgres;
