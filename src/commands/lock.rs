@@ -1,77 +1,161 @@
 use super::CommonOptions;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
-use std::{collections::HashMap, fs, path::Path};
+use indexmap::IndexSet;
+use std::{collections::HashSet, fs, path::Path};
 use warg_client::{
     storage::{PackageInfo, RegistryStorage},
     FileSystemClient,
 };
-use warg_crypto::hash::{AnyHash, Sha256};
-use warg_protocol::{
-    package::ReleaseState,
-    registry::{LogId, PackageId, RecordId},
-    Version,
-};
+use warg_protocol::{package::ReleaseState, registry::PackageId};
 use wasm_encoder::{
     Component, ComponentExportKind, ComponentExportSection, ComponentExternName,
-    ComponentImportSection, ComponentInstanceSection, ComponentTypeRef, ComponentTypeSection,
-    ImplementationImport, ImportMetadata, InstanceSection,
+    ComponentImportSection, ComponentInstanceSection, ComponentTypeRef, ImplementationImport,
 };
-use wasm_lock::{Import, ImportKind, Lock};
+use wasm_lock::{Dependency, Graph, Import, ImportKind, Lock};
+use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
 
-#[derive(Clone)]
-struct Graph {
-    num_components: usize,
-    num_instances: usize,
-    dependencies: HashMap<String, Dependency>,
-    indices: HashMap<usize, Import>,
+/// Builds list of packages in order that they should be added to locked component
+pub struct LockListBuilder {
+    lock_list: IndexSet<String>,
 }
 
-impl Graph {
+impl LockListBuilder {
+    /// New LockListBuilder
     fn new() -> Self {
         Self {
-            num_components: 0,
-            num_instances: 0,
-            dependencies: HashMap::new(),
-            indices: HashMap::new(),
+            lock_list: IndexSet::new(),
         }
     }
 
-    fn insert_component(&mut self, package: Import, val: Dependency) {
-        if let std::collections::hash_map::Entry::Vacant(e) =
-            self.dependencies.entry(package.name.clone())
-        {
-            self.indices.insert(self.num_components, package);
-            self.num_components += 1;
-            e.insert(val);
+    fn parse_import(
+        &mut self,
+        parser: &ComponentImportSectionReader,
+        imports: &mut Vec<String>,
+    ) -> Result<()> {
+        let clone = parser.clone();
+        // let mut imports = Vec::new();
+        for (i, import) in clone.into_iter_with_offsets().enumerate() {
+            let (_, imp) = import.unwrap().clone();
+            match imp.name {
+                wasmparser::ComponentExternName::Kebab(_) => todo!(),
+                wasmparser::ComponentExternName::Interface(name) => {
+                    // self.lock_list.insert(name.to_string(),);
+                }
+                wasmparser::ComponentExternName::Implementation(imp) => match imp {
+                    wasmparser::ImplementationImport::Url(metadata) => todo!(),
+                    wasmparser::ImplementationImport::Relative(metadata) => todo!(),
+                    wasmparser::ImplementationImport::Locked(metadata) => todo!(),
+                    wasmparser::ImplementationImport::Unlocked(metadata) => {
+                        imports.push(metadata.name.to_string());
+                    }
+                },
+            }
         }
+        Ok(())
     }
 
-    fn insert_instance(&mut self, key: String, val: usize) {
-        self.num_instances += 1;
-        self.dependencies.get_mut(&key).map(|comp| {
-            comp.instance = Some(val);
-        });
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Dependency {
-    index: usize,
-    instance: Option<usize>,
-    instantiation_args: Vec<String>,
-}
-
-impl Dependency {
-    fn new(index: usize) -> Self {
-        Self {
-            index,
-            instance: None,
-            instantiation_args: Vec::new(),
+    #[async_recursion]
+    async fn parse_package(
+        &mut self,
+        client: &FileSystemClient,
+        mut bytes: &[u8],
+        mut graph: &mut Graph,
+    ) -> Result<()> {
+        let mut parser = Parser::new(0);
+        let mut imports: Vec<String> = Vec::new();
+        loop {
+            let payload = match parser.parse(bytes, true)? {
+                Chunk::NeedMoreData(_) => unreachable!(),
+                Chunk::Parsed { payload, consumed } => {
+                    bytes = &bytes[consumed..];
+                    payload
+                }
+            };
+            match payload {
+                Payload::ComponentImportSection(s) => {
+                    self.parse_import(&s, &mut imports)?;
+                }
+                Payload::CodeSectionStart {
+                    count: _,
+                    range: _,
+                    size: _,
+                } => {
+                    parser.skip_section();
+                }
+                Payload::ModuleSection { parser, range } => {
+                    let offset = range.end - range.start;
+                    if offset > bytes.len() {
+                        bail!("invalid module or component section range");
+                    }
+                    bytes = &bytes[offset..];
+                }
+                Payload::ComponentSection { parser, range } => {
+                    let offset = range.end - range.start;
+                    if offset > bytes.len() {
+                        bail!("invalid module or component section range");
+                    }
+                    bytes = &bytes[offset..];
+                }
+                Payload::End(_) => {
+                    break;
+                }
+                _ => {}
+            }
         }
+        for import in imports {
+            let pkg_name = import.split('/').next();
+            if let Some(name) = pkg_name {
+                let id = PackageId::new(name)?;
+                if let Some(info) = client.registry().load_package(&id).await? {
+                    let mut content_path =
+                        String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
+                    let release = info.state.releases().last();
+                    if let Some(r) = release {
+                        let state = &r.state;
+                        if let ReleaseState::Released { content } = state {
+                            let full_digest = content.to_string();
+                            let digest = full_digest.split(':').last().unwrap();
+                            content_path.push_str(digest);
+                            let path = Path::new(&content_path);
+                            let bytes = fs::read(path)?;
+                            self.parse_package(client, &bytes, graph).await?;
+                        }
+                    }
+                    self.lock_list.insert(info.id.id.to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[async_recursion]
+    async fn build_list(
+        &mut self,
+        client: &FileSystemClient,
+        info: &PackageInfo,
+        mut graph: &mut Graph,
+    ) -> Result<()> {
+        let mut content_path =
+            String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
+        let release = info.state.releases().last();
+        let name = info.id.id.clone();
+        if let Some(r) = release {
+            let state = &r.state;
+            if let ReleaseState::Released { content } = state {
+                let full_digest = content.to_string();
+                let digest = full_digest.split(':').last().unwrap();
+                content_path.push_str(digest);
+                let path = Path::new(&content_path);
+                let bytes = fs::read(path)?;
+                self.parse_package(client, &bytes, graph).await?;
+            }
+        }
+        Ok(())
     }
 }
+
 /// Print Dependency Tree
 #[derive(Args)]
 pub struct LockCommand {
@@ -95,7 +179,7 @@ impl LockCommand {
         match self.package {
             Some(package) => {
                 if let Some(info) = client.registry().load_package(&package).await? {
-                    Self::lock(&client, &info).await?;
+                    Self::lock(client, &info).await?;
                 }
             }
             None => {
@@ -110,229 +194,136 @@ impl LockCommand {
 
         Ok(())
     }
-    #[async_recursion]
-    async fn lock_deps<'a>(
-        client: &FileSystemClient,
-        global_components: &mut Graph,
-        component_index: i32,
-        packages: &mut [Import],
-        component: &'a mut Component,
-        imports: &'a mut ComponentImportSection,
-        instances: &'a mut ComponentInstanceSection,
-    ) -> Result<(
-        &'a mut ComponentImportSection,
-        &'a mut ComponentInstanceSection,
-        &'a mut Component,
-        // &'a mut Vec<Vec<String>>,
-    )> {
-        for (_, package) in packages.iter().enumerate() {
-            // let mut projected = String::new();
-            // projected.push_str(package);
-            // projected.push_str("/bar");
-            // dbg!(&projected);
-            global_components.insert_component(
-                package.clone(),
-                Dependency::new(global_components.num_components + 1),
-            );
-        }
-        let root = global_components.indices.get(&(component_index as usize));
 
-        for (i, package) in packages.iter().enumerate() {
-            let name = package.name.split('/').next();
-            if let Some(id) = name {
-                let mut content_path =
-                    String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
-                let id = PackageId::new(id.to_string())?;
-                let info = client.registry().load_package(&id).await?;
-                if let Some(inf) = info {
-                    let release = inf.state.releases().last();
-                    if let Some(r) = release {
-                        let state = &r.state;
-                        if let ReleaseState::Released { content } = state {
-                            let full_digest = content.to_string();
-                            let digest = full_digest.split(':').last().unwrap();
-                            content_path.push_str(&digest);
-                            let path = Path::new(&content_path);
-                            let bytes = fs::read(path)?;
-                            let mut lock = Lock::new();
-
-                            let mut cur_packages: Vec<Import> = Vec::new();
-                            let mut nested_packages =
-                                lock.parse(&bytes, component, &mut cur_packages)?.clone();
-                            // let mut projected = String::new();
-                            // projected.push_str(package);
-                            // projected.push_str("/bar");
-                            // dbg!(&projected);
-                            dbg!(&package);
-                            let comp = global_components.dependencies.get_mut(&package.name);
-                            if let Some(c) = comp {
-                                for pkg in cur_packages.clone() {
-                                    // let mut projected = String::new();
-                                    // projected.push_str(&pkg);
-                                    // projected.push_str("/bar");
-                                    dbg!(&pkg);
-                                    c.instantiation_args.push(pkg.name);
-                                }
-                            }
-                            Self::lock_deps(
-                                client,
-                                global_components,
-                                component_index + (i as i32) + 1,
-                                &mut cur_packages,
-                                component,
-                                imports,
-                                instances,
-                            )
-                            .await?;
-                        }
+    async fn lock(client: FileSystemClient, info: &PackageInfo) -> Result<()> {
+        let mut graph = Graph::new();
+        let mut builder = LockListBuilder::new();
+        builder.build_list(&client, info, &mut graph).await?;
+        builder.lock_list.insert(info.id.id.clone());
+        for package in builder.lock_list {
+            let id = PackageId::new(package)?;
+            let info = client.registry().load_package(&id).await?;
+            if let Some(inf) = info {
+                let release = inf.state.releases().last();
+                if let Some(r) = release {
+                    let state = &r.state;
+                    if let ReleaseState::Released { content } = state {
+                        let full_digest = content.to_string();
+                        let digest = full_digest.split(':').last().unwrap();
+                        let mut content_path = String::from(
+                            "/Users/interpretations/Library/Caches/warg/content/sha256/",
+                        );
+                        content_path.push_str(digest);
+                        let path = Path::new(&content_path);
+                        let bytes = fs::read(path)?;
+                        let mut projected = String::new();
+                        projected.push_str(&inf.id.id);
+                        projected.push_str("/bar");
+                        graph.insert_component(
+                            Import::new(projected, ImportKind::Implementation),
+                            Dependency::new(graph.num_components),
+                        );
+                        let mut lock = Lock::new();
+                        lock.parse_new(&bytes, &mut graph)?;
                     }
                 }
             }
         }
-        Ok((imports, instances, component))
-    }
-
-    async fn lock(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
-        let mut content_path =
-            String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
-        let mut packages = Vec::new();
-        let mut imports = ComponentImportSection::new();
-        let mut global_components = Graph::new();
-        let mut projected = String::new();
-        projected.push_str(&info.id.id);
-        projected.push_str("/bar");
-        global_components.insert_component(
-            Import::new(projected, ImportKind::Implementation),
-            Dependency::new(0),
-        );
-        let mut component = Component::new();
-        let mut inst_section = ComponentInstanceSection::new();
-        let release = info.state.releases().last();
-        if let Some(r) = release {
-            let state = &r.state;
-            if let ReleaseState::Released { content } = state {
-                let full_digest = content.to_string();
-                let digest = full_digest.split(':').last().unwrap();
-                content_path.push_str(&digest);
-                let path = Path::new(&content_path);
-                let bytes = fs::read(path)?;
-                let mut lock = Lock::new();
-
-                let mut name = info.id.to_string();
-                name.push_str("/bar");
-                let locked = lock.parse(&bytes, &mut component, &mut packages)?;
-            }
-        }
-        let mut projected = String::new();
-        projected.push_str(&info.id.id);
-        projected.push_str("/bar");
-        let comp = global_components.dependencies.get_mut(&projected);
-        if let Some(dep) = comp {
-            for package in packages.clone() {
-                // let mut projected = String::new();
-                // projected.push_str(&package);
-                // projected.push_str("/bar");
-                // dbg!(&projected);
-                dep.instantiation_args.push(package.name);
-            }
-        }
-        let (locked_imports, locked_instances, locked_component) = Self::lock_deps(
-            client,
-            &mut global_components,
-            0,
-            &mut packages,
-            &mut component,
-            &mut imports,
-            &mut inst_section,
-        )
-        .await?;
-
-        for i in 0..global_components.num_components {
-            dbg!(i);
-            let cloned = global_components.clone();
-            let comp = cloned.indices.get(&i);
-            if let Some(imp) = comp {
-                // let mut projected = String::new();
-                // projected.push_str(name);
-                // projected.push_str("/bar");
-                // dbg!(&projected);
-
-                match imp.kind {
+        let mut locked_component = Component::new();
+        let mut index = 0;
+        let mut imported = HashSet::<String>::new();
+        for entity in graph.entities.clone() {
+            match entity {
+                wasm_lock::Entity::Type(ty) => {
+                    locked_component.section(&ty);
+                }
+                wasm_lock::Entity::Alias(ty) => {
+                    locked_component.section(&ty);
+                }
+                wasm_lock::Entity::Import((import, ty)) => match import.kind {
                     ImportKind::Implementation => {
-                        let imp = ComponentExternName::Implementation(
-                            ImplementationImport::Locked(ImportMetadata {
-                                name: &imp.name,
-                                location: "",
-                                integrity: Some("asldkjf"),
-                                range: Some("1.0.0"),
-                            }),
-                        );
-                        let ty = ComponentTypeRef::Component(0);
-                        locked_imports.import(imp, ty);
+                        let dep = graph.components.get(&import.name);
+                        if let Some(imp) = dep {
+                            if !imported.contains(&import.name) {
+                                let mut locked_instance = ComponentInstanceSection::new();
+                                locked_component.section(&ty);
+                                let mut temp_args: Vec<(&str, ComponentExportKind, u32)> =
+                                    Vec::new();
+                                for (_, arg) in imp.instantiation_args.iter().enumerate() {
+                                    let exp = ComponentExportKind::Instance;
+                                    let arg_dep = graph.components.get(arg);
+                                    if let Some(ad) = arg_dep {
+                                        if let Some(instance_index) = ad.instance {
+                                            temp_args.push((arg, exp, instance_index as u32));
+                                        }
+                                    }
+                                    let instance_arg_dep = graph.interfaces.get(arg);
+                                    if let Some(interface) = instance_arg_dep {
+                                        temp_args.push((arg, exp, (*interface - 1) as u32));
+                                    }
+                                }
+                                locked_instance.instantiate(index as u32, temp_args);
+                                graph.insert_instance(import.name.clone(), graph.num_instances);
+                                locked_component.section(&locked_instance);
+                                imported.insert(import.name);
+                                index += 1;
+                            }
+                        }
                     }
                     ImportKind::Interface => {
-                        let import = ComponentExternName::Interface(&imp.name);
-                        let ty = ComponentTypeRef::Instance(0);
-                        global_components
-                            .insert_instance(imp.name.clone(), global_components.num_instances);
-                        locked_imports.import(import, ty);
+                        locked_component.section(&ty);
                     }
-                };
+                    ImportKind::Kebab => todo!(),
+                },
             }
         }
-        dbg!(&global_components.indices);
-        dbg!(&global_components.dependencies);
-        for i in 0..global_components.num_components {
+
+        let mut top_level = ComponentImportSection::new();
+        let top_name = &info.id.id;
+        let mut projected = String::new();
+        projected.push_str(&top_name);
+        projected.push_str("/bar");
+        top_level.import(
+            ComponentExternName::Implementation(ImplementationImport::Locked(
+                wasm_encoder::ImportMetadata {
+                    name: &projected,
+                    location: "",
+                    integrity: Some(""),
+                    range: Some(""),
+                },
+            )),
+            ComponentTypeRef::Component(0),
+        );
+        locked_component.section(&top_level);
+        let dep = graph.components.get(&projected);
+        if let Some(dep) = dep {
+            let mut locked_instance = ComponentInstanceSection::new();
             let mut temp_args: Vec<(&str, ComponentExportKind, u32)> = Vec::new();
-            let indices = global_components.indices.clone();
-            let pkg_name = indices.get(&(global_components.num_components - i - 1));
-            if let Some(imp) = pkg_name {
-                if let ImportKind::Implementation = imp.kind {
-                    let pkg = global_components.dependencies.get_mut(&imp.name.clone());
-                    if let Some(dep) = pkg {
-                        dep.instance = Some(i);
-                    }
-                    let read_pkg = global_components.dependencies.get(&imp.name.clone());
-                    if let Some(dep) = read_pkg {
-                        for (_, arg) in dep.instantiation_args.iter().enumerate() {
-                            let exp = ComponentExportKind::Instance;
-                            let arg_dep = global_components.dependencies.get(arg);
-                            if let Some(ad) = arg_dep {
-                                if let Some(instance_index) = ad.instance {
-                                    temp_args.push((arg, exp, instance_index as u32))
-                                }
-                            }
-                        }
-                        // dbg!(&dep);
-                        locked_instances.instantiate(
-                            (global_components.num_components - i - 1) as u32,
-                            temp_args,
-                        );
+            for (_, arg) in dep.instantiation_args.iter().enumerate() {
+                let exp = ComponentExportKind::Instance;
+                let arg_dep = graph.components.get(arg);
+                if let Some(ad) = arg_dep {
+                    if let Some(instance_index) = ad.instance {
+                        temp_args.push((arg, exp, instance_index as u32));
                     }
                 }
             }
+
+            locked_instance.instantiate(index as u32, temp_args);
+            graph.insert_instance(projected, graph.num_instances);
+            locked_component.section(&locked_instance);
         }
-        // dbg!(global_components.get())
-        // }
-        locked_component.section(locked_imports);
-        locked_component.section(locked_instances);
+
         let mut exports = ComponentExportSection::new();
         let export = ComponentExternName::Kebab("bundled");
         exports.export(
             export,
             ComponentExportKind::Instance,
-            global_components.num_components as u32 - 1,
+            (graph.num_components + graph.num_interfaces) as u32 - 1,
             None,
         );
-        component.section(&exports);
-        fs::write("./locked.wasm", &component.as_slice())?;
-        // let log_id = LogId::package_log::<Sha256>(&info.id);
-        // let record_id = &info.state.releases().last().unwrap().record_id;
+        locked_component.section(&exports);
+        fs::write("./locked.wasm", locked_component.as_slice())?;
         Ok(())
-    }
-
-    fn print_release(record_id: &RecordId, version: &Version, content: &AnyHash) {
-        println!("    record id: {record_id}");
-        println!("    {version} ({content})");
     }
 }
