@@ -288,6 +288,7 @@ async fn publish_record(
                                     match impl_import {
                                         ImplementationImport::Url(metadata)
                                         | ImplementationImport::Relative(metadata)
+                                        | ImplementationImport::Naked(metadata)
                                         | ImplementationImport::Locked(metadata)
                                         | ImplementationImport::Unlocked(metadata) => {
                                             let split_name: Vec<&str> =
@@ -310,7 +311,7 @@ async fn publish_record(
                                                         record_id.clone(),
                                                         split_name[0].to_string(),
                                                         "url".to_string(),
-                                                        metadata.range.to_string(),
+                                                        "1.0.0".to_string(),
                                                         metadata.location.to_string(),
                                                         metadata.integrity.to_string(),
                                                     ));
@@ -483,6 +484,7 @@ async fn upload_content(
             ComponentExternName::Implementation(impl_import) => match impl_import {
                 ImplementationImport::Url(metadata)
                 | ImplementationImport::Relative(metadata)
+                | ImplementationImport::Naked(metadata)
                 | ImplementationImport::Locked(metadata)
                 | ImplementationImport::Unlocked(metadata) => {
                     let split_name: Vec<&str> = metadata.name.split('@').collect();
@@ -504,7 +506,7 @@ async fn upload_content(
                                 record_id.clone(),
                                 split_name[0].to_string(),
                                 "url".to_string(),
-                                metadata.range.to_string(),
+                                "1.0.0".to_string(),
                                 metadata.location.to_string(),
                                 metadata.integrity.to_string(),
                             ));

@@ -46,7 +46,10 @@ impl LockListBuilder {
                 wasmparser::ComponentExternName::Implementation(imp) => match imp {
                     wasmparser::ImplementationImport::Url(metadata) => todo!(),
                     wasmparser::ImplementationImport::Relative(metadata) => todo!(),
-                    wasmparser::ImplementationImport::Locked(metadata) => todo!(),
+                    wasmparser::ImplementationImport::Naked(metadata) => todo!(),
+                    wasmparser::ImplementationImport::Locked(metadata) => {
+
+                    },
                     wasmparser::ImplementationImport::Unlocked(metadata) => {
                         imports.push(metadata.name.to_string());
                     }
@@ -273,7 +276,7 @@ impl LockCommand {
                     ImportKind::Interface => {
                         locked_component.section(&ty);
                     }
-                    ImportKind::Kebab => todo!(),
+                    ImportKind::Kebab => {},
                 },
             }
         }
@@ -289,7 +292,6 @@ impl LockCommand {
                     name: &projected,
                     location: "",
                     integrity: Some(""),
-                    range: Some(""),
                 },
             )),
             ComponentTypeRef::Component(0),

@@ -11,6 +11,7 @@ wasm-encoder = { path = "../mine/wasm-tools/crates/wasm-encoder" }
 warg-crypto = { workspace = true }
 wasm-bundle = { workspace = true }
 wasm-lock = { workspace = true }
+wasmparser = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
 clap = { workspace = true }
@@ -36,6 +37,7 @@ reqwest.workspace = true
 warg-api.workspace = true
 ptree = "0.4.0"
 async-recursion = "1.0.4"
+indexmap.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true }
