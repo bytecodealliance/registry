@@ -223,7 +223,7 @@ impl LockCommand {
                         projected.push_str(&inf.id.id);
                         projected.push_str("/bar");
                         graph.insert_component(
-                            Import::new(projected, ImportKind::Implementation),
+                            Import::new(inf.id.id, ImportKind::Implementation),
                             Dependency::new(graph.num_components),
                         );
                         let mut lock = Lock::new();
@@ -283,13 +283,10 @@ impl LockCommand {
 
         let mut top_level = ComponentImportSection::new();
         let top_name = &info.id.id;
-        let mut projected = String::new();
-        projected.push_str(&top_name);
-        projected.push_str("/bar");
         top_level.import(
             ComponentExternName::Implementation(ImplementationImport::Locked(
                 wasm_encoder::ImportMetadata {
-                    name: &projected,
+                    name: &top_name,
                     location: "",
                     integrity: Some(""),
                 },
@@ -297,7 +294,7 @@ impl LockCommand {
             ComponentTypeRef::Component(0),
         );
         locked_component.section(&top_level);
-        let dep = graph.components.get(&projected);
+        let dep = graph.components.get(top_name);
         if let Some(dep) = dep {
             let mut locked_instance = ComponentInstanceSection::new();
             let mut temp_args: Vec<(&str, ComponentExportKind, u32)> = Vec::new();
@@ -312,7 +309,7 @@ impl LockCommand {
             }
 
             locked_instance.instantiate(index as u32, temp_args);
-            graph.insert_instance(projected, graph.num_instances);
+            graph.insert_instance(top_name.to_string(), graph.num_instances);
             locked_component.section(&locked_instance);
         }
 
