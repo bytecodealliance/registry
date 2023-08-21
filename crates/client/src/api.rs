@@ -5,6 +5,7 @@ use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use reqwest::{Body, IntoUrl, Response, StatusCode};
 use serde::de::DeserializeOwned;
+use std::borrow::Cow;
 use thiserror::Error;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
@@ -253,7 +254,9 @@ impl Client {
     /// Proves consistency between two log roots.
     pub async fn prove_log_consistency(
         &self,
-        request: ConsistencyRequest<'_>,
+        request: ConsistencyRequest,
+        from_log_root: Cow<'_, AnyHash>,
+        to_log_root: Cow<'_, AnyHash>,
     ) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_consistency());
         let response = into_result::<ConsistencyResponse, ProofError>(
@@ -281,16 +284,16 @@ impl Client {
             .evaluate(&log_data)
             .map(|(from, to)| (AnyHash::from(from), AnyHash::from(to)))?;
 
-        if request.from.as_ref() != &from {
+        if from_log_root.as_ref() != &from {
             return Err(ClientError::IncorrectConsistencyProof {
-                root: request.from.into_owned(),
+                root: from_log_root.into_owned(),
                 found: from,
             });
         }
 
-        if request.to.as_ref() != &to {
+        if to_log_root.as_ref() != &to {
             return Err(ClientError::IncorrectConsistencyProof {
-                root: request.to.into_owned(),
+                root: to_log_root.into_owned(),
                 found: to,
             });
         }

@@ -472,10 +472,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         if let Some(from) = self.registry.load_checkpoint().await? {
             self.api
-                .prove_log_consistency(ConsistencyRequest {
-                    from: Cow::Borrowed(&from.as_ref().log_root),
-                    to: Cow::Borrowed(&checkpoint.as_ref().log_root),
-                })
+                .prove_log_consistency(
+                    ConsistencyRequest {
+                        from: from.as_ref().log_length,
+                        to: checkpoint.as_ref().log_length,
+                    },
+                    Cow::Borrowed(&from.as_ref().log_root),
+                    Cow::Borrowed(&checkpoint.as_ref().log_root),
+                )
                 .await?;
         }
 

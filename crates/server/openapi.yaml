@@ -624,11 +624,15 @@ components:
         - to
       properties:
         from:
-          $ref: "#/components/schemas/AnyHash"
-          description: The starting log root hash.
+          type: integer
+          description: The starting log length.
+          minimum: 1
+          example: 42
         to:
-          $ref: "#/components/schemas/AnyHash"
-          description: The ending log root hash.
+          type: integer
+          description: The ending log length.
+          minimum: 1
+          example: 42
     ProveConsistencyResponse:
       type: object
       description: A response containing the consistency proof bundle.

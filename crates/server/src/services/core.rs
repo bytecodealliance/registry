@@ -71,15 +71,12 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs a log consistency proof between the given log tree roots.
     pub async fn log_consistency_proof(
         &self,
-        old_root: &Hash<Digest>,
-        new_root: &Hash<Digest>,
+        from_log_length: usize,
+        to_log_length: usize,
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
-        let old_length = state.get_log_len_at(old_root)?;
-        let new_length = state.get_log_len_at(new_root)?;
-
-        let proof = state.log.prove_consistency(old_length, new_length);
+        let proof = state.log.prove_consistency(from_log_length, to_log_length);
         LogProofBundle::bundle(vec![proof], vec![], &state.log)
             .map_err(CoreServiceError::BundleFailure)
     }
@@ -87,12 +84,10 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs log inclusion proofs for the given entries at the given log tree root.
     pub async fn log_inclusion_proofs(
         &self,
-        root: &Hash<Digest>,
+        log_length: usize,
         entries: &[LogLeaf],
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
-
-        let log_length = state.get_log_len_at(root)?;
 
         let proofs = entries
             .iter()
@@ -377,13 +372,6 @@ impl<Digest: SupportedDigest> State<Digest> {
             log_root: log_checkpoint.root().into(),
             map_root: map_root.into(),
         }
-    }
-
-    fn get_log_len_at(&self, log_root: &Hash<Digest>) -> Result<usize, CoreServiceError> {
-        self.root_index
-            .get(log_root)
-            .cloned()
-            .ok_or_else(|| CoreServiceError::RootNotFound(log_root.into()))
     }
 }
 
