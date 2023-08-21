@@ -11,7 +11,8 @@ use warg_client::{
 use warg_protocol::{package::ReleaseState, registry::PackageId};
 use wasm_encoder::{
     Component, ComponentExportKind, ComponentExportSection, ComponentExternName,
-    ComponentImportSection, ComponentInstanceSection, ComponentTypeRef, ImplementationImport,
+    ComponentImportSection, ComponentInstanceSection, ComponentTypeRef, ComponentTypeSection,
+    ImplementationImport,
 };
 use wasm_lock::{Dependency, Graph, Import, ImportKind, Lock};
 use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
@@ -47,9 +48,7 @@ impl LockListBuilder {
                     wasmparser::ImplementationImport::Url(metadata) => todo!(),
                     wasmparser::ImplementationImport::Relative(metadata) => todo!(),
                     wasmparser::ImplementationImport::Naked(metadata) => todo!(),
-                    wasmparser::ImplementationImport::Locked(metadata) => {
-
-                    },
+                    wasmparser::ImplementationImport::Locked(metadata) => {}
                     wasmparser::ImplementationImport::Unlocked(metadata) => {
                         imports.push(metadata.name.to_string());
                     }
@@ -219,15 +218,12 @@ impl LockCommand {
                         content_path.push_str(digest);
                         let path = Path::new(&content_path);
                         let bytes = fs::read(path)?;
-                        let mut projected = String::new();
-                        projected.push_str(&inf.id.id);
-                        projected.push_str("/bar");
                         graph.insert_component(
                             Import::new(inf.id.id, ImportKind::Implementation),
                             Dependency::new(graph.num_components),
                         );
                         let mut lock = Lock::new();
-                        lock.parse_new(&bytes, &mut graph)?;
+                        lock.parse(&bytes, &mut graph)?;
                     }
                 }
             }
@@ -237,8 +233,29 @@ impl LockCommand {
         let mut imported = HashSet::<String>::new();
         for entity in graph.entities.clone() {
             match entity {
-                wasm_lock::Entity::Type(ty) => {
-                    locked_component.section(&ty);
+                wasm_lock::Entity::Type((name, kind)) => {
+                    let mut type_section = ComponentTypeSection::new();
+                    match kind {
+                        wasm_lock::TypeEntityType::Component => {
+                            let index = graph.interface_type_indices.get(&name);
+                            if let Some(i) = index {
+                                let ty = graph.type_decls.get(i);
+                                if let Some(ty) = ty {
+                                    type_section.ty().component(&ty.encode_component());
+                                }
+                            }
+                        }
+                        wasm_lock::TypeEntityType::Instance => {
+                            let index = graph.interface_type_indices.get(&name);
+                            if let Some(i) = index {
+                                let ty = graph.type_decls.get(i);
+                                if let Some(ty) = ty {
+                                    type_section.ty().instance(&ty.encode_instance());
+                                }
+                            }
+                        }
+                    };
+                    locked_component.section(&type_section);
                 }
                 wasm_lock::Entity::Alias(ty) => {
                     locked_component.section(&ty);
@@ -276,7 +293,7 @@ impl LockCommand {
                     ImportKind::Interface => {
                         locked_component.section(&ty);
                     }
-                    ImportKind::Kebab => {},
+                    ImportKind::Kebab => {}
                 },
             }
         }
