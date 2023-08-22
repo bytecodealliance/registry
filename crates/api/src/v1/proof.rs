@@ -11,11 +11,11 @@ use warg_protocol::registry::{Checkpoint, LogId, LogLeaf};
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConsistencyRequest<'a> {
-    /// The starting log root hash to check for consistency.
-    pub from: Cow<'a, AnyHash>,
-    /// The ending log root hash to check for consistency.
-    pub to: Cow<'a, AnyHash>,
+pub struct ConsistencyRequest {
+    /// The starting log length to check for consistency.
+    pub from: u32,
+    /// The ending log length to check for consistency.
+    pub to: u32,
 }
 
 /// Represents a consistency proof response.

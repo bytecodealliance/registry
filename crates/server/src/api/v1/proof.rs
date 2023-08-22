@@ -6,7 +6,6 @@ use axum::{
 use warg_api::v1::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
-use warg_crypto::hash::{Hash, Sha256};
 
 #[derive(Clone)]
 pub struct Config {
@@ -67,20 +66,12 @@ impl IntoResponse for ProofApiError {
 #[debug_handler]
 async fn prove_consistency(
     State(config): State<Config>,
-    Json(body): Json<ConsistencyRequest<'static>>,
+    Json(body): Json<ConsistencyRequest>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
-    let from: Hash<Sha256> = body
-        .from
-        .into_owned()
-        .try_into()
-        .map_err(ProofApiError::bad_request)?;
-    let to: Hash<Sha256> = body
-        .to
-        .into_owned()
-        .try_into()
-        .map_err(ProofApiError::bad_request)?;
-
-    let bundle = config.core.log_consistency_proof(&from, &to).await?;
+    let bundle = config
+        .core
+        .log_consistency_proof(body.from as usize, body.to as usize)
+        .await?;
 
     Ok(Json(ConsistencyResponse {
         proof: bundle.encode(),
@@ -93,10 +84,7 @@ async fn prove_inclusion(
     Json(body): Json<InclusionRequest<'static>>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
     let checkpoint = body.checkpoint.into_owned();
-    let log_root = checkpoint
-        .log_root
-        .try_into()
-        .map_err(ProofApiError::bad_request)?;
+    let log_length = checkpoint.log_length;
     let map_root = checkpoint
         .map_root
         .try_into()
@@ -104,7 +92,7 @@ async fn prove_inclusion(
 
     let log_bundle = config
         .core
-        .log_inclusion_proofs(&log_root, &body.leafs)
+        .log_inclusion_proofs(log_length as usize, &body.leafs)
         .await?;
 
     let map_bundle = config
