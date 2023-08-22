@@ -86,11 +86,12 @@ pub struct NewCheckpoint<'a> {
     pub map_root: TextRef<'a, AnyHash>,
     pub key_id: TextRef<'a, KeyID>,
     pub signature: TextRef<'a, Signature>,
+    pub timestamp: i64,
 }
 
 #[derive(Queryable)]
 #[diesel(table_name = checkpoints)]
-pub struct Checkpoint {
+pub struct CheckpointData {
     pub id: i32,
     pub checkpoint_id: ParsedText<AnyHash>,
     pub log_root: ParsedText<AnyHash>,
@@ -100,6 +101,7 @@ pub struct Checkpoint {
     pub signature: ParsedText<Signature>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub timestamp: i64,
 }
 
 /// Selects only the record content and status
@@ -110,17 +112,6 @@ pub struct RecordContent {
     pub registry_log_index: Option<i64>,
     pub reason: Option<String>,
     pub content: Vec<u8>,
-}
-
-/// Selects only the relevant checkpoint data from the checkpoints table.
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = checkpoints)]
-pub struct CheckpointData {
-    pub log_root: ParsedText<AnyHash>,
-    pub log_length: i64,
-    pub map_root: ParsedText<AnyHash>,
-    pub key_id: Text<KeyID>,
-    pub signature: ParsedText<Signature>,
 }
 
 #[derive(Insertable)]

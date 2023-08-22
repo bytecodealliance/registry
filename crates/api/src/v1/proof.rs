@@ -6,7 +6,7 @@ use serde_with::{base64::Base64, serde_as};
 use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
-use warg_protocol::registry::{LogId, LogLeaf, MapCheckpoint};
+use warg_protocol::registry::{Checkpoint, LogId, LogLeaf};
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct ConsistencyResponse {
 #[serde(rename_all = "camelCase")]
 pub struct InclusionRequest<'a> {
     /// The checkpoint to check for inclusion.
-    pub checkpoint: Cow<'a, MapCheckpoint>,
+    pub checkpoint: Cow<'a, Checkpoint>,
     /// The log leafs to check for inclusion.
     pub leafs: Cow<'a, [LogLeaf]>,
 }

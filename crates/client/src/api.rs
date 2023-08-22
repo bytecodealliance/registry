@@ -19,7 +19,7 @@ use warg_api::v1::{
 };
 use warg_crypto::hash::{AnyHash, HashError, Sha256};
 use warg_protocol::{
-    registry::{LogId, LogLeaf, MapCheckpoint, MapLeaf, RecordId},
+    registry::{Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, TimestampedCheckpoint},
     SerdeEnvelope,
 };
 use warg_transparency::{
@@ -144,7 +144,9 @@ impl Client {
     }
 
     /// Gets the latest checkpoint from the registry.
-    pub async fn latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, ClientError> {
+    pub async fn latest_checkpoint(
+        &self,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
         let url = self.url.join(paths::fetch_checkpoint());
         tracing::debug!("getting latest checkpoint at `{url}`");
         into_result::<_, FetchError>(reqwest::get(url).await?).await
@@ -336,7 +338,7 @@ impl Client {
 
     fn validate_inclusion_response(
         response: InclusionResponse,
-        checkpoint: &MapCheckpoint,
+        checkpoint: &Checkpoint,
         leafs: &[LogLeaf],
     ) -> Result<(), ClientError> {
         let log_proof_bundle: LogProofBundle<Sha256, LogLeaf> =

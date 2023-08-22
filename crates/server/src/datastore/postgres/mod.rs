@@ -1,5 +1,5 @@
 use self::models::{
-    Checkpoint, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText, RecordContent,
+    CheckpointData, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText, RecordContent,
     RecordStatus, TextRef,
 };
 use super::{DataStore, DataStoreError, Record};
@@ -21,7 +21,7 @@ use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, MapCheckpoint, PackageId, RecordId},
+    registry::{Checkpoint, LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
@@ -270,7 +270,7 @@ where
 {
     let checkpoint = schema::checkpoints::table
         .order_by(schema::checkpoints::id.desc())
-        .first::<Checkpoint>(conn)
+        .first::<CheckpointData>(conn)
         .await?;
 
     let log_id = schema::logs::table
@@ -379,7 +379,7 @@ impl DataStore for PostgresDataStore {
     async fn get_all_checkpoints(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<MapCheckpoint, DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<TimestampedCheckpoint, DataStoreError>> + Send>>,
         DataStoreError,
     > {
         // The returned future will keep the connection from the pool until dropped
@@ -387,16 +387,21 @@ impl DataStore for PostgresDataStore {
 
         Ok(schema::checkpoints::table
             .order_by(schema::checkpoints::id.desc())
-            .load_stream::<Checkpoint>(&mut conn)
+            .load_stream::<CheckpointData>(&mut conn)
             .await?
-            .map(|checkpoint| -> Result<MapCheckpoint, DataStoreError> {
-                let checkpoint = checkpoint?;
-                Ok(MapCheckpoint {
-                    log_root: checkpoint.log_root.0,
-                    log_length: checkpoint.log_length as u32,
-                    map_root: checkpoint.map_root.0,
-                })
-            })
+            .map(
+                |checkpoint| -> Result<TimestampedCheckpoint, DataStoreError> {
+                    let checkpoint = checkpoint?;
+                    Ok(TimestampedCheckpoint {
+                        checkpoint: Checkpoint {
+                            log_root: checkpoint.log_root.0,
+                            log_length: checkpoint.log_length as u32,
+                            map_root: checkpoint.map_root.0,
+                        },
+                        timestamp: checkpoint.timestamp.try_into().unwrap(),
+                    })
+                },
+            )
             .boxed())
     }
 
@@ -653,17 +658,29 @@ impl DataStore for PostgresDataStore {
     async fn store_checkpoint(
         &self,
         checkpoint_id: &AnyHash,
-        checkpoint: SerdeEnvelope<MapCheckpoint>,
+        ts_checkpoint: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
 
         conn.transaction::<_, DataStoreError, _>(|conn| {
             async move {
-                let MapCheckpoint {
-                    log_root,
-                    log_length,
-                    map_root,
-                } = checkpoint.as_ref();
+                let TimestampedCheckpoint {
+                    checkpoint:
+                        Checkpoint {
+                            log_root,
+                            log_length,
+                            map_root,
+                        },
+                    timestamp,
+                } = ts_checkpoint.as_ref();
+
+                // Replacing any existing checkpoint with the same checkpoint_id
+                diesel::delete(
+                    schema::checkpoints::dsl::checkpoints
+                        .filter(schema::checkpoints::checkpoint_id.eq(TextRef(checkpoint_id))),
+                )
+                .execute(conn)
+                .await?;
 
                 // Insert the checkpoint
                 diesel::insert_into(schema::checkpoints::table)
@@ -672,8 +689,9 @@ impl DataStore for PostgresDataStore {
                         log_root: TextRef(log_root),
                         map_root: TextRef(map_root),
                         log_length: *log_length as i64,
-                        key_id: TextRef(checkpoint.key_id()),
-                        signature: TextRef(checkpoint.signature()),
+                        key_id: TextRef(ts_checkpoint.key_id()),
+                        signature: TextRef(ts_checkpoint.signature()),
+                        timestamp: (*timestamp).try_into().unwrap(),
                     })
                     .returning(schema::checkpoints::id)
                     .get_result::<i32>(conn)
@@ -688,21 +706,26 @@ impl DataStore for PostgresDataStore {
         Ok(())
     }
 
-    async fn get_latest_checkpoint(&self) -> Result<SerdeEnvelope<MapCheckpoint>, DataStoreError> {
+    async fn get_latest_checkpoint(
+        &self,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
         let checkpoint = schema::checkpoints::table
             .order_by(schema::checkpoints::id.desc())
-            .first::<Checkpoint>(&mut conn)
+            .first::<CheckpointData>(&mut conn)
             .await?;
 
         let log_length = checkpoint.log_length.try_into().unwrap();
 
         Ok(SerdeEnvelope::from_parts_unchecked(
-            MapCheckpoint {
-                log_root: checkpoint.log_root.0,
-                log_length,
-                map_root: checkpoint.map_root.0,
+            TimestampedCheckpoint {
+                checkpoint: Checkpoint {
+                    log_root: checkpoint.log_root.0,
+                    log_length,
+                    map_root: checkpoint.map_root.0,
+                },
+                timestamp: checkpoint.timestamp.try_into().unwrap(),
             },
             checkpoint.key_id.0,
             checkpoint.signature.0,

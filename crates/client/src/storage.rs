@@ -13,7 +13,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
-    registry::{MapCheckpoint, PackageId, RecordId},
+    registry::{Checkpoint, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
 
@@ -30,10 +30,13 @@ pub use fs::*;
 #[async_trait]
 pub trait RegistryStorage: Send + Sync {
     /// Loads most recent checkpoint
-    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<MapCheckpoint>>>;
+    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
     /// Stores most recent checkpoint
-    async fn store_checkpoint(&self, checkpoint: &SerdeEnvelope<MapCheckpoint>) -> Result<()>;
+    async fn store_checkpoint(
+        &self,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<()>;
 
     /// Loads the operator information from the storage.
     ///
@@ -116,7 +119,7 @@ pub struct PackageInfo {
     pub id: PackageId,
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint: Option<SerdeEnvelope<MapCheckpoint>>,
+    pub checkpoint: Option<Checkpoint>,
     /// The current package log state
     #[serde(default)]
     pub state: package::LogState,

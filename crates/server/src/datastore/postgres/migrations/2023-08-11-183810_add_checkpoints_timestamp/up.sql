@@ -1,0 +1,2 @@
+ALTER TABLE checkpoints
+  ADD COLUMN timestamp BIGINT NOT NULL DEFAULT 0;

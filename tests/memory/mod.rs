@@ -17,9 +17,9 @@ async fn it_publishes_a_component() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
-        checkpoint.as_ref().log_length,
+        ts_checkpoint.as_ref().checkpoint.log_length,
         2,
         "expected two log entries (initial + component)"
     );
@@ -34,9 +34,9 @@ async fn it_yanks_a_package() -> Result<()> {
 
     // There should be three entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
-        checkpoint.as_ref().log_length,
+        ts_checkpoint.as_ref().checkpoint.log_length,
         3,
         "expected three log entries (initial + release + yank)"
     );
@@ -51,9 +51,9 @@ async fn it_publishes_a_wit_package() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
-        checkpoint.as_ref().log_length,
+        ts_checkpoint.as_ref().checkpoint.log_length,
         2,
         "expected two log entries (initial + wit)"
     );

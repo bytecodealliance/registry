@@ -102,7 +102,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SignedMapCheckpoint"
+                $ref: "#/components/schemas/SignedCheckpoint"
         default:
           description: An error occurred when processing the request.
           content:
@@ -654,7 +654,7 @@ components:
         - leafs
       properties:
         checkpoint:
-          $ref: "#/components/schemas/MapCheckpoint"
+          $ref: "#/components/schemas/Checkpoint"
           description: The checkpoint to prove the inclusion for.
         leafs:
           type: array
@@ -756,13 +756,13 @@ components:
         contentSources:
           "$ref": "#/components/schemas/ContentSourceMap"
           description: The content sources for the package record.
-    MapCheckpoint:
+    Checkpoint:
       type: object
       description: |
         A registry checkpoint.
 
         Checkpoints are hashed by concatenating the following:
-          * A prefix of the byte string `WARG-MAP-CHECKPOINT-V0`
+          * A prefix of the byte string `WARG-CHECKPOINT-V0`
           * The LEB128-encoded `logLength`
           * The LEB128-length-prefixed `logRoot`
           * The LEB128-length-prefixed `mapRoot`
@@ -783,7 +783,31 @@ components:
         mapRoot:
           $ref: "#/components/schemas/AnyHash"
           description: The map root hash of the checkpoint.
-    SignedMapCheckpoint:
+    TimestampedCheckpoint:
+      description: |
+        A timestamped registry checkpoint.
+
+        Checkpoints are hashed by concatenating the following:
+          * A prefix of the byte string `WARG-TIMESTAMPED-CHECKPOINT-V0`
+          * The LEB128-encoded `logLength`
+          * The LEB128-length-prefixed `logRoot`
+          * The LEB128-length-prefixed `mapRoot`
+          * The LEB128-encoded `timestamp`
+      allOf:
+        - $ref: "#/components/schemas/Checkpoint"
+        - type: object
+          additionalProperties: false
+          required:
+            - timestamp
+          properties:
+            timestamp:
+              type: integer
+              description: |
+                The time that the checkpoint was generated, in seconds since
+                the Unix epoch.
+              minimum: 1
+              example: 1692035502
+    SignedCheckpoint:
       description: A signed registry checkpoint.
       allOf:
         - type: object
@@ -791,7 +815,7 @@ components:
             - contents
           properties:
             contents:
-              $ref: "#/components/schemas/MapCheckpoint"
+              $ref: "#/components/schemas/TimestampedCheckpoint"
         - $ref: "#/components/schemas/Signature"
     EnvelopeBody:
       description: A signed envelope body.
