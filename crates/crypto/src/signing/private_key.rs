@@ -20,7 +20,7 @@ impl PrivateKey {
         let s = s.into();
 
         let Some((algo, b64_data)) = s.expose_secret().split_once(':') else {
-            return Err(PrivateKeyParseError::MissingColon)
+            return Err(PrivateKeyParseError::MissingColon);
         };
 
         let algo = algo.parse::<SignatureAlgorithm>()?;
@@ -83,7 +83,7 @@ impl TryFrom<String> for PrivateKey {
         let key = Zeroizing::new(key);
 
         let Some((algo, b64_data)) = key.split_once(':') else {
-            return Err(PrivateKeyParseError::MissingColon)
+            return Err(PrivateKeyParseError::MissingColon);
         };
 
         let algo = algo.parse::<SignatureAlgorithm>()?;
