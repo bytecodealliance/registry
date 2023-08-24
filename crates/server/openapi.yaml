@@ -654,26 +654,15 @@ components:
         - checkpoint
         - leafs
       properties:
-        checkpoint:
-          $ref: "#/components/schemas/Checkpoint"
-          description: The checkpoint to prove the inclusion for.
+        logLength:
+          type: integer
+          description: The checkpoint log length to prove the inclusion for.
         leafs:
           type: array
           maxItems: 1000
-          description: The log leafs to prove the inclusion for.
+          description: The log leaf registry log index to prove the inclusion for.
           items:
-            type: object
-            description: A log leaf.
-            required:
-              - logId
-              - recordId
-            properties:
-              logId:
-                $ref: "#/components/schemas/AnyHash"
-                description: The log identifier.
-              recordId:
-                $ref: "#/components/schemas/AnyHash"
-                description: The record identifier.
+            type: integer
     ProveInclusionResponse:
       type: object
       description: A response containing the inclusion proof bundle.
