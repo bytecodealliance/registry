@@ -545,7 +545,7 @@ components:
           description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
-            $ref: "#/components/schemas/EnvelopeBody"
+            $ref: "#/components/schemas/PublishedEnvelopeBody"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -555,19 +555,22 @@ components:
               description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
-                $ref: "#/components/schemas/EnvelopeBody"
+                $ref: "#/components/schemas/PublishedEnvelopeBody"
           example:
             ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                index: 101
               - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                index: 305
             ? "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                index: 732
     PublishPackageRecordRequest:
       type: object
       description: A request to publish a record to a package log.
@@ -747,7 +750,7 @@ components:
           description: The state of the package record.
           enum: [published]
           example: published
-        registryLogIndex:
+        index:
           type: number
           description: The index of the record in the registry log.
         record:
@@ -834,6 +837,19 @@ components:
               format: byte
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
+        - $ref: "#/components/schemas/Signature"
+    PublishedEnvelopeBody:
+      description: A signed envelope body with the published registry log index.
+      allOf:
+        - type: object
+          required:
+            - index
+          properties:
+            index:
+              type: integer
+              description: The index of the published record in the registry log.
+              example: 42
+        - $ref: "#/components/schemas/EnvelopeBody"
         - $ref: "#/components/schemas/Signature"
     Signature:
       type: object

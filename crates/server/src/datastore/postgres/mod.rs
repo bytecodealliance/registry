@@ -22,7 +22,7 @@ use warg_protocol::{
     operator,
     package::{self, PackageEntry},
     registry::{Checkpoint, LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, Record as _, SerdeEnvelope, Validator,
+    ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
 mod models;
@@ -34,7 +34,7 @@ async fn get_records<R: Decode>(
     checkpoint_id: &AnyHash,
     since: Option<&RecordId>,
     limit: i64,
-) -> Result<Vec<ProtoEnvelope<R>>, DataStoreError> {
+) -> Result<Vec<PublishedProtoEnvelope<R>>, DataStoreError> {
     let checkpoint_length = schema::checkpoints::table
         .select(schema::checkpoints::log_length)
         .filter(schema::checkpoints::checkpoint_id.eq(TextRef(checkpoint_id)))
@@ -45,7 +45,11 @@ async fn get_records<R: Decode>(
 
     let mut query = schema::records::table
         .into_boxed()
-        .select((schema::records::record_id, schema::records::content))
+        .select((
+            schema::records::record_id,
+            schema::records::content,
+            schema::records::registry_log_index,
+        ))
         .order_by(schema::records::id.asc())
         .limit(limit)
         .filter(
@@ -68,15 +72,18 @@ async fn get_records<R: Decode>(
     }
 
     query
-        .load::<(ParsedText<AnyHash>, Vec<u8>)>(conn)
+        .load::<(ParsedText<AnyHash>, Vec<u8>, Option<i64>)>(conn)
         .await?
         .into_iter()
-        .map(|(record_id, c)| {
-            ProtoEnvelope::from_protobuf(c).map_err(|e| DataStoreError::InvalidRecordContents {
-                record_id: record_id.0.into(),
-                message: e.to_string(),
-            })
-        })
+        .map(
+            |(record_id, c, index)| match ProtoEnvelope::from_protobuf(c) {
+                Ok(envelope) => Ok(PublishedProtoEnvelope { envelope, index: index.unwrap() as u32 }),
+                Err(e) => Err(DataStoreError::InvalidRecordContents {
+                    record_id: record_id.0.into(),
+                    message: e.to_string(),
+                }),
+            },
+        )
         .collect::<Result<_, _>>()
 }
 
@@ -331,7 +338,7 @@ where
                 message: e.to_string(),
             }
         })?,
-        registry_log_index: record.registry_log_index.map(|idx| idx.try_into().unwrap()),
+        index: record.registry_log_index.map(|idx| idx.try_into().unwrap()),
     })
 }
 
@@ -738,7 +745,7 @@ impl DataStore for PostgresDataStore {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)
@@ -757,7 +764,7 @@ impl DataStore for PostgresDataStore {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
             .select(schema::logs::id)

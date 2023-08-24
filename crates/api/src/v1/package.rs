@@ -105,10 +105,10 @@ pub enum PackageRecordState {
     Published {
         /// The envelope of the package record.
         record: ProtoEnvelopeBody,
-        /// The index of the record in the registry log.
-        registry_log_index: u32,
         /// The content sources of the record.
         content_sources: HashMap<AnyHash, Vec<ContentSource>>,
+        /// The published index of the record in the registry log.
+        index: u32,
     },
 }
 

@@ -26,7 +26,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
+    PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
 pub mod api;
@@ -404,10 +404,10 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
             for record in response.operator {
-                let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+                let record: PublishedProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
                 operator
                     .state
-                    .validate(&record)
+                    .validate(&record.envelope)
                     .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
             }
 
@@ -417,8 +417,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
                 for record in records {
-                    let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
-                    package.state.validate(&record).map_err(|inner| {
+                    let record: PublishedProtoEnvelope<package::PackageRecord> =
+                        record.try_into()?;
+                    package.state.validate(&record.envelope).map_err(|inner| {
                         ClientError::PackageValidationFailed {
                             id: package.id.clone(),
                             inner,

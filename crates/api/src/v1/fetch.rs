@@ -7,7 +7,7 @@ use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
     registry::{LogId, RecordId},
-    ProtoEnvelopeBody,
+    PublishedProtoEnvelopeBody,
 };
 
 /// Represents a fetch logs request.
@@ -36,10 +36,10 @@ pub struct FetchLogsResponse {
     pub more: bool,
     /// The operator records appended since the last known operator record.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub operator: Vec<ProtoEnvelopeBody>,
+    pub operator: Vec<PublishedProtoEnvelopeBody>,
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: HashMap<LogId, Vec<ProtoEnvelopeBody>>,
+    pub packages: HashMap<LogId, Vec<PublishedProtoEnvelopeBody>>,
 }
 
 /// Represents a fetch API error.

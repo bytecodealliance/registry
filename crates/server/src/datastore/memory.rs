@@ -12,11 +12,11 @@ use warg_protocol::{
     operator,
     package::{self, PackageEntry},
     registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope,
+    ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 struct Entry<R> {
-    registry_index: u64,
+    registry_index: u32,
     record_content: ProtoEnvelope<R>,
 }
 
@@ -41,7 +41,7 @@ struct Record {
     /// Index in the log's entries.
     index: usize,
     /// Index in the registry's log.
-    registry_index: u64,
+    registry_index: u32,
 }
 
 enum PendingRecord {
@@ -194,12 +194,12 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index: registry_log_index as u32,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            registry_index: registry_log_index,
+                            registry_index: registry_log_index as u32,
                         });
                         Ok(())
                     }
@@ -303,12 +303,12 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index: registry_log_index as u32,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            registry_index: registry_log_index,
+                            registry_index: registry_log_index as u32,
                         });
                         Ok(())
                     }
@@ -415,7 +415,7 @@ impl DataStore for MemoryDataStore {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -434,14 +434,17 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
+        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx)
             .take_while(|entry| entry.registry_index < end_registry_idx)
-            .map(|entry| entry.record_content.clone())
+            .map(|entry| PublishedProtoEnvelope {
+                envelope: entry.record_content.clone(),
+                index: entry.registry_index,
+            })
             .take(limit as usize)
             .collect())
     }
@@ -452,7 +455,7 @@ impl DataStore for MemoryDataStore {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -471,14 +474,17 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
+        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx)
             .take_while(|entry| entry.registry_index < end_registry_idx)
-            .map(|entry| entry.record_content.clone())
+            .map(|entry| PublishedProtoEnvelope {
+                envelope: entry.record_content.clone(),
+                index: entry.registry_index,
+            })
             .take(limit as usize)
             .collect())
     }
@@ -496,7 +502,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, registry_log_index) = match status {
+        let (status, envelope, index) = match status {
             RecordStatus::Pending(PendingRecord::Operator { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -515,7 +521,7 @@ impl DataStore for MemoryDataStore {
                     .checkpoints
                     .last()
                     .map(|(_, c)| c.as_ref().checkpoint.log_length)
-                    .unwrap_or_default() as u64;
+                    .unwrap_or_default();
 
                 (
                     if r.registry_index < published_length {
@@ -533,7 +539,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            registry_log_index,
+            index,
         })
     }
 
@@ -550,7 +556,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, registry_log_index) = match status {
+        let (status, envelope, index) = match status {
             RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -569,7 +575,7 @@ impl DataStore for MemoryDataStore {
                     .checkpoints
                     .last()
                     .map(|(_, c)| c.as_ref().checkpoint.log_length)
-                    .unwrap_or_default() as u64;
+                    .unwrap_or_default();
 
                 (
                     if r.registry_index < published_length {
@@ -587,7 +593,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            registry_log_index,
+            index,
         })
     }
 

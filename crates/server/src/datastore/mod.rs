@@ -5,7 +5,7 @@ use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope,
+    ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 mod memory;
@@ -90,7 +90,7 @@ where
     /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub registry_log_index: Option<u64>,
+    pub index: Option<u32>,
 }
 
 /// Implemented by data stores.
@@ -222,7 +222,7 @@ pub trait DataStore: Send + Sync {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
+    ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
 
     /// Gets the package records for the given registry checkpoint ID hash.
     async fn get_package_records(
@@ -231,7 +231,7 @@ pub trait DataStore: Send + Sync {
         checkpoint_id: &AnyHash,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
+    ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError>;
 
     /// Gets an operator record.
     async fn get_operator_record(

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, TimestampedCheckpoint};
-use warg_protocol::{ProtoEnvelopeBody, SerdeEnvelope};
+use warg_protocol::{PublishedProtoEnvelopeBody, SerdeEnvelope};
 
 const DEFAULT_RECORDS_LIMIT: u16 = 100;
 const MAX_RECORDS_LIMIT: u16 = 1000;
@@ -85,7 +85,7 @@ async fn fetch_logs(
         )));
     }
 
-    let operator: Vec<ProtoEnvelopeBody> = config
+    let operator: Vec<PublishedProtoEnvelopeBody> = config
         .core_service
         .store()
         .get_operator_records(
@@ -104,7 +104,7 @@ async fn fetch_logs(
     let mut map = HashMap::new();
     let packages = body.packages.into_owned();
     for (id, since) in packages {
-        let records: Vec<ProtoEnvelopeBody> = config
+        let records: Vec<PublishedProtoEnvelopeBody> = config
             .core_service
             .store()
             .get_package_records(&id, &body.checkpoint_id, since.as_ref(), limit)

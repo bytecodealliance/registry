@@ -306,13 +306,13 @@ async fn get_record(
                 })
                 .collect();
 
-            let registry_log_index = record.registry_log_index.unwrap().try_into().unwrap();
+            let index = record.index.unwrap().try_into().unwrap();
 
             Ok(Json(PackageRecord {
                 id: record_id,
                 state: PackageRecordState::Published {
                     record: record.envelope.into(),
-                    registry_log_index,
+                    index,
                     content_sources,
                 },
             }))
