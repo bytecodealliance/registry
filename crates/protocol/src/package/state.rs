@@ -386,6 +386,12 @@ impl LogState {
             return Err(ValidationError::InitialEntryAfterBeginning);
         }
 
+        if signer_key_id != &init_key.fingerprint() {
+            return Err(ValidationError::KeyIDNotRecognized {
+                key_id: signer_key_id.clone(),
+            });
+        }
+
         assert!(self.permissions.is_empty());
         assert!(self.releases.is_empty());
         assert!(self.keys.is_empty());
