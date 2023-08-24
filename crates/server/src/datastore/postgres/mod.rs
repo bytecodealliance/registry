@@ -77,7 +77,10 @@ async fn get_records<R: Decode>(
         .into_iter()
         .map(
             |(record_id, c, index)| match ProtoEnvelope::from_protobuf(c) {
-                Ok(envelope) => Ok(PublishedProtoEnvelope { envelope, index: index.unwrap() as u32 }),
+                Ok(envelope) => Ok(PublishedProtoEnvelope {
+                    envelope,
+                    index: index.unwrap() as u32,
+                }),
                 Err(e) => Err(DataStoreError::InvalidRecordContents {
                     record_id: record_id.0.into(),
                     message: e.to_string(),
@@ -438,6 +441,32 @@ impl DataStore for PostgresDataStore {
                     })
                 }),
         ))
+    }
+
+    async fn get_log_leafs_from_registry_index(
+        &self,
+        entries: &[usize],
+    ) -> Result<Vec<LogLeaf>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let leafs = schema::records::table
+            .inner_join(schema::logs::table)
+            .select((schema::logs::log_id, schema::records::record_id, schema::records::registry_log_index))
+            .filter(schema::records::registry_log_index.eq_any(entries.iter().map(|i| *i as i64).collect::<Vec<i64>>()))
+            .load::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
+            .await?
+            .into_iter()
+            .map(|(log_id, record_id, index)| (index.unwrap() as u32, LogLeaf {
+                log_id: log_id.0.into(),
+                record_id: record_id.0.into(),
+            }))
+            .collect::<Vec<(u32, LogLeaf)>>();
+
+        if leafs.len() < entries.len() {
+            return Err(DataStoreError::LogLeafNotFound(0)); // TODO
+        }
+
+        Ok(leafs.into_iter().map(|(index, log_leaf)| log_leaf).collect::<Vec<LogLeaf>>())
     }
 
     async fn store_operator_record(

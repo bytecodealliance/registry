@@ -409,6 +409,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .state
                     .validate(&record.envelope)
                     .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+                operator.latest_index = Some(record.index);
             }
 
             for (log_id, records) in response.packages {
@@ -425,6 +426,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             inner,
                         }
                     })?;
+                    package.latest_index = Some(record.index);
                 }
 
                 // At this point, the package log should not be empty
@@ -446,19 +448,22 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         // Prove inclusion for the current log heads
-        let mut leafs = Vec::with_capacity(packages.len() + 1 /* for operator */);
-        if let Some(head) = operator.state.head() {
+        let mut leaf_indices = Vec::with_capacity(packages.len() + 1 /* for operator */);
+        let mut leafs = Vec::with_capacity(leaf_indices.len());
+        if let Some(index) = operator.latest_index {
+            leaf_indices.push(index);
             leafs.push(LogLeaf {
                 log_id: LogId::operator_log::<Sha256>(),
-                record_id: head.digest.clone(),
+                record_id: operator.state.head().as_ref().unwrap().digest.clone(),
             });
         }
 
         for (log_id, package) in &packages {
-            if let Some(head) = package.state.head() {
+            if let Some(index) = package.latest_index {
+                leaf_indices.push(index);
                 leafs.push(LogLeaf {
                     log_id: log_id.clone(),
-                    record_id: head.digest.clone(),
+                    record_id: package.state.head().as_ref().unwrap().digest.clone(),
                 });
             }
         }
@@ -466,9 +471,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(InclusionRequest {
-                    checkpoint: Cow::Borrowed(checkpoint),
-                    leafs: Cow::Borrowed(&leafs),
-                })
+                    log_length: checkpoint.log_length,
+                    leafs: leaf_indices,
+                }, &checkpoint, &leafs)
                 .await?;
         }
 

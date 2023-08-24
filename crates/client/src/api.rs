@@ -237,7 +237,7 @@ impl Client {
     }
 
     /// Proves the inclusion of the given package log heads in the registry.
-    pub async fn prove_inclusion(&self, request: InclusionRequest<'_>) -> Result<(), ClientError> {
+    pub async fn prove_inclusion(&self, request: InclusionRequest, checkpoint: &Checkpoint, leafs: &[LogLeaf]) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_inclusion());
         tracing::debug!("proving checkpoint inclusion at `{url}`");
 
@@ -248,8 +248,8 @@ impl Client {
 
         Self::validate_inclusion_response(
             response,
-            request.checkpoint.as_ref(),
-            request.leafs.as_ref(),
+            checkpoint,
+            leafs,
         )
     }
 

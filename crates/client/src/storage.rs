@@ -109,6 +109,9 @@ pub struct OperatorInfo {
     /// The current operator log state
     #[serde(default)]
     pub state: operator::LogState,
+    /// The registry log index of the most recent record
+    #[serde(default)]
+    pub latest_index: Option<u32>,
 }
 
 /// Represents information about a registry package.
@@ -123,6 +126,9 @@ pub struct PackageInfo {
     /// The current package log state
     #[serde(default)]
     pub state: package::LogState,
+    /// The registry log index of the most recent record
+    #[serde(default)]
+    pub latest_index: Option<u32>,
 }
 
 impl PackageInfo {
@@ -132,6 +138,7 @@ impl PackageInfo {
             id: id.into(),
             checkpoint: None,
             state: package::LogState::default(),
+            latest_index: None,
         }
     }
 }

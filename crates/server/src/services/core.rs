@@ -85,20 +85,14 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     pub async fn log_inclusion_proofs(
         &self,
         log_length: usize,
-        entries: &[LogLeaf],
+        entries: &[usize],
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
         let proofs = entries
             .iter()
-            .map(|entry| {
-                let node = state
-                    .leaf_index
-                    .get(entry)
-                    .ok_or_else(|| CoreServiceError::LeafNotFound(entry.clone()))?;
-                Ok(state.log.prove_inclusion(*node, log_length))
-            })
-            .collect::<Result<Vec<_>, CoreServiceError>>()?;
+            .map(|index| state.log.prove_inclusion(Node(*index), log_length))
+            .collect();
 
         LogProofBundle::bundle(vec![], proofs, &state.log).map_err(CoreServiceError::BundleFailure)
     }
@@ -106,20 +100,27 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs map inclusion proofs for the given entries at the given map tree root.
     pub async fn map_inclusion_proofs(
         &self,
-        root: &Hash<Digest>,
-        entries: &[LogLeaf],
+        log_length: usize,
+        entries: &[usize],
     ) -> Result<MapProofBundle<Digest, LogId, MapLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
-        let map = state
+        let (map_root, map) = state
             .map_index
-            .get(root)
-            .ok_or_else(|| CoreServiceError::RootNotFound(root.into()))?;
+            .get(&log_length)
+            .ok_or_else(|| CoreServiceError::CheckpointNotFound(log_length))?;
 
-        let proofs = entries
+        let indexes = self
+            .inner
+            .store
+            .get_log_leafs_from_registry_index(entries)
+            .await
+            .map_err(CoreServiceError::DataStore)?;
+
+        let proofs = indexes
             .iter()
-            .map(|entry| {
-                let LogLeaf { log_id, record_id } = entry;
+            .map(|log_leaf| {
+                let LogLeaf { log_id, record_id } = log_leaf;
 
                 let proof = map
                     .prove(log_id.clone())
@@ -129,9 +130,9 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
                     record_id: record_id.clone(),
                 };
                 let found_root = proof.evaluate(log_id, &map_leaf);
-                if &found_root != root {
+                if &found_root != map_root {
                     return Err(CoreServiceError::IncorrectProof {
-                        root: root.into(),
+                        root: map_root.into(),
                         found: found_root.into(),
                     });
                 }
@@ -345,8 +346,8 @@ struct State<Digest: SupportedDigest> {
 
     // The verifiable map of package logs' latest entries (log_id -> record_id)
     map: VerifiableMap<Digest>,
-    // Index verifiable map snapshots by root (at checkpoints only)
-    map_index: HashMap<Hash<Digest>, VerifiableMap<Digest>>,
+    // Index verifiable map snapshots by log length (at checkpoints only)
+    map_index: HashMap<usize, (Hash<Digest>, VerifiableMap<Digest>)>,
 }
 
 impl<Digest: SupportedDigest> State<Digest> {
@@ -369,14 +370,16 @@ impl<Digest: SupportedDigest> State<Digest> {
     fn checkpoint(&mut self) -> Checkpoint {
         let log_checkpoint = self.log.checkpoint();
         let map_root = self.map.root();
+        let log_length = log_checkpoint.length();
 
         // Update map snapshot
-        if log_checkpoint.length() > 0 {
-            self.map_index.insert(map_root.clone(), self.map.clone());
+        if log_length > 0 {
+            self.map_index
+                .insert(log_length, (map_root.clone(), self.map.clone()));
         }
 
         Checkpoint {
-            log_length: log_checkpoint.length().try_into().unwrap(),
+            log_length: log_length.try_into().unwrap(),
             log_root: log_checkpoint.root().into(),
             map_root: map_root.into(),
         }
@@ -385,10 +388,8 @@ impl<Digest: SupportedDigest> State<Digest> {
 
 #[derive(Debug, Error)]
 pub enum CoreServiceError {
-    #[error("root `{0}` was not found")]
-    RootNotFound(AnyHash),
-    #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
-    LeafNotFound(LogLeaf),
+    #[error("checkpoint at log length `{0}` was not found")]
+    CheckpointNotFound(usize),
     #[error("failed to bundle proofs: `{0}`")]
     BundleFailure(anyhow::Error),
     #[error("failed to prove inclusion of package `{0}`")]

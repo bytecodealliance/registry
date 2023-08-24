@@ -439,14 +439,12 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [checkpoint, leaf]
-                    example: checkpoint
+                    enum: [logLength, leaf]
+                    example: logLength
                   id:
-                    "$ref": "#/components/schemas/AnyHash"
+                    type: integer
                     description: |
                       The identifier of the entity that was not found.
-
-                      For leafs, the format is `<logId>|<recordId>`.
         "422":
           description: The proof bundle could not be generated.
           content:

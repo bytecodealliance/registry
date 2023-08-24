@@ -30,6 +30,9 @@ pub enum DataStoreError {
     #[error("record `{0}` was not found")]
     RecordNotFound(RecordId),
 
+    #[error("log leaf {0} was not found")]
+    LogLeafNotFound(usize),
+
     #[error("record `{0}` cannot be validated as it is not in a pending state")]
     RecordNotPending(RecordId),
 
@@ -112,6 +115,12 @@ pub trait DataStore: Send + Sync {
     async fn get_all_validated_records(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>;
+
+    /// Looks up the log_id and record_id from the registry log index.  
+    async fn get_log_leafs_from_registry_index(
+        &self,
+        entries: &[usize],
+    ) -> Result<Vec<LogLeaf>, DataStoreError>;
 
     /// Stores the given operator record.
     async fn store_operator_record(

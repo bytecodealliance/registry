@@ -78,6 +78,7 @@ struct State {
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
+    log_leafs: HashMap<u32, LogLeaf>,
 }
 
 /// Represents an in-memory data store.
@@ -116,6 +117,23 @@ impl DataStore for MemoryDataStore {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
     {
         Ok(Box::pin(futures::stream::empty()))
+    }
+
+    async fn get_log_leafs_from_registry_index(
+        &self,
+        entries: &[usize],
+    ) -> Result<Vec<LogLeaf>, DataStoreError> {
+        let state = self.0.read().await;
+
+        let mut leafs = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match state.log_leafs.get(&(*entry as u32)) {
+                Some(log_leaf) => leafs.push(log_leaf.clone()),
+                None => return Err(DataStoreError::LogLeafNotFound(*entry)),
+            }
+        }
+
+        Ok(leafs)
     }
 
     async fn store_operator_record(
@@ -173,7 +191,7 @@ impl DataStore for MemoryDataStore {
         let mut state = self.0.write().await;
 
         let State {
-            operators, records, ..
+            operators, records, log_leafs, ..
         } = &mut *state;
 
         let status = records
@@ -201,6 +219,7 @@ impl DataStore for MemoryDataStore {
                             index,
                             registry_index: registry_log_index as u32,
                         });
+                        log_leafs.insert(registry_log_index as u32, LogLeaf { log_id: log_id.clone(), record_id: record_id.clone() });
                         Ok(())
                     }
                     Err(e) => {
@@ -282,7 +301,7 @@ impl DataStore for MemoryDataStore {
         let mut state = self.0.write().await;
 
         let State {
-            packages, records, ..
+            packages, records, log_leafs, ..
         } = &mut *state;
 
         let status = records
@@ -309,6 +328,10 @@ impl DataStore for MemoryDataStore {
                         *status = RecordStatus::Validated(Record {
                             index,
                             registry_index: registry_log_index as u32,
+                        });
+                        log_leafs.insert(registry_log_index as u32, LogLeaf {
+                            log_id: log_id.clone(),
+                            record_id: record_id.clone(),
                         });
                         Ok(())
                     }
