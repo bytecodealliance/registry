@@ -162,7 +162,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         // TODO: parallelize this
         for (digest, MissingContent { upload }) in record.missing_content() {
             // Upload the missing content, if the registry supports it
-            let Some(UploadEndpoint::HttpPost {url}) = upload.first() else {
+            let Some(UploadEndpoint::HttpPost { url }) = upload.first() else {
                 continue;
             };
 
