@@ -737,7 +737,7 @@ components:
           description: The state of the package record.
           enum: [published]
           example: published
-        index:
+        registryIndex:
           type: number
           description: The index of the record in the registry log.
         record:
@@ -832,7 +832,7 @@ components:
           required:
             - index
           properties:
-            index:
+            registryIndex:
               type: integer
               description: The index of the published record in the registry log.
               example: 42

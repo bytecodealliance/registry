@@ -7,7 +7,7 @@ use std::fmt;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
 use warg_protobuf::protocol as protobuf;
-use super::registry::LogIndex;
+use super::registry::RegistryIndex;
 
 /// The ProtoEnvelope with the published registry log index.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,7 +15,7 @@ pub struct PublishedProtoEnvelope<Contents> {
     /// The wrapped ProtoEnvelope
     pub envelope: ProtoEnvelope<Contents>,
     /// The published registry log index for the record
-    pub index: LogIndex,
+    pub registry_index: RegistryIndex,
 }
 
 /// The envelope struct is used to keep around the original
@@ -182,7 +182,7 @@ pub struct PublishedProtoEnvelopeBody {
     #[serde(flatten)]
     pub envelope: ProtoEnvelopeBody,
     /// The index of the published record in the registry log
-    pub index: LogIndex,
+    pub registry_index: RegistryIndex,
 }
 
 impl<Content> TryFrom<PublishedProtoEnvelopeBody> for PublishedProtoEnvelope<Content>
@@ -194,7 +194,7 @@ where
     fn try_from(value: PublishedProtoEnvelopeBody) -> Result<Self, Self::Error> {
         Ok(PublishedProtoEnvelope {
             envelope: ProtoEnvelope::<Content>::try_from(value.envelope)?,
-            index: value.index,
+            registry_index: value.registry_index,
         })
     }
 }
@@ -203,7 +203,7 @@ impl<Content> From<PublishedProtoEnvelope<Content>> for PublishedProtoEnvelopeBo
     fn from(value: PublishedProtoEnvelope<Content>) -> Self {
         PublishedProtoEnvelopeBody {
             envelope: ProtoEnvelopeBody::from(value.envelope),
-            index: value.index,
+            registry_index: value.registry_index,
         }
     }
 }
@@ -217,7 +217,7 @@ impl fmt::Debug for PublishedProtoEnvelopeBody {
             )
             .field("key_id", &self.envelope.key_id)
             .field("signature", &self.envelope.signature)
-            .field("index", &self.index)
+            .field("registry_index", &self.registry_index)
             .finish()
     }
 }

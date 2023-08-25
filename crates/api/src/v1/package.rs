@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, PackageId, RecordId},
+    registry::{LogId, PackageId, RecordId, RegistryIndex},
     ProtoEnvelopeBody,
 };
 
@@ -108,7 +108,7 @@ pub enum PackageRecordState {
         /// The content sources of the record.
         content_sources: HashMap<AnyHash, Vec<ContentSource>>,
         /// The published index of the record in the registry log.
-        index: u32,
+        registry_index: RegistryIndex,
     },
 }
 

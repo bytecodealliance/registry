@@ -6,7 +6,7 @@ use axum::{
 use warg_api::v1::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
-use warg_protocol::registry::LogIndex;
+use warg_protocol::registry::RegistryIndex;
 
 #[derive(Clone)]
 pub struct Config {
@@ -64,7 +64,7 @@ async fn prove_consistency(
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let bundle = config
         .core
-        .log_consistency_proof(body.from as LogIndex, body.to as LogIndex)
+        .log_consistency_proof(body.from as RegistryIndex, body.to as RegistryIndex)
         .await?;
 
     Ok(Json(ConsistencyResponse {
@@ -77,12 +77,12 @@ async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
-    let log_length = body.log_length as LogIndex;
+    let log_length = body.log_length as RegistryIndex;
     let leafs = body
         .leafs
         .into_iter()
-        .map(|index| index as LogIndex)
-        .collect::<Vec<LogIndex>>();
+        .map(|index| index as RegistryIndex)
+        .collect::<Vec<RegistryIndex>>();
 
     let log_bundle = config.core.log_inclusion_proofs(log_length, &leafs).await?;
 

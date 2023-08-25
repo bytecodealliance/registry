@@ -4,7 +4,7 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
@@ -31,7 +31,7 @@ pub enum DataStoreError {
     RecordNotFound(RecordId),
 
     #[error("log leaf {0} was not found")]
-    LogLeafNotFound(LogIndex),
+    LogLeafNotFound(RegistryIndex),
 
     #[error("record `{0}` cannot be validated as it is not in a pending state")]
     RecordNotPending(RecordId),
@@ -93,7 +93,7 @@ where
     /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub index: Option<LogIndex>,
+    pub registry_index: Option<RegistryIndex>,
 }
 
 /// Implemented by data stores.
@@ -114,12 +114,12 @@ pub trait DataStore: Send + Sync {
     /// This is an expensive operation and should only be performed on startup.
     async fn get_all_validated_records(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<(LogIndex, LogLeaf), DataStoreError>> + Send>>, DataStoreError>;
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>, DataStoreError>;
 
     /// Looks up the log_id and record_id from the registry log index.  
-    async fn get_log_leafs_from_registry_index(
+    async fn get_log_leafs_with_registry_index(
         &self,
-        entries: &[LogIndex],
+        entries: &[RegistryIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError>;
 
     /// Stores the given operator record.
@@ -149,7 +149,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
@@ -184,7 +184,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Determines if the given content digest is missing for the record.

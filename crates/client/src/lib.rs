@@ -409,7 +409,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .state
                     .validate(&record.envelope)
                     .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
-                operator.latest_index = Some(record.index);
+                operator.head_registry_index = Some(record.registry_index);
             }
 
             for (log_id, records) in response.packages {
@@ -426,7 +426,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             inner,
                         }
                     })?;
-                    package.latest_index = Some(record.index);
+                    package.head_registry_index = Some(record.registry_index);
                 }
 
                 // At this point, the package log should not be empty
@@ -450,7 +450,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         // Prove inclusion for the current log heads
         let mut leaf_indices = Vec::with_capacity(packages.len() + 1 /* for operator */);
         let mut leafs = Vec::with_capacity(leaf_indices.len());
-        if let Some(index) = operator.latest_index {
+        if let Some(index) = operator.head_registry_index {
             leaf_indices.push(index);
             leafs.push(LogLeaf {
                 log_id: LogId::operator_log::<Sha256>(),
@@ -459,7 +459,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         for (log_id, package) in &packages {
-            if let Some(index) = package.latest_index {
+            if let Some(index) = package.head_registry_index {
                 leaf_indices.push(index);
                 leafs.push(LogLeaf {
                     log_id: log_id.clone(),

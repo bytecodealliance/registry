@@ -11,12 +11,12 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 struct Entry<R> {
-    registry_index: LogIndex,
+    registry_index: RegistryIndex,
     record_content: ProtoEnvelope<R>,
 }
 
@@ -39,9 +39,9 @@ where
 
 struct Record {
     /// Index in the log's entries.
-    index: LogIndex,
+    index: usize,
     /// Index in the registry's log.
-    registry_index: LogIndex,
+    registry_index: RegistryIndex,
 }
 
 enum PendingRecord {
@@ -78,7 +78,7 @@ struct State {
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
-    log_leafs: HashMap<LogIndex, LogLeaf>,
+    log_leafs: HashMap<RegistryIndex, LogLeaf>,
 }
 
 /// Represents an in-memory data store.
@@ -115,15 +115,15 @@ impl DataStore for MemoryDataStore {
     async fn get_all_validated_records(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(LogIndex, LogLeaf), DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>,
         DataStoreError,
     > {
         Ok(Box::pin(futures::stream::empty()))
     }
 
-    async fn get_log_leafs_from_registry_index(
+    async fn get_log_leafs_with_registry_index(
         &self,
-        entries: &[LogIndex],
+        entries: &[RegistryIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError> {
         let state = self.0.read().await;
 
@@ -188,7 +188,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -217,15 +217,15 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index: index as LogIndex,
-                            registry_index: registry_log_index,
+                            index: index,
+                            registry_index,
                         });
                         log_leafs.insert(
-                            registry_log_index,
+                            registry_index,
                             LogLeaf {
                                 log_id: log_id.clone(),
                                 record_id: record_id.clone(),
@@ -307,7 +307,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -336,15 +336,15 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index: index as LogIndex,
-                            registry_index: registry_log_index,
+                            index: index,
+                            registry_index,
                         });
                         log_leafs.insert(
-                            registry_log_index,
+                            registry_index,
                             LogLeaf {
                                 log_id: log_id.clone(),
                                 record_id: record_id.clone(),
@@ -483,7 +483,7 @@ impl DataStore for MemoryDataStore {
             .take_while(|entry| entry.registry_index < end_registry_idx)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
-                index: entry.registry_index,
+                registry_index: entry.registry_index,
             })
             .take(limit as usize)
             .collect())
@@ -523,7 +523,7 @@ impl DataStore for MemoryDataStore {
             .take_while(|entry| entry.registry_index < end_registry_idx)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
-                index: entry.registry_index,
+                registry_index: entry.registry_index,
             })
             .take(limit as usize)
             .collect())
@@ -542,7 +542,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, index) = match status {
+        let (status, envelope, registry_index) = match status {
             RecordStatus::Pending(PendingRecord::Operator { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -579,7 +579,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            index,
+            registry_index,
         })
     }
 
@@ -596,7 +596,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, index) = match status {
+        let (status, envelope, registry_index) = match status {
             RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -633,7 +633,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            index,
+            registry_index,
         })
     }
 

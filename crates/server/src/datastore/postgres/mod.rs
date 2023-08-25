@@ -21,7 +21,7 @@ use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{Checkpoint, LogId, LogLeaf, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{Checkpoint, LogId, LogLeaf, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
@@ -79,7 +79,7 @@ async fn get_records<R: Decode>(
             |(record_id, c, index)| match ProtoEnvelope::from_protobuf(c) {
                 Ok(envelope) => Ok(PublishedProtoEnvelope {
                     envelope,
-                    index: index.unwrap() as LogIndex,
+                    registry_index: index.unwrap() as RegistryIndex,
                 }),
                 Err(e) => Err(DataStoreError::InvalidRecordContents {
                     record_id: record_id.0.into(),
@@ -204,14 +204,14 @@ async fn commit_record<V>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
     record_id: &RecordId,
-    registry_log_index: LogIndex,
+    registry_index: RegistryIndex,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
     <V as Validator>::Error: ToString + Send + Sync,
     DataStoreError: From<<V as Validator>::Error>,
 {
-    let registry_log_index: i64 = registry_log_index.try_into().unwrap();
+    let registry_index: i64 = registry_index.try_into().unwrap();
     conn.transaction::<_, DataStoreError, _>(|conn| {
         async move {
             // Get the record content and validator
@@ -256,7 +256,7 @@ where
                 .filter(schema::records::id.eq(id))
                 .set((
                     schema::records::status.eq(RecordStatus::Validated),
-                    schema::records::registry_log_index.eq(Some(registry_log_index)),
+                    schema::records::registry_log_index.eq(Some(registry_index)),
                 ))
                 .execute(conn)
                 .await?;
@@ -341,7 +341,7 @@ where
                 message: e.to_string(),
             }
         })?,
-        index: record.registry_log_index.map(|idx| idx.try_into().unwrap()),
+        registry_index: record.registry_log_index.map(|idx| idx.try_into().unwrap()),
     })
 }
 
@@ -405,7 +405,7 @@ impl DataStore for PostgresDataStore {
                     Ok(TimestampedCheckpoint {
                         checkpoint: Checkpoint {
                             log_root: checkpoint.log_root.0,
-                            log_length: checkpoint.log_length as LogIndex,
+                            log_length: checkpoint.log_length as RegistryIndex,
                             map_root: checkpoint.map_root.0,
                         },
                         timestamp: checkpoint.timestamp.try_into().unwrap(),
@@ -418,7 +418,7 @@ impl DataStore for PostgresDataStore {
     async fn get_all_validated_records(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(LogIndex, LogLeaf), DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>,
         DataStoreError,
     > {
         // The returned future will keep the connection from the pool until dropped
@@ -443,7 +443,7 @@ impl DataStore for PostgresDataStore {
                 .map(|r| {
                     r.map_err(Into::into).map(|(log_id, record_id, index)| {
                         (
-                            index.unwrap() as LogIndex,
+                            index.unwrap() as RegistryIndex,
                             LogLeaf {
                                 log_id: log_id.0.into(),
                                 record_id: record_id.0.into(),
@@ -454,9 +454,9 @@ impl DataStore for PostgresDataStore {
         ))
     }
 
-    async fn get_log_leafs_from_registry_index(
+    async fn get_log_leafs_with_registry_index(
         &self,
-        entries: &[LogIndex],
+        entries: &[RegistryIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
@@ -477,14 +477,14 @@ impl DataStore for PostgresDataStore {
             .into_iter()
             .map(|(log_id, record_id, index)| {
                 (
-                    index.unwrap() as LogIndex,
+                    index.unwrap() as RegistryIndex,
                     LogLeaf {
                         log_id: log_id.0.into(),
                         record_id: record_id.0.into(),
                     },
                 )
             })
-            .collect::<Vec<(LogIndex, LogLeaf)>>();
+            .collect::<Vec<(RegistryIndex, LogLeaf)>>();
 
         if leafs.len() < entries.len() {
             let mut input = entries.to_vec();
@@ -544,7 +544,7 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
@@ -559,7 +559,7 @@ impl DataStore for PostgresDataStore {
             conn.as_mut(),
             log_id,
             record_id,
-            registry_log_index,
+            registry_index,
         )
         .await
         {
@@ -613,7 +613,7 @@ impl DataStore for PostgresDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: LogIndex,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         let log_id = schema::logs::table
@@ -628,7 +628,7 @@ impl DataStore for PostgresDataStore {
             conn.as_mut(),
             log_id,
             record_id,
-            registry_log_index,
+            registry_index,
         )
         .await
         {
