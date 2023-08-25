@@ -354,8 +354,6 @@ struct State<Digest: SupportedDigest> {
     log: VecLog<Digest, LogLeaf>,
     // Index log tree nodes by registry log index of the record
     leaf_index: HashMap<RegistryIndex, Node>,
-    // Index log size by log tree root
-    root_index: HashMap<Hash<Digest>, RegistryIndex>,
 
     // The verifiable map of package logs' latest entries (log_id -> record_id)
     map: VerifiableMap<Digest>,
@@ -367,12 +365,6 @@ impl<Digest: SupportedDigest> State<Digest> {
     fn push_entry(&mut self, registry_index: RegistryIndex, entry: LogLeaf) {
         let node = self.log.push(&entry);
         self.leaf_index.insert(registry_index, node);
-
-        let log_checkpoint = self.log.checkpoint();
-        self.root_index.insert(
-            log_checkpoint.root(),
-            log_checkpoint.length() as RegistryIndex,
-        );
 
         self.map = self.map.insert(
             entry.log_id.clone(),
