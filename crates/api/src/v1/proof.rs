@@ -122,8 +122,7 @@ enum BundleError<'a> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged, rename_all = "camelCase")]
-enum RawError<'a>
-{
+enum RawError<'a> {
     NotFound {
         status: Status<404>,
         #[serde(rename = "type")]
@@ -194,9 +193,7 @@ impl<'de> Deserialize<'de> for ProofError {
     {
         match RawError::deserialize(deserializer)? {
             RawError::NotFound { status: _, ty, id } => match ty {
-                EntityType::LogLength => {
-                    Ok(Self::CheckpointNotFound(id))
-                }
+                EntityType::LogLength => Ok(Self::CheckpointNotFound(id)),
                 EntityType::Leaf => Ok(Self::LeafNotFound(id)),
             },
             RawError::BundleError { status: _, error } => match error {

@@ -17,7 +17,9 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator,
-    registry::{Checkpoint, LogId, RegistryIndex, LogLeaf, MapLeaf, RecordId, TimestampedCheckpoint},
+    registry::{
+        Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, RegistryIndex, TimestampedCheckpoint,
+    },
     ProtoEnvelope, SerdeEnvelope,
 };
 use warg_transparency::{
@@ -76,7 +78,9 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
-        let proof = state.log.prove_consistency(from_log_length as usize, to_log_length as usize);
+        let proof = state
+            .log
+            .prove_consistency(from_log_length as usize, to_log_length as usize);
         LogProofBundle::bundle(vec![proof], vec![], &state.log)
             .map_err(CoreServiceError::BundleFailure)
     }
@@ -202,7 +206,9 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         while let Some(entry) = published.next().await {
             let (index, log_leaf) = entry?;
             state.push_entry(index, log_leaf);
-            if let Some(stored_checkpoint) = checkpoints_by_len.get(&(state.log.length() as RegistryIndex)) {
+            if let Some(stored_checkpoint) =
+                checkpoints_by_len.get(&(state.log.length() as RegistryIndex))
+            {
                 // Validate stored checkpoint (and update internal state as a side-effect)
                 let computed_checkpoint = state.checkpoint();
                 assert!(stored_checkpoint == &computed_checkpoint);
@@ -363,8 +369,10 @@ impl<Digest: SupportedDigest> State<Digest> {
         self.leaf_index.insert(registry_index, node);
 
         let log_checkpoint = self.log.checkpoint();
-        self.root_index
-            .insert(log_checkpoint.root(), log_checkpoint.length() as RegistryIndex);
+        self.root_index.insert(
+            log_checkpoint.root(),
+            log_checkpoint.length() as RegistryIndex,
+        );
 
         self.map = self.map.insert(
             entry.log_id.clone(),

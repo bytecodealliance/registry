@@ -1,3 +1,4 @@
+use super::registry::RegistryIndex;
 use anyhow::Error;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use prost::Message;
@@ -7,7 +8,6 @@ use std::fmt;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
 use warg_protobuf::protocol as protobuf;
-use super::registry::RegistryIndex;
 
 /// The ProtoEnvelope with the published registry log index.
 #[derive(Debug, Clone, PartialEq, Eq)]

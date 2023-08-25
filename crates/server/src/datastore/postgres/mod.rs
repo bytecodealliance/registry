@@ -21,7 +21,9 @@ use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{Checkpoint, LogId, LogLeaf, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{
+        Checkpoint, LogId, LogLeaf, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint,
+    },
     ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
 
@@ -555,13 +557,8 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match commit_record::<operator::LogState>(
-            conn.as_mut(),
-            log_id,
-            record_id,
-            registry_index,
-        )
-        .await
+        match commit_record::<operator::LogState>(conn.as_mut(), log_id, record_id, registry_index)
+            .await
         {
             Ok(()) => Ok(()),
             Err(e) => {
@@ -624,13 +621,8 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        match commit_record::<package::LogState>(
-            conn.as_mut(),
-            log_id,
-            record_id,
-            registry_index,
-        )
-        .await
+        match commit_record::<package::LogState>(conn.as_mut(), log_id, record_id, registry_index)
+            .await
         {
             Ok(()) => Ok(()),
             Err(e) => {

@@ -13,7 +13,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
-    registry::{Checkpoint, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{Checkpoint, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
 

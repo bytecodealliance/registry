@@ -470,10 +470,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         if !leafs.is_empty() {
             self.api
-                .prove_inclusion(InclusionRequest {
-                    log_length: checkpoint.log_length,
-                    leafs: leaf_indices,
-                }, &checkpoint, &leafs)
+                .prove_inclusion(
+                    InclusionRequest {
+                        log_length: checkpoint.log_length,
+                        leafs: leaf_indices,
+                    },
+                    &checkpoint,
+                    &leafs,
+                )
                 .await?;
         }
 

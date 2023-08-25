@@ -11,7 +11,7 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, RegistryIndex, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
