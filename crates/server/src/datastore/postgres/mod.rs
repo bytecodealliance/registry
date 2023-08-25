@@ -471,6 +471,7 @@ impl DataStore for PostgresDataStore {
                 schema::records::registry_log_index
                     .eq_any(entries.iter().map(|i| *i as i64).collect::<Vec<i64>>()),
             )
+            .order(schema::records::registry_log_index.asc())
             .load::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
             .await?
             .into_iter()
@@ -486,7 +487,15 @@ impl DataStore for PostgresDataStore {
             .collect::<Vec<(u32, LogLeaf)>>();
 
         if leafs.len() < entries.len() {
-            return Err(DataStoreError::LogLeafNotFound(0)); // TODO
+            let mut input = entries.to_vec();
+            input.sort_unstable();
+
+            for (i, (index, _)) in leafs.iter().enumerate() {
+                let input_entry = input.get(i).unwrap();
+                if *index as usize != *input_entry {
+                    return Err(DataStoreError::LogLeafNotFound(*input_entry));
+                }
+            }
         }
 
         Ok(leafs
