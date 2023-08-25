@@ -651,7 +651,7 @@ components:
       description: A request to prove the inclusion of log leafs in a checkpoint.
       additionalProperties: false
       required:
-        - checkpoint
+        - logLength
         - leafs
       properties:
         logLength:
