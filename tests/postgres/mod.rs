@@ -4,8 +4,8 @@ use super::{support::*, *};
 use anyhow::{Context, Result};
 use testresult::TestResult;
 use warg_client::api;
-use warg_server::datastore::{DataStore, PostgresDataStore};
 use warg_protocol::registry::RegistryIndex;
+use warg_server::datastore::{DataStore, PostgresDataStore};
 
 fn data_store() -> Result<Box<dyn DataStore>> {
     Ok(Box::new(PostgresDataStore::new(
