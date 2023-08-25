@@ -559,16 +559,16 @@ components:
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
-                index: 101
+                registryIndex: 101
               - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
-                index: 305
+                registryIndex: 305
             ? "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
-                index: 732
+                registryIndex: 732
     PublishPackageRecordRequest:
       type: object
       description: A request to publish a record to a package log.
@@ -830,7 +830,7 @@ components:
       allOf:
         - type: object
           required:
-            - index
+            - registryIndex
           properties:
             registryIndex:
               type: integer
