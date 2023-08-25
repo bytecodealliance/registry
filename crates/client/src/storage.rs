@@ -13,7 +13,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
-    registry::{Checkpoint, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{Checkpoint, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
 
@@ -111,7 +111,7 @@ pub struct OperatorInfo {
     pub state: operator::LogState,
     /// The registry log index of the most recent record
     #[serde(default)]
-    pub latest_index: Option<u32>,
+    pub latest_index: Option<LogIndex>,
 }
 
 /// Represents information about a registry package.
@@ -128,7 +128,7 @@ pub struct PackageInfo {
     pub state: package::LogState,
     /// The registry log index of the most recent record
     #[serde(default)]
-    pub latest_index: Option<u32>,
+    pub latest_index: Option<LogIndex>,
 }
 
 impl PackageInfo {

@@ -11,12 +11,12 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 struct Entry<R> {
-    registry_index: u32,
+    registry_index: LogIndex,
     record_content: ProtoEnvelope<R>,
 }
 
@@ -39,9 +39,9 @@ where
 
 struct Record {
     /// Index in the log's entries.
-    index: usize,
+    index: LogIndex,
     /// Index in the registry's log.
-    registry_index: u32,
+    registry_index: LogIndex,
 }
 
 enum PendingRecord {
@@ -78,7 +78,7 @@ struct State {
     package_ids: BTreeSet<PackageId>,
     checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
-    log_leafs: HashMap<u32, LogLeaf>,
+    log_leafs: HashMap<LogIndex, LogLeaf>,
 }
 
 /// Represents an in-memory data store.
@@ -115,7 +115,7 @@ impl DataStore for MemoryDataStore {
     async fn get_all_validated_records(
         &self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(usize, LogLeaf), DataStoreError>> + Send>>,
+        Pin<Box<dyn Stream<Item = Result<(LogIndex, LogLeaf), DataStoreError>> + Send>>,
         DataStoreError,
     > {
         Ok(Box::pin(futures::stream::empty()))
@@ -123,13 +123,13 @@ impl DataStore for MemoryDataStore {
 
     async fn get_log_leafs_from_registry_index(
         &self,
-        entries: &[usize],
+        entries: &[LogIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError> {
         let state = self.0.read().await;
 
         let mut leafs = Vec::with_capacity(entries.len());
         for entry in entries {
-            match state.log_leafs.get(&(*entry as u32)) {
+            match state.log_leafs.get(entry) {
                 Some(log_leaf) => leafs.push(log_leaf.clone()),
                 None => return Err(DataStoreError::LogLeafNotFound(*entry)),
             }
@@ -188,7 +188,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_log_index: LogIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -217,15 +217,15 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index as u32,
+                            registry_index: registry_log_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index,
-                            registry_index: registry_log_index as u32,
+                            index: index as LogIndex,
+                            registry_index: registry_log_index,
                         });
                         log_leafs.insert(
-                            registry_log_index as u32,
+                            registry_log_index,
                             LogLeaf {
                                 log_id: log_id.clone(),
                                 record_id: record_id.clone(),
@@ -307,7 +307,7 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_log_index: LogIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
@@ -336,15 +336,15 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index as u32,
+                            registry_index: registry_log_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index,
-                            registry_index: registry_log_index as u32,
+                            index: index as LogIndex,
+                            registry_index: registry_log_index,
                         });
                         log_leafs.insert(
-                            registry_log_index as u32,
+                            registry_log_index,
                             LogLeaf {
                                 log_id: log_id.clone(),
                                 record_id: record_id.clone(),
@@ -479,7 +479,7 @@ impl DataStore for MemoryDataStore {
         Ok(log
             .entries
             .iter()
-            .skip(start_log_idx)
+            .skip(start_log_idx as usize)
             .take_while(|entry| entry.registry_index < end_registry_idx)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
@@ -519,7 +519,7 @@ impl DataStore for MemoryDataStore {
         Ok(log
             .entries
             .iter()
-            .skip(start_log_idx)
+            .skip(start_log_idx as usize)
             .take_while(|entry| entry.registry_index < end_registry_idx)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
@@ -569,7 +569,7 @@ impl DataStore for MemoryDataStore {
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index].record_content.clone(),
+                    log.entries[r.index as usize].record_content.clone(),
                     Some(r.registry_index),
                 )
             }
@@ -623,7 +623,7 @@ impl DataStore for MemoryDataStore {
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index].record_content.clone(),
+                    log.entries[r.index as usize].record_content.clone(),
                     Some(r.registry_index),
                 )
             }

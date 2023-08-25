@@ -6,16 +6,16 @@ use serde_with::{base64::Base64, serde_as};
 use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
-use warg_protocol::registry::{LogId};
+use warg_protocol::registry::{LogId, LogIndex};
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsistencyRequest {
     /// The starting log length to check for consistency.
-    pub from: u32,
+    pub from: LogIndex,
     /// The ending log length to check for consistency.
-    pub to: u32,
+    pub to: LogIndex,
 }
 
 /// Represents a consistency proof response.
@@ -33,9 +33,9 @@ pub struct ConsistencyResponse {
 #[serde(rename_all = "camelCase")]
 pub struct InclusionRequest {
     /// The log length to check for inclusion.
-    pub log_length: u32,
+    pub log_length: LogIndex,
     /// The log leaf indexes in the registry log to check for inclusion.
-    pub leafs: Vec<u32>,
+    pub leafs: Vec<LogIndex>,
 }
 
 /// Represents an inclusion proof response.
@@ -57,10 +57,10 @@ pub struct InclusionResponse {
 pub enum ProofError {
     /// The checkpoint could not be found for the provided log length.
     #[error("checkpoint not found for log length {0}")]
-    CheckpointNotFound(u32),
+    CheckpointNotFound(LogIndex),
     /// The provided log leaf was not found.
     #[error("log leaf `{0}` exceeds the registry log length")]
-    LeafNotFound(u32),
+    LeafNotFound(LogIndex),
     /// Failed to prove inclusion of a package.
     #[error("failed to prove inclusion of package log `{0}`")]
     PackageLogNotIncluded(LogId),
@@ -128,7 +128,7 @@ enum RawError<'a>
         status: Status<404>,
         #[serde(rename = "type")]
         ty: EntityType,
-        id: u32,
+        id: LogIndex,
     },
     BundleError {
         status: Status<422>,

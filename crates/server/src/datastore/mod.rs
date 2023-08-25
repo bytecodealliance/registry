@@ -4,7 +4,7 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, LogIndex, PackageId, RecordId, TimestampedCheckpoint},
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
@@ -31,7 +31,7 @@ pub enum DataStoreError {
     RecordNotFound(RecordId),
 
     #[error("log leaf {0} was not found")]
-    LogLeafNotFound(usize),
+    LogLeafNotFound(LogIndex),
 
     #[error("record `{0}` cannot be validated as it is not in a pending state")]
     RecordNotPending(RecordId),
@@ -93,7 +93,7 @@ where
     /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub index: Option<u32>,
+    pub index: Option<LogIndex>,
 }
 
 /// Implemented by data stores.
@@ -114,15 +114,12 @@ pub trait DataStore: Send + Sync {
     /// This is an expensive operation and should only be performed on startup.
     async fn get_all_validated_records(
         &self,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(usize, LogLeaf), DataStoreError>> + Send>>,
-        DataStoreError,
-    >;
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<(LogIndex, LogLeaf), DataStoreError>> + Send>>, DataStoreError>;
 
     /// Looks up the log_id and record_id from the registry log index.  
     async fn get_log_leafs_from_registry_index(
         &self,
-        entries: &[usize],
+        entries: &[LogIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError>;
 
     /// Stores the given operator record.
@@ -152,7 +149,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_log_index: LogIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
@@ -187,7 +184,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_log_index: LogIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Determines if the given content digest is missing for the record.

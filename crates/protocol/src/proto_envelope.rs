@@ -7,6 +7,7 @@ use std::fmt;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
 use warg_protobuf::protocol as protobuf;
+use super::registry::LogIndex;
 
 /// The ProtoEnvelope with the published registry log index.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +15,7 @@ pub struct PublishedProtoEnvelope<Contents> {
     /// The wrapped ProtoEnvelope
     pub envelope: ProtoEnvelope<Contents>,
     /// The published registry log index for the record
-    pub index: u32,
+    pub index: LogIndex,
 }
 
 /// The envelope struct is used to keep around the original
@@ -181,7 +182,7 @@ pub struct PublishedProtoEnvelopeBody {
     #[serde(flatten)]
     pub envelope: ProtoEnvelopeBody,
     /// The index of the published record in the registry log
-    pub index: u32,
+    pub index: LogIndex,
 }
 
 impl<Content> TryFrom<PublishedProtoEnvelopeBody> for PublishedProtoEnvelope<Content>

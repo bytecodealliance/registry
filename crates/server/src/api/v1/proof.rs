@@ -6,6 +6,7 @@ use axum::{
 use warg_api::v1::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
+use warg_protocol::registry::LogIndex;
 
 #[derive(Clone)]
 pub struct Config {
@@ -31,7 +32,7 @@ impl From<CoreServiceError> for ProofApiError {
     fn from(value: CoreServiceError) -> Self {
         Self(match value {
             CoreServiceError::CheckpointNotFound(log_length) => {
-                ProofError::CheckpointNotFound(log_length as u32)
+                ProofError::CheckpointNotFound(log_length)
             }
             //CoreServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
             CoreServiceError::BundleFailure(e) => ProofError::BundleFailure(e.to_string()),
@@ -63,7 +64,7 @@ async fn prove_consistency(
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let bundle = config
         .core
-        .log_consistency_proof(body.from as usize, body.to as usize)
+        .log_consistency_proof(body.from as LogIndex, body.to as LogIndex)
         .await?;
 
     Ok(Json(ConsistencyResponse {
@@ -76,12 +77,12 @@ async fn prove_inclusion(
     State(config): State<Config>,
     Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
-    let log_length = body.log_length as usize;
+    let log_length = body.log_length as LogIndex;
     let leafs = body
         .leafs
         .into_iter()
-        .map(|index| index as usize)
-        .collect::<Vec<usize>>();
+        .map(|index| index as LogIndex)
+        .collect::<Vec<LogIndex>>();
 
     let log_bundle = config.core.log_inclusion_proofs(log_length, &leafs).await?;
 
