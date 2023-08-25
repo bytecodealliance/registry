@@ -105,15 +105,17 @@ async fn get_package_info(
     let records = records
         .into_iter()
         .map(|record| {
-            package_state.validate(&record).context("validate")?;
-            let record_id = RecordId::package_record::<Sha256>(&record);
+            package_state.validate(&record.envelope).context("validate")?;
+            let record_id = RecordId::package_record::<Sha256>(&record.envelope);
             let timestamp = record
+                .envelope
                 .as_ref()
                 .timestamp
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .context("duration_since")?
                 .as_secs();
             let entries = record
+                .envelope
                 .as_ref()
                 .entries
                 .iter()
