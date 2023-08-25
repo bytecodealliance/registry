@@ -417,8 +417,10 @@ impl DataStore for PostgresDataStore {
 
     async fn get_all_validated_records(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<(usize, LogLeaf), DataStoreError>> + Send>>,
+        DataStoreError,
+    > {
         // The returned future will keep the connection from the pool until dropped
         let mut conn = self.pool.get().await?;
 
@@ -429,15 +431,24 @@ impl DataStore for PostgresDataStore {
         Ok(Box::pin(
             schema::records::table
                 .inner_join(schema::logs::table)
-                .select((schema::logs::log_id, schema::records::record_id))
+                .select((
+                    schema::logs::log_id,
+                    schema::records::record_id,
+                    schema::records::registry_log_index,
+                ))
                 .filter(schema::records::status.eq(RecordStatus::Validated))
-                .order_by(schema::records::id)
-                .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>)>(&mut conn)
+                .order_by(schema::records::registry_log_index)
+                .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
                 .await?
                 .map(|r| {
-                    r.map_err(Into::into).map(|(log_id, record_id)| LogLeaf {
-                        log_id: log_id.0.into(),
-                        record_id: record_id.0.into(),
+                    r.map_err(Into::into).map(|(log_id, record_id, index)| {
+                        (
+                            index.unwrap() as usize,
+                            LogLeaf {
+                                log_id: log_id.0.into(),
+                                record_id: record_id.0.into(),
+                            },
+                        )
                     })
                 }),
         ))
@@ -451,22 +462,37 @@ impl DataStore for PostgresDataStore {
 
         let leafs = schema::records::table
             .inner_join(schema::logs::table)
-            .select((schema::logs::log_id, schema::records::record_id, schema::records::registry_log_index))
-            .filter(schema::records::registry_log_index.eq_any(entries.iter().map(|i| *i as i64).collect::<Vec<i64>>()))
+            .select((
+                schema::logs::log_id,
+                schema::records::record_id,
+                schema::records::registry_log_index,
+            ))
+            .filter(
+                schema::records::registry_log_index
+                    .eq_any(entries.iter().map(|i| *i as i64).collect::<Vec<i64>>()),
+            )
             .load::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
             .await?
             .into_iter()
-            .map(|(log_id, record_id, index)| (index.unwrap() as u32, LogLeaf {
-                log_id: log_id.0.into(),
-                record_id: record_id.0.into(),
-            }))
+            .map(|(log_id, record_id, index)| {
+                (
+                    index.unwrap() as u32,
+                    LogLeaf {
+                        log_id: log_id.0.into(),
+                        record_id: record_id.0.into(),
+                    },
+                )
+            })
             .collect::<Vec<(u32, LogLeaf)>>();
 
         if leafs.len() < entries.len() {
             return Err(DataStoreError::LogLeafNotFound(0)); // TODO
         }
 
-        Ok(leafs.into_iter().map(|(index, log_leaf)| log_leaf).collect::<Vec<LogLeaf>>())
+        Ok(leafs
+            .into_iter()
+            .map(|(index, log_leaf)| log_leaf)
+            .collect::<Vec<LogLeaf>>())
     }
 
     async fn store_operator_record(

@@ -114,8 +114,10 @@ impl DataStore for MemoryDataStore {
 
     async fn get_all_validated_records(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<(usize, LogLeaf), DataStoreError>> + Send>>,
+        DataStoreError,
+    > {
         Ok(Box::pin(futures::stream::empty()))
     }
 
@@ -191,7 +193,10 @@ impl DataStore for MemoryDataStore {
         let mut state = self.0.write().await;
 
         let State {
-            operators, records, log_leafs, ..
+            operators,
+            records,
+            log_leafs,
+            ..
         } = &mut *state;
 
         let status = records
@@ -219,7 +224,13 @@ impl DataStore for MemoryDataStore {
                             index,
                             registry_index: registry_log_index as u32,
                         });
-                        log_leafs.insert(registry_log_index as u32, LogLeaf { log_id: log_id.clone(), record_id: record_id.clone() });
+                        log_leafs.insert(
+                            registry_log_index as u32,
+                            LogLeaf {
+                                log_id: log_id.clone(),
+                                record_id: record_id.clone(),
+                            },
+                        );
                         Ok(())
                     }
                     Err(e) => {
@@ -301,7 +312,10 @@ impl DataStore for MemoryDataStore {
         let mut state = self.0.write().await;
 
         let State {
-            packages, records, log_leafs, ..
+            packages,
+            records,
+            log_leafs,
+            ..
         } = &mut *state;
 
         let status = records
@@ -329,10 +343,13 @@ impl DataStore for MemoryDataStore {
                             index,
                             registry_index: registry_log_index as u32,
                         });
-                        log_leafs.insert(registry_log_index as u32, LogLeaf {
-                            log_id: log_id.clone(),
-                            record_id: record_id.clone(),
-                        });
+                        log_leafs.insert(
+                            registry_log_index as u32,
+                            LogLeaf {
+                                log_id: log_id.clone(),
+                                record_id: record_id.clone(),
+                            },
+                        );
                         Ok(())
                     }
                     Err(e) => {

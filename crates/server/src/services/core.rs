@@ -91,8 +91,14 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
 
         let proofs = entries
             .iter()
-            .map(|index| state.log.prove_inclusion(Node(*index), log_length))
-            .collect();
+            .map(|index| {
+                let node = state
+                    .leaf_index
+                    .get(index)
+                    .ok_or_else(|| CoreServiceError::LeafNotFound(*index))?;
+                Ok(state.log.prove_inclusion(*node, log_length))
+            })
+            .collect::<Result<Vec<_>, CoreServiceError>>()?;
 
         LogProofBundle::bundle(vec![], proofs, &state.log).map_err(CoreServiceError::BundleFailure)
     }
@@ -194,7 +200,8 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         let state = self.state.get_mut();
         while let Some(entry) = published.next().await {
-            state.push_entry(entry?);
+            let (index, log_leaf) = entry?;
+            state.push_entry(index, log_leaf);
             if let Some(stored_checkpoint) = checkpoints_by_len.get(&state.log.length()) {
                 // Validate stored checkpoint (and update internal state as a side-effect)
                 let computed_checkpoint = state.checkpoint();
@@ -233,7 +240,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         // Update state with init record
         let entry = LogLeaf { log_id, record_id };
-        state.push_entry(entry.clone());
+        state.push_entry(0, entry.clone());
 
         // "zero" checkpoint to be updated
         let mut checkpoint = Checkpoint {
@@ -305,7 +312,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             return;
         }
 
-        state.push_entry(entry.clone());
+        state.push_entry(registry_log_index as usize, entry.clone());
     }
 
     // Store a checkpoint including the given new entries
@@ -339,8 +346,8 @@ type VerifiableMap<Digest> = Map<Digest, LogId, MapLeaf>;
 struct State<Digest: SupportedDigest> {
     // The verifiable log of all package log entries
     log: VecLog<Digest, LogLeaf>,
-    // Index log tree nodes by entry
-    leaf_index: HashMap<LogLeaf, Node>,
+    // Index log tree nodes by registry log index of the record
+    leaf_index: HashMap<usize, Node>,
     // Index log size by log tree root
     root_index: HashMap<Hash<Digest>, usize>,
 
@@ -351,9 +358,9 @@ struct State<Digest: SupportedDigest> {
 }
 
 impl<Digest: SupportedDigest> State<Digest> {
-    fn push_entry(&mut self, entry: LogLeaf) {
+    fn push_entry(&mut self, registry_log_index: usize, entry: LogLeaf) {
         let node = self.log.push(&entry);
-        self.leaf_index.insert(entry.clone(), node);
+        self.leaf_index.insert(registry_log_index, node);
 
         let log_checkpoint = self.log.checkpoint();
         self.root_index
@@ -390,6 +397,8 @@ impl<Digest: SupportedDigest> State<Digest> {
 pub enum CoreServiceError {
     #[error("checkpoint at log length `{0}` was not found")]
     CheckpointNotFound(usize),
+    #[error("log leaf `{0}` was not found")]
+    LeafNotFound(usize),
     #[error("failed to bundle proofs: `{0}`")]
     BundleFailure(anyhow::Error),
     #[error("failed to prove inclusion of package `{0}`")]
