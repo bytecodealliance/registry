@@ -729,7 +729,7 @@ components:
       description: A record that has been published to the log.
       required:
         - state
-        - checkpoint
+        - registryIndex
         - record
       properties:
         state:
@@ -738,7 +738,7 @@ components:
           enum: [published]
           example: published
         registryIndex:
-          type: number
+          type: integer
           description: The index of the record in the registry log.
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
