@@ -204,8 +204,8 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         let state = self.state.get_mut();
         while let Some(entry) = published.next().await {
-            let (index, log_leaf) = entry?;
-            state.push_entry(index, log_leaf);
+            let (registry_index, log_leaf) = entry?;
+            state.push_entry(registry_index, log_leaf);
             if let Some(stored_checkpoint) =
                 checkpoints_by_len.get(&(state.log.length() as RegistryIndex))
             {

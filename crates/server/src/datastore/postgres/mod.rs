@@ -439,7 +439,7 @@ impl DataStore for PostgresDataStore {
                     schema::records::registry_log_index,
                 ))
                 .filter(schema::records::status.eq(RecordStatus::Validated))
-                .order_by(schema::records::registry_log_index)
+                .order(schema::records::registry_log_index.asc())
                 .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
                 .await?
                 .map(|r| {
