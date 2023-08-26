@@ -144,9 +144,11 @@ impl<'de> Deserialize<'de> for FetchError {
         D: serde::Deserializer<'de>,
     {
         match RawError::<String>::deserialize(deserializer)? {
-            RawError::CheckpointNotFound { status: _, ty: _, id } => {
-                Ok(Self::CheckpointNotFound(id))
-            },
+            RawError::CheckpointNotFound {
+                status: _,
+                ty: _,
+                id,
+            } => Ok(Self::CheckpointNotFound(id)),
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
                     id.parse::<AnyHash>()
@@ -166,9 +168,9 @@ impl<'de> Deserialize<'de> for FetchError {
                         .into(),
                 )),
                 _ => Err(serde::de::Error::invalid_value(
-                                Unexpected::Str(&id),
-                                &"a valid log length",
-                            )),
+                    Unexpected::Str(&id),
+                    &"a valid log length",
+                )),
             },
             RawError::Message { status, message } => Ok(Self::Message {
                 status,
