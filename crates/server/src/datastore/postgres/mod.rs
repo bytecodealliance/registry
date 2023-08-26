@@ -25,7 +25,8 @@ use warg_protocol::{
     operator,
     package::{self, PackageEntry},
     registry::{
-        Checkpoint, LogId, LogLeaf, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint,
+        Checkpoint, LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen,
+        TimestampedCheckpoint,
     },
     ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
@@ -36,17 +37,17 @@ mod schema;
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
     log_id: i32,
-    checkpoint_id: &AnyHash,
+    registry_log_length: RegistryLen,
     since: Option<&RecordId>,
     limit: i64,
 ) -> Result<Vec<PublishedProtoEnvelope<R>>, DataStoreError> {
-    let checkpoint_length = schema::checkpoints::table
+    schema::checkpoints::table
         .select(schema::checkpoints::log_length)
-        .filter(schema::checkpoints::checkpoint_id.eq(TextRef(checkpoint_id)))
+        .filter(schema::checkpoints::log_length.eq(registry_log_length as i64))
         .first::<i64>(conn)
         .await
         .optional()?
-        .ok_or_else(|| DataStoreError::CheckpointNotFound(checkpoint_id.clone()))?;
+        .ok_or_else(|| DataStoreError::CheckpointNotFound(registry_log_length))?;
 
     let mut query = schema::records::table
         .into_boxed()
@@ -60,7 +61,7 @@ async fn get_records<R: Decode>(
         .filter(
             schema::records::log_id
                 .eq(log_id)
-                .and(schema::records::registry_log_index.lt(checkpoint_length))
+                .and(schema::records::registry_log_index.lt(registry_log_length as i64))
                 .and(schema::records::status.eq(RecordStatus::Validated)),
         );
 
@@ -794,7 +795,7 @@ impl DataStore for PostgresDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -807,13 +808,13 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, checkpoint_id, since, limit as i64).await
+        get_records(&mut conn, log_id, registry_log_length, since, limit as i64).await
     }
 
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError> {
@@ -826,7 +827,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        get_records(&mut conn, log_id, checkpoint_id, since, limit as i64).await
+        get_records(&mut conn, log_id, registry_log_length, since, limit as i64).await
     }
 
     async fn get_operator_record(

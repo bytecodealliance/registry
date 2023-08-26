@@ -4,7 +4,9 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
+    registry::{
+        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+    },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
@@ -21,8 +23,8 @@ pub enum DataStoreError {
     #[error("a conflicting operation was processed: update to the latest checkpoint and try the operation again")]
     Conflict,
 
-    #[error("checkpoint `{0}` was not found")]
-    CheckpointNotFound(AnyHash),
+    #[error("checkpoint log length `{0}` was not found")]
+    CheckpointNotFound(RegistryLen),
 
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -227,20 +229,20 @@ pub trait DataStore: Send + Sync {
         &self,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
 
-    /// Gets the operator records for the given registry checkpoint ID hash.
+    /// Gets the operator records for the given registry log length.
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
 
-    /// Gets the package records for the given registry checkpoint ID hash.
+    /// Gets the package records for the given registry log length.
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError>;

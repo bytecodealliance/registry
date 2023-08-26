@@ -62,26 +62,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  type:
-                    type: string
-                    description: The type of entity that was not found.
-                    enum: [checkpoint, log, record]
-                    example: checkpoint
-                  id:
-                    type: string
-                    description: The identifier of the entity that was not found.
-                    example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+                oneOf:
+                  - "$ref": "#/components/schemas/FetchLogsIDNotFoundError"
+                  - "$ref": "#/components/schemas/FetchLogsLogLengthNotFoundError"
         default:
           description: An error occurred when processing the request.
           content:
@@ -339,8 +322,6 @@ paths:
         - proof
       description: |
         Proves the consistency of the registry between two specified checkpoints.
-
-        TODO: document the consistency proof bundle format.
       requestBody:
         content:
           application/json:
@@ -372,12 +353,11 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [checkpoint]
-                    example: checkpoint
+                    enum: [logLength]
+                    example: logLength
                   id:
-                    "$ref": "#/components/schemas/AnyHash"
-                    description: |
-                      The identifier of the entity that was not found.
+                    type: integer
+                    description: The identifier of the entity that was not found. 
         "422":
           description: The proof bundle could not be generated.
           content:
@@ -404,10 +384,6 @@ paths:
         - proof
       description: |
         Proves that the given log leafs are present in the given registry checkpoint.
-
-        TODO: document the log inclusion proof bundle format.
-
-        TODO: document the map inclusion proof bundle format.
       requestBody:
         content:
           application/json:
@@ -443,8 +419,7 @@ paths:
                     example: logLength
                   id:
                     type: integer
-                    description: |
-                      The identifier of the entity that was not found.
+                    description: The identifier of the entity that was not found.
         "422":
           description: The proof bundle could not be generated.
           content:
@@ -494,11 +469,13 @@ components:
       description: A request to fetch logs from the registry.
       additionalProperties: false
       required:
-        - checkpointId
+        - logLength
       properties:
-        checkpointId:
-          $ref: "#/components/schemas/AnyHash"
-          description: The registry checkpoint ID hash to fetch from.
+        logLength:
+          type: integer
+          description: The registry checkpoint log length to fetch from.
+          example: 101
+          minimum: 1
         limit:
           type: integer
           description: The limit of operator and packages records to return for the fetch request.
@@ -993,3 +970,45 @@ components:
           type: string
           description: The failure error message.
           example: bundle must contain proofs for the same root
+    FetchLogsIDNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [log, record]
+            example: log
+          id:
+            type: string
+            description: The identifier of the entity that was not found.
+            example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+    FetchLogsLogLengthNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [logLength]
+            example: log
+          id:
+            type: integer
+            description: The log length that was not found.
+            example: 1001

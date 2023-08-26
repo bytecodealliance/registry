@@ -387,7 +387,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             let response: FetchLogsResponse = self
                 .api
                 .fetch_logs(FetchLogsRequest {
-                    checkpoint_id: Cow::Borrowed(&checkpoint_id),
+                    log_length: checkpoint.log_length,
                     operator: operator
                         .state
                         .head()

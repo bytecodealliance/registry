@@ -11,7 +11,9 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
+    registry::{
+        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+    },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
@@ -76,7 +78,7 @@ struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_ids: BTreeSet<PackageId>,
-    checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
+    checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
 }
@@ -429,14 +431,14 @@ impl DataStore for MemoryDataStore {
 
     async fn store_checkpoint(
         &self,
-        checkpoint_id: &AnyHash,
+        _checkpoint_id: &AnyHash,
         ts_checkpoint: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
         state
             .checkpoints
-            .insert(checkpoint_id.clone(), ts_checkpoint);
+            .insert(ts_checkpoint.as_ref().checkpoint.log_length, ts_checkpoint);
 
         Ok(())
     }
@@ -452,7 +454,7 @@ impl DataStore for MemoryDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
@@ -463,8 +465,8 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
-            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        if !state.checkpoints.contains_key(&registry_log_length) {
+            return Err(DataStoreError::CheckpointNotFound(registry_log_length));
         };
 
         let start_log_idx = match since {
@@ -474,13 +476,12 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx as usize)
-            .take_while(|entry| entry.registry_index < end_registry_idx)
+            .take_while(|entry| entry.registry_index < registry_log_length)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
                 registry_index: entry.registry_index,
@@ -492,7 +493,7 @@ impl DataStore for MemoryDataStore {
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
     ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError> {
@@ -503,8 +504,8 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
-            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        if !state.checkpoints.contains_key(&registry_log_length) {
+            return Err(DataStoreError::CheckpointNotFound(registry_log_length));
         };
 
         let start_log_idx = match since {
@@ -514,13 +515,12 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx as usize)
-            .take_while(|entry| entry.registry_index < end_registry_idx)
+            .take_while(|entry| entry.registry_index < registry_log_length)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
                 registry_index: entry.registry_index,
