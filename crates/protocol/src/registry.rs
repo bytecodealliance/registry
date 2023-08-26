@@ -9,14 +9,17 @@ use warg_crypto::prefix::VisitPrefixEncode;
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 use wasmparser::names::KebabStr;
 
-/// Type alias for log index and log length
+/// Type alias for registry log index
 pub type RegistryIndex = usize;
+
+/// Type alias for registry log length
+pub type RegistryLen = RegistryIndex;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Checkpoint {
     pub log_root: AnyHash,
-    pub log_length: RegistryIndex,
+    pub log_length: RegistryLen,
     pub map_root: AnyHash,
 }
 

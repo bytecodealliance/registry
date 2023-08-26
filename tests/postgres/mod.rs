@@ -4,7 +4,7 @@ use super::{support::*, *};
 use anyhow::{Context, Result};
 use testresult::TestResult;
 use warg_client::api;
-use warg_protocol::registry::RegistryIndex;
+use warg_protocol::registry::RegistryLen;
 use warg_server::datastore::{DataStore, PostgresDataStore};
 
 fn data_store() -> Result<Box<dyn DataStore>> {
@@ -66,7 +66,7 @@ async fn it_works_with_postgres() -> TestResult {
     let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
-        packages.len() as RegistryIndex + 2, /* publishes + initial checkpoint + yank */
+        packages.len() as RegistryLen + 2, /* publishes + initial checkpoint + yank */
         "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
     );
@@ -84,7 +84,7 @@ async fn it_works_with_postgres() -> TestResult {
     let ts_checkpoint = client.latest_checkpoint().await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
-        packages.len() as RegistryIndex + 2, /* publishes + initial checkpoint + yank*/
+        packages.len() as RegistryLen + 2, /* publishes + initial checkpoint + yank*/
         "expected {len} packages plus the initial checkpoint and yank",
         len = packages.len()
     );

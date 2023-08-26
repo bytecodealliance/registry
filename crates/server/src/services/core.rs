@@ -18,7 +18,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     registry::{
-        Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, RegistryIndex, TimestampedCheckpoint,
+        Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
     },
     ProtoEnvelope, SerdeEnvelope,
 };
@@ -73,8 +73,8 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs a log consistency proof between the given log tree roots.
     pub async fn log_consistency_proof(
         &self,
-        from_log_length: RegistryIndex,
-        to_log_length: RegistryIndex,
+        from_log_length: RegistryLen,
+        to_log_length: RegistryLen,
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
@@ -88,7 +88,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs log inclusion proofs for the given entries at the given log tree root.
     pub async fn log_inclusion_proofs(
         &self,
-        log_length: RegistryIndex,
+        log_length: RegistryLen,
         entries: &[RegistryIndex],
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
@@ -110,7 +110,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// Constructs map inclusion proofs for the given entries at the given map tree root.
     pub async fn map_inclusion_proofs(
         &self,
-        log_length: RegistryIndex,
+        log_length: RegistryLen,
         entries: &[RegistryIndex],
     ) -> Result<MapProofBundle<Digest, LogId, MapLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
@@ -196,7 +196,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         // Reconstruct internal state from previously-stored data
         let mut checkpoints = self.store.get_all_checkpoints().await?;
-        let mut checkpoints_by_len: HashMap<RegistryIndex, Checkpoint> = Default::default();
+        let mut checkpoints_by_len: HashMap<RegistryLen, Checkpoint> = Default::default();
         while let Some(checkpoint) = checkpoints.next().await {
             let checkpoint = checkpoint?.checkpoint;
             checkpoints_by_len.insert(checkpoint.log_length, checkpoint);
@@ -207,7 +207,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             let (registry_index, log_leaf) = entry?;
             state.push_entry(registry_index, log_leaf);
             if let Some(stored_checkpoint) =
-                checkpoints_by_len.get(&(state.log.length() as RegistryIndex))
+                checkpoints_by_len.get(&(state.log.length() as RegistryLen))
             {
                 // Validate stored checkpoint (and update internal state as a side-effect)
                 let computed_checkpoint = state.checkpoint();
@@ -326,7 +326,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         {
             // Recalculate the checkpoint if necessary
             let mut state = self.state.write().await;
-            if state.log.length() as RegistryIndex != checkpoint.log_length {
+            if state.log.length() as RegistryLen != checkpoint.log_length {
                 *checkpoint = state.checkpoint();
                 tracing::debug!("Updating to checkpoint {checkpoint:?}");
             }
@@ -358,7 +358,7 @@ struct State<Digest: SupportedDigest> {
     // The verifiable map of package logs' latest entries (log_id -> record_id)
     map: VerifiableMap<Digest>,
     // Index verifiable map snapshots by log length (at checkpoints only)
-    map_index: HashMap<RegistryIndex, (Hash<Digest>, VerifiableMap<Digest>)>,
+    map_index: HashMap<RegistryLen, (Hash<Digest>, VerifiableMap<Digest>)>,
 }
 
 impl<Digest: SupportedDigest> State<Digest> {
@@ -377,7 +377,7 @@ impl<Digest: SupportedDigest> State<Digest> {
     fn checkpoint(&mut self) -> Checkpoint {
         let log_checkpoint = self.log.checkpoint();
         let map_root = self.map.root();
-        let log_length = log_checkpoint.length() as RegistryIndex;
+        let log_length = log_checkpoint.length() as RegistryLen;
 
         // Update map snapshot
         if log_length > 0 {
@@ -396,7 +396,7 @@ impl<Digest: SupportedDigest> State<Digest> {
 #[derive(Debug, Error)]
 pub enum CoreServiceError {
     #[error("checkpoint at log length `{0}` was not found")]
-    CheckpointNotFound(RegistryIndex),
+    CheckpointNotFound(RegistryLen),
     #[error("log leaf `{0}` was not found")]
     LeafNotFound(RegistryIndex),
     #[error("failed to bundle proofs: `{0}`")]
