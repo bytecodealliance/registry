@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::Serialize;
 use warg_crypto::{
-    hash::{AnyHash, Hash, Sha256},
+    hash::{AnyHash, Sha256},
     signing::KeyID,
 };
 use warg_protocol::{
