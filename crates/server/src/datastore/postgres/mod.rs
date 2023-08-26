@@ -16,7 +16,10 @@ use diesel_migrations::{
 };
 use futures::{Stream, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{collections::HashSet, pin::Pin};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+};
 use warg_crypto::{hash::AnyHash, Decode, Signable};
 use warg_protocol::{
     operator,
@@ -443,26 +446,28 @@ impl DataStore for PostgresDataStore {
                 .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
                 .await?
                 .map(|r| {
-                    r.map_err(Into::into).map(|(log_id, record_id, index)| {
-                        (
-                            index.unwrap() as RegistryIndex,
-                            LogLeaf {
-                                log_id: log_id.0.into(),
-                                record_id: record_id.0.into(),
-                            },
-                        )
-                    })
+                    r.map_err(Into::into)
+                        .map(|(log_id, record_id, registry_index)| {
+                            (
+                                registry_index.unwrap() as RegistryIndex,
+                                LogLeaf {
+                                    log_id: log_id.0.into(),
+                                    record_id: record_id.0.into(),
+                                },
+                            )
+                        })
                 }),
         ))
     }
 
+    // Note: order of the entries is expected to match to the corresponding returned log leafs.
     async fn get_log_leafs_with_registry_index(
         &self,
         entries: &[RegistryIndex],
     ) -> Result<Vec<LogLeaf>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
-        let leafs = schema::records::table
+        let mut leafs_map = schema::records::table
             .inner_join(schema::logs::table)
             .select((
                 schema::logs::log_id,
@@ -473,7 +478,6 @@ impl DataStore for PostgresDataStore {
                 schema::records::registry_log_index
                     .eq_any(entries.iter().map(|i| *i as i64).collect::<Vec<i64>>()),
             )
-            .order(schema::records::registry_log_index.asc())
             .load::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
             .await?
             .into_iter()
@@ -486,24 +490,16 @@ impl DataStore for PostgresDataStore {
                     },
                 )
             })
-            .collect::<Vec<(RegistryIndex, LogLeaf)>>();
+            .collect::<HashMap<RegistryIndex, LogLeaf>>();
 
-        if leafs.len() < entries.len() {
-            let mut input = entries.to_vec();
-            input.sort_unstable();
-
-            for (i, (index, _)) in leafs.iter().enumerate() {
-                let input_entry = input.get(i).unwrap();
-                if *index != *input_entry {
-                    return Err(DataStoreError::LogLeafNotFound(*input_entry));
-                }
-            }
-        }
-
-        Ok(leafs
-            .into_iter()
-            .map(|(_, log_leaf)| log_leaf)
-            .collect::<Vec<LogLeaf>>())
+        Ok(entries
+            .iter()
+            .map(|registry_index| {
+                leafs_map
+                    .remove(registry_index)
+                    .ok_or(DataStoreError::LogLeafNotFound(*registry_index))
+            })
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     async fn store_operator_record(

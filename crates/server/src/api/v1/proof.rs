@@ -85,7 +85,6 @@ async fn prove_inclusion(
         .collect::<Vec<RegistryIndex>>();
 
     let log_bundle = config.core.log_inclusion_proofs(log_length, &leafs).await?;
-
     let map_bundle = config.core.map_inclusion_proofs(log_length, &leafs).await?;
 
     Ok(Json(InclusionResponse {
