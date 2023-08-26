@@ -34,7 +34,7 @@ impl From<CoreServiceError> for ProofApiError {
             CoreServiceError::CheckpointNotFound(log_length) => {
                 ProofError::CheckpointNotFound(log_length)
             }
-            //CoreServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
+            CoreServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
             CoreServiceError::BundleFailure(e) => ProofError::BundleFailure(e.to_string()),
             CoreServiceError::PackageNotIncluded(id) => ProofError::PackageLogNotIncluded(id),
             CoreServiceError::IncorrectProof { root, found } => {
