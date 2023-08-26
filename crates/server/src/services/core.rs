@@ -18,7 +18,8 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     registry::{
-        Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+        Checkpoint, LogId, LogLeaf, MapLeaf, RecordId, RegistryIndex, RegistryLen,
+        TimestampedCheckpoint,
     },
     ProtoEnvelope, SerdeEnvelope,
 };

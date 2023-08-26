@@ -6,7 +6,7 @@ use serde_with::{base64::Base64, serde_as};
 use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
-use warg_protocol::registry::{LogId, RegistryLen, RegistryIndex};
+use warg_protocol::registry::{LogId, RegistryIndex, RegistryLen};
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
