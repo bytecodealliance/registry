@@ -475,7 +475,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                         log_length: checkpoint.log_length,
                         leafs: leaf_indices,
                     },
-                    &checkpoint,
+                    checkpoint,
                     &leafs,
                 )
                 .await?;

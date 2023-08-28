@@ -223,7 +223,7 @@ impl DataStore for MemoryDataStore {
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index: index,
+                            index,
                             registry_index,
                         });
                         log_leafs.insert(
@@ -342,7 +342,7 @@ impl DataStore for MemoryDataStore {
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
-                            index: index,
+                            index,
                             registry_index,
                         });
                         log_leafs.insert(
@@ -480,7 +480,7 @@ impl DataStore for MemoryDataStore {
         Ok(log
             .entries
             .iter()
-            .skip(start_log_idx as usize)
+            .skip(start_log_idx)
             .take_while(|entry| entry.registry_index < registry_log_length)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
@@ -519,7 +519,7 @@ impl DataStore for MemoryDataStore {
         Ok(log
             .entries
             .iter()
-            .skip(start_log_idx as usize)
+            .skip(start_log_idx)
             .take_while(|entry| entry.registry_index < registry_log_length)
             .map(|entry| PublishedProtoEnvelope {
                 envelope: entry.record_content.clone(),
@@ -569,7 +569,7 @@ impl DataStore for MemoryDataStore {
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index as usize].record_content.clone(),
+                    log.entries[r.index].record_content.clone(),
                     Some(r.registry_index),
                 )
             }
@@ -623,7 +623,7 @@ impl DataStore for MemoryDataStore {
                     } else {
                         super::RecordStatus::Validated
                     },
-                    log.entries[r.index as usize].record_content.clone(),
+                    log.entries[r.index].record_content.clone(),
                     Some(r.registry_index),
                 )
             }

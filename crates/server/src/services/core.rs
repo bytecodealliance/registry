@@ -296,7 +296,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         let LogLeaf { log_id, record_id } = entry;
 
         // Validate and commit the package entry to the store
-        let registry_index = state.log.length().try_into().unwrap();
+        let registry_index = state.log.length() as RegistryIndex;
         let commit_res = self
             .store
             .commit_package_record(log_id, record_id, registry_index)
@@ -387,7 +387,7 @@ impl<Digest: SupportedDigest> State<Digest> {
         }
 
         Checkpoint {
-            log_length: log_length.try_into().unwrap(),
+            log_length,
             log_root: log_checkpoint.root().into(),
             map_root: map_root.into(),
         }
