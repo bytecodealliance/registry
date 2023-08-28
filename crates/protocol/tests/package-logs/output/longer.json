@@ -2,7 +2,7 @@
   "Valid": {
     "algorithm": "sha256",
     "head": {
-      "digest": "sha256:08f62d1529ef076d9f2e1f16fc7b5848381efdc59b61bed8d0a32f0257f7573d",
+      "digest": "sha256:e85a8f3c25dbb77b443b9fc7b80464a37c9e4ba18b707d4d878331384b241bfe",
       "timestamp": "1671221120.153436500"
     },
     "permissions": {
@@ -14,7 +14,7 @@
     },
     "releases": {
       "1.0.0": {
-        "recordId": "sha256:a1b99a9b53d9616ab78c32d6983f277017878350532320abc4b9419d5afd41bb",
+        "recordId": "sha256:9cceb5c0132deb4eb971802826ff72666b2fc85139360a5ae8d17d02772745a4",
         "version": "1.0.0",
         "by": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
         "timestamp": "1671221120.153436500",

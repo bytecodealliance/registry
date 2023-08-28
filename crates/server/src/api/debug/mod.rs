@@ -73,8 +73,8 @@ struct EntryInfo {
     key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_id: Option<KeyID>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    permission: Option<Permission>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    permissions: Vec<Permission>,
     #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<Version>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,16 +129,19 @@ async fn get_package_info(
                             key: Some(key.to_string()),
                             ..Default::default()
                         },
-                        GrantFlat { key, permission } => EntryInfo {
+                        GrantFlat { key, permissions } => EntryInfo {
                             kind: "grant",
                             key: Some(key.to_string()),
-                            permission: Some(*permission),
+                            permissions: permissions.clone(),
                             ..Default::default()
                         },
-                        RevokeFlat { key_id, permission } => EntryInfo {
+                        RevokeFlat {
+                            key_id,
+                            permissions,
+                        } => EntryInfo {
                             kind: "revoke",
                             key_id: Some(key_id.clone()),
-                            permission: Some(*permission),
+                            permissions: permissions.clone(),
                             ..Default::default()
                         },
                         Release { version, content } => EntryInfo {

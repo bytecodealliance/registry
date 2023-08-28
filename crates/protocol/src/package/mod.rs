@@ -69,11 +69,19 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
             },
             Contents::GrantFlat(grant_flat) => model::PackageEntry::GrantFlat {
                 key: grant_flat.key.parse()?,
-                permission: grant_flat.permission.try_into()?,
+                permissions: grant_flat
+                    .permissions
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, _>>()?,
             },
             Contents::RevokeFlat(revoke_flat) => model::PackageEntry::RevokeFlat {
                 key_id: revoke_flat.key_id.into(),
-                permission: revoke_flat.permission.try_into()?,
+                permissions: revoke_flat
+                    .permissions
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, _>>()?,
             },
             Contents::Release(release) => model::PackageEntry::Release {
                 version: release
@@ -151,18 +159,19 @@ impl<'a> From<&'a model::PackageEntry> for protobuf::PackageEntry {
                 key: key.to_string(),
                 hash_algorithm: hash_algorithm.to_string(),
             }),
-            model::PackageEntry::GrantFlat { key, permission } => {
+            model::PackageEntry::GrantFlat { key, permissions } => {
                 Contents::GrantFlat(protobuf::PackageGrantFlat {
                     key: key.to_string(),
-                    permission: permission.into(),
+                    permissions: permissions.iter().map(Into::into).collect(),
                 })
             }
-            model::PackageEntry::RevokeFlat { key_id, permission } => {
-                Contents::RevokeFlat(protobuf::PackageRevokeFlat {
-                    key_id: key_id.to_string(),
-                    permission: permission.into(),
-                })
-            }
+            model::PackageEntry::RevokeFlat {
+                key_id,
+                permissions,
+            } => Contents::RevokeFlat(protobuf::PackageRevokeFlat {
+                key_id: key_id.to_string(),
+                permissions: permissions.iter().map(Into::into).collect(),
+            }),
             model::PackageEntry::Release { version, content } => {
                 Contents::Release(protobuf::PackageRelease {
                     version: version.to_string(),
@@ -217,11 +226,11 @@ mod tests {
                 },
                 model::PackageEntry::GrantFlat {
                     key: bob_pub.clone(),
-                    permission: model::Permission::Release,
+                    permissions: vec![model::Permission::Release, model::Permission::Yank],
                 },
                 model::PackageEntry::RevokeFlat {
                     key_id: bob_pub.fingerprint(),
-                    permission: model::Permission::Release,
+                    permissions: vec![model::Permission::Release],
                 },
                 model::PackageEntry::Release {
                     version: Version::new(1, 0, 0),

@@ -81,13 +81,13 @@ pub enum PackageEntry {
     /// The author of this entry must have the permission.
     GrantFlat {
         key: signing::PublicKey,
-        permission: Permission,
+        permissions: Vec<Permission>,
     },
     /// Remove a permission from a key.
     /// The author of this entry must have the permission.
     RevokeFlat {
         key_id: signing::KeyID,
-        permission: Permission,
+        permissions: Vec<Permission>,
     },
     /// Release a version of a package.
     /// The version must not have been released yet.

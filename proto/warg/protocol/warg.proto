@@ -47,14 +47,14 @@ message OperatorGrantFlat {
     // The key being given the permission.
     string key = 1;
     // The permission to grant the key.
-    OperatorPermission permission = 2;
+    repeated OperatorPermission permissions = 2;
 }
 
 message OperatorRevokeFlat {
     // The key whose permission is being revoked.
     string key_id = 1;
     // The permission to grant the key.
-    OperatorPermission permission = 2;
+    repeated OperatorPermission permissions = 2;
 }
 
 message PackageRecord {
@@ -94,12 +94,12 @@ message PackageInit {
 
 message PackageGrantFlat {
     string key = 1;
-    PackagePermission permission = 2;
+    repeated PackagePermission permissions = 2;
 }
 
 message PackageRevokeFlat {
     string key_id = 1;
-    PackagePermission permission = 2;
+    repeated PackagePermission permissions = 2;
 }
 
 message PackageRelease {
