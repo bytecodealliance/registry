@@ -26,7 +26,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope, Version, VersionReq,
+    PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
 pub mod api;
@@ -387,7 +387,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             let response: FetchLogsResponse = self
                 .api
                 .fetch_logs(FetchLogsRequest {
-                    checkpoint_id: Cow::Borrowed(&checkpoint_id),
+                    log_length: checkpoint.log_length,
                     operator: operator
                         .state
                         .head()
@@ -404,11 +404,12 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
             for record in response.operator {
-                let record: ProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
+                let record: PublishedProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
                 operator
                     .state
-                    .validate(&record)
+                    .validate(&record.envelope)
                     .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+                operator.head_registry_index = Some(record.registry_index);
             }
 
             for (log_id, records) in response.packages {
@@ -417,13 +418,15 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
                 for record in records {
-                    let record: ProtoEnvelope<package::PackageRecord> = record.try_into()?;
-                    package.state.validate(&record).map_err(|inner| {
+                    let record: PublishedProtoEnvelope<package::PackageRecord> =
+                        record.try_into()?;
+                    package.state.validate(&record.envelope).map_err(|inner| {
                         ClientError::PackageValidationFailed {
                             id: package.id.clone(),
                             inner,
                         }
                     })?;
+                    package.head_registry_index = Some(record.registry_index);
                 }
 
                 // At this point, the package log should not be empty
@@ -445,29 +448,36 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         // Prove inclusion for the current log heads
-        let mut leafs = Vec::with_capacity(packages.len() + 1 /* for operator */);
-        if let Some(head) = operator.state.head() {
+        let mut leaf_indices = Vec::with_capacity(packages.len() + 1 /* for operator */);
+        let mut leafs = Vec::with_capacity(leaf_indices.len());
+        if let Some(index) = operator.head_registry_index {
+            leaf_indices.push(index);
             leafs.push(LogLeaf {
                 log_id: LogId::operator_log::<Sha256>(),
-                record_id: head.digest.clone(),
+                record_id: operator.state.head().as_ref().unwrap().digest.clone(),
             });
         }
 
         for (log_id, package) in &packages {
-            if let Some(head) = package.state.head() {
+            if let Some(index) = package.head_registry_index {
+                leaf_indices.push(index);
                 leafs.push(LogLeaf {
                     log_id: log_id.clone(),
-                    record_id: head.digest.clone(),
+                    record_id: package.state.head().as_ref().unwrap().digest.clone(),
                 });
             }
         }
 
         if !leafs.is_empty() {
             self.api
-                .prove_inclusion(InclusionRequest {
-                    checkpoint: Cow::Borrowed(checkpoint),
-                    leafs: Cow::Borrowed(&leafs),
-                })
+                .prove_inclusion(
+                    InclusionRequest {
+                        log_length: checkpoint.log_length,
+                        leafs: leaf_indices,
+                    },
+                    checkpoint,
+                    &leafs,
+                )
                 .await?;
         }
 

@@ -6,6 +6,7 @@ use axum::{
 use warg_api::v1::proof::{
     ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
 };
+use warg_protocol::registry::{RegistryIndex, RegistryLen};
 
 #[derive(Clone)]
 pub struct Config {
@@ -27,19 +28,12 @@ impl Config {
 
 struct ProofApiError(ProofError);
 
-impl ProofApiError {
-    fn bad_request(message: impl ToString) -> Self {
-        Self(ProofError::Message {
-            status: StatusCode::BAD_REQUEST.as_u16(),
-            message: message.to_string(),
-        })
-    }
-}
-
 impl From<CoreServiceError> for ProofApiError {
     fn from(value: CoreServiceError) -> Self {
         Self(match value {
-            CoreServiceError::RootNotFound(root) => ProofError::RootNotFound(root),
+            CoreServiceError::CheckpointNotFound(log_length) => {
+                ProofError::CheckpointNotFound(log_length)
+            }
             CoreServiceError::LeafNotFound(leaf) => ProofError::LeafNotFound(leaf),
             CoreServiceError::BundleFailure(e) => ProofError::BundleFailure(e.to_string()),
             CoreServiceError::PackageNotIncluded(id) => ProofError::PackageLogNotIncluded(id),
@@ -70,7 +64,7 @@ async fn prove_consistency(
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let bundle = config
         .core
-        .log_consistency_proof(body.from as usize, body.to as usize)
+        .log_consistency_proof(body.from as RegistryLen, body.to as RegistryLen)
         .await?;
 
     Ok(Json(ConsistencyResponse {
@@ -81,24 +75,17 @@ async fn prove_consistency(
 #[debug_handler]
 async fn prove_inclusion(
     State(config): State<Config>,
-    Json(body): Json<InclusionRequest<'static>>,
+    Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
-    let checkpoint = body.checkpoint.into_owned();
-    let log_length = checkpoint.log_length;
-    let map_root = checkpoint
-        .map_root
-        .try_into()
-        .map_err(ProofApiError::bad_request)?;
+    let log_length = body.log_length as RegistryLen;
+    let leafs = body
+        .leafs
+        .into_iter()
+        .map(|index| index as RegistryIndex)
+        .collect::<Vec<RegistryIndex>>();
 
-    let log_bundle = config
-        .core
-        .log_inclusion_proofs(log_length as usize, &body.leafs)
-        .await?;
-
-    let map_bundle = config
-        .core
-        .map_inclusion_proofs(&map_root, &body.leafs)
-        .await?;
+    let log_bundle = config.core.log_inclusion_proofs(log_length, &leafs).await?;
+    let map_bundle = config.core.map_inclusion_proofs(log_length, &leafs).await?;
 
     Ok(Json(InclusionResponse {
         log: log_bundle.encode(),

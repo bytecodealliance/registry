@@ -4,8 +4,10 @@ use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope,
+    registry::{
+        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+    },
+    ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 mod memory;
@@ -21,14 +23,17 @@ pub enum DataStoreError {
     #[error("a conflicting operation was processed: update to the latest checkpoint and try the operation again")]
     Conflict,
 
-    #[error("checkpoint `{0}` was not found")]
-    CheckpointNotFound(AnyHash),
+    #[error("checkpoint log length `{0}` was not found")]
+    CheckpointNotFound(RegistryLen),
 
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
 
     #[error("record `{0}` was not found")]
     RecordNotFound(RecordId),
+
+    #[error("log leaf {0} was not found")]
+    LogLeafNotFound(RegistryIndex),
 
     #[error("record `{0}` cannot be validated as it is not in a pending state")]
     RecordNotPending(RecordId),
@@ -90,7 +95,7 @@ where
     /// The index of the record in the registry log.
     ///
     /// This is `None` if the record is not published.
-    pub registry_log_index: Option<u64>,
+    pub registry_index: Option<RegistryIndex>,
 }
 
 /// Implemented by data stores.
@@ -112,6 +117,12 @@ pub trait DataStore: Send + Sync {
     async fn get_all_validated_records(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>;
+
+    /// Looks up the log_id and record_id from the registry log index.  
+    async fn get_log_leafs_with_registry_index(
+        &self,
+        entries: &[RegistryIndex],
+    ) -> Result<Vec<LogLeaf>, DataStoreError>;
 
     /// Stores the given operator record.
     async fn store_operator_record(
@@ -140,7 +151,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Stores the given package record.
@@ -175,7 +186,7 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
 
     /// Determines if the given content digest is missing for the record.
@@ -215,23 +226,23 @@ pub trait DataStore: Send + Sync {
         &self,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
 
-    /// Gets the operator records for the given registry checkpoint ID hash.
+    /// Gets the operator records for the given registry log length.
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
+    ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError>;
 
-    /// Gets the package records for the given registry checkpoint ID hash.
+    /// Gets the package records for the given registry log length.
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError>;
+    ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError>;
 
     /// Gets an operator record.
     async fn get_operator_record(

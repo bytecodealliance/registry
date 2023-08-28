@@ -1,21 +1,21 @@
 //! Types relating to the proof API.
 
 use crate::Status;
-use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{base64::Base64, serde_as};
 use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
-use warg_protocol::registry::{Checkpoint, LogId, LogLeaf};
+use warg_protocol::registry::{LogId, RegistryIndex, RegistryLen};
 
 /// Represents a consistency proof request.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsistencyRequest {
     /// The starting log length to check for consistency.
-    pub from: u32,
+    pub from: RegistryLen,
     /// The ending log length to check for consistency.
-    pub to: u32,
+    pub to: RegistryLen,
 }
 
 /// Represents a consistency proof response.
@@ -31,11 +31,11 @@ pub struct ConsistencyResponse {
 /// Represents an inclusion proof request.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InclusionRequest<'a> {
-    /// The checkpoint to check for inclusion.
-    pub checkpoint: Cow<'a, Checkpoint>,
-    /// The log leafs to check for inclusion.
-    pub leafs: Cow<'a, [LogLeaf]>,
+pub struct InclusionRequest {
+    /// The log length to check for inclusion.
+    pub log_length: RegistryLen,
+    /// The log leaf indexes in the registry log to check for inclusion.
+    pub leafs: Vec<RegistryIndex>,
 }
 
 /// Represents an inclusion proof response.
@@ -55,12 +55,12 @@ pub struct InclusionResponse {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum ProofError {
-    /// The provided log root was not found.
-    #[error("log root `{0}` was not found")]
-    RootNotFound(AnyHash),
+    /// The checkpoint could not be found for the provided log length.
+    #[error("checkpoint not found for log length {0}")]
+    CheckpointNotFound(RegistryLen),
     /// The provided log leaf was not found.
-    #[error("log leaf `{}:{}` was not found", .0.log_id, .0.record_id)]
-    LeafNotFound(LogLeaf),
+    #[error("log leaf `{0}` not found")]
+    LeafNotFound(RegistryIndex),
     /// Failed to prove inclusion of a package.
     #[error("failed to prove inclusion of package log `{0}`")]
     PackageLogNotIncluded(LogId),
@@ -89,7 +89,7 @@ impl ProofError {
     /// Returns the HTTP status code of the error.
     pub fn status(&self) -> u16 {
         match self {
-            Self::RootNotFound(_) | Self::LeafNotFound(_) => 404,
+            Self::CheckpointNotFound(_) | Self::LeafNotFound(_) => 404,
             Self::BundleFailure(_)
             | Self::PackageLogNotIncluded(_)
             | Self::IncorrectProof { .. } => 422,
@@ -101,7 +101,7 @@ impl ProofError {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum EntityType {
-    LogRoot,
+    LogLength,
     Leaf,
 }
 
@@ -122,16 +122,12 @@ enum BundleError<'a> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged, rename_all = "camelCase")]
-enum RawError<'a, T>
-where
-    T: Clone + ToOwned,
-    <T as ToOwned>::Owned: Serialize + for<'b> Deserialize<'b>,
-{
+enum RawError<'a> {
     NotFound {
         status: Status<404>,
         #[serde(rename = "type")]
         ty: EntityType,
-        id: Cow<'a, T>,
+        id: RegistryIndex,
     },
     BundleError {
         status: Status<422>,
@@ -147,26 +143,26 @@ where
 impl Serialize for ProofError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::RootNotFound(root) => RawError::NotFound {
+            Self::CheckpointNotFound(log_length) => RawError::NotFound {
                 status: Status::<404>,
-                ty: EntityType::LogRoot,
-                id: Cow::Borrowed(root),
+                ty: EntityType::LogLength,
+                id: *log_length,
             }
             .serialize(serializer),
-            Self::LeafNotFound(leaf) => RawError::NotFound::<String> {
+            Self::LeafNotFound(leaf_index) => RawError::NotFound {
                 status: Status::<404>,
                 ty: EntityType::Leaf,
-                id: Cow::Owned(format!("{}|{}", leaf.log_id, leaf.record_id)),
+                id: *leaf_index,
             }
             .serialize(serializer),
-            Self::PackageLogNotIncluded(log_id) => RawError::BundleError::<()> {
+            Self::PackageLogNotIncluded(log_id) => RawError::BundleError {
                 status: Status::<422>,
                 error: BundleError::PackageNotIncluded {
                     log_id: Cow::Borrowed(log_id),
                 },
             }
             .serialize(serializer),
-            Self::IncorrectProof { root, found } => RawError::BundleError::<()> {
+            Self::IncorrectProof { root, found } => RawError::BundleError {
                 status: Status::<422>,
                 error: BundleError::IncorrectProof {
                     root: Cow::Borrowed(root),
@@ -174,14 +170,14 @@ impl Serialize for ProofError {
                 },
             }
             .serialize(serializer),
-            Self::BundleFailure(message) => RawError::BundleError::<()> {
+            Self::BundleFailure(message) => RawError::BundleError {
                 status: Status::<422>,
                 error: BundleError::Failure {
                     message: Cow::Borrowed(message),
                 },
             }
             .serialize(serializer),
-            Self::Message { status, message } => RawError::Message::<()> {
+            Self::Message { status, message } => RawError::Message {
                 status: *status,
                 message: Cow::Borrowed(message),
             }
@@ -195,47 +191,10 @@ impl<'de> Deserialize<'de> for ProofError {
     where
         D: serde::Deserializer<'de>,
     {
-        match RawError::<String>::deserialize(deserializer)? {
+        match RawError::deserialize(deserializer)? {
             RawError::NotFound { status: _, ty, id } => match ty {
-                EntityType::LogRoot => {
-                    Ok(Self::RootNotFound(id.parse::<AnyHash>().map_err(|_| {
-                        serde::de::Error::invalid_value(
-                            Unexpected::Str(&id),
-                            &"a valid checkpoint id",
-                        )
-                    })?))
-                }
-                EntityType::Leaf => Ok(Self::LeafNotFound(
-                    id.split_once('|')
-                        .map(|(log_id, record_id)| {
-                            Ok(LogLeaf {
-                                log_id: log_id
-                                    .parse::<AnyHash>()
-                                    .map_err(|_| {
-                                        serde::de::Error::invalid_value(
-                                            Unexpected::Str(log_id),
-                                            &"a valid log id",
-                                        )
-                                    })?
-                                    .into(),
-                                record_id: record_id
-                                    .parse::<AnyHash>()
-                                    .map_err(|_| {
-                                        serde::de::Error::invalid_value(
-                                            Unexpected::Str(record_id),
-                                            &"a valid record id",
-                                        )
-                                    })?
-                                    .into(),
-                            })
-                        })
-                        .ok_or_else(|| {
-                            serde::de::Error::invalid_value(
-                                Unexpected::Str(&id),
-                                &"a valid leaf id",
-                            )
-                        })??,
-                )),
+                EntityType::LogLength => Ok(Self::CheckpointNotFound(id)),
+                EntityType::Leaf => Ok(Self::LeafNotFound(id)),
             },
             RawError::BundleError { status: _, error } => match error {
                 BundleError::PackageNotIncluded { log_id } => {

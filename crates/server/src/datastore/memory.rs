@@ -11,12 +11,14 @@ use warg_crypto::{hash::AnyHash, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
-    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
-    ProtoEnvelope, SerdeEnvelope,
+    registry::{
+        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+    },
+    ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
 
 struct Entry<R> {
-    registry_index: u64,
+    registry_index: RegistryIndex,
     record_content: ProtoEnvelope<R>,
 }
 
@@ -41,7 +43,7 @@ struct Record {
     /// Index in the log's entries.
     index: usize,
     /// Index in the registry's log.
-    registry_index: u64,
+    registry_index: RegistryIndex,
 }
 
 enum PendingRecord {
@@ -76,8 +78,9 @@ struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_ids: BTreeSet<PackageId>,
-    checkpoints: IndexMap<AnyHash, SerdeEnvelope<TimestampedCheckpoint>>,
+    checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
+    log_leafs: HashMap<RegistryIndex, LogLeaf>,
 }
 
 /// Represents an in-memory data store.
@@ -116,6 +119,23 @@ impl DataStore for MemoryDataStore {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
     {
         Ok(Box::pin(futures::stream::empty()))
+    }
+
+    async fn get_log_leafs_with_registry_index(
+        &self,
+        entries: &[RegistryIndex],
+    ) -> Result<Vec<LogLeaf>, DataStoreError> {
+        let state = self.0.read().await;
+
+        let mut leafs = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match state.log_leafs.get(entry) {
+                Some(log_leaf) => leafs.push(log_leaf.clone()),
+                None => return Err(DataStoreError::LogLeafNotFound(*entry)),
+            }
+        }
+
+        Ok(leafs)
     }
 
     async fn store_operator_record(
@@ -168,12 +188,15 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
         let State {
-            operators, records, ..
+            operators,
+            records,
+            log_leafs,
+            ..
         } = &mut *state;
 
         let status = records
@@ -194,13 +217,20 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            registry_index: registry_log_index,
+                            registry_index,
                         });
+                        log_leafs.insert(
+                            registry_index,
+                            LogLeaf {
+                                log_id: log_id.clone(),
+                                record_id: record_id.clone(),
+                            },
+                        );
                         Ok(())
                     }
                     Err(e) => {
@@ -277,12 +307,15 @@ impl DataStore for MemoryDataStore {
         &self,
         log_id: &LogId,
         record_id: &RecordId,
-        registry_log_index: u64,
+        registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
         let State {
-            packages, records, ..
+            packages,
+            records,
+            log_leafs,
+            ..
         } = &mut *state;
 
         let status = records
@@ -303,13 +336,20 @@ impl DataStore for MemoryDataStore {
                     Ok(_) => {
                         let index = log.entries.len();
                         log.entries.push(Entry {
-                            registry_index: registry_log_index,
+                            registry_index,
                             record_content: record,
                         });
                         *status = RecordStatus::Validated(Record {
                             index,
-                            registry_index: registry_log_index,
+                            registry_index,
                         });
+                        log_leafs.insert(
+                            registry_index,
+                            LogLeaf {
+                                log_id: log_id.clone(),
+                                record_id: record_id.clone(),
+                            },
+                        );
                         Ok(())
                     }
                     Err(e) => {
@@ -389,14 +429,14 @@ impl DataStore for MemoryDataStore {
 
     async fn store_checkpoint(
         &self,
-        checkpoint_id: &AnyHash,
+        _checkpoint_id: &AnyHash,
         ts_checkpoint: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError> {
         let mut state = self.0.write().await;
 
         state
             .checkpoints
-            .insert(checkpoint_id.clone(), ts_checkpoint);
+            .insert(ts_checkpoint.as_ref().checkpoint.log_length, ts_checkpoint);
 
         Ok(())
     }
@@ -412,10 +452,10 @@ impl DataStore for MemoryDataStore {
     async fn get_operator_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<operator::OperatorRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -423,8 +463,8 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
-            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        if !state.checkpoints.contains_key(&registry_log_length) {
+            return Err(DataStoreError::CheckpointNotFound(registry_log_length));
         };
 
         let start_log_idx = match since {
@@ -434,14 +474,16 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx)
-            .take_while(|entry| entry.registry_index < end_registry_idx)
-            .map(|entry| entry.record_content.clone())
+            .take_while(|entry| entry.registry_index < registry_log_length)
+            .map(|entry| PublishedProtoEnvelope {
+                envelope: entry.record_content.clone(),
+                registry_index: entry.registry_index,
+            })
             .take(limit as usize)
             .collect())
     }
@@ -449,10 +491,10 @@ impl DataStore for MemoryDataStore {
     async fn get_package_records(
         &self,
         log_id: &LogId,
-        checkpoint_id: &AnyHash,
+        registry_log_length: RegistryLen,
         since: Option<&RecordId>,
         limit: u16,
-    ) -> Result<Vec<ProtoEnvelope<package::PackageRecord>>, DataStoreError> {
+    ) -> Result<Vec<PublishedProtoEnvelope<package::PackageRecord>>, DataStoreError> {
         let state = self.0.read().await;
 
         let log = state
@@ -460,8 +502,8 @@ impl DataStore for MemoryDataStore {
             .get(log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(log_id.clone()))?;
 
-        let Some(checkpoint) = state.checkpoints.get(checkpoint_id) else {
-            return Err(DataStoreError::CheckpointNotFound(checkpoint_id.clone()));
+        if !state.checkpoints.contains_key(&registry_log_length) {
+            return Err(DataStoreError::CheckpointNotFound(registry_log_length));
         };
 
         let start_log_idx = match since {
@@ -471,14 +513,16 @@ impl DataStore for MemoryDataStore {
             },
             None => 0,
         };
-        let end_registry_idx = checkpoint.as_ref().checkpoint.log_length as u64;
 
         Ok(log
             .entries
             .iter()
             .skip(start_log_idx)
-            .take_while(|entry| entry.registry_index < end_registry_idx)
-            .map(|entry| entry.record_content.clone())
+            .take_while(|entry| entry.registry_index < registry_log_length)
+            .map(|entry| PublishedProtoEnvelope {
+                envelope: entry.record_content.clone(),
+                registry_index: entry.registry_index,
+            })
             .take(limit as usize)
             .collect())
     }
@@ -496,7 +540,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, registry_log_index) = match status {
+        let (status, envelope, registry_index) = match status {
             RecordStatus::Pending(PendingRecord::Operator { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -515,7 +559,7 @@ impl DataStore for MemoryDataStore {
                     .checkpoints
                     .last()
                     .map(|(_, c)| c.as_ref().checkpoint.log_length)
-                    .unwrap_or_default() as u64;
+                    .unwrap_or_default();
 
                 (
                     if r.registry_index < published_length {
@@ -533,7 +577,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            registry_log_index,
+            registry_index,
         })
     }
 
@@ -550,7 +594,7 @@ impl DataStore for MemoryDataStore {
             .get(record_id)
             .ok_or_else(|| DataStoreError::RecordNotFound(record_id.clone()))?;
 
-        let (status, envelope, registry_log_index) = match status {
+        let (status, envelope, registry_index) = match status {
             RecordStatus::Pending(PendingRecord::Package { record, .. }) => {
                 (super::RecordStatus::Pending, record.clone().unwrap(), None)
             }
@@ -569,7 +613,7 @@ impl DataStore for MemoryDataStore {
                     .checkpoints
                     .last()
                     .map(|(_, c)| c.as_ref().checkpoint.log_length)
-                    .unwrap_or_default() as u64;
+                    .unwrap_or_default();
 
                 (
                     if r.registry_index < published_length {
@@ -587,7 +631,7 @@ impl DataStore for MemoryDataStore {
         Ok(super::Record {
             status,
             envelope,
-            registry_log_index,
+            registry_index,
         })
     }
 

@@ -8,7 +8,9 @@ mod proto_envelope;
 pub mod registry;
 mod serde_envelope;
 
-pub use proto_envelope::{ProtoEnvelope, ProtoEnvelopeBody};
+pub use proto_envelope::{
+    ProtoEnvelope, ProtoEnvelopeBody, PublishedProtoEnvelope, PublishedProtoEnvelopeBody,
+};
 pub use semver::{Version, VersionReq};
 pub use serde_envelope::SerdeEnvelope;
 

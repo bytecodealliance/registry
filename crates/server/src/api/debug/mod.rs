@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::Serialize;
 use warg_crypto::{
-    hash::{AnyHash, Hash, Sha256},
+    hash::{AnyHash, Sha256},
     signing::KeyID,
 };
 use warg_protocol::{
@@ -92,11 +92,11 @@ async fn get_package_info(
         .get_latest_checkpoint()
         .await
         .context("get_latest_checkpoint")?;
-    let checkpoint_id = Hash::<Sha256>::of(&checkpoint.as_ref().checkpoint).into();
+    let checkpoint_log_length = checkpoint.as_ref().checkpoint.log_length;
 
     let log_id = LogId::package_log::<Sha256>(&package_id);
     let records = store
-        .get_package_records(&log_id, &checkpoint_id, None, u16::MAX)
+        .get_package_records(&log_id, checkpoint_log_length, None, u16::MAX)
         .await
         .context("get_package_records")?;
 
@@ -105,15 +105,19 @@ async fn get_package_info(
     let records = records
         .into_iter()
         .map(|record| {
-            package_state.validate(&record).context("validate")?;
-            let record_id = RecordId::package_record::<Sha256>(&record);
+            package_state
+                .validate(&record.envelope)
+                .context("validate")?;
+            let record_id = RecordId::package_record::<Sha256>(&record.envelope);
             let timestamp = record
+                .envelope
                 .as_ref()
                 .timestamp
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .context("duration_since")?
                 .as_secs();
             let entries = record
+                .envelope
                 .as_ref()
                 .entries
                 .iter()

@@ -1,3 +1,4 @@
+use super::registry::RegistryIndex;
 use anyhow::Error;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use prost::Message;
@@ -7,6 +8,15 @@ use std::fmt;
 use thiserror::Error;
 use warg_crypto::{hash::AnyHashError, signing, Decode, Signable};
 use warg_protobuf::protocol as protobuf;
+
+/// The ProtoEnvelope with the published registry log index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedProtoEnvelope<Contents> {
+    /// The wrapped ProtoEnvelope
+    pub envelope: ProtoEnvelope<Contents>,
+    /// The published registry log index for the record
+    pub registry_index: RegistryIndex,
+}
 
 /// The envelope struct is used to keep around the original
 /// bytes that the content was serialized into in case
@@ -160,6 +170,54 @@ impl fmt::Debug for ProtoEnvelopeBody {
             .field("content_bytes", &STANDARD.encode(&self.content_bytes))
             .field("key_id", &self.key_id)
             .field("signature", &self.signature)
+            .finish()
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishedProtoEnvelopeBody {
+    /// The ProtoEnvelopeBody flattened
+    #[serde(flatten)]
+    pub envelope: ProtoEnvelopeBody,
+    /// The index of the published record in the registry log
+    pub registry_index: RegistryIndex,
+}
+
+impl<Content> TryFrom<PublishedProtoEnvelopeBody> for PublishedProtoEnvelope<Content>
+where
+    Content: Decode,
+{
+    type Error = Error;
+
+    fn try_from(value: PublishedProtoEnvelopeBody) -> Result<Self, Self::Error> {
+        Ok(PublishedProtoEnvelope {
+            envelope: ProtoEnvelope::<Content>::try_from(value.envelope)?,
+            registry_index: value.registry_index,
+        })
+    }
+}
+
+impl<Content> From<PublishedProtoEnvelope<Content>> for PublishedProtoEnvelopeBody {
+    fn from(value: PublishedProtoEnvelope<Content>) -> Self {
+        PublishedProtoEnvelopeBody {
+            envelope: ProtoEnvelopeBody::from(value.envelope),
+            registry_index: value.registry_index,
+        }
+    }
+}
+
+impl fmt::Debug for PublishedProtoEnvelopeBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PublishedProtoEnvelopeBody")
+            .field(
+                "content_bytes",
+                &STANDARD.encode(&self.envelope.content_bytes),
+            )
+            .field("key_id", &self.envelope.key_id)
+            .field("signature", &self.envelope.signature)
+            .field("registry_index", &self.registry_index)
             .finish()
     }
 }

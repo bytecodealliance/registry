@@ -6,16 +6,16 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, RecordId},
-    ProtoEnvelopeBody,
+    registry::{LogId, RecordId, RegistryLen},
+    PublishedProtoEnvelopeBody,
 };
 
 /// Represents a fetch logs request.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchLogsRequest<'a> {
-    /// The root checkpoint ID hash of the registry.
-    pub checkpoint_id: Cow<'a, AnyHash>,
+    /// The checkpoint log length.
+    pub log_length: RegistryLen,
     /// The limit for the number of operator and package records to fetch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,
@@ -36,10 +36,10 @@ pub struct FetchLogsResponse {
     pub more: bool,
     /// The operator records appended since the last known operator record.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub operator: Vec<ProtoEnvelopeBody>,
+    pub operator: Vec<PublishedProtoEnvelopeBody>,
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: HashMap<LogId, Vec<ProtoEnvelopeBody>>,
+    pub packages: HashMap<LogId, Vec<PublishedProtoEnvelopeBody>>,
 }
 
 /// Represents a fetch API error.
@@ -47,8 +47,8 @@ pub struct FetchLogsResponse {
 #[derive(Debug, Error)]
 pub enum FetchError {
     /// The provided checkpoint was not found.
-    #[error("checkpoint `{0}` was not found")]
-    CheckpointNotFound(AnyHash),
+    #[error("checkpoint log length `{0}` was not found")]
+    CheckpointNotFound(RegistryLen),
     /// The provided log was not found.
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -78,7 +78,7 @@ impl FetchError {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum EntityType {
-    Checkpoint,
+    LogLength,
     Log,
     Record,
 }
@@ -90,6 +90,12 @@ where
     T: Clone + ToOwned,
     <T as ToOwned>::Owned: Serialize + for<'b> Deserialize<'b>,
 {
+    CheckpointNotFound {
+        status: Status<404>,
+        #[serde(rename = "type")]
+        ty: EntityType,
+        id: RegistryLen,
+    },
     NotFound {
         status: Status<404>,
         #[serde(rename = "type")]
@@ -105,10 +111,10 @@ where
 impl Serialize for FetchError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::CheckpointNotFound(checkpoint) => RawError::NotFound {
+            Self::CheckpointNotFound(log_length) => RawError::CheckpointNotFound::<RegistryLen> {
                 status: Status::<404>,
-                ty: EntityType::Checkpoint,
-                id: Cow::Borrowed(checkpoint),
+                ty: EntityType::LogLength,
+                id: *log_length,
             }
             .serialize(serializer),
             Self::LogNotFound(log_id) => RawError::NotFound {
@@ -138,15 +144,8 @@ impl<'de> Deserialize<'de> for FetchError {
         D: serde::Deserializer<'de>,
     {
         match RawError::<String>::deserialize(deserializer)? {
+            RawError::CheckpointNotFound { id, .. } => Ok(Self::CheckpointNotFound(id)),
             RawError::NotFound { status: _, ty, id } => match ty {
-                EntityType::Checkpoint => {
-                    Ok(Self::CheckpointNotFound(id.parse().map_err(|_| {
-                        serde::de::Error::invalid_value(
-                            Unexpected::Str(&id),
-                            &"a valid checkpoint hash",
-                        )
-                    })?))
-                }
                 EntityType::Log => Ok(Self::LogNotFound(
                     id.parse::<AnyHash>()
                         .map_err(|_| {
@@ -163,6 +162,10 @@ impl<'de> Deserialize<'de> for FetchError {
                             )
                         })?
                         .into(),
+                )),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Str(&id),
+                    &"a valid log length",
                 )),
             },
             RawError::Message { status, message } => Ok(Self::Message {

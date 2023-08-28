@@ -62,26 +62,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  type:
-                    type: string
-                    description: The type of entity that was not found.
-                    enum: [checkpoint, log, record]
-                    example: checkpoint
-                  id:
-                    type: string
-                    description: The identifier of the entity that was not found.
-                    example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+                oneOf:
+                  - "$ref": "#/components/schemas/FetchLogsIDNotFoundError"
+                  - "$ref": "#/components/schemas/FetchLogsLogLengthNotFoundError"
         default:
           description: An error occurred when processing the request.
           content:
@@ -339,8 +322,6 @@ paths:
         - proof
       description: |
         Proves the consistency of the registry between two specified checkpoints.
-
-        TODO: document the consistency proof bundle format.
       requestBody:
         content:
           application/json:
@@ -372,12 +353,11 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [checkpoint]
-                    example: checkpoint
+                    enum: [logLength]
+                    example: logLength
                   id:
-                    "$ref": "#/components/schemas/AnyHash"
-                    description: |
-                      The identifier of the entity that was not found.
+                    type: integer
+                    description: The identifier of the entity that was not found. 
         "422":
           description: The proof bundle could not be generated.
           content:
@@ -404,10 +384,6 @@ paths:
         - proof
       description: |
         Proves that the given log leafs are present in the given registry checkpoint.
-
-        TODO: document the log inclusion proof bundle format.
-
-        TODO: document the map inclusion proof bundle format.
       requestBody:
         content:
           application/json:
@@ -439,14 +415,11 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [checkpoint, leaf]
-                    example: checkpoint
+                    enum: [logLength, leaf]
+                    example: logLength
                   id:
-                    "$ref": "#/components/schemas/AnyHash"
-                    description: |
-                      The identifier of the entity that was not found.
-
-                      For leafs, the format is `<logId>|<recordId>`.
+                    type: integer
+                    description: The identifier of the entity that was not found.
         "422":
           description: The proof bundle could not be generated.
           content:
@@ -496,11 +469,13 @@ components:
       description: A request to fetch logs from the registry.
       additionalProperties: false
       required:
-        - checkpointId
+        - logLength
       properties:
-        checkpointId:
-          $ref: "#/components/schemas/AnyHash"
-          description: The registry checkpoint ID hash to fetch from.
+        logLength:
+          type: integer
+          description: The registry checkpoint log length to fetch from.
+          example: 101
+          minimum: 1
         limit:
           type: integer
           description: The limit of operator and packages records to return for the fetch request.
@@ -545,7 +520,7 @@ components:
           description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
-            $ref: "#/components/schemas/EnvelopeBody"
+            $ref: "#/components/schemas/PublishedEnvelopeBody"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -555,19 +530,22 @@ components:
               description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
-                $ref: "#/components/schemas/EnvelopeBody"
+                $ref: "#/components/schemas/PublishedEnvelopeBody"
           example:
             ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                registryIndex: 101
               - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                registryIndex: 305
             ? "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
+                registryIndex: 732
     PublishPackageRecordRequest:
       type: object
       description: A request to publish a record to a package log.
@@ -650,29 +628,18 @@ components:
       description: A request to prove the inclusion of log leafs in a checkpoint.
       additionalProperties: false
       required:
-        - checkpoint
+        - logLength
         - leafs
       properties:
-        checkpoint:
-          $ref: "#/components/schemas/Checkpoint"
-          description: The checkpoint to prove the inclusion for.
+        logLength:
+          type: integer
+          description: The checkpoint log length to prove the inclusion for.
         leafs:
           type: array
           maxItems: 1000
-          description: The log leafs to prove the inclusion for.
+          description: The log leaf registry log index to prove the inclusion for.
           items:
-            type: object
-            description: A log leaf.
-            required:
-              - logId
-              - recordId
-            properties:
-              logId:
-                $ref: "#/components/schemas/AnyHash"
-                description: The log identifier.
-              recordId:
-                $ref: "#/components/schemas/AnyHash"
-                description: The record identifier.
+            type: integer
     ProveInclusionResponse:
       type: object
       description: A response containing the inclusion proof bundle.
@@ -739,7 +706,7 @@ components:
       description: A record that has been published to the log.
       required:
         - state
-        - checkpoint
+        - registryIndex
         - record
       properties:
         state:
@@ -747,8 +714,8 @@ components:
           description: The state of the package record.
           enum: [published]
           example: published
-        registryLogIndex:
-          type: number
+        registryIndex:
+          type: integer
           description: The index of the record in the registry log.
         record:
           "$ref": "#/components/schemas/EnvelopeBody"
@@ -834,6 +801,19 @@ components:
               format: byte
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
+        - $ref: "#/components/schemas/Signature"
+    PublishedEnvelopeBody:
+      description: A signed envelope body with the published registry log index.
+      allOf:
+        - type: object
+          required:
+            - registryIndex
+          properties:
+            registryIndex:
+              type: integer
+              description: The index of the published record in the registry log.
+              example: 42
+        - $ref: "#/components/schemas/EnvelopeBody"
         - $ref: "#/components/schemas/Signature"
     Signature:
       type: object
@@ -990,3 +970,45 @@ components:
           type: string
           description: The failure error message.
           example: bundle must contain proofs for the same root
+    FetchLogsIDNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [log, record]
+            example: log
+          id:
+            type: string
+            description: The identifier of the entity that was not found.
+            example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+    FetchLogsLogLengthNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [logLength]
+            example: log
+          id:
+            type: integer
+            description: The log length that was not found.
+            example: 1001
