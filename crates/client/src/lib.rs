@@ -114,6 +114,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             id = info.id,
             new = if initializing { "new " } else { "" }
         );
+        tracing::debug!("entries: {:?}", info.entries);
 
         let mut package = self
             .registry
