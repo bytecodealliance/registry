@@ -116,10 +116,7 @@ pub trait DataStore: Send + Sync {
     /// This is an expensive operation and should only be performed on startup.
     async fn get_all_validated_records(
         &self,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>,
-        DataStoreError,
-    >;
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>;
 
     /// Looks up the log_id and record_id from the registry log index.  
     async fn get_log_leafs_with_registry_index(

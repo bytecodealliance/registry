@@ -97,11 +97,12 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
         let proofs = entries
             .iter()
             .map(|index| {
-                let node = state
-                    .leaf_index
-                    .get(index)
-                    .ok_or_else(|| CoreServiceError::LeafNotFound(*index))?;
-                Ok(state.log.prove_inclusion(*node, log_length as usize))
+                let node = if *index < state.leaf_index.len() as RegistryIndex {
+                    state.leaf_index[*index as usize]
+                } else {
+                    return Err(CoreServiceError::LeafNotFound(*index));
+                };
+                Ok(state.log.prove_inclusion(node, log_length as usize))
             })
             .collect::<Result<Vec<_>, CoreServiceError>>()?;
 
@@ -205,8 +206,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         let state = self.state.get_mut();
         while let Some(entry) = published.next().await {
-            let (registry_index, log_leaf) = entry?;
-            state.push_entry(registry_index, log_leaf);
+            state.push_entry(entry?);
             if let Some(stored_checkpoint) =
                 checkpoints_by_len.get(&(state.log.length() as RegistryLen))
             {
@@ -246,8 +246,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             .await?;
 
         // Update state with init record
-        let entry = LogLeaf { log_id, record_id };
-        state.push_entry(0, entry.clone());
+        state.push_entry(LogLeaf { log_id, record_id });
 
         // "zero" checkpoint to be updated
         let mut checkpoint = Checkpoint {
@@ -319,7 +318,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             return;
         }
 
-        state.push_entry(registry_index as RegistryIndex, entry.clone());
+        state.push_entry(entry.clone());
     }
 
     // Store a checkpoint including the given new entries
@@ -354,7 +353,7 @@ struct State<Digest: SupportedDigest> {
     // The verifiable log of all package log entries
     log: VecLog<Digest, LogLeaf>,
     // Index log tree nodes by registry log index of the record
-    leaf_index: HashMap<RegistryIndex, Node>,
+    leaf_index: Vec<Node>,
 
     // The verifiable map of package logs' latest entries (log_id -> record_id)
     map: VerifiableMap<Digest>,
@@ -363,16 +362,12 @@ struct State<Digest: SupportedDigest> {
 }
 
 impl<Digest: SupportedDigest> State<Digest> {
-    fn push_entry(&mut self, registry_index: RegistryIndex, entry: LogLeaf) {
-        let node = self.log.push(&entry);
-        self.leaf_index.insert(registry_index, node);
+    fn push_entry(&mut self, log_leaf: LogLeaf) {
+        let node = self.log.push(&log_leaf);
+        self.leaf_index.push(node);
 
-        self.map = self.map.insert(
-            entry.log_id.clone(),
-            MapLeaf {
-                record_id: entry.record_id.clone(),
-            },
-        );
+        let LogLeaf { log_id, record_id } = log_leaf;
+        self.map = self.map.insert(log_id, MapLeaf { record_id });
     }
 
     fn checkpoint(&mut self) -> Checkpoint {

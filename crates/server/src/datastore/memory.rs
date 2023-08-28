@@ -116,10 +116,8 @@ impl DataStore for MemoryDataStore {
 
     async fn get_all_validated_records(
         &self,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>,
-        DataStoreError,
-    > {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
+    {
         Ok(Box::pin(futures::stream::empty()))
     }
 

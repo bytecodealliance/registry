@@ -423,10 +423,8 @@ impl DataStore for PostgresDataStore {
 
     async fn get_all_validated_records(
         &self,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<(RegistryIndex, LogLeaf), DataStoreError>> + Send>>,
-        DataStoreError,
-    > {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<LogLeaf, DataStoreError>> + Send>>, DataStoreError>
+    {
         // The returned future will keep the connection from the pool until dropped
         let mut conn = self.pool.get().await?;
 
@@ -437,26 +435,16 @@ impl DataStore for PostgresDataStore {
         Ok(Box::pin(
             schema::records::table
                 .inner_join(schema::logs::table)
-                .select((
-                    schema::logs::log_id,
-                    schema::records::record_id,
-                    schema::records::registry_log_index,
-                ))
+                .select((schema::logs::log_id, schema::records::record_id))
                 .filter(schema::records::status.eq(RecordStatus::Validated))
                 .order(schema::records::registry_log_index.asc())
-                .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>, Option<i64>)>(&mut conn)
+                .load_stream::<(ParsedText<AnyHash>, ParsedText<AnyHash>)>(&mut conn)
                 .await?
                 .map(|r| {
-                    r.map_err(Into::into)
-                        .map(|(log_id, record_id, registry_index)| {
-                            (
-                                registry_index.unwrap() as RegistryIndex,
-                                LogLeaf {
-                                    log_id: log_id.0.into(),
-                                    record_id: record_id.0.into(),
-                                },
-                            )
-                        })
+                    r.map_err(Into::into).map(|(log_id, record_id)| LogLeaf {
+                        log_id: log_id.0.into(),
+                        record_id: record_id.0.into(),
+                    })
                 }),
         ))
     }
