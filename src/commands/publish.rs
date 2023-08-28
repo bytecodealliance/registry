@@ -2,6 +2,7 @@ use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
+use itertools::Itertools;
 use std::{future::Future, path::PathBuf, time::Duration};
 use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
@@ -9,8 +10,12 @@ use warg_client::{
     storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
     FileSystemClient,
 };
-use warg_crypto::hash::AnyHash;
+use warg_crypto::{
+    hash::AnyHash,
+    signing::{KeyID, PublicKey},
+};
 use warg_protocol::{
+    package::Permission,
     registry::{PackageId, RecordId},
     Version,
 };
@@ -60,6 +65,10 @@ pub enum PublishCommand {
     Release(PublishReleaseCommand),
     /// Yank a package version.
     Yank(PublishYankCommand),
+    /// Grant permissions for the package.
+    Grant(PublishGrantCommand),
+    /// Revoke permissions for the package.
+    Revoke(PublishRevokeCommand),
     /// Start a new pending publish.
     Start(PublishStartCommand),
     /// List the records in a pending publish.
@@ -79,6 +88,8 @@ impl PublishCommand {
             Self::Init(cmd) => cmd.exec().await,
             Self::Release(cmd) => cmd.exec().await,
             Self::Yank(cmd) => cmd.exec().await,
+            Self::Grant(cmd) => cmd.exec().await,
+            Self::Revoke(cmd) => cmd.exec().await,
             Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
@@ -308,6 +319,168 @@ impl PublishYankCommand {
     }
 }
 
+/// Publish a package to a warg registry.
+#[derive(Args)]
+#[clap(disable_version_flag = true)]
+pub struct PublishGrantCommand {
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
+    /// The identifier of the package.
+    #[clap(long, short, value_name = "PACKAGE")]
+    pub id: PackageId,
+    /// The public key to grant permissions to.
+    #[clap(value_name = "PUBLIC_KEY")]
+    pub public_key: PublicKey,
+    /// The permission(s) to grant.
+    #[clap(
+        long = "permission",
+        value_delimiter = ',',
+        default_value = "release,yank"
+    )]
+    pub permissions: Vec<Permission>,
+    /// Whether to wait for the publish to complete.
+    #[clap(long)]
+    pub no_wait: bool,
+}
+
+impl PublishGrantCommand {
+    /// Executes the command.
+    pub async fn exec(self) -> Result<()> {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match enqueue(&client, &self.id, |_| async {
+            Ok(PublishEntry::Grant {
+                key: self.public_key.clone(),
+                permissions: self.permissions.clone(),
+            })
+        })
+        .await?
+        {
+            Some(entry) => {
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client
+                    .publish_with_info(
+                        &signing_key,
+                        PublishInfo {
+                            id: self.id.clone(),
+                            head: None,
+                            entries: vec![entry],
+                        },
+                    )
+                    .await?;
+
+                if self.no_wait {
+                    println!("submitted record `{record_id}` for publishing");
+                } else {
+                    client
+                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .await?;
+
+                    println!(
+                        "granted ({permissions_str}) to key ID `{key_id}` for package `{id}`",
+                        permissions_str = self.permissions.iter().join(","),
+                        key_id = self.public_key.fingerprint(),
+                        id = self.id
+                    );
+                }
+            }
+            None => {
+                println!(
+                    "added grant of ({permissions_str}) to key ID `{key_id}` for package `{id}` to pending publish",
+                    permissions_str = self.permissions.iter().join(","),
+                    key_id = self.public_key.fingerprint(),
+                    id = self.id
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Publish a package to a warg registry.
+#[derive(Args)]
+#[clap(disable_version_flag = true)]
+pub struct PublishRevokeCommand {
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
+    /// The identifier of the package.
+    #[clap(long, short, value_name = "PACKAGE")]
+    pub id: PackageId,
+    /// The key ID to revoke permissions from.
+    #[clap(value_name = "KEY_ID")]
+    pub key: KeyID,
+    /// The permission(s) to revoke.
+    #[clap(
+        long = "permission",
+        value_delimiter = ',',
+        default_value = "release,yank"
+    )]
+    pub permissions: Vec<Permission>,
+    /// Whether to wait for the publish to complete.
+    #[clap(long)]
+    pub no_wait: bool,
+}
+
+impl PublishRevokeCommand {
+    /// Executes the command.
+    pub async fn exec(self) -> Result<()> {
+        let config = self.common.read_config()?;
+        let client = self.common.create_client(&config)?;
+
+        match enqueue(&client, &self.id, |_| async {
+            Ok(PublishEntry::Revoke {
+                key_id: self.key.clone(),
+                permissions: self.permissions.clone(),
+            })
+        })
+        .await?
+        {
+            Some(entry) => {
+                let signing_key = self.common.signing_key(client.url())?;
+                let record_id = client
+                    .publish_with_info(
+                        &signing_key,
+                        PublishInfo {
+                            id: self.id.clone(),
+                            head: None,
+                            entries: vec![entry],
+                        },
+                    )
+                    .await?;
+
+                if self.no_wait {
+                    println!("submitted record `{record_id}` for publishing");
+                } else {
+                    client
+                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .await?;
+
+                    println!(
+                        "revoked ({permissions_str}) from key ID `{key_id}` for package `{id}`",
+                        permissions_str = self.permissions.iter().join(","),
+                        key_id = self.key,
+                        id = self.id
+                    );
+                }
+            }
+            None => {
+                println!(
+                    "added revoke of ({permissions_str}) from key ID `{key_id}` for package `{id}` to pending publish",
+                    permissions_str = self.permissions.iter().join(","),
+                    key_id = self.key,
+                    id = self.id
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Start a new pending publish.
 #[derive(Args)]
 #[clap(disable_version_flag = true)]
@@ -380,6 +553,18 @@ impl PublishListCommand {
                         PublishEntry::Yank { version } => {
                             println!("yank {version}")
                         }
+                        PublishEntry::Grant { key, permissions } => println!(
+                            "grant ({permissions_str}) to `{key_id}`",
+                            permissions_str = permissions.iter().join(","),
+                            key_id = key.fingerprint(),
+                        ),
+                        PublishEntry::Revoke {
+                            key_id,
+                            permissions,
+                        } => println!(
+                            "revoke ({permissions_str}) from `{key_id}`",
+                            permissions_str = permissions.iter().join(","),
+                        ),
                     }
                 }
             }
@@ -464,6 +649,20 @@ impl PublishSubmitCommand {
                             PublishEntry::Yank { version } => {
                                 println!("yanked version {version} of package `{id}`")
                             }
+                            PublishEntry::Grant { key, permissions } => {
+                                println!(
+                                    "granted ({permissions_str}) to `{key_id}`",
+                                    permissions_str = permissions.iter().join(","),
+                                    key_id = key.fingerprint(),
+                                )
+                            }
+                            PublishEntry::Revoke {
+                                key_id,
+                                permissions,
+                            } => println!(
+                                "revoked ({permissions_str}) from `{key_id}`",
+                                permissions_str = permissions.iter().join(","),
+                            ),
                         }
                     }
                 }

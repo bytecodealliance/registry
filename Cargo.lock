@@ -4123,6 +4123,7 @@ dependencies = [
  "clap",
  "dialoguer",
  "futures",
+ "itertools 0.11.0",
  "keyring",
  "p256",
  "rand_core",

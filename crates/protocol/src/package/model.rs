@@ -55,13 +55,13 @@ impl fmt::Display for Permission {
 }
 
 impl FromStr for Permission {
-    type Err = ();
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "release" => Ok(Permission::Release),
             "yank" => Ok(Permission::Yank),
-            _ => Err(()),
+            _ => Err(format!("invalid permission {s:?}")),
         }
     }
 }

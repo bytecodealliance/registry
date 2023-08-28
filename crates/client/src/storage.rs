@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, pin::Pin, time::SystemTime};
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
-    signing,
+    signing::{self, KeyID, PublicKey},
 };
 use warg_protocol::{
     operator,
-    package::{self, PackageRecord, PACKAGE_RECORD_VERSION},
+    package::{self, PackageRecord, Permission, PACKAGE_RECORD_VERSION},
     registry::{Checkpoint, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
@@ -161,6 +161,20 @@ pub enum PublishEntry {
         /// The version of the release being yanked.
         version: Version,
     },
+    /// A key is being granted permission(s).
+    Grant {
+        /// The public key being granted to.
+        key: PublicKey,
+        /// The permission(s) being granted.
+        permissions: Vec<Permission>,
+    },
+    /// A key's permission(s) are being revoked.
+    Revoke {
+        /// The key ID being revoked from.
+        key_id: KeyID,
+        /// The permission(s) being revoked.
+        permissions: Vec<Permission>,
+    },
 }
 
 /// Represents information about a package publish.
@@ -203,6 +217,16 @@ impl PublishInfo {
                 PublishEntry::Yank { version } => {
                     entries.push(package::PackageEntry::Yank { version })
                 }
+                PublishEntry::Grant { key, permissions } => {
+                    entries.push(package::PackageEntry::GrantFlat { key, permissions })
+                }
+                PublishEntry::Revoke {
+                    key_id,
+                    permissions,
+                } => entries.push(package::PackageEntry::RevokeFlat {
+                    key_id,
+                    permissions,
+                }),
             }
         }
 
