@@ -334,7 +334,7 @@ impl LogState {
     ) -> Result<(), ValidationError> {
         for entry in entries {
             if let Some(permission) = entry.required_permission() {
-                self.check_key_permission(signer_key_id, permission)?;
+                self.check_key_permissions(signer_key_id, &[permission])?;
             }
 
             // Process an init entry specially
@@ -354,12 +354,13 @@ impl LogState {
 
             match entry {
                 model::PackageEntry::Init { .. } => unreachable!(), // handled above
-                model::PackageEntry::GrantFlat { key, permission } => {
-                    self.validate_grant_entry(signer_key_id, key, *permission)?
+                model::PackageEntry::GrantFlat { key, permissions } => {
+                    self.validate_grant_entry(signer_key_id, key, permissions)?
                 }
-                model::PackageEntry::RevokeFlat { key_id, permission } => {
-                    self.validate_revoke_entry(signer_key_id, key_id, *permission)?
-                }
+                model::PackageEntry::RevokeFlat {
+                    key_id,
+                    permissions,
+                } => self.validate_revoke_entry(signer_key_id, key_id, permissions)?,
                 model::PackageEntry::Release { version, content } => self.validate_release_entry(
                     record_id,
                     signer_key_id,
@@ -410,17 +411,17 @@ impl LogState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key: &signing::PublicKey,
-        permission: model::Permission,
+        permissions: &[model::Permission],
     ) -> Result<(), ValidationError> {
         // Check that the current key has the permission they're trying to grant
-        self.check_key_permission(signer_key_id, permission)?;
+        self.check_key_permissions(signer_key_id, permissions)?;
 
         let grant_key_id = key.fingerprint();
         self.keys.insert(grant_key_id.clone(), key.clone());
         self.permissions
             .entry(grant_key_id)
             .or_default()
-            .insert(permission);
+            .extend(permissions);
 
         Ok(())
     }
@@ -429,22 +430,25 @@ impl LogState {
         &mut self,
         signer_key_id: &signing::KeyID,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permissions: &[model::Permission],
     ) -> Result<(), ValidationError> {
         // Check that the current key has the permission they're trying to revoke
-        self.check_key_permission(signer_key_id, permission)?;
+        self.check_key_permissions(signer_key_id, permissions)?;
 
-        if let Some(set) = self.permissions.get_mut(key_id) {
-            if set.remove(&permission) {
-                return Ok(());
+        for permission in permissions {
+            if !self
+                .permissions
+                .get_mut(key_id)
+                .map(|set| set.remove(permission))
+                .unwrap_or(false)
+            {
+                return Err(ValidationError::PermissionNotFoundToRevoke {
+                    permission: *permission,
+                    key_id: key_id.clone(),
+                });
             }
         }
-
-        // Permission not found to remove
-        Err(ValidationError::PermissionNotFoundToRevoke {
-            permission,
-            key_id: key_id.clone(),
-        })
+        Ok(())
     }
 
     fn validate_release_entry(
@@ -503,22 +507,25 @@ impl LogState {
         }
     }
 
-    fn check_key_permission(
+    fn check_key_permissions(
         &self,
         key_id: &signing::KeyID,
-        permission: model::Permission,
+        permissions: &[model::Permission],
     ) -> Result<(), ValidationError> {
-        if let Some(available_permissions) = self.permissions.get(key_id) {
-            if available_permissions.contains(&permission) {
-                return Ok(());
+        for permission in permissions {
+            if !self
+                .permissions
+                .get(key_id)
+                .map(|p| p.contains(permission))
+                .unwrap_or(false)
+            {
+                return Err(ValidationError::UnauthorizedAction {
+                    key_id: key_id.clone(),
+                    needed_permission: *permission,
+                });
             }
         }
-
-        // Needed permission not found
-        Err(ValidationError::UnauthorizedAction {
-            key_id: key_id.clone(),
-            needed_permission: permission,
-        })
+        Ok(())
     }
 
     fn snapshot(&self) -> Snapshot {
@@ -642,7 +649,7 @@ mod tests {
                 },
                 model::PackageEntry::GrantFlat {
                     key: bob_pub.clone(),
-                    permission: model::Permission::Release,
+                    permissions: model::Permission::all().into(),
                 },
             ],
         };
@@ -702,7 +709,7 @@ mod tests {
             entries: vec![
                 model::PackageEntry::RevokeFlat {
                     key_id: bob_id.clone(),
-                    permission: model::Permission::Release,
+                    permissions: model::Permission::all().into(),
                 },
                 model::PackageEntry::Yank {
                     version: Version::new(1, 1, 0),
@@ -809,12 +816,12 @@ mod tests {
                 // This entry is valid
                 model::PackageEntry::GrantFlat {
                     key: bob_pub,
-                    permission: model::Permission::Release,
+                    permissions: vec![model::Permission::Release],
                 },
                 // This entry is not valid
                 model::PackageEntry::RevokeFlat {
                     key_id: "not-valid".to_string().into(),
-                    permission: model::Permission::Release,
+                    permissions: vec![model::Permission::Release],
                 },
             ],
         };

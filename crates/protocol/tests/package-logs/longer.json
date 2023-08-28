@@ -14,7 +14,7 @@
                 {
                     "grantFlat": {
                         "key": "ecdsa-p256:A5qc6uBi070EBb4GihGzpx6Cm5+oZnv4dWpBhhuZVagu",
-                        "permission": "PACKAGE_PERMISSION_RELEASE"
+                        "permissions": ["PACKAGE_PERMISSION_RELEASE"]
                     }
                 }
             ]
@@ -44,7 +44,7 @@
                 {
                     "revokeFlat": {
                         "key_id": "sha256:8ed824821ce75c381458f8097996ab77780550ba7fb9c240e4799bb781941abb",
-                        "permission": "PACKAGE_PERMISSION_RELEASE"
+                        "permissions": ["PACKAGE_PERMISSION_RELEASE"]
                     }
                 },
                 {

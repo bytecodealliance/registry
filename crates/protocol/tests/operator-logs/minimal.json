@@ -15,7 +15,7 @@
                 {
                     "grantFlat": {
                         "key": "ecdsa-p256:A4yBQt9Im8xnO9Sr9PT7OrOUQP8Olijcq1dPwtdTpigm",
-                        "permission": "OPERATOR_PERMISSION_COMMIT"
+                        "permissions": ["OPERATOR_PERMISSION_COMMIT"]
                     }
                 }
             ]

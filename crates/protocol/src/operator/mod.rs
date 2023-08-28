@@ -69,11 +69,19 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
             },
             Contents::GrantFlat(grant_flat) => model::OperatorEntry::GrantFlat {
                 key: grant_flat.key.parse()?,
-                permission: grant_flat.permission.try_into()?,
+                permissions: grant_flat
+                    .permissions
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, _>>()?,
             },
             Contents::RevokeFlat(revoke_flat) => model::OperatorEntry::RevokeFlat {
                 key_id: revoke_flat.key_id.into(),
-                permission: revoke_flat.permission.try_into()?,
+                permissions: revoke_flat
+                    .permissions
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, _>>()?,
             },
         };
         Ok(output)
@@ -140,18 +148,19 @@ impl<'a> From<&'a model::OperatorEntry> for protobuf::OperatorEntry {
                 key: key.to_string(),
                 hash_algorithm: hash_algorithm.to_string(),
             }),
-            model::OperatorEntry::GrantFlat { key, permission } => {
+            model::OperatorEntry::GrantFlat { key, permissions } => {
                 Contents::GrantFlat(protobuf::OperatorGrantFlat {
                     key: key.to_string(),
-                    permission: permission.into(),
+                    permissions: permissions.iter().map(Into::into).collect(),
                 })
             }
-            model::OperatorEntry::RevokeFlat { key_id, permission } => {
-                Contents::RevokeFlat(protobuf::OperatorRevokeFlat {
-                    key_id: key_id.to_string(),
-                    permission: permission.into(),
-                })
-            }
+            model::OperatorEntry::RevokeFlat {
+                key_id,
+                permissions,
+            } => Contents::RevokeFlat(protobuf::OperatorRevokeFlat {
+                key_id: key_id.to_string(),
+                permissions: permissions.iter().map(Into::into).collect(),
+            }),
         };
         let contents = Some(contents);
         protobuf::OperatorEntry { contents }
@@ -193,11 +202,11 @@ mod tests {
                 },
                 model::OperatorEntry::GrantFlat {
                     key: bob_pub.clone(),
-                    permission: model::Permission::Commit,
+                    permissions: vec![model::Permission::Commit],
                 },
                 model::OperatorEntry::RevokeFlat {
                     key_id: bob_pub.fingerprint(),
-                    permission: model::Permission::Commit,
+                    permissions: vec![model::Permission::Commit],
                 },
             ],
         };
