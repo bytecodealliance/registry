@@ -89,13 +89,23 @@ async fn deserialize<T: DeserializeOwned>(response: Response) -> Result<T, Clien
     let status = response.status();
     match response.headers().get("content-type") {
         Some(content_type) if content_type == "application/json" => {
-            match response.json::<T>().await {
-                Ok(e) => Ok(e),
-                Err(e) => Err(ClientError::UnexpectedResponse {
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| ClientError::UnexpectedResponse {
+                    status,
+                    message: format!("failed to read response: {e}"),
+                })?;
+            serde_json::from_slice(&bytes).map_err(|e| {
+                tracing::debug!(
+                    "Unexpected response body: {}",
+                    String::from_utf8_lossy(&bytes)
+                );
+                ClientError::UnexpectedResponse {
                     status,
                     message: format!("failed to deserialize JSON response: {e}"),
-                }),
-            }
+                }
+            })
         }
         Some(ty) => Err(ClientError::UnexpectedResponse {
             status,
