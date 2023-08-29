@@ -133,6 +133,25 @@ Here the records created from initializing the package and releasing version
 
 Use `warg publish abort` to abort a pending publish operation.
 
+### Managing package permissions
+
+> Note: The package permissions system is a work in progress.
+
+You can grant permissions to another public key with the `warg publish grant` subcommand:
+
+```
+warg publish grant --id example:hello ecdsa-p256:ABC...
+```
+
+By default, both `publish` and `yank` permissions are granted. This can be modified with the `--permission` flag.
+
+Similarly, permissions may be revoked via `warg publish revoke`. Note that
+keys are identified by ID (fingerprint) for revocation:
+
+```
+warg publish revoke --id example:hello sha256:abc...
+```
+
 ### Running a package
 
 For demonstration purposes, the `run` command in `warg` will download and 
