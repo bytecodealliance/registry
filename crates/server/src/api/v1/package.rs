@@ -207,7 +207,7 @@ async fn publish_record(
         .map_err(PackageApiError::bad_request)?;
 
     // Specifying content sources is not allowed in this implementation
-    if !body.content_sources.is_empty() {
+    if body.content_sources.is_some_and(|m| !m.is_empty()) {
         return Err(PackageApiError::unsupported(
             "specifying content sources is not supported",
         ));
