@@ -52,7 +52,8 @@ pub struct PublishRecordRequest<'a> {
     /// The complete set of content sources for the record.
     ///
     /// A registry may not support specifying content sources directly.
-    pub content_sources: Option<HashMap<AnyHash, Vec<ContentSource>>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
 }
 
 /// Represents a package record API entity in a registry.
