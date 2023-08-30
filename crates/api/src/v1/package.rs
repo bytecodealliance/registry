@@ -43,7 +43,7 @@ pub struct MissingContent {
 
 /// Represents a request to publish a record to a package log.
 #[derive(Serialize, Deserialize)]
-#[serde(rename = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
     /// The id of the package being published.
     pub id: Cow<'a, PackageId>,
