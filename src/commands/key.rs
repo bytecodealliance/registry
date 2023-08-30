@@ -21,9 +21,9 @@ impl KeyCommand {
     pub async fn exec(self) -> Result<()> {
         match self.command {
             KeySubcommand::New(cmd) => cmd.exec().await,
+            KeySubcommand::Info(cmd) => cmd.exec().await,
             KeySubcommand::Set(cmd) => cmd.exec().await,
             KeySubcommand::Delete(cmd) => cmd.exec().await,
-            KeySubcommand::Id(cmd) => cmd.exec().await,
         }
     }
 }
@@ -33,8 +33,8 @@ impl KeyCommand {
 pub enum KeySubcommand {
     /// Creates a new signing key for a registry in the local keyring.
     New(KeyNewCommand),
-    /// Shows the ID of the signing key for a registry in the local keyring.
-    Id(KeyIdCommand),
+    /// Shows information about the signing key for a registry in the local keyring.
+    Info(KeyInfoCommand),
     /// Sets the signing key for a registry in the local keyring.
     Set(KeySetCommand),
     /// Deletes the signing key for a registry from the local keyring.
@@ -118,18 +118,20 @@ impl KeyNewCommand {
     }
 }
 
-/// Shows the ID of the signing key for a registry in the local keyring.
+/// Shows information about the signing key for a registry in the local keyring.
 #[derive(Args)]
-pub struct KeyIdCommand {
+pub struct KeyInfoCommand {
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
 }
 
-impl KeyIdCommand {
+impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let private_key = self.keyring_entry.get_key()?;
-        println!("{}", private_key.public_key().fingerprint());
+        let public_key = private_key.public_key();
+        println!("Key ID: {}", public_key.fingerprint());
+        println!("Public Key: {public_key}");
         Ok(())
     }
 }

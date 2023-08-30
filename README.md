@@ -143,6 +143,8 @@ You can grant permissions to another public key with the `warg publish grant` su
 warg publish grant --id example:hello ecdsa-p256:ABC...
 ```
 
+> You can get your own public key with the `warg key info` subcommand.
+
 By default, both `publish` and `yank` permissions are granted. This can be modified with the `--permission` flag.
 
 Similarly, permissions may be revoked via `warg publish revoke`. Note that
