@@ -52,6 +52,7 @@ pub struct PublishRecordRequest<'a> {
     /// The complete set of content sources for the record.
     ///
     /// A registry may not support specifying content sources directly.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
 }
 
