@@ -36,6 +36,8 @@ diesel_migrations = { workspace = true, optional = true }
 diesel-derive-enum = { workspace = true, optional = true, features = ["postgres"] }
 serde_json = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
+reqwest.workspace = true
+wasm-deps = { path = "../../../mine/wasm-tools/crates/wasm-deps" }
 
 [features]
 default = []

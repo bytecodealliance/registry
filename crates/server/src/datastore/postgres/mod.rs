@@ -1,8 +1,9 @@
 use self::models::{
-    CheckpointData, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText, RecordContent,
-    RecordStatus, TextRef,
+    CheckpointData, NewCheckpoint, NewContent, NewDependency, NewLog, NewRecord, ParsedText,
+    RecordContent, RecordStatus, TextRef,
 };
 use super::{DataStore, DataStoreError, Record};
+use crate::api::v1::package::Dependency;
 use anyhow::{anyhow, Result};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
@@ -553,6 +554,75 @@ impl DataStore for PostgresDataStore {
         }
     }
 
+    async fn get_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<Vec<Dependency>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        let dependencies: Vec<Dependency> = schema::dependencies::table
+            .select((
+                schema::dependencies::name,
+                schema::dependencies::kind,
+                schema::dependencies::version,
+                schema::dependencies::location,
+                schema::dependencies::integrity,
+            ))
+            .filter(
+                schema::dependencies::log_id
+                    .eq(TextRef(log_id))
+                    .and(schema::dependencies::record_id.eq(TextRef(record_id))),
+            )
+            .load::<(
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            )>(&mut conn)
+            .await?
+            .into_iter()
+            .map(|(name, kind, version, location, integrity)| Dependency {
+                log_id: log_id.clone(),
+                record_id: record_id.clone(),
+                name,
+                kind,
+                version: version.map(|v| v).unwrap(),
+                location: location.map(|l| l).unwrap(),
+                integrity: integrity.map(|i| i).unwrap(),
+            })
+            .collect();
+        Ok(dependencies)
+    }
+
+    async fn store_dependencies(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        dependencies: Vec<Dependency>,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        diesel::insert_into(schema::dependencies::table)
+            .values(
+                dependencies
+                    .iter()
+                    .map(|dep| NewDependency {
+                        log_id: TextRef(&dep.log_id),
+                        record_id: TextRef(&dep.record_id),
+                        name: &dep.name,
+                        kind: &dep.kind,
+                        version: &dep.version,
+                        location: &dep.location,
+                        integrity: &dep.integrity,
+                    })
+                    .collect::<Vec<NewDependency>>(),
+            )
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        Ok(())
+    }
+
     async fn store_package_record(
         &self,
         log_id: &LogId,
@@ -560,6 +630,7 @@ impl DataStore for PostgresDataStore {
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
+        // dependencies: Vec<Dependency>
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         insert_record::<package::LogState>(

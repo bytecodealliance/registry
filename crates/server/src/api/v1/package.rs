@@ -31,6 +31,8 @@ use warg_protocol::{
     registry::{LogId, RecordId},
     ProtoEnvelope, Record as _,
 };
+use wasm_deps::DepsParser;
+use wasmparser::ComponentImportName;
 
 #[derive(Clone)]
 pub struct Config {
@@ -186,6 +188,39 @@ impl IntoResponse for PackageApiError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Dependency {
+    pub log_id: LogId,
+    pub record_id: RecordId,
+    pub name: String,
+    pub kind: String,
+    pub version: String,
+    pub location: String,
+    pub integrity: String,
+}
+
+impl Dependency {
+    fn new(
+        log_id: LogId,
+        record_id: RecordId,
+        name: String,
+        kind: String,
+        version: String,
+        location: String,
+        integrity: String,
+    ) -> Self {
+        Self {
+            log_id,
+            record_id,
+            name,
+            kind,
+            version,
+            location,
+            integrity,
+        }
+    }
+}
+
 #[debug_handler]
 async fn publish_record(
     State(config): State<Config>,
@@ -207,11 +242,11 @@ async fn publish_record(
         .map_err(PackageApiError::bad_request)?;
 
     // Specifying content sources is not allowed in this implementation
-    if !body.content_sources.is_empty() {
-        return Err(PackageApiError::unsupported(
-            "specifying content sources is not supported",
-        ));
-    }
+    // if !body.content_sources.is_empty() {
+    //     return Err(PackageApiError::unsupported(
+    //         "specifying content sources is not supported",
+    //     ));
+    // }
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
@@ -238,6 +273,64 @@ async fn publish_record(
 
     // If there's no missing content, submit the record for processing now
     if missing.is_empty() {
+        let mut deps = Vec::new();
+        for (_, sources) in body.content_sources {
+            for source in sources {
+                match source {
+                    ContentSource::Http { url } => {
+                        let content = reqwest::get(url).await.unwrap();
+                        let bytes = &content.bytes().await.unwrap();
+                        let mut parser = DepsParser::new();
+                        for import in parser.parse(bytes).unwrap() {
+                            match import.name {
+                                ComponentImportName::Interface { .. } => {}
+                                ComponentImportName::Url((name, _, _))
+                                | ComponentImportName::Relative((name, _, _))
+                                | ComponentImportName::Naked((name, _))
+                                | ComponentImportName::Locked((name, _))
+                                | ComponentImportName::Unlocked(name) => {
+                                    let split_name: Vec<&str> = name.split('@').collect();
+                                    match split_name.len() {
+                                        2 => {
+                                            deps.push(Dependency::new(
+                                                log_id.clone(),
+                                                record_id.clone(),
+                                                split_name[0].to_string(),
+                                                "url".to_string(),
+                                                split_name[1].to_string(),
+                                                "".to_string(),
+                                                "".to_string(),
+                                            ));
+                                        }
+                                        _ => {
+                                            deps.push(Dependency::new(
+                                                log_id.clone(),
+                                                record_id.clone(),
+                                                split_name[0].to_string(),
+                                                "url".to_string(),
+                                                "1.0.0".to_string(),
+                                                "".to_string(),
+                                                "".to_string(),
+                                            ));
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    return Err(PackageApiError(PackageError::NotSupported(
+                                        "Cant use kebab".to_string(),
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        config
+            .core_service
+            .store()
+            .store_dependencies(&log_id, &record_id, deps)
+            .await?;
         config
             .core_service
             .submit_package_record(log_id, record_id.clone())
@@ -374,6 +467,52 @@ async fn upload_content(
     tmp_path
         .persist(config.content_path(&digest))
         .map_err(PackageApiError::internal_error)?;
+    let url = config.content_url(&digest);
+    let mut deps = Vec::new();
+    let content = reqwest::get(url).await.unwrap();
+    let bytes = &content.bytes().await.unwrap();
+    let mut parser = DepsParser::new();
+    for import in parser.parse(bytes).unwrap() {
+        match import.name {
+            ComponentImportName::Interface { .. } => {}
+            ComponentImportName::Url((name, _, _))
+            | ComponentImportName::Relative((name, _, _))
+            | ComponentImportName::Naked((name, _))
+            | ComponentImportName::Locked((name, _))
+            | ComponentImportName::Unlocked(name) => {
+                let split_name: Vec<&str> = name.split('@').collect();
+                match split_name.len() {
+                    2 => {
+                        deps.push(Dependency::new(
+                            log_id.clone(),
+                            record_id.clone(),
+                            split_name[0].to_string(),
+                            "url".to_string(),
+                            split_name[1].to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                        ));
+                    }
+                    _ => {
+                        deps.push(Dependency::new(
+                            log_id.clone(),
+                            record_id.clone(),
+                            split_name[0].to_string(),
+                            "url".to_string(),
+                            "1.0.0".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                        ));
+                    }
+                }
+            }
+            _ => {
+                return Err(PackageApiError(PackageError::NotSupported(
+                    "Cant use kebab".to_string(),
+                )));
+            }
+        }
+    }
 
     // If this is the last content needed, submit the record for processing now
     if config
@@ -384,7 +523,12 @@ async fn upload_content(
     {
         config
             .core_service
-            .submit_package_record(log_id, record_id)
+            .store()
+            .store_dependencies(&log_id, &record_id, deps)
+            .await?;
+        config
+            .core_service
+            .submit_package_record(log_id, record_id.clone())
             .await;
     }
 

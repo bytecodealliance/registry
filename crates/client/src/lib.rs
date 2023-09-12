@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::storage::PackageInfo;
+use crate::storage::{PackageInfo, PublishEntry};
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
@@ -11,6 +11,7 @@ use storage::{
     RegistryStorage,
 };
 use thiserror::Error;
+use warg_api::v1::package::ContentSource;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
     package::{
@@ -137,6 +138,30 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             _ => (),
         }
 
+        let mut content_source_list: Vec<ContentSource> = Vec::new();
+        for entry in &info.entries {
+            if let PublishEntry::Release {
+                version: _,
+                content,
+            } = entry
+            {
+                let mut url = self.url().to_string();
+                url.push_str("content/sha256-");
+                let full_hash = content.to_string();
+                let mut split = full_hash.split(':');
+                split.next();
+                let hash = split.next().unwrap();
+                url.push_str(hash);
+
+                content_source_list.push(ContentSource::Http { url });
+            }
+        }
+
+        let mut content_sources = HashMap::new();
+        if let Some(h) = info.head.clone() {
+            content_sources.insert(h.0, content_source_list);
+        }
+
         let record = info.finalize(signing_key)?;
         let log_id = LogId::package_log::<Sha256>(&package.id);
         let record = self
@@ -146,7 +171,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 PublishRecordRequest {
                     id: Cow::Borrowed(&package.id),
                     record: Cow::Owned(record.into()),
-                    content_sources: Default::default(),
+                    content_sources,
                 },
             )
             .await

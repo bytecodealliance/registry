@@ -1,4 +1,4 @@
-use super::schema::{checkpoints, contents, logs, records};
+use super::schema::{checkpoints, contents, dependencies, logs, records};
 use chrono::{DateTime, Utc};
 use diesel::{
     deserialize::{self, FromSql},
@@ -120,4 +120,26 @@ pub struct NewContent<'a> {
     pub record_id: i32,
     pub digest: TextRef<'a, AnyHash>,
     pub missing: bool,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = dependencies)]
+pub struct NewDependency<'a> {
+    pub log_id: TextRef<'a, LogId>,
+    pub record_id: TextRef<'a, RecordId>,
+    pub name: &'a str,
+    pub kind: &'a str,
+    pub version: &'a str,
+    pub location: &'a str,
+    pub integrity: &'a str,
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = dependencies)]
+pub struct Dependency {
+    pub name: String,
+    pub kind: String,
+    pub version: Option<String>,
+    pub location: Option<String>,
+    pub integrity: Option<String>,
 }

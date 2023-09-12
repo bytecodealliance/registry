@@ -10,6 +10,35 @@ use warg_protocol::{
     PublishedProtoEnvelopeBody,
 };
 
+/// Represents a dependency of a package
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Dependency {
+    /// Package Log Id
+    pub log_id: LogId,
+    /// Package Record Id
+    pub record_id: RecordId,
+    /// Package Name
+    pub name: String,
+    /// Type of Import of Dependency
+    pub kind: String,
+    /// Dependency Version
+    pub version: String,
+    /// Dependency Location
+    pub location: String,
+    /// Dependency Integrity Hash
+    pub integrity: String,
+}
+
+/// Represents a fetch dependencies request.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FetchDependenciesRequest {
+    /// The Log Id
+    pub log_id: LogId,
+    /// The Record Id
+    pub record_id: RecordId,
+}
 /// Represents a fetch logs request.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,6 +54,15 @@ pub struct FetchLogsRequest<'a> {
     /// The map of package identifiers to last known record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub packages: Cow<'a, HashMap<LogId, Option<RecordId>>>,
+}
+
+/// Represents a fetch dependencies response.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchDependenciesResponse {
+    /// The package records appended since last known package record ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<Dependency>,
 }
 
 /// Represents a fetch logs response.

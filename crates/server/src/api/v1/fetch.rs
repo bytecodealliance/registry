@@ -10,7 +10,11 @@ use axum::{
     Router,
 };
 use std::collections::HashMap;
-use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
+use std::sync::Arc;
+use warg_api::v1::fetch::{
+    FetchDependenciesRequest, FetchDependenciesResponse, FetchError, FetchLogsRequest,
+    FetchLogsResponse,
+};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, TimestampedCheckpoint};
 use warg_protocol::{PublishedProtoEnvelopeBody, SerdeEnvelope};
@@ -30,6 +34,7 @@ impl Config {
 
     pub fn into_router(self) -> Router {
         Router::new()
+            .route("/dependencies", post(fetch_dependencies))
             .route("/logs", post(fetch_logs))
             .route("/checkpoint", get(fetch_checkpoint))
             .with_state(self)
@@ -71,6 +76,30 @@ impl IntoResponse for FetchApiError {
     fn into_response(self) -> axum::response::Response {
         (StatusCode::from_u16(self.0.status()).unwrap(), Json(self.0)).into_response()
     }
+}
+
+#[debug_handler]
+async fn fetch_dependencies(
+    State(config): State<Config>,
+    Json(body): Json<FetchDependenciesRequest>,
+) -> Result<Json<FetchDependenciesResponse>, FetchApiError> {
+    let dependencies = config
+        .core_service
+        .store()
+        .get_dependencies(&body.log_id, &body.record_id)
+        .await?
+        .iter()
+        .map(|dep| warg_api::v1::fetch::Dependency {
+            log_id: dep.log_id.clone(),
+            record_id: dep.record_id.clone(),
+            name: dep.name.clone(),
+            kind: dep.kind.clone(),
+            version: dep.version.clone(),
+            location: dep.location.clone(),
+            integrity: dep.integrity.clone(),
+        })
+        .collect();
+    Ok(Json(FetchDependenciesResponse { dependencies }))
 }
 
 #[debug_handler]
