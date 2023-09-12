@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::storage::PackageInfo;
+use crate::storage::{PackageInfo, PublishEntry};
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
@@ -11,6 +11,7 @@ use storage::{
     RegistryStorage,
 };
 use thiserror::Error;
+use warg_api::v1::package::ContentSource;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
     package::{
@@ -349,6 +350,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         })
     }
 
+    /// Update checkpoint for list of packages
     async fn update_checkpoint<'a>(
         &self,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,

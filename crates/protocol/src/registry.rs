@@ -131,7 +131,7 @@ impl VisitBytes for LogLeaf {
 /// where both parts are also valid WIT identifiers (i.e. kebab-cased).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct PackageId {
-    id: String,
+    pub id: String,
     colon: usize,
 }
 
@@ -259,7 +259,7 @@ impl AsRef<[u8]> for LogId {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct RecordId(AnyHash);
+pub struct RecordId(pub AnyHash);
 
 impl RecordId {
     pub fn algorithm(&self) -> HashAlgorithm {

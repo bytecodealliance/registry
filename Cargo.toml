@@ -6,11 +6,15 @@ authors = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+wasm-bundle = { workspace = true }
+wasm-deps = { workspace = true }
+wasmparser = { workspace = true }
+wasm-compose = { workspace = true }
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
 clap = { workspace = true }
-anyhow = { workspace = true }
+anyhow.workspace = true
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -30,6 +34,11 @@ itertools = "0.11.0"
 # TODO: remove these demo-related dependencies
 wasmtime = "10.0"
 wasmtime-wasi = "10.0"
+reqwest.workspace = true
+warg-api.workspace = true
+ptree = "0.4.0"
+async-recursion = "1.0.4"
+indexmap.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true }
@@ -118,6 +127,9 @@ diesel_migrations = "2.1.0"
 diesel-derive-enum = "2.1.0"
 chrono = "0.4.26"
 regex = "1"
-wasmparser = "0.108.0"
 protox = "0.4.1"
 toml = "0.7.6"
+wasm-bundle = { path = "../mine/wasm-tools/crates/wasm-bundle" }
+wasm-deps = { path = "../mine/wasm-tools/crates/wasm-deps" }
+wasmparser = { path = "../mine/wasm-tools/crates/wasmparser" }
+wasm-compose = { path = "../mine/wasm-tools/crates/wasm-compose" }
