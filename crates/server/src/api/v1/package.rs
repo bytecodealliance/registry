@@ -207,11 +207,11 @@ async fn publish_record(
         .map_err(PackageApiError::bad_request)?;
 
     // Specifying content sources is not allowed in this implementation
-    // if !body.content_sources.is_empty() {
-    //     return Err(PackageApiError::unsupported(
-    //         "specifying content sources is not supported",
-    //     ));
-    // }
+    if !body.content_sources.is_empty() {
+        return Err(PackageApiError::unsupported(
+            "specifying content sources is not supported",
+        ));
+    }
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record

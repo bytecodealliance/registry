@@ -49,11 +49,19 @@ impl DependenciesCommand {
     #[async_recursion]
     async fn parse_deps<'a>(
         id: &'a PackageId,
+        version: Option<&'a str>,
         client: &FileSystemClient,
         node: &mut TreeBuilder,
+        parser: &mut DepsParser,
     ) -> Result<()> {
-        let mut parser = DepsParser::new();
-        client.download(id, &VersionReq::STAR).await?;
+        let vreq = if let Some(v) = version {
+            dbg!(&v);
+            let v = v.replace(['{', '}'], "");
+            VersionReq::parse(&v)
+        } else {
+            Ok(VersionReq::STAR)
+        }?;
+        client.download(id, &vreq).await?;
 
         let package = client.registry().load_package(id).await?;
         if let Some(pkg) = package {
@@ -69,36 +77,36 @@ impl DependenciesCommand {
                         );
                         let bytes = fs::read(path)?;
                         let deps = parser.parse(&bytes)?;
+                        dbg!(&deps);
                         for dep in deps {
+                            dbg!(&dep.name);
                             if let ComponentImportName::Unlocked(name) = dep.name {
-                                let id = PackageId::new(name)?;
-                                let grand_child = node.begin_child(name.to_string());
-                                Self::parse_deps(&id, client, grand_child).await?;
-                                grand_child.end_child();
+                                let mut name_and_version = name.split('@');
+                                let versionless_name = name_and_version.next();
+                                let version = name_and_version.next();
+                                if let Some(identifier) = versionless_name {
+                                    let grand_child = node.begin_child(name.to_string());
+                                    let id = PackageId::new(identifier)?;
+                                    Self::parse_deps(&id, version, client, grand_child, parser)
+                                        .await?;
+                                    grand_child.end_child();
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        // let bytes = fs::read()
-
-        // let next_deps = Self::parse_deps(tree, dependencies, client, checkpoint);
         Ok(())
     }
 
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
-        info.state.releases().for_each(|r| {
-            if let Some(content) = r.content() {
-                Self::print_release(&r.record_id, &r.version, content);
-            }
-        });
         let mut parser = DepsParser::new();
         let root_package = client.registry().load_package(&info.id).await?;
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
-                let mut tree = TreeBuilder::new(format!("{0} ({1})", info.id, l.version));
+                let mut tree = TreeBuilder::new(format!("{0}@{1}", info.id, l.version));
                 if let ReleaseState::Released { content } = &l.state {
                     let stringified = content.to_string();
                     let sha = stringified.split(':').last();
@@ -112,8 +120,14 @@ impl DependenciesCommand {
                         for dep in deps {
                             if let ComponentImportName::Unlocked(name) = dep.name {
                                 let child = tree.begin_child(name.to_string());
-                                let id = PackageId::new(name)?;
-                                Self::parse_deps(&id, client, child).await?;
+                                let mut name_and_version = name.split('@');
+                                let versionless_name = name_and_version.next();
+                                let version = name_and_version.next();
+                                if let Some(identifier) = versionless_name {
+                                    let id = PackageId::new(identifier)?;
+                                    Self::parse_deps(&id, version, client, child, &mut parser)
+                                        .await?;
+                                }
                                 child.end_child();
                             }
                         }

@@ -39,6 +39,7 @@ warg-api.workspace = true
 ptree = "0.4.0"
 async-recursion = "1.0.4"
 indexmap.workspace = true
+semver.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true }

@@ -3,6 +3,7 @@ use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
 use indexmap::IndexSet;
+use semver::{Version, VersionReq};
 use std::{collections::HashMap, fs, path::Path};
 use warg_client::{
     storage::{PackageInfo, RegistryStorage},
@@ -71,14 +72,14 @@ impl LockListBuilder {
                 } => {
                     parser.skip_section();
                 }
-                Payload::ModuleSection { parser, range } => {
+                Payload::ModuleSection { range, .. } => {
                     let offset = range.end - range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
                     }
                     bytes = &bytes[offset..];
                 }
-                Payload::ComponentSection { parser, range } => {
+                Payload::ComponentSection { range, .. } => {
                     let offset = range.end - range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
@@ -94,23 +95,28 @@ impl LockListBuilder {
         for import in imports {
             let pkg_name = import.split('/').next();
             if let Some(name) = pkg_name {
-                let id = PackageId::new(name)?;
-                if let Some(info) = client.registry().load_package(&id).await? {
-                    let mut content_path =
-                        String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
-                    let release = info.state.releases().last();
-                    if let Some(r) = release {
-                        let state = &r.state;
-                        if let ReleaseState::Released { content } = state {
-                            let full_digest = content.to_string();
-                            let digest = full_digest.split(':').last().unwrap();
-                            content_path.push_str(digest);
-                            let path = Path::new(&content_path);
-                            let bytes = fs::read(path)?;
-                            self.parse_package(client, &bytes).await?;
+                let mut name_and_version = name.split('@');
+                let identifier = name_and_version.next();
+                if let Some(pkg_name) = identifier {
+                    let id = PackageId::new(pkg_name)?;
+                    if let Some(info) = client.registry().load_package(&id).await? {
+                        let mut content_path = String::from(
+                            "/Users/interpretations/Library/Caches/warg/content/sha256/",
+                        );
+                        let release = info.state.releases().last();
+                        if let Some(r) = release {
+                            let state = &r.state;
+                            if let ReleaseState::Released { content } = state {
+                                let full_digest = content.to_string();
+                                let digest = full_digest.split(':').last().unwrap();
+                                content_path.push_str(digest);
+                                let path = Path::new(&content_path);
+                                let bytes = fs::read(path)?;
+                                self.parse_package(client, &bytes).await?;
+                            }
                         }
+                        self.lock_list.insert(name.to_string());
                     }
-                    self.lock_list.insert(id.to_string());
                 }
             }
         }
@@ -169,44 +175,141 @@ impl LockCommand {
     }
 
     async fn lock(client: FileSystemClient, info: &PackageInfo, should_bundle: bool) -> Result<()> {
+        let maybe_find = |s: &str, c: char| s.find(c);
         let mut builder = LockListBuilder::new();
         builder.build_list(&client, info).await?;
         builder.lock_list.insert(info.id.id.clone());
         let mut composer = CompositionGraph::new();
         let mut handled = HashMap::<String, InstanceId>::new();
         for package in builder.lock_list {
-            let id = PackageId::new(package)?;
-            let info = client.registry().load_package(&id).await?;
-            if let Some(inf) = info {
-                let release = inf.state.releases().last();
-                if let Some(r) = release {
-                    let state = &r.state;
-                    if let ReleaseState::Released { content } = state {
-                        let full_digest = content.to_string();
-                        let digest = full_digest.split(':').last().unwrap();
-                        let mut content_path = String::from(
-                            "/Users/interpretations/Library/Caches/warg/content/sha256/",
-                        );
-                        content_path.push_str(digest);
-                        let path = Path::new(&content_path);
-                        let component =
-                            wasm_compose::graph::Component::from_file(inf.id.id.clone(), path)?;
-                        let component_index = composer.add_component(component)?;
-                        let instance_id = composer.instantiate(component_index)?;
-                        let added = composer.get_component(component_index);
-                        let name = inf.id.id.clone();
-                        handled.insert(name, instance_id);
-                        let mut args = Vec::new();
-                        if let Some(added) = added {
-                            for (index, name, _) in added.imports() {
-                                let iid = handled.get(name);
-                                if let Some(arg) = iid {
-                                    args.push((arg, index));
+            let mut name_and_version = package.split('@');
+            let name = name_and_version.next();
+            let version = name_and_version.next();
+            if let Some(pkg_id) = name {
+                let id = PackageId::new(pkg_id)?;
+                let info = client.registry().load_package(&id).await?;
+                if let Some(inf) = info {
+                    let release = if let Some(v) = version {
+                        let mut iterable = v.chars();
+                        let (lower, upper) = match iterable.next() {
+                            Some('{') => match iterable.next() {
+                                Some('>') => {
+                                  match iterable.next() {
+                                    Some('=') => {
+                                      let space = maybe_find(v, ' ');
+                                      if let Some(sp) = space {
+                                        let lower_bound = &v[3..sp];
+                                        let lversion = lower_bound.parse::<Version>()?;
+                                        let close = maybe_find(v, '}');
+                                        if let Some(c) = close {
+                                          let upper_bound = &v[sp + 2..c];
+                                          let rversion = upper_bound.parse::<Version>()?;
+                                          (Some(lversion), Some(rversion))
+                                        } else {
+                                          bail!("Range specification missing closing curly brace");
+                                        }
+                                      } else {
+                                        let close = maybe_find(v, '}');
+                                        if let Some(c) = close {
+                                          let lower_bound = &v[3..c];
+                                          let version = lower_bound.parse::<Version>()?;
+                                          (Some(version), None)
+                                        } else {
+                                          bail!("Range specification missing closing curly brace");
+                                        }
+                                      }
+                                    }
+                                    _ => bail!("Lower version bound must be inclusive")
+                                  }
+                                },
+                                Some('<') => {
+                                  let close = maybe_find(v, '}');
+                                  if let Some(c) = close {
+                                    let upper_bound = &v[3..c];
+                                    let version = upper_bound.parse::<Version>()?;
+                                    (None, Some(version))
+                                  } else {
+                                    bail!("Range specification missing closing curly brace");
+                                  } 
+                                }
+                                _ => {
+                                  bail!("Invalid version specification, curly brace usage implies a range should be specified")
+                                }
+                            },
+                            _ => bail!("Invalid version specification, should use curly braces if version is not exact or *"),
+                        };
+                        match (lower, upper) {
+                          (Some(l), Some(u)) => {
+                            let req = VersionReq::parse(&format!(">={}, <{}", l, u))?;
+                            let matches = inf.state.releases().filter(|r| {
+                              req.matches(&r.version)}
+                            );
+                            matches.last()
+                          }
+                          (None, Some(u)) => {
+                            let req = VersionReq::parse(&format!("<{}", u))?;
+                            let matches = inf.state.releases().filter(|r| {
+                              req.matches(&r.version)}
+                            );
+                            matches.last()
+
+                          },
+                          (Some(l), None) => {
+                            let req = VersionReq::parse(&format!(">={}", l))?;
+                            let matches = inf.state.releases().filter(|r| {
+                              req.matches(&r.version)}
+                            );
+                            matches.last()
+                          },
+                          (None, None) => inf.state.releases().last(),
+                        }
+                        // let v = v.replace(['{', '}', '>', '=', '<'], "");
+                        // let maybe = inf.state.releases().find(|r| r.version.to_string() == v);
+                        // if let Some(m) = maybe {
+                        //   Some(m)
+                        // } else {
+                        //   inf.state.releases().last()
+                        // }
+                    } else {
+                        inf.state.releases().last()
+                    };
+                    if let Some(r) = release {
+                        let state = &r.state;
+                        if let ReleaseState::Released { content } = state {
+                            let full_digest = content.to_string();
+                            let digest = full_digest.split(':').last().unwrap();
+                            let mut content_path = String::from(
+                                "/Users/interpretations/Library/Caches/warg/content/sha256/",
+                            );
+                            content_path.push_str(digest);
+                            let path = Path::new(&content_path);
+                            let mut locked_package = package.split('@').next().unwrap().to_string();
+                            locked_package.push_str(&format!("@{}", &r.version.to_string()));
+                            let component =
+                                wasm_compose::graph::Component::from_file(locked_package, path)?;
+                            let component_index = composer.add_component(component)?;
+                            let instance_id = composer.instantiate(component_index)?;
+
+                            let added = composer.get_component(component_index);
+                            handled.insert(package, instance_id);
+                            let mut args = Vec::new();
+                            if let Some(added) = added {
+                                for (index, name, _) in added.imports() {
+                                    let iid = handled.get(name);
+                                    if let Some(arg) = iid {
+                                        args.push((arg, index));
+                                    }
+                                    // }
                                 }
                             }
-                        }
-                        for arg in args {
-                            composer.connect(*arg.0, None::<ExportIndex>, instance_id, arg.1)?;
+                            for arg in args {
+                                composer.connect(
+                                    *arg.0,
+                                    None::<ExportIndex>,
+                                    instance_id,
+                                    arg.1,
+                                )?;
+                            }
                         }
                     }
                 }
@@ -222,7 +325,7 @@ impl LockCommand {
             }
         } else {
             EncodeOptions {
-                define_components: true,
+                define_components: false,
                 export: None,
                 validate: false,
             }
