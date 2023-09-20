@@ -1,5 +1,5 @@
 use super::CommonOptions;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
 use ptree::{output::print_tree, TreeBuilder};
@@ -8,14 +8,9 @@ use warg_client::{
     storage::{PackageInfo, RegistryStorage},
     FileSystemClient,
 };
-use warg_crypto::hash::AnyHash;
-use warg_protocol::{
-    package::ReleaseState,
-    registry::{PackageId, RecordId},
-    Version, VersionReq,
-};
-use wasm_deps::{self, DepsParser};
+use warg_protocol::{package::ReleaseState, registry::PackageId, VersionReq};
 use wasmparser::ComponentImportName;
+use wasmparser::{Chunk, ComponentImport, ComponentImportSectionReader, Parser, Payload};
 
 /// Print Dependency Tree
 #[derive(Args)]
@@ -35,8 +30,6 @@ impl DependenciesCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        println!("registry: {url}", url = client.url());
-        println!("\npackages in client storage:");
         if let Some(package) = self.package {
             if let Some(info) = client.registry().load_package(&package).await? {
                 Self::print_package_info(&client, &info).await?;
@@ -55,8 +48,7 @@ impl DependenciesCommand {
         parser: &mut DepsParser,
     ) -> Result<()> {
         let vreq = if let Some(v) = version {
-            dbg!(&v);
-            let v = v.replace(['{', '}'], "");
+            let v = v.replace(['{', '}'], "").replace([' '], ", ");
             VersionReq::parse(&v)
         } else {
             Ok(VersionReq::STAR)
@@ -77,9 +69,7 @@ impl DependenciesCommand {
                         );
                         let bytes = fs::read(path)?;
                         let deps = parser.parse(&bytes)?;
-                        dbg!(&deps);
                         for dep in deps {
-                            dbg!(&dep.name);
                             if let ComponentImportName::Unlocked(name) = dep.name {
                                 let mut name_and_version = name.split('@');
                                 let versionless_name = name_and_version.next();
@@ -139,9 +129,70 @@ impl DependenciesCommand {
         }
         Ok(())
     }
+}
 
-    fn print_release(record_id: &RecordId, version: &Version, content: &AnyHash) {
-        println!("    record id: {record_id}");
-        println!("    {version} ({content})");
+struct DepsParser {}
+
+impl DepsParser {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn parse_imports<'a>(
+        &mut self,
+        parser: ComponentImportSectionReader<'a>,
+        deps: &mut Vec<ComponentImport<'a>>,
+    ) -> Result<()> {
+        for import in parser.into_iter_with_offsets() {
+            let (_, imp) = import.unwrap();
+            deps.push(imp);
+        }
+        Ok(())
+    }
+
+    pub fn parse<'a>(&mut self, mut bytes: &'a [u8]) -> Result<Vec<ComponentImport<'a>>> {
+        let mut parser = Parser::new(0);
+        let mut _consumed = 0;
+        let mut deps = Vec::new();
+        loop {
+            let payload = match parser.parse(bytes, true)? {
+                Chunk::NeedMoreData(_) => unreachable!(),
+                Chunk::Parsed { payload, consumed } => {
+                    bytes = &bytes[consumed..];
+                    payload
+                }
+            };
+            match payload {
+                Payload::ComponentImportSection(s) => {
+                    self.parse_imports(s, &mut deps)?;
+                }
+                Payload::CodeSectionStart {
+                    count: _,
+                    range: _,
+                    size: _,
+                } => {
+                    parser.skip_section();
+                }
+                Payload::ModuleSection { range, .. } => {
+                    let offset = range.end - range.start;
+                    if offset > bytes.len() {
+                        bail!("invalid module or component section range");
+                    }
+                    bytes = &bytes[offset..];
+                }
+                Payload::ComponentSection { range, .. } => {
+                    let offset = range.end - range.start;
+                    if offset > bytes.len() {
+                        bail!("invalid module or component section range");
+                    }
+                    bytes = &bytes[offset..];
+                }
+                Payload::End(_) => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(deps)
     }
 }

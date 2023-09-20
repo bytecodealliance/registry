@@ -6,8 +6,7 @@ authors = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-wasm-bundle = { workspace = true }
-wasm-deps = { workspace = true }
+wasm-encoder = { workspace = true }
 wasmparser = { workspace = true }
 wasm-compose = { workspace = true }
 warg-crypto = { workspace = true }
@@ -130,7 +129,6 @@ chrono = "0.4.26"
 regex = "1"
 protox = "0.4.1"
 toml = "0.7.6"
-wasm-bundle = { path = "../mine/wasm-tools/crates/wasm-bundle" }
-wasm-deps = { path = "../mine/wasm-tools/crates/wasm-deps" }
 wasmparser = { path = "../mine/wasm-tools/crates/wasmparser" }
+wasm-encoder = { path = "../mine/wasm-tools/crates/wasm-encoder" }
 wasm-compose = { path = "../mine/wasm-tools/crates/wasm-compose" }

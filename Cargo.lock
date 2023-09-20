@@ -4338,9 +4338,8 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-server",
- "wasm-bundle",
  "wasm-compose",
- "wasm-deps",
+ "wasm-encoder 0.32.0",
  "wasmparser 0.112.0",
  "wasmtime",
  "wasmtime-wasi",
@@ -4614,20 +4613,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
 
 [[package]]
-name = "wasm-bundle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "warg-client",
- "warg-crypto",
- "warg-protocol",
- "wasm-compose",
- "wasm-encoder 0.32.0",
- "wasmparser 0.112.0",
- "wasmprinter 0.2.64",
-]
-
-[[package]]
 name = "wasm-compose"
 version = "0.4.2"
 dependencies = [
@@ -4642,14 +4627,6 @@ dependencies = [
  "wasm-encoder 0.32.0",
  "wasmparser 0.112.0",
  "wat 1.0.71",
-]
-
-[[package]]
-name = "wasm-deps"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "wasmparser 0.112.0",
 ]
 
 [[package]]
@@ -4741,14 +4718,6 @@ checksum = "b76cb909fe3d9b0de58cee1f4072247e680ff5cc1558ccad2790a9de14a23993"
 dependencies = [
  "anyhow",
  "wasmparser 0.108.0",
-]
-
-[[package]]
-name = "wasmprinter"
-version = "0.2.64"
-dependencies = [
- "anyhow",
- "wasmparser 0.112.0",
 ]
 
 [[package]]
@@ -4895,7 +4864,7 @@ dependencies = [
  "thiserror",
  "wasm-encoder 0.29.0",
  "wasmparser 0.107.0",
- "wasmprinter 0.2.60",
+ "wasmprinter",
  "wasmtime-component-util",
  "wasmtime-types",
 ]
