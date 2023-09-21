@@ -3,7 +3,9 @@ use anyhow::Result;
 use clap::Args;
 use std::{fs, path::Path};
 use warg_client::{
-    storage::{FileSystemContentStorage, FileSystemRegistryStorage, RegistryStorage},
+    storage::{
+        ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, RegistryStorage,
+    },
     Client,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId};
@@ -75,25 +77,20 @@ impl<'a> Bundler<'a> {
                     if let Some(name) = name {
                         let mut version_and_name = name.split('@');
                         let identifier = version_and_name.next();
-                        let version = version_and_name.next();
                         if let Some(name) = identifier {
                             let pkg_id = PackageId::new(name)?;
                             if let Some(info) = self.client.registry().load_package(&pkg_id).await?
                             {
-                                let state = &info.state.releases().last().unwrap().state;
-                                if let ReleaseState::Released { content } = state {
-                                    let full_digest = content.to_string();
-                                    let digest = full_digest.split(':').last().unwrap();
-                                    let mut content_path = String::from(
-                                      "/Users/interpretations/Library/Caches/warg/content/sha256/",
-                                  );
-                                    content_path.push_str(&digest);
-                                    let path = Path::new(&content_path);
-                                    let bytes = fs::read(path)?;
-                                    component.section(&RawSection {
-                                        id: ComponentSectionId::Component.into(),
-                                        data: &bytes,
-                                    });
+                                let release_state = &info.state.releases().last().unwrap().state;
+                                if let ReleaseState::Released { content } = release_state {
+                                    let path = self.client.content().content_location(content);
+                                    if let Some(p) = path {
+                                        let bytes = fs::read(p)?;
+                                        component.section(&RawSection {
+                                            id: ComponentSectionId::Component.into(),
+                                            data: &bytes,
+                                        });
+                                    }
                                 }
                             }
                         }

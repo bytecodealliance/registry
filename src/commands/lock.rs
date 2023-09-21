@@ -6,7 +6,7 @@ use indexmap::IndexSet;
 use semver::{Version, VersionReq};
 use std::{collections::HashMap, fs, path::Path};
 use warg_client::{
-    storage::{PackageInfo, RegistryStorage},
+    storage::{PackageInfo, RegistryStorage, ContentStorage},
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId};
@@ -100,19 +100,15 @@ impl LockListBuilder {
                 if let Some(pkg_name) = identifier {
                     let id = PackageId::new(pkg_name)?;
                     if let Some(info) = client.registry().load_package(&id).await? {
-                        let mut content_path = String::from(
-                            "/Users/interpretations/Library/Caches/warg/content/sha256/",
-                        );
                         let release = info.state.releases().last();
                         if let Some(r) = release {
                             let state = &r.state;
                             if let ReleaseState::Released { content } = state {
-                                let full_digest = content.to_string();
-                                let digest = full_digest.split(':').last().unwrap();
-                                content_path.push_str(digest);
-                                let path = Path::new(&content_path);
-                                let bytes = fs::read(path)?;
-                                self.parse_package(client, &bytes).await?;
+                                let path = client.content().content_location(content);
+                                if let Some(p) = path {
+                                  let bytes = fs::read(p)?;
+                                  self.parse_package(client, &bytes).await?;
+                                }
                             }
                         }
                         self.lock_list.insert(name.to_string());
@@ -125,18 +121,15 @@ impl LockListBuilder {
 
     #[async_recursion]
     async fn build_list(&mut self, client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
-        let mut content_path =
-            String::from("/Users/interpretations/Library/Caches/warg/content/sha256/");
         let release = info.state.releases().last();
         if let Some(r) = release {
             let state = &r.state;
             if let ReleaseState::Released { content } = state {
-                let full_digest = content.to_string();
-                let digest = full_digest.split(':').last().unwrap();
-                content_path.push_str(digest);
-                let path = Path::new(&content_path);
-                let bytes = fs::read(path)?;
-                self.parse_package(client, &bytes).await?;
+                let path = client.content().content_location(content);
+                if let Some(p) = path {
+                  let bytes = fs::read(p)?;
+                  self.parse_package(client, &bytes).await?;
+                }
             }
         }
         Ok(())
@@ -263,52 +256,40 @@ impl LockCommand {
                           },
                           (None, None) => inf.state.releases().last(),
                         }
-                        // let v = v.replace(['{', '}', '>', '=', '<'], "");
-                        // let maybe = inf.state.releases().find(|r| r.version.to_string() == v);
-                        // if let Some(m) = maybe {
-                        //   Some(m)
-                        // } else {
-                        //   inf.state.releases().last()
-                        // }
                     } else {
                         inf.state.releases().last()
                     };
                     if let Some(r) = release {
                         let state = &r.state;
                         if let ReleaseState::Released { content } = state {
-                            let full_digest = content.to_string();
-                            let digest = full_digest.split(':').last().unwrap();
-                            let mut content_path = String::from(
-                                "/Users/interpretations/Library/Caches/warg/content/sha256/",
-                            );
-                            content_path.push_str(digest);
-                            let path = Path::new(&content_path);
                             let mut locked_package = package.split('@').next().unwrap().to_string();
                             locked_package.push_str(&format!("@{}", &r.version.to_string()));
-                            let component =
-                                wasm_compose::graph::Component::from_file(locked_package, path)?;
-                            let component_index = composer.add_component(component)?;
-                            let instance_id = composer.instantiate(component_index)?;
-
-                            let added = composer.get_component(component_index);
-                            handled.insert(package, instance_id);
-                            let mut args = Vec::new();
-                            if let Some(added) = added {
-                                for (index, name, _) in added.imports() {
-                                    let iid = handled.get(name);
-                                    if let Some(arg) = iid {
-                                        args.push((arg, index));
-                                    }
-                                    // }
-                                }
-                            }
-                            for arg in args {
-                                composer.connect(
-                                    *arg.0,
-                                    None::<ExportIndex>,
-                                    instance_id,
-                                    arg.1,
-                                )?;
+                            let path = client.content().content_location(content);
+                            if let Some(p) = path {
+                              let component =
+                                  wasm_compose::graph::Component::from_file(locked_package, p)?;
+                              let component_index = composer.add_component(component)?;
+                              let instance_id = composer.instantiate(component_index)?;
+  
+                              let added = composer.get_component(component_index);
+                              handled.insert(package, instance_id);
+                              let mut args = Vec::new();
+                              if let Some(added) = added {
+                                  for (index, name, _) in added.imports() {
+                                      let iid = handled.get(name);
+                                      if let Some(arg) = iid {
+                                          args.push((arg, index));
+                                      }
+                                  }
+                              }
+                              for arg in args {
+                                  composer.connect(
+                                      *arg.0,
+                                      None::<ExportIndex>,
+                                      instance_id,
+                                      arg.1,
+                                  )?;
+                              }
                             }
                         }
                     }

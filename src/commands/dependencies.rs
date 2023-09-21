@@ -5,7 +5,7 @@ use clap::Args;
 use ptree::{output::print_tree, TreeBuilder};
 use std::fs;
 use warg_client::{
-    storage::{PackageInfo, RegistryStorage},
+    storage::{ContentStorage, PackageInfo, RegistryStorage},
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId, VersionReq};
@@ -60,14 +60,9 @@ impl DependenciesCommand {
             let latest = pkg.state.releases().last();
             if let Some(l) = latest {
                 if let ReleaseState::Released { content } = &l.state {
-                    let stringified = content.to_string();
-                    let sha = stringified.split(':').last();
-                    if let Some(sha) = sha {
-                        let path = format!(
-                            "/Users/interpretations/Library/Caches/warg/content/sha256/{}",
-                            sha
-                        );
-                        let bytes = fs::read(path)?;
+                    let path = client.content().content_location(content);
+                    if let Some(p) = path {
+                        let bytes = fs::read(p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
                             if let ComponentImportName::Unlocked(name) = dep.name {
@@ -98,14 +93,9 @@ impl DependenciesCommand {
             if let Some(l) = latest {
                 let mut tree = TreeBuilder::new(format!("{0}@{1}", info.id, l.version));
                 if let ReleaseState::Released { content } = &l.state {
-                    let stringified = content.to_string();
-                    let sha = stringified.split(':').last();
-                    if let Some(sha) = sha {
-                        let path = format!(
-                            "/Users/interpretations/Library/Caches/warg/content/sha256/{}",
-                            sha
-                        );
-                        let bytes = fs::read(&path)?;
+                    let path = client.content().content_location(content);
+                    if let Some(p) = path {
+                        let bytes = fs::read(&p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
                             if let ComponentImportName::Unlocked(name) = dep.name {
