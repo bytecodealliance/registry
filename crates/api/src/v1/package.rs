@@ -62,6 +62,7 @@ pub struct PackageRecord {
     /// The identifier of the package record.
     pub id: RecordId,
     /// The current state of the package.
+    #[serde(flatten)]
     pub state: PackageRecordState,
 }
 
