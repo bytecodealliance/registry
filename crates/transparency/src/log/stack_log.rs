@@ -7,6 +7,10 @@ use warg_crypto::{
 };
 
 use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuilder};
+use anyhow::Error;
+
+use prost::Message;
+use warg_protobuf::transparency as protobuf;
 
 /// A log builder which maintains a stack of balanced roots
 #[derive(Clone, Debug)]
@@ -34,6 +38,62 @@ where
     /// Check if the log is empty.
     pub fn is_empty(&self) -> bool {
         self.length == 0
+    }
+
+    /// Turn a StackLog into bytes using protobuf
+    pub fn encode(self) -> Vec<u8> {
+        let proto: protobuf::StackLog = self.into();
+        proto.encode_to_vec()
+    }
+
+    /// Parse a StackLog from bytes using protobuf
+    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        let proto = protobuf::StackLog::decode(bytes)?;
+        let value = proto.try_into()?;
+        Ok(value)
+    }
+}
+
+impl<D, V> From<StackLog<D, V>> for protobuf::StackLog
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    fn from(value: StackLog<D, V>) -> Self {
+        let stack = value
+            .stack
+            .into_iter()
+            .map(|(node, hash)| protobuf::HashEntry {
+                index: node.0 as u32,
+                hash: hash.bytes().to_vec(),
+            })
+            .collect();
+        protobuf::StackLog {
+            length: value.length as u32,
+            stack,
+        }
+    }
+}
+
+impl<D, V> TryFrom<protobuf::StackLog> for StackLog<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    type Error = Error;
+
+    fn try_from(value: protobuf::StackLog) -> Result<Self, Self::Error> {
+        let length = value.length as usize;
+        let mut stack = Vec::with_capacity(length);
+        for entry in value.stack {
+            stack.push((Node(entry.index as usize), entry.hash.try_into()?))
+        }
+        let stack_log = StackLog {
+            length,
+            stack,
+            _value: PhantomData,
+        };
+        Ok(stack_log)
     }
 }
 

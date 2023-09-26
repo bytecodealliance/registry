@@ -226,7 +226,7 @@ async fn publish_record(
         .verify_package_record_signature(&log_id, &record)
         .await?;
 
-    let record_id = RecordId::package_record::<Sha256>(&record);
+    let record_id = RecordId::package_record::<Sha256>(record.content_bytes());
     let mut missing = record.as_ref().contents();
     missing.retain(|d| !config.content_present(d));
 

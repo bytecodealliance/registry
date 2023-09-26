@@ -172,7 +172,7 @@ impl LogState {
 
         // Update the validator head
         self.head = Some(Head {
-            digest: RecordId::operator_record::<Sha256>(envelope),
+            digest: RecordId::operator_record::<Sha256>(envelope.content_bytes()),
             timestamp: record.timestamp,
         });
 
@@ -437,7 +437,7 @@ mod tests {
             validator,
             LogState {
                 head: Some(Head {
-                    digest: RecordId::operator_record::<Sha256>(&envelope),
+                    digest: RecordId::operator_record::<Sha256>(envelope.content_bytes()),
                     timestamp,
                 }),
                 algorithm: Some(HashAlgorithm::Sha256),
@@ -474,7 +474,7 @@ mod tests {
 
         let expected = LogState {
             head: Some(Head {
-                digest: RecordId::operator_record::<Sha256>(&envelope),
+                digest: RecordId::operator_record::<Sha256>(envelope.content_bytes()),
                 timestamp,
             }),
             algorithm: Some(HashAlgorithm::Sha256),
@@ -488,7 +488,9 @@ mod tests {
         assert_eq!(validator, expected);
 
         let record = model::OperatorRecord {
-            prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
+            prev: Some(RecordId::operator_record::<Sha256>(
+                envelope.content_bytes(),
+            )),
             version: 0,
             timestamp: SystemTime::now(),
             entries: vec![

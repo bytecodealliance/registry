@@ -125,9 +125,10 @@ struct PermissionParseError {
 }
 
 // Serialization
+pub const SIGNING_PREFIX: &[u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0";
 
 impl Signable for model::PackageRecord {
-    const PREFIX: &'static [u8] = b"WARG-PACKAGE-RECORD-SIGNATURE-V0";
+    const PREFIX: &'static [u8] = SIGNING_PREFIX;
 }
 
 impl Encode for model::PackageRecord {
@@ -247,7 +248,7 @@ mod tests {
         let bytes = first_envelope.to_protobuf();
 
         let second_envelope: ProtoEnvelope<model::PackageRecord> =
-            match ProtoEnvelope::from_protobuf(bytes) {
+            match ProtoEnvelope::from_protobuf(&bytes) {
                 Ok(value) => value,
                 Err(error) => panic!("Failed to create envelope 2: {:?}", error),
             };

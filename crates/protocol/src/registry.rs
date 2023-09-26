@@ -1,4 +1,3 @@
-use crate::{operator::OperatorRecord, package::PackageRecord, ProtoEnvelope};
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -8,6 +7,8 @@ use warg_crypto::hash::{AnyHash, Hash, HashAlgorithm, SupportedDigest};
 use warg_crypto::prefix::VisitPrefixEncode;
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 use wasmparser::names::KebabStr;
+
+pub const TIMESTAMPED_CHECKPOINT_SIGNING_PREFIX: &[u8] = b"WARG-CHECKPOINT-SIGNATURE-V0";
 
 /// Type alias for registry log index
 pub type RegistryIndex = usize;
@@ -61,7 +62,7 @@ impl TimestampedCheckpoint {
 }
 
 impl Signable for TimestampedCheckpoint {
-    const PREFIX: &'static [u8] = b"WARG-CHECKPOINT-SIGNATURE-V0";
+    const PREFIX: &'static [u8] = TIMESTAMPED_CHECKPOINT_SIGNING_PREFIX;
 }
 
 impl prefix::VisitPrefixEncode for TimestampedCheckpoint {
@@ -160,6 +161,11 @@ impl PackageId {
     /// Gets the name part of the package identifier.
     pub fn name(&self) -> &str {
         &self.id[self.colon + 1..]
+    }
+
+    /// Gets the full string package identifier.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 }
 
@@ -266,15 +272,15 @@ impl RecordId {
         self.0.algorithm()
     }
 
-    pub fn operator_record<D: SupportedDigest>(record: &ProtoEnvelope<OperatorRecord>) -> Self {
+    pub fn operator_record<D: SupportedDigest>(content_bytes: &[u8]) -> Self {
         let prefix: &[u8] = b"WARG-OPERATOR-LOG-RECORD-V0:".as_slice();
-        let hash: Hash<D> = Hash::of((prefix, record.content_bytes()));
+        let hash: Hash<D> = Hash::of((prefix, content_bytes));
         Self(hash.into())
     }
 
-    pub fn package_record<D: SupportedDigest>(record: &ProtoEnvelope<PackageRecord>) -> Self {
+    pub fn package_record<D: SupportedDigest>(content_bytes: &[u8]) -> Self {
         let prefix: &[u8] = b"WARG-PACKAGE-LOG-RECORD-V0:".as_slice();
-        let hash: Hash<D> = Hash::of((prefix, record.content_bytes()));
+        let hash: Hash<D> = Hash::of((prefix, content_bytes));
         Self(hash.into())
     }
 }
@@ -288,6 +294,18 @@ impl fmt::Display for RecordId {
 impl From<AnyHash> for RecordId {
     fn from(value: AnyHash) -> Self {
         Self(value)
+    }
+}
+
+impl From<RecordId> for AnyHash {
+    fn from(id: RecordId) -> Self {
+        id.0
+    }
+}
+
+impl AsRef<[u8]> for RecordId {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
     }
 }
 

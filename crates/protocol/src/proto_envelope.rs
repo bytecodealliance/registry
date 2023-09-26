@@ -24,13 +24,13 @@ pub struct PublishedProtoEnvelope<Contents> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtoEnvelope<Contents> {
     /// The content represented by content_bytes
-    contents: Contents,
+    pub contents: Contents,
     /// The serialized representation of the content
-    content_bytes: Vec<u8>,
+    pub content_bytes: Vec<u8>,
     /// The hash of the key that signed this envelope
-    key_id: signing::KeyID,
+    pub key_id: signing::KeyID,
     /// The signature for the content_bytes
-    signature: signing::Signature,
+    pub signature: signing::Signature,
 }
 
 impl<Contents> ProtoEnvelope<Contents> {
@@ -80,12 +80,12 @@ impl<Contents> ProtoEnvelope<Contents> {
 
     /// Create an entire envelope from a byte vector.
     /// This is the logical inverse of `Envelope::as_bytes`.
-    pub fn from_protobuf(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
+    pub fn from_protobuf(bytes: &[u8]) -> Result<Self, ParseEnvelopeError>
     where
         Contents: Decode,
     {
         // Parse outer envelope
-        let envelope = protobuf::Envelope::decode(bytes.as_slice())?;
+        let envelope = protobuf::Envelope::decode(bytes)?;
         let contents = Contents::decode(&envelope.contents)?;
 
         // Read key ID and signature

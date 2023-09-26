@@ -108,7 +108,7 @@ async fn get_package_info(
             package_state
                 .validate(&record.envelope)
                 .context("validate")?;
-            let record_id = RecordId::package_record::<Sha256>(&record.envelope);
+            let record_id = RecordId::package_record::<Sha256>(&record.envelope.content_bytes());
             let timestamp = record
                 .envelope
                 .as_ref()

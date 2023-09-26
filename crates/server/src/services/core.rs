@@ -79,7 +79,9 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
-        let proof = state.log.prove_consistency(from_log_length, to_log_length);
+        let proof = state
+            .log
+            .prove_consistency(from_log_length as usize, to_log_length as usize);
         LogProofBundle::bundle(vec![proof], vec![], &state.log)
             .map_err(CoreServiceError::BundleFailure)
     }
@@ -96,11 +98,11 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
             .iter()
             .map(|&index| {
                 let node = if index < state.leaf_index.len() as RegistryIndex {
-                    state.leaf_index[index]
+                    state.leaf_index[index as usize]
                 } else {
                     return Err(CoreServiceError::LeafNotFound(index));
                 };
-                Ok(state.log.prove_inclusion(node, log_length))
+                Ok(state.log.prove_inclusion(node, log_length as usize))
             })
             .collect::<Result<Vec<_>, CoreServiceError>>()?;
 
@@ -233,7 +235,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         let signed_init_record =
             ProtoEnvelope::signed_contents(&self.operator_key, init_record).unwrap();
         let log_id = LogId::operator_log::<Digest>();
-        let record_id = RecordId::operator_record::<Digest>(&signed_init_record);
+        let record_id = RecordId::operator_record::<Digest>(signed_init_record.content_bytes());
 
         // Store init record
         self.store

@@ -9,6 +9,10 @@ use warg_crypto::VisitBytes;
 use super::node::{Node, Side};
 use super::{hash_branch, hash_empty, hash_leaf, Checkpoint, LogBuilder, LogData};
 
+use anyhow::Error;
+use prost::Message;
+use warg_protobuf::transparency as protobuf;
+
 /// A verifiable log where the node hashes are stored
 /// contiguously in memory by index.
 #[derive(Debug, Clone)]
@@ -66,6 +70,19 @@ where
             .unwrap_or_else(hash_empty::<D>);
 
         Some(result)
+    }
+
+    /// Turn a VecLog into bytes using protobuf
+    pub fn encode(self) -> Vec<u8> {
+        let proto: protobuf::VecLog = self.into();
+        proto.encode_to_vec()
+    }
+
+    /// Parse a VecLog from bytes using protobuf
+    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        let proto = protobuf::VecLog::decode(bytes)?;
+        let value = proto.try_into()?;
+        Ok(value)
     }
 }
 
@@ -150,6 +167,46 @@ where
 
     fn has_hash(&self, node: Node) -> bool {
         self.tree.len() > node.index()
+    }
+}
+
+impl<D, V> From<VecLog<D, V>> for protobuf::VecLog
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    fn from(value: VecLog<D, V>) -> Self {
+        let tree = value
+            .tree
+            .into_iter()
+            .map(|hash| hash.bytes().to_vec())
+            .collect();
+        protobuf::VecLog {
+            length: value.length as u32,
+            tree,
+        }
+    }
+}
+
+impl<D, V> TryFrom<protobuf::VecLog> for VecLog<D, V>
+where
+    D: SupportedDigest,
+    V: VisitBytes,
+{
+    type Error = Error;
+
+    fn try_from(value: protobuf::VecLog) -> Result<Self, Self::Error> {
+        let length = value.length as usize;
+        let mut tree = Vec::with_capacity(length);
+        for entry in value.tree {
+            tree.push(entry.try_into()?)
+        }
+        let vec_log = VecLog {
+            length,
+            tree,
+            _value: PhantomData,
+        };
+        Ok(vec_log)
     }
 }
 

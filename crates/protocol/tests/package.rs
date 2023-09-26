@@ -42,7 +42,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<LogState> {
 
             let envelope = ProtoEnvelope::signed_contents(&key, record).unwrap();
 
-            *last = Some(RecordId::package_record::<Sha256>(&envelope));
+            *last = Some(RecordId::package_record::<Sha256>(envelope.content_bytes()));
 
             Some(envelope)
         })
