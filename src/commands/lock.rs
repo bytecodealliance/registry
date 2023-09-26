@@ -4,9 +4,9 @@ use async_recursion::async_recursion;
 use clap::Args;
 use indexmap::IndexSet;
 use semver::{Version, VersionReq};
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, fs};
 use warg_client::{
-    storage::{PackageInfo, RegistryStorage, ContentStorage},
+    storage::{ContentStorage, PackageInfo, RegistryStorage},
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId};
@@ -106,8 +106,8 @@ impl LockListBuilder {
                             if let ReleaseState::Released { content } = state {
                                 let path = client.content().content_location(content);
                                 if let Some(p) = path {
-                                  let bytes = fs::read(p)?;
-                                  self.parse_package(client, &bytes).await?;
+                                    let bytes = fs::read(p)?;
+                                    self.parse_package(client, &bytes).await?;
                                 }
                             }
                         }
@@ -127,8 +127,8 @@ impl LockListBuilder {
             if let ReleaseState::Released { content } = state {
                 let path = client.content().content_location(content);
                 if let Some(p) = path {
-                  let bytes = fs::read(p)?;
-                  self.parse_package(client, &bytes).await?;
+                    let bytes = fs::read(p)?;
+                    self.parse_package(client, &bytes).await?;
                 }
             }
         }
@@ -186,75 +186,69 @@ impl LockCommand {
                         let mut iterable = v.chars();
                         let (lower, upper) = match iterable.next() {
                             Some('{') => match iterable.next() {
-                                Some('>') => {
-                                  match iterable.next() {
+                                Some('>') => match iterable.next() {
                                     Some('=') => {
-                                      let space = maybe_find(v, ' ');
-                                      if let Some(sp) = space {
-                                        let lower_bound = &v[3..sp];
-                                        let lversion = lower_bound.parse::<Version>()?;
-                                        let close = maybe_find(v, '}');
-                                        if let Some(c) = close {
-                                          let upper_bound = &v[sp + 2..c];
-                                          let rversion = upper_bound.parse::<Version>()?;
-                                          (Some(lversion), Some(rversion))
+                                        let space = maybe_find(v, ' ');
+                                        if let Some(sp) = space {
+                                            let lower_bound = &v[3..sp];
+                                            let lversion = lower_bound.parse::<Version>()?;
+                                            let close = maybe_find(v, '}');
+                                            if let Some(c) = close {
+                                                let upper_bound = &v[sp + 2..c];
+                                                let rversion = upper_bound.parse::<Version>()?;
+                                                (Some(lversion), Some(rversion))
+                                            } else {
+                                                bail!("Range specification missing closing curly brace");
+                                            }
                                         } else {
-                                          bail!("Range specification missing closing curly brace");
+                                            let close = maybe_find(v, '}');
+                                            if let Some(c) = close {
+                                                let lower_bound = &v[3..c];
+                                                let version = lower_bound.parse::<Version>()?;
+                                                (Some(version), None)
+                                            } else {
+                                                bail!("Range specification missing closing curly brace");
+                                            }
                                         }
-                                      } else {
-                                        let close = maybe_find(v, '}');
-                                        if let Some(c) = close {
-                                          let lower_bound = &v[3..c];
-                                          let version = lower_bound.parse::<Version>()?;
-                                          (Some(version), None)
-                                        } else {
-                                          bail!("Range specification missing closing curly brace");
-                                        }
-                                      }
                                     }
-                                    _ => bail!("Lower version bound must be inclusive")
-                                  }
+                                    _ => bail!("Lower version bound must be inclusive"),
                                 },
                                 Some('<') => {
-                                  let close = maybe_find(v, '}');
-                                  if let Some(c) = close {
-                                    let upper_bound = &v[3..c];
-                                    let version = upper_bound.parse::<Version>()?;
-                                    (None, Some(version))
-                                  } else {
-                                    bail!("Range specification missing closing curly brace");
-                                  } 
+                                    let close = maybe_find(v, '}');
+                                    if let Some(c) = close {
+                                        let upper_bound = &v[3..c];
+                                        let version = upper_bound.parse::<Version>()?;
+                                        (None, Some(version))
+                                    } else {
+                                        bail!("Range specification missing closing curly brace");
+                                    }
                                 }
                                 _ => {
-                                  bail!("Invalid version specification, curly brace usage implies a range should be specified")
+                                    bail!("Invalid version specification, curly brace usage implies a range should be specified")
                                 }
                             },
-                            _ => bail!("Invalid version specification, should use curly braces if version is not exact or *"),
+                            _ => (None, None),
                         };
                         match (lower, upper) {
-                          (Some(l), Some(u)) => {
-                            let req = VersionReq::parse(&format!(">={}, <{}", l, u))?;
-                            let matches = inf.state.releases().filter(|r| {
-                              req.matches(&r.version)}
-                            );
-                            matches.last()
-                          }
-                          (None, Some(u)) => {
-                            let req = VersionReq::parse(&format!("<{}", u))?;
-                            let matches = inf.state.releases().filter(|r| {
-                              req.matches(&r.version)}
-                            );
-                            matches.last()
-
-                          },
-                          (Some(l), None) => {
-                            let req = VersionReq::parse(&format!(">={}", l))?;
-                            let matches = inf.state.releases().filter(|r| {
-                              req.matches(&r.version)}
-                            );
-                            matches.last()
-                          },
-                          (None, None) => inf.state.releases().last(),
+                            (Some(l), Some(u)) => {
+                                let req = VersionReq::parse(&format!(">={}, <{}", l, u))?;
+                                let matches =
+                                    inf.state.releases().filter(|r| req.matches(&r.version));
+                                matches.last()
+                            }
+                            (None, Some(u)) => {
+                                let req = VersionReq::parse(&format!("<{}", u))?;
+                                let matches =
+                                    inf.state.releases().filter(|r| req.matches(&r.version));
+                                matches.last()
+                            }
+                            (Some(l), None) => {
+                                let req = VersionReq::parse(&format!(">={}", l))?;
+                                let matches =
+                                    inf.state.releases().filter(|r| req.matches(&r.version));
+                                matches.last()
+                            }
+                            (None, None) => inf.state.releases().last(),
                         }
                     } else {
                         inf.state.releases().last()
@@ -266,30 +260,30 @@ impl LockCommand {
                             locked_package.push_str(&format!("@{}", &r.version.to_string()));
                             let path = client.content().content_location(content);
                             if let Some(p) = path {
-                              let component =
-                                  wasm_compose::graph::Component::from_file(locked_package, p)?;
-                              let component_index = composer.add_component(component)?;
-                              let instance_id = composer.instantiate(component_index)?;
-  
-                              let added = composer.get_component(component_index);
-                              handled.insert(package, instance_id);
-                              let mut args = Vec::new();
-                              if let Some(added) = added {
-                                  for (index, name, _) in added.imports() {
-                                      let iid = handled.get(name);
-                                      if let Some(arg) = iid {
-                                          args.push((arg, index));
-                                      }
-                                  }
-                              }
-                              for arg in args {
-                                  composer.connect(
-                                      *arg.0,
-                                      None::<ExportIndex>,
-                                      instance_id,
-                                      arg.1,
-                                  )?;
-                              }
+                                let component =
+                                    wasm_compose::graph::Component::from_file(locked_package, p)?;
+                                let component_index = composer.add_component(component)?;
+                                let instance_id = composer.instantiate(component_index)?;
+
+                                let added = composer.get_component(component_index);
+                                handled.insert(package, instance_id);
+                                let mut args = Vec::new();
+                                if let Some(added) = added {
+                                    for (index, name, _) in added.imports() {
+                                        let iid = handled.get(name);
+                                        if let Some(arg) = iid {
+                                            args.push((arg, index));
+                                        }
+                                    }
+                                }
+                                for arg in args {
+                                    composer.connect(
+                                        *arg.0,
+                                        None::<ExportIndex>,
+                                        instance_id,
+                                        arg.1,
+                                    )?;
+                                }
                             }
                         }
                     }

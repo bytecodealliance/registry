@@ -91,6 +91,7 @@ impl DependenciesCommand {
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
+                client.download(&info.id, &VersionReq::STAR).await?;
                 let mut tree = TreeBuilder::new(format!("{0}@{1}", info.id, l.version));
                 if let ReleaseState::Released { content } = &l.state {
                     let path = client.content().content_location(content);
