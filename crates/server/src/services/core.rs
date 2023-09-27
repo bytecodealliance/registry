@@ -79,9 +79,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     ) -> Result<LogProofBundle<Digest, LogLeaf>, CoreServiceError> {
         let state = self.inner.state.read().await;
 
-        let proof = state
-            .log
-            .prove_consistency(from_log_length as usize, to_log_length as usize);
+        let proof = state.log.prove_consistency(from_log_length, to_log_length);
         LogProofBundle::bundle(vec![proof], vec![], &state.log)
             .map_err(CoreServiceError::BundleFailure)
     }
@@ -98,11 +96,11 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
             .iter()
             .map(|&index| {
                 let node = if index < state.leaf_index.len() as RegistryIndex {
-                    state.leaf_index[index as usize]
+                    state.leaf_index[index]
                 } else {
                     return Err(CoreServiceError::LeafNotFound(index));
                 };
-                Ok(state.log.prove_inclusion(node, log_length as usize))
+                Ok(state.log.prove_inclusion(node, log_length))
             })
             .collect::<Result<Vec<_>, CoreServiceError>>()?;
 
