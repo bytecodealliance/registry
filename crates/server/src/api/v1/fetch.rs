@@ -55,7 +55,7 @@ impl From<DataStoreError> for FetchApiError {
             }
             DataStoreError::LogNotFound(log_id) => FetchError::LogNotFound(log_id),
             DataStoreError::RecordNotFound(record_id) => {
-                FetchError::RecordNotFound(record_id.to_string())
+                FetchError::FetchTokenNotFound(record_id.to_string())
             }
             // Other errors are internal server errors
             e => {
@@ -90,7 +90,7 @@ async fn fetch_logs(
     let operator_fetch_token: Option<RecordId> = match body.operator {
         Some(s) => Some(
             s.parse::<AnyHash>()
-                .map_err(|_| FetchApiError(FetchError::RecordNotFound(s.into_owned())))?
+                .map_err(|_| FetchApiError(FetchError::FetchTokenNotFound(s.into_owned())))?
                 .into(),
         ),
         None => None,
@@ -124,7 +124,7 @@ async fn fetch_logs(
         let since: Option<RecordId> = match fetch_token {
             Some(s) => Some(
                 s.parse::<AnyHash>()
-                    .map_err(|_| FetchApiError(FetchError::RecordNotFound(s)))?
+                    .map_err(|_| FetchApiError(FetchError::FetchTokenNotFound(s)))?
                     .into(),
             ),
             None => None,

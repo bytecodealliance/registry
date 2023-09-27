@@ -63,9 +63,9 @@ pub enum FetchError {
     /// The provided log was not found.
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
-    /// The provided record was not found.
-    #[error("record fetch token `{0}` was not found")]
-    RecordNotFound(String),
+    /// The provided fetch token was not found.
+    #[error("fetch token `{0}` was not found")]
+    FetchTokenNotFound(String),
     /// An error with a message occurred.
     #[error("{message}")]
     Message {
@@ -80,7 +80,7 @@ impl FetchError {
     /// Returns the HTTP status code of the error.
     pub fn status(&self) -> u16 {
         match self {
-            Self::CheckpointNotFound(_) | Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
+            Self::CheckpointNotFound(_) | Self::LogNotFound(_) | Self::FetchTokenNotFound(_) => 404,
             Self::Message { status, .. } => *status,
         }
     }
@@ -91,7 +91,7 @@ impl FetchError {
 enum EntityType {
     LogLength,
     Log,
-    Record,
+    FetchToken,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -134,10 +134,10 @@ impl Serialize for FetchError {
                 id: Cow::Borrowed(log_id),
             }
             .serialize(serializer),
-            Self::RecordNotFound(record_id) => RawError::NotFound {
+            Self::FetchTokenNotFound(token) => RawError::NotFound {
                 status: Status::<404>,
-                ty: EntityType::Record,
-                id: Cow::Borrowed(record_id),
+                ty: EntityType::FetchToken,
+                id: Cow::Borrowed(token),
             }
             .serialize(serializer),
             Self::Message { status, message } => RawError::Message {
@@ -164,7 +164,7 @@ impl<'de> Deserialize<'de> for FetchError {
                         })?
                         .into(),
                 )),
-                EntityType::Record => Ok(Self::RecordNotFound(id.into_owned())),
+                EntityType::FetchToken => Ok(Self::FetchTokenNotFound(id.into_owned())),
                 _ => Err(serde::de::Error::invalid_value(
                     Unexpected::Str(&id),
                     &"a valid log length",

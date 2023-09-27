@@ -993,7 +993,7 @@ components:
           type:
             type: string
             description: The type of entity that was not found.
-            enum: [log, record]
+            enum: [log, fetchToken]
             example: log
           id:
             type: string
