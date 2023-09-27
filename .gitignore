@@ -2,3 +2,8 @@
 /target
 *.swp
 *.swo
+
+# Used by the `publish verify` to ensure all packages can be published
+.cargo
+vendor/
+publish
