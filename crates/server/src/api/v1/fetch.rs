@@ -10,10 +10,10 @@ use axum::{
     Router,
 };
 use std::collections::HashMap;
-use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse};
-use warg_crypto::hash::Sha256;
-use warg_protocol::registry::{LogId, TimestampedCheckpoint};
-use warg_protocol::{PublishedProtoEnvelopeBody, SerdeEnvelope};
+use warg_api::v1::fetch::{FetchError, FetchLogsRequest, FetchLogsResponse, PublishedRecord};
+use warg_crypto::hash::{AnyHash, Sha256};
+use warg_protocol::registry::{LogId, RecordId, TimestampedCheckpoint};
+use warg_protocol::SerdeEnvelope;
 
 const DEFAULT_RECORDS_LIMIT: u16 = 100;
 const MAX_RECORDS_LIMIT: u16 = 1000;
@@ -54,7 +54,9 @@ impl From<DataStoreError> for FetchApiError {
                 FetchError::CheckpointNotFound(checkpoint)
             }
             DataStoreError::LogNotFound(log_id) => FetchError::LogNotFound(log_id),
-            DataStoreError::RecordNotFound(record_id) => FetchError::RecordNotFound(record_id),
+            DataStoreError::RecordNotFound(record_id) => {
+                FetchError::RecordNotFound(record_id.to_string())
+            }
             // Other errors are internal server errors
             e => {
                 tracing::error!("unexpected data store error: {e}");
@@ -85,32 +87,63 @@ async fn fetch_logs(
         )));
     }
 
-    let operator: Vec<PublishedProtoEnvelopeBody> = config
+    let operator_fetch_token: Option<RecordId> = match body.operator {
+        Some(s) => Some(
+            s.parse::<AnyHash>()
+                .map_err(|_| FetchApiError(FetchError::RecordNotFound(s.into_owned())))?
+                .into(),
+        ),
+        None => None,
+    };
+    let operator: Vec<PublishedRecord> = config
         .core_service
         .store()
         .get_operator_records(
             &LogId::operator_log::<Sha256>(),
             body.log_length,
-            body.operator.as_deref(),
+            operator_fetch_token.as_ref(),
             limit,
         )
         .await?
         .into_iter()
-        .map(Into::into)
+        .map(|envelope| {
+            // use the record ID as the fetch token
+            let fetch_token = RecordId::operator_record::<Sha256>(&envelope.envelope).to_string();
+            PublishedRecord {
+                envelope: envelope.into(),
+                fetch_token,
+            }
+        })
         .collect();
 
     let mut more = operator.len() == limit as usize;
 
     let mut map = HashMap::new();
     let packages = body.packages.into_owned();
-    for (id, since) in packages {
-        let records: Vec<PublishedProtoEnvelopeBody> = config
+    for (id, fetch_token) in packages {
+        let since: Option<RecordId> = match fetch_token {
+            Some(s) => Some(
+                s.parse::<AnyHash>()
+                    .map_err(|_| FetchApiError(FetchError::RecordNotFound(s)))?
+                    .into(),
+            ),
+            None => None,
+        };
+        let records: Vec<PublishedRecord> = config
             .core_service
             .store()
             .get_package_records(&id, body.log_length, since.as_ref(), limit)
             .await?
             .into_iter()
-            .map(Into::into)
+            .map(|envelope| {
+                // use the record ID as the fetch token
+                let fetch_token =
+                    RecordId::package_record::<Sha256>(&envelope.envelope).to_string();
+                PublishedRecord {
+                    envelope: envelope.into(),
+                    fetch_token,
+                }
+            })
             .collect();
         more |= records.len() == limit as usize;
         map.insert(id, records);

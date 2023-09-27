@@ -376,12 +376,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let mut last_known = packages
             .iter()
-            .map(|(id, p)| {
-                (
-                    id.clone(),
-                    p.state.head().as_ref().map(|h| h.digest.clone()),
-                )
-            })
+            .map(|(id, p)| (id.clone(), p.head_fetch_token.clone()))
             .collect::<HashMap<_, _>>();
 
         loop {
@@ -390,10 +385,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .fetch_logs(FetchLogsRequest {
                     log_length: checkpoint.log_length,
                     operator: operator
-                        .state
-                        .head()
+                        .head_fetch_token
                         .as_ref()
-                        .map(|h| Cow::Borrowed(&h.digest)),
+                        .map(|t| Cow::Borrowed(t.as_str())),
                     limit: None,
                     packages: Cow::Borrowed(&last_known),
                 })
@@ -405,12 +399,21 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
             for record in response.operator {
-                let record: PublishedProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-                operator
-                    .state
-                    .validate(&record.envelope)
-                    .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
-                operator.head_registry_index = Some(record.registry_index);
+                let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
+                    record.envelope.try_into()?;
+                if operator.head_registry_index.is_none()
+                    || operator.head_registry_index.is_some_and(|registry_index| {
+                        proto_envelope.registry_index > registry_index
+                    })
+                {
+                    // skips over records that has already seen
+                    operator
+                        .state
+                        .validate(&proto_envelope.envelope)
+                        .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+                    operator.head_registry_index = Some(proto_envelope.registry_index);
+                    operator.head_fetch_token = Some(record.fetch_token);
+                }
             }
 
             for (log_id, records) in response.packages {
@@ -419,15 +422,24 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
                 for record in records {
-                    let record: PublishedProtoEnvelope<package::PackageRecord> =
-                        record.try_into()?;
-                    package.state.validate(&record.envelope).map_err(|inner| {
-                        ClientError::PackageValidationFailed {
-                            id: package.id.clone(),
-                            inner,
-                        }
-                    })?;
-                    package.head_registry_index = Some(record.registry_index);
+                    let proto_envelope: PublishedProtoEnvelope<package::PackageRecord> =
+                        record.envelope.try_into()?;
+                    if package.head_registry_index.is_none()
+                        || package.head_registry_index.is_some_and(|registry_index| {
+                            proto_envelope.registry_index > registry_index
+                        })
+                    {
+                        // skips over records that has already seen
+                        package
+                            .state
+                            .validate(&proto_envelope.envelope)
+                            .map_err(|inner| ClientError::PackageValidationFailed {
+                                id: package.id.clone(),
+                                inner,
+                            })?;
+                        package.head_registry_index = Some(proto_envelope.registry_index);
+                        package.head_fetch_token = Some(record.fetch_token);
+                    }
                 }
 
                 // At this point, the package log should not be empty
@@ -442,9 +454,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 break;
             }
 
-            // Update the last known record ids for each package log
-            for (id, record_id) in last_known.iter_mut() {
-                *record_id = packages[id].state.head().as_ref().map(|h| h.digest.clone());
+            // Update the last known record fetch token for each package log
+            for (id, fetch_token) in last_known.iter_mut() {
+                *fetch_token = packages[id].head_fetch_token.clone();
             }
         }
 

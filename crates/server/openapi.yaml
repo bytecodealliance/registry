@@ -486,11 +486,11 @@ components:
           format: int16
         operator:
           $ref: "#/components/schemas/AnyHash"
-          description: The last known operator record identifier.
+          description: The last known operator record fetch token.
         packages:
           type: object
           description: |
-            The map of package log identifier to last known package record identifier.
+            The map of package log identifier to last known package record fetch token.
 
             If the last package record identifier is null, records are returned from the start of the log.
           patternProperties:
@@ -520,7 +520,7 @@ components:
           description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
-            $ref: "#/components/schemas/PublishedEnvelopeBody"
+            $ref: "#/components/schemas/PublishedRecord"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -530,7 +530,7 @@ components:
               description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
-                $ref: "#/components/schemas/PublishedEnvelopeBody"
+                $ref: "#/components/schemas/PublishedRecord"
           example:
             ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
             : - contentBytes: "ZXhhbXBsZQ=="
@@ -802,16 +802,21 @@ components:
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
         - $ref: "#/components/schemas/Signature"
-    PublishedEnvelopeBody:
+    PublishedRecord:
       description: A signed envelope body with the published registry log index.
       allOf:
         - type: object
           required:
             - registryIndex
+            - fetchToken
           properties:
             registryIndex:
               type: integer
               description: The index of the published record in the registry log.
+              example: 42
+            fetchToken:
+              type: string
+              description: The fetch token for the registry log. Used for pagination in the fetch logs endpoint.
               example: 42
         - $ref: "#/components/schemas/EnvelopeBody"
         - $ref: "#/components/schemas/Signature"

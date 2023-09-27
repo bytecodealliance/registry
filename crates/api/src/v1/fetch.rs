@@ -6,9 +6,20 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, RecordId, RegistryLen},
+    registry::{LogId, RegistryLen},
     PublishedProtoEnvelopeBody,
 };
+
+/// Wraps the PublishedProtoEnvelopeBody with a fetch token.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishedRecord {
+    /// Record proto envelope body with RegistryIndex.
+    #[serde(flatten)]
+    pub envelope: PublishedProtoEnvelopeBody,
+    /// Fetch token for fetch pagination.
+    pub fetch_token: String,
+}
 
 /// Represents a fetch logs request.
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,12 +30,12 @@ pub struct FetchLogsRequest<'a> {
     /// The limit for the number of operator and package records to fetch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,
-    /// The last known operator record.
+    /// The last known operator record fetch token.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub operator: Option<Cow<'a, RecordId>>,
-    /// The map of package identifiers to last known record ids.
+    pub operator: Option<Cow<'a, str>>,
+    /// The map of package identifiers to last known fetch token.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: Cow<'a, HashMap<LogId, Option<RecordId>>>,
+    pub packages: Cow<'a, HashMap<LogId, Option<String>>>,
 }
 
 /// Represents a fetch logs response.
@@ -36,10 +47,10 @@ pub struct FetchLogsResponse {
     pub more: bool,
     /// The operator records appended since the last known operator record.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub operator: Vec<PublishedProtoEnvelopeBody>,
+    pub operator: Vec<PublishedRecord>,
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: HashMap<LogId, Vec<PublishedProtoEnvelopeBody>>,
+    pub packages: HashMap<LogId, Vec<PublishedRecord>>,
 }
 
 /// Represents a fetch API error.
@@ -53,8 +64,8 @@ pub enum FetchError {
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
     /// The provided record was not found.
-    #[error("record `{0}` was not found")]
-    RecordNotFound(RecordId),
+    #[error("record fetch token `{0}` was not found")]
+    RecordNotFound(String),
     /// An error with a message occurred.
     #[error("{message}")]
     Message {
@@ -153,16 +164,7 @@ impl<'de> Deserialize<'de> for FetchError {
                         })?
                         .into(),
                 )),
-                EntityType::Record => Ok(Self::RecordNotFound(
-                    id.parse::<AnyHash>()
-                        .map_err(|_| {
-                            serde::de::Error::invalid_value(
-                                Unexpected::Str(&id),
-                                &"a valid record id",
-                            )
-                        })?
-                        .into(),
-                )),
+                EntityType::Record => Ok(Self::RecordNotFound(id.into_owned())),
                 _ => Err(serde::de::Error::invalid_value(
                     Unexpected::Str(&id),
                     &"a valid log length",
