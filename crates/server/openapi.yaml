@@ -520,7 +520,7 @@ components:
           description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
-            $ref: "#/components/schemas/PublishedRecord"
+            $ref: "#/components/schemas/PublishedRecordEnvelope"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -530,7 +530,7 @@ components:
               description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
-                $ref: "#/components/schemas/PublishedRecord"
+                $ref: "#/components/schemas/PublishedRecordEnvelope"
           example:
             ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
             : - contentBytes: "ZXhhbXBsZQ=="
@@ -802,7 +802,7 @@ components:
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
         - $ref: "#/components/schemas/Signature"
-    PublishedRecord:
+    PublishedRecordEnvelope:
       description: A signed envelope body with the published registry log index.
       allOf:
         - type: object
