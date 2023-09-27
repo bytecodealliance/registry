@@ -1,9 +1,13 @@
 [package]
 name = "warg-cli"
+description = "The warg registry command line interface."
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true}
 
 [dependencies]
 warg-crypto = { workspace = true }
@@ -53,15 +57,18 @@ version = "0.2.0-dev"
 authors = ["The Warg Registry Project Developers"]
 edition = "2021"
 rust-version = "1.66.0"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://warg.io/"
+repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
-warg-api = { path = "crates/api" }
-warg-client = { path = "crates/client" }
-warg-crypto = { path = "crates/crypto" }
-warg-protobuf = { path = "proto" }
-warg-protocol = { path = "crates/protocol" }
-warg-transparency = { path = "crates/transparency" }
-warg-server = { path = "crates/server" }
+warg-api = { path = "crates/api", version = "0.2.0-dev" }
+warg-client = { path = "crates/client", version = "0.2.0-dev" }
+warg-crypto = { path = "crates/crypto", version = "0.2.0-dev" }
+warg-protobuf = { path = "proto", version = "0.2.0-dev" }
+warg-protocol = { path = "crates/protocol", version = "0.2.0-dev" }
+warg-transparency = { path = "crates/transparency", version = "0.2.0-dev" }
+warg-server = { path = "crates/server", version = "0.2.0-dev" }
 clap = { version = "4.3.11", features = ["derive", "env"] }
 thiserror = "1.0.43"
 anyhow = "1.0.71"
