@@ -62,7 +62,8 @@ homepage = "https://warg.io/"
 repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
-warg-api = { path = "crates/api", version = "0.1.0" }
+# TODO: set this back to a matching version for the next release
+warg-api = { path = "crates/api", version = "0.1.1" }
 warg-client = { path = "crates/client", version = "0.1.0" }
 warg-crypto = { path = "crates/crypto", version = "0.1.0" }
 warg-protobuf = { path = "proto", version = "0.1.0" }
