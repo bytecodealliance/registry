@@ -8,7 +8,7 @@ use warg_crypto::prefix::VisitPrefixEncode;
 use warg_crypto::{prefix, ByteVisitor, Signable, VisitBytes};
 use wasmparser::names::KebabStr;
 
-pub const TIMESTAMPED_CHECKPOINT_SIGNING_PREFIX: &[u8] = b"WARG-CHECKPOINT-SIGNATURE-V0";
+const TIMESTAMPED_CHECKPOINT_SIGNING_PREFIX: &[u8] = b"WARG-CHECKPOINT-SIGNATURE-V0";
 
 /// Type alias for registry log index
 pub type RegistryIndex = usize;
