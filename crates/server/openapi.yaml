@@ -819,7 +819,7 @@ components:
               example: 42
             fetchToken:
               type: string
-              description: The fetch token for the registry log. Used for pagination in the fetch logs endpoint.
+              description: The fetch token for the registry log. Used as a cursor for incrementally fetching log records.
               example: "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
         - $ref: "#/components/schemas/EnvelopeBody"
         - $ref: "#/components/schemas/Signature"

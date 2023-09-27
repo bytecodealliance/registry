@@ -401,12 +401,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             for record in response.operator {
                 let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
                     record.envelope.try_into()?;
+
+                // skip over records that has already seen
                 if operator.head_registry_index.is_none()
-                    || operator.head_registry_index.is_some_and(|registry_index| {
-                        proto_envelope.registry_index > registry_index
-                    })
+                    || proto_envelope.registry_index > operator.head_registry_index.unwrap()
                 {
-                    // skips over records that has already seen
                     operator
                         .state
                         .validate(&proto_envelope.envelope)
@@ -424,12 +423,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 for record in records {
                     let proto_envelope: PublishedProtoEnvelope<package::PackageRecord> =
                         record.envelope.try_into()?;
+
+                    // skip over records that has already seen
                     if package.head_registry_index.is_none()
-                        || package.head_registry_index.is_some_and(|registry_index| {
-                            proto_envelope.registry_index > registry_index
-                        })
+                        || proto_envelope.registry_index > package.head_registry_index.unwrap()
                     {
-                        // skips over records that has already seen
                         package
                             .state
                             .validate(&proto_envelope.envelope)
