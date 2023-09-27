@@ -105,7 +105,7 @@ used to sign package log entries when publishing to the registry.
 A new package can be initialized by running:
 
 ```
-warg publish init hello
+warg publish init example:hello
 ```
 
 This creates a new package in the `example` namespace with the package ID `hello`.
