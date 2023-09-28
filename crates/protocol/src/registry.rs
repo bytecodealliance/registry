@@ -161,6 +161,11 @@ impl PackageId {
     pub fn name(&self) -> &str {
         &self.id[self.colon + 1..]
     }
+
+    /// Gets the full string package identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl AsRef<str> for PackageId {
@@ -288,6 +293,18 @@ impl fmt::Display for RecordId {
 impl From<AnyHash> for RecordId {
     fn from(value: AnyHash) -> Self {
         Self(value)
+    }
+}
+
+impl From<RecordId> for AnyHash {
+    fn from(id: RecordId) -> Self {
+        id.0
+    }
+}
+
+impl AsRef<[u8]> for RecordId {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
     }
 }
 

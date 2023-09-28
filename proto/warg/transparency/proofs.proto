@@ -25,3 +25,13 @@ message HashEntry {
     uint32 index = 1;
     bytes hash = 2;
 }
+
+message StackLog {
+    uint32 length = 1;
+    repeated HashEntry stack = 2;
+}
+
+message VecLog {
+    uint32 length = 1;
+    repeated bytes tree = 2;
+}
