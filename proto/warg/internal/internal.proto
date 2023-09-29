@@ -16,4 +16,3 @@ message VecLog {
     uint32 length = 1;
     repeated bytes tree = 2;
 }
-
