@@ -72,13 +72,13 @@ where
     }
 
     /// Turn a VecLog into bytes using protobuf
-    pub fn encode(self) -> Vec<u8> {
+    pub fn to_protobuf(self) -> Vec<u8> {
         let proto: protobuf::VecLog = self.into();
         proto.encode_to_vec()
     }
 
     /// Parse a VecLog from bytes using protobuf
-    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_protobuf(bytes: &[u8]) -> Result<Self, Error> {
         let proto = protobuf::VecLog::decode(bytes)?;
         let value = proto.try_into()?;
         Ok(value)

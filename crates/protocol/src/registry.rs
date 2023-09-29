@@ -161,11 +161,6 @@ impl PackageId {
     pub fn name(&self) -> &str {
         &self.id[self.colon + 1..]
     }
-
-    /// Gets the full string package identifier.
-    pub fn id(&self) -> &str {
-        &self.id
-    }
 }
 
 impl AsRef<str> for PackageId {
