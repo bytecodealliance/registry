@@ -80,12 +80,12 @@ impl<Contents> ProtoEnvelope<Contents> {
 
     /// Create an entire envelope from a byte vector.
     /// This is the logical inverse of `Envelope::as_bytes`.
-    pub fn from_protobuf(bytes: Vec<u8>) -> Result<Self, ParseEnvelopeError>
+    pub fn from_protobuf(bytes: &[u8]) -> Result<Self, ParseEnvelopeError>
     where
         Contents: Decode,
     {
         // Parse outer envelope
-        let envelope = protobuf::Envelope::decode(bytes.as_slice())?;
+        let envelope = protobuf::Envelope::decode(bytes)?;
         let contents = Contents::decode(&envelope.contents)?;
 
         // Read key ID and signature
