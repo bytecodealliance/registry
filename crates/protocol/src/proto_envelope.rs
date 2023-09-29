@@ -54,11 +54,6 @@ impl<Contents> ProtoEnvelope<Contents> {
         })
     }
 
-    /// Get the envelope contents.
-    pub fn contents(&self) -> &Contents {
-        &self.contents
-    }
-
     /// Get the byte representation of the envelope contents.
     pub fn content_bytes(&self) -> &[u8] {
         &self.content_bytes
