@@ -7,7 +7,7 @@ use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
 };
-use warg_protobuf::transparency as protobuf;
+use warg_protobuf::internal as protobuf;
 
 use super::{hash_branch, hash_empty, hash_leaf, node::Node, Checkpoint, LogBuilder};
 
