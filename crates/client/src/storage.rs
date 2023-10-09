@@ -16,6 +16,7 @@ use warg_protocol::{
     registry::{Checkpoint, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
+use wasm_metadata::RegistryMetadata;
 
 mod fs;
 pub use fs::*;
@@ -120,6 +121,8 @@ pub struct OperatorInfo {
 pub struct PackageInfo {
     /// The id of the package to publish.
     pub id: PackageId,
+    /// Metadata for the package
+    pub metadata: Option<RegistryMetadata>,
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<Checkpoint>,
@@ -136,6 +139,7 @@ impl PackageInfo {
     pub fn new(id: impl Into<PackageId>) -> Self {
         Self {
             id: id.into(),
+            metadata: None,
             checkpoint: None,
             state: package::LogState::default(),
             head_registry_index: None,

@@ -6,7 +6,9 @@ use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
-use warg_server::{args::get_opt_secret, policy::record::AuthorizedKeyPolicy, Config, Server};
+use warg_server::{
+    args::get_opt_secret, extractor::metadata, policy::record::AuthorizedKeyPolicy, Config, Server,
+};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DataStoreKind {
@@ -110,6 +112,9 @@ async fn main() -> Result<()> {
             .with_context(|| format!("failed to decode authorized keys from {path:?}"))?;
         config = config.with_record_policy(authorized_key_policy);
     }
+
+    let metadata_extractor = metadata::MetadataExtractor::new();
+    config = config.with_metadata_extractor(metadata_extractor);
 
     let config = match args.data_store {
         #[cfg(feature = "postgres")]

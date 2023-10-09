@@ -9,10 +9,11 @@ use warg_protocol::{
     },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
+use wasm_metadata::RegistryMetadata;
 
 mod memory;
 #[cfg(feature = "postgres")]
-mod postgres;
+pub mod postgres;
 
 pub use memory::*;
 #[cfg(feature = "postgres")]
@@ -153,6 +154,21 @@ pub trait DataStore: Send + Sync {
         record_id: &RecordId,
         registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
+
+    /// Stores the given package metadata.
+    async fn store_metadata(
+        &self,
+        log_id: &LogId,
+        recordid: &RecordId,
+        metadata: RegistryMetadata,
+    ) -> Result<(), DataStoreError>;
+
+    /// Gets the given package metadata.
+    async fn get_metadata(
+        &self,
+        log_id: &LogId,
+        recordid: &RecordId,
+    ) -> Result<RegistryMetadata, DataStoreError>;
 
     /// Stores the given package record.
     ///

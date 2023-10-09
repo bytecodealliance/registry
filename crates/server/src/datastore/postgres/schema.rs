@@ -44,6 +44,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    metadata (id) {
+        id -> Int4,
+        log_id -> Int4,
+        record_id -> Int4,
+        data -> Nullable<Jsonb>,
+    }
+}
+
+diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::RecordStatus;
 
@@ -61,6 +70,14 @@ diesel::table! {
 }
 
 diesel::joinable!(contents -> records (record_id));
+diesel::joinable!(metadata -> logs (log_id));
+diesel::joinable!(metadata -> records (record_id));
 diesel::joinable!(records -> logs (log_id));
 
-diesel::allow_tables_to_appear_in_same_query!(checkpoints, contents, logs, records,);
+diesel::allow_tables_to_appear_in_same_query!(
+    checkpoints,
+    contents,
+    logs,
+    metadata,
+    records,
+);

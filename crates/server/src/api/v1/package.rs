@@ -1,6 +1,7 @@
 use super::{Json, Path};
 use crate::{
-    datastore::{DataStoreError, RecordStatus},
+    datastore::{DataStore, DataStoreError, RecordStatus},
+    extractor::Extractor,
     policy::{
         content::{ContentPolicy, ContentPolicyError},
         record::{RecordPolicy, RecordPolicyError},
@@ -38,6 +39,7 @@ pub struct Config {
     content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
+    extractor: Option<Arc<dyn Extractor>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 }
@@ -48,6 +50,7 @@ impl Config {
         content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,
+        extractor: Option<Arc<dyn Extractor>>,
         content_policy: Option<Arc<dyn ContentPolicy>>,
         record_policy: Option<Arc<dyn RecordPolicy>>,
     ) -> Self {
@@ -56,6 +59,7 @@ impl Config {
             content_base_url,
             files_dir,
             temp_dir,
+            extractor,
             content_policy,
             record_policy,
         }
@@ -207,11 +211,11 @@ async fn publish_record(
         .map_err(PackageApiError::bad_request)?;
 
     // Specifying content sources is not allowed in this implementation
-    if !body.content_sources.is_empty() {
-        return Err(PackageApiError::unsupported(
-            "specifying content sources is not supported",
-        ));
-    }
+    // if !body.content_sources.is_empty() {
+    //     return Err(PackageApiError::unsupported(
+    //         "specifying content sources is not supported",
+    //     ));
+    // }
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
@@ -352,8 +356,19 @@ async fn upload_content(
         "uploading content for record `{record_id}` from `{log_id}` to `{path}`",
         path = tmp_path.display()
     );
+    let store = config.core_service.store();
 
-    let res = process_content(&tmp_path, &digest, stream, config.content_policy.as_deref()).await;
+    let res = process_content(
+        &log_id,
+        &record_id,
+        store,
+        &tmp_path,
+        &digest,
+        stream,
+        config.extractor.as_deref(),
+        config.content_policy.as_deref(),
+    )
+    .await;
 
     // If the error was a rejection, transition the record itself to rejected
     if let Err(PackageApiError(PackageError::Rejection(reason))) = &res {
@@ -395,9 +410,13 @@ async fn upload_content(
 }
 
 async fn process_content(
+    log_id: &LogId,
+    record_id: &RecordId,
+    store: &dyn DataStore,
     path: &std::path::Path,
     digest: &AnyHash,
     mut stream: BodyStream,
+    extractor: Option<&dyn Extractor>,
     policy: Option<&dyn ContentPolicy>,
 ) -> Result<(), PackageApiError> {
     let mut tmp_file = tokio::fs::File::create(&path)
@@ -406,6 +425,10 @@ async fn process_content(
 
     let mut hasher = digest.algorithm().hasher();
     let mut policy = policy.map(|p| p.new_stream_policy(digest)).transpose()?;
+    let mut extractor = extractor
+        .map(|e| e.new_extraction_stream())
+        .transpose()
+        .unwrap();
 
     while let Some(chunk) = stream
         .next()
@@ -413,6 +436,12 @@ async fn process_content(
         .transpose()
         .map_err(PackageApiError::internal_error)?
     {
+        if let Some(extractor) = extractor.as_mut() {
+            let metadata = extractor.extract(&chunk).unwrap();
+            if let Some(md) = metadata {
+                store.store_metadata(log_id, record_id, md).await?;
+            }
+        }
         if let Some(policy) = policy.as_mut() {
             policy.check(&chunk)?;
         }

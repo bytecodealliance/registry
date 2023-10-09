@@ -1,10 +1,10 @@
 use self::models::{
-    CheckpointData, NewCheckpoint, NewContent, NewLog, NewRecord, ParsedText, RecordContent,
-    RecordStatus, TextRef,
+    CheckpointData, Metadata, NewCheckpoint, NewContent, NewLog, NewMetadata, NewRecord,
+    ParsedText, RecordContent, RecordStatus, TextRef,
 };
 use super::{DataStore, DataStoreError, Record};
 use anyhow::{anyhow, Result};
-use diesel::{prelude::*, result::DatabaseErrorKind};
+use diesel::{prelude::*, result::DatabaseErrorKind, sql_types::Jsonb};
 use diesel_async::{
     pooled_connection::{deadpool::Pool, AsyncDieselConnectionManager},
     scoped_futures::ScopedFutureExt,
@@ -30,6 +30,7 @@ use warg_protocol::{
     },
     ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
 };
+use wasm_metadata::RegistryMetadata;
 
 mod models;
 mod schema;
@@ -550,6 +551,84 @@ impl DataStore for PostgresDataStore {
                 reject_record(conn.as_mut(), log_id, record_id, &e.to_string()).await?;
                 Err(e)
             }
+        }
+    }
+
+    async fn store_metadata(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        metadata: RegistryMetadata,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        conn.transaction::<_, DataStoreError, _>(|conn| {
+            async move {
+                // Unfortunately, this cannot be done with an ON CONFLICT DO NOTHING clause as
+                // data cannot be returned; so just do a query for the log id and insert if it doesn't exist.
+                let log_id = schema::logs::table
+                    .select(schema::logs::id)
+                    .filter(schema::logs::log_id.eq(TextRef(log_id)))
+                    .first::<i32>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(DataStoreError::LogNotFound(log_id.clone()))?;
+
+                let record_id = schema::records::table
+                    .select(schema::records::id)
+                    .filter(schema::records::record_id.eq(TextRef(record_id)))
+                    .first::<i32>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(DataStoreError::RecordNotFound(record_id.clone()))?;
+
+                let metadata = diesel::insert_into(schema::metadata::table)
+                    .values(NewMetadata {
+                        log_id,
+                        record_id,
+                        data: &Json(metadata),
+                    })
+                    .returning(schema::metadata::id)
+                    .get_result::<i32>(conn)
+                    .await
+                    .map_err(|e| match e {
+                        diesel::result::Error::DatabaseError(
+                            DatabaseErrorKind::UniqueViolation,
+                            _,
+                        ) => DataStoreError::Conflict,
+                        e => e.into(),
+                    })?;
+                Ok(())
+            }
+            .scope_boxed()
+        })
+        .await
+    }
+
+    async fn get_metadata(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<RegistryMetadata, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        let md = schema::metadata::table
+            .inner_join(schema::records::table)
+            .inner_join(schema::logs::table)
+            .select(schema::metadata::data)
+            .filter(
+                schema::logs::log_id
+                    .eq(TextRef(log_id))
+                    .and(schema::records::record_id.eq(TextRef(record_id))),
+            )
+            .get_result::<Option<serde_json::Value>>(&mut conn)
+            .await
+            .unwrap()
+            .map(serde_json::from_value)
+            .unwrap()
+            .unwrap();
+        if let Some(md) = md {
+            return Ok(md);
+        } else {
+            return Ok(RegistryMetadata::from_bytes(&[], 0).unwrap());
         }
     }
 

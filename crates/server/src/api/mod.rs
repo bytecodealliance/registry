@@ -1,4 +1,5 @@
 use crate::{
+    extractor::Extractor,
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
 };
@@ -25,6 +26,7 @@ pub fn create_router(
     core: CoreService,
     temp_dir: PathBuf,
     files_dir: PathBuf,
+    extractor: Option<Arc<dyn Extractor>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
@@ -39,6 +41,7 @@ pub fn create_router(
                 core,
                 temp_dir,
                 files_dir.clone(),
+                extractor,
                 content_policy,
                 record_policy,
             ),

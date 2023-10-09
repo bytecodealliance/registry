@@ -16,6 +16,7 @@ use warg_protocol::{
     },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
+use wasm_metadata::RegistryMetadata;
 
 struct Entry<R> {
     registry_index: RegistryIndex,
@@ -244,6 +245,23 @@ impl DataStore for MemoryDataStore {
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
         }
+    }
+
+    async fn store_metadata(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+        metadata: RegistryMetadata,
+    ) -> Result<(), DataStoreError> {
+        Ok(())
+    }
+
+    async fn get_metadata(
+        &self,
+        log_id: &LogId,
+        record_id: &RecordId,
+    ) -> Result<RegistryMetadata, DataStoreError> {
+        Ok(RegistryMetadata::from_bytes(&[], 0).unwrap())
     }
 
     async fn store_package_record(

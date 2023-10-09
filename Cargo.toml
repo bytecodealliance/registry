@@ -6,6 +6,7 @@ authors = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+wasm-metadata = { workspace = true }
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
@@ -61,7 +62,7 @@ warg-crypto = { path = "crates/crypto" }
 warg-protobuf = { path = "proto" }
 warg-protocol = { path = "crates/protocol" }
 warg-transparency = { path = "crates/transparency" }
-warg-server = { path = "crates/server" }
+warg-server = { path = "crates/server", features = ["debug"]}
 clap = { version = "4.3.11", features = ["derive", "env"] }
 thiserror = "1.0.43"
 anyhow = "1.0.71"
@@ -119,5 +120,6 @@ diesel-derive-enum = "2.1.0"
 chrono = "0.4.26"
 regex = "1"
 wasmparser = "0.108.0"
+wasm-metadata = "0.10.7"
 protox = "0.4.1"
 toml = "0.7.6"

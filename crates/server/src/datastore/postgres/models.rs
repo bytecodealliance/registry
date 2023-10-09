@@ -1,4 +1,4 @@
-use super::schema::{checkpoints, contents, logs, records};
+use super::schema::{checkpoints, contents, logs, metadata, records};
 use chrono::{DateTime, Utc};
 use diesel::{
     deserialize::{self, FromSql},
@@ -8,7 +8,7 @@ use diesel::{
     sql_types, AsExpression, FromSqlRow, Insertable,
 };
 use diesel_json::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Display, io::Write, str::FromStr};
 use warg_crypto::{
     hash::AnyHash,
@@ -87,6 +87,28 @@ pub struct NewCheckpoint<'a> {
     pub key_id: TextRef<'a, KeyID>,
     pub signature: TextRef<'a, Signature>,
     pub timestamp: i64,
+}
+
+#[derive(Selectable, Queryable)]
+#[diesel(table_name = metadata)]
+pub struct Metadata<'a, V>
+where
+    V: Deserialize<'a>,
+{
+    pub log_id: TextRef<'a, LogId>,
+    pub record_id: TextRef<'a, RecordId>,
+    pub data: &'a Json<V>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = metadata)]
+pub struct NewMetadata<'a, V>
+where
+    V: Serialize,
+{
+    pub log_id: i32,
+    pub record_id: i32,
+    pub data: &'a Json<V>,
 }
 
 #[derive(Queryable)]

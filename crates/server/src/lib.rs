@@ -2,6 +2,7 @@ use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use axum::Router;
 use datastore::DataStore;
+use extractor::Extractor;
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
 use services::CoreService;
@@ -20,6 +21,7 @@ use warg_crypto::signing::PrivateKey;
 pub mod api;
 pub mod args;
 pub mod datastore;
+pub mod extractor;
 pub mod policy;
 pub mod services;
 
@@ -37,6 +39,7 @@ pub struct Config {
     content_base_url: Option<Url>,
     shutdown: Option<ShutdownFut>,
     checkpoint_interval: Option<Duration>,
+    extractor: Option<Arc<dyn Extractor>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 }
@@ -76,6 +79,7 @@ impl Config {
             content_base_url: None,
             shutdown: None,
             checkpoint_interval: None,
+            extractor: None,
             content_policy: None,
             record_policy: None,
         }
@@ -125,6 +129,12 @@ impl Config {
     /// Sets the checkpoint interval to use for the server.
     pub fn with_checkpoint_interval(mut self, interval: Duration) -> Self {
         self.checkpoint_interval = Some(interval);
+        self
+    }
+
+    /// Sets the metadata extractor to use for the server.
+    pub fn with_metadata_extractor(mut self, extractor: impl Extractor + 'static) -> Self {
+        self.extractor = Some(Arc::new(extractor));
         self
     }
 
@@ -220,6 +230,7 @@ impl Server {
             core,
             temp_dir,
             files_dir,
+            self.config.extractor,
             self.config.content_policy,
             self.config.record_policy,
         );
