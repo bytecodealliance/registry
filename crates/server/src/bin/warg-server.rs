@@ -7,7 +7,8 @@ use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
 use warg_server::{
-    args::get_opt_secret, extractor::metadata, policy::record::AuthorizedKeyPolicy, Config, Server,
+    args::get_opt_secret, extractor::interfaces, extractor::metadata,
+    policy::record::AuthorizedKeyPolicy, Config, Server,
 };
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -113,8 +114,10 @@ async fn main() -> Result<()> {
         config = config.with_record_policy(authorized_key_policy);
     }
 
-    let metadata_extractor = metadata::MetadataExtractor::new();
+    let metadata_extractor = metadata::MetadataExtractor::default();
     config = config.with_metadata_extractor(metadata_extractor);
+    let interface_extractor = interfaces::InterfaceExtractor::default();
+    config = config.with_interface_extractor(interface_extractor);
 
     let config = match args.data_store {
         #[cfg(feature = "postgres")]

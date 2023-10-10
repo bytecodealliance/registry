@@ -1,10 +1,12 @@
+use crate::extractor::interfaces::Interface;
+
 use self::models::{
-    CheckpointData, Metadata, NewCheckpoint, NewContent, NewLog, NewMetadata, NewRecord,
+    CheckpointData, NewCheckpoint, NewContent, NewInterface, NewLog, NewMetadata, NewRecord,
     ParsedText, RecordContent, RecordStatus, TextRef,
 };
-use super::{DataStore, DataStoreError, Record};
+use super::{DataStore, DataStoreError, Direction, Record};
 use anyhow::{anyhow, Result};
-use diesel::{prelude::*, result::DatabaseErrorKind, sql_types::Jsonb};
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
     pooled_connection::{deadpool::Pool, AsyncDieselConnectionManager},
     scoped_futures::ScopedFutureExt,
@@ -554,6 +556,76 @@ impl DataStore for PostgresDataStore {
         }
     }
 
+    async fn store_interfaces(
+        &self,
+        digest: &AnyHash,
+        names: Vec<Interface>,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        conn.transaction::<_, DataStoreError, _>(|conn| {
+            async move {
+                // Unfortunately, this cannot be done with an ON CONFLICT DO NOTHING clause as
+                // data cannot be returned; so just do a query for the log id and insert if it doesn't exist.
+                let content_id = schema::contents::table
+                    .select(schema::contents::id)
+                    .filter(schema::contents::digest.eq(TextRef(digest)))
+                    .first::<i32>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(DataStoreError::ContentNotFound(digest.clone()))?;
+
+                diesel::insert_into(schema::interfaces::table)
+                    .values(
+                        names
+                            .iter()
+                            .map(|i| NewInterface {
+                                content_id,
+                                direction: match i.direction {
+                                    Direction::Import => &models::Direction::Import,
+                                    Direction::Export => &models::Direction::Export,
+                                },
+                                name: &i.name,
+                            })
+                            .collect::<Vec<NewInterface>>(),
+                    )
+                    .returning(schema::interfaces::id)
+                    .get_result::<i32>(conn)
+                    .await
+                    .map_err(|e| match e {
+                        diesel::result::Error::DatabaseError(
+                            DatabaseErrorKind::UniqueViolation,
+                            _,
+                        ) => DataStoreError::Conflict,
+                        e => e.into(),
+                    })?;
+                Ok(())
+            }
+            .scope_boxed()
+        })
+        .await
+    }
+
+    async fn get_interfaces(&self, digest: AnyHash) -> Result<Vec<Interface>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+        let interfaces = schema::interfaces::table
+            .inner_join(schema::contents::table)
+            .select((schema::interfaces::direction, schema::interfaces::name))
+            .filter(schema::contents::digest.eq(TextRef(&digest)))
+            .load::<(models::Direction, ParsedText<String>)>(&mut conn)
+            .await?
+            .into_iter()
+            .map(|(dir, name)| Interface {
+                direction: match dir {
+                    models::Direction::Import => Direction::Import,
+                    models::Direction::Export => Direction::Export,
+                },
+                name: name.0,
+            })
+            .collect::<Vec<Interface>>();
+        dbg!(digest, &interfaces);
+        Ok(interfaces)
+    }
+
     async fn store_metadata(
         &self,
         log_id: &LogId,
@@ -581,7 +653,7 @@ impl DataStore for PostgresDataStore {
                     .optional()?
                     .ok_or(DataStoreError::RecordNotFound(record_id.clone()))?;
 
-                let metadata = diesel::insert_into(schema::metadata::table)
+                diesel::insert_into(schema::metadata::table)
                     .values(NewMetadata {
                         log_id,
                         record_id,

@@ -189,7 +189,7 @@ impl PublishReleaseCommand {
 
         let path = self.path.clone();
         let version = self.version.clone();
-        match enqueue(&client, &self.id, move |c| async move {
+        match enqueue(&client, &self.id.clone(), move |c| async move {
             let content = c
                 .content()
                 .store_content(

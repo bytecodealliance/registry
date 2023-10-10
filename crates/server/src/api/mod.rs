@@ -1,5 +1,5 @@
 use crate::{
-    extractor::Extractor,
+    extractor::{interfaces::Interface, Extractor},
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
 };
@@ -14,6 +14,7 @@ use tower_http::{
 };
 use tracing::{Level, Span};
 use url::Url;
+use wasm_metadata::RegistryMetadata;
 
 pub mod v1;
 
@@ -26,7 +27,8 @@ pub fn create_router(
     core: CoreService,
     temp_dir: PathBuf,
     files_dir: PathBuf,
-    extractor: Option<Arc<dyn Extractor>>,
+    metadata_extractor: Option<Arc<dyn Extractor<RegistryMetadata>>>,
+    interface_extractor: Option<Arc<dyn Extractor<Vec<Interface>>>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
@@ -41,7 +43,8 @@ pub fn create_router(
                 core,
                 temp_dir,
                 files_dir.clone(),
-                extractor,
+                metadata_extractor,
+                interface_extractor,
                 content_policy,
                 record_policy,
             ),

@@ -1,4 +1,4 @@
-use super::schema::{checkpoints, contents, logs, metadata, records};
+use super::schema::{checkpoints, contents, interfaces, logs, metadata, records};
 use chrono::{DateTime, Utc};
 use diesel::{
     deserialize::{self, FromSql},
@@ -9,7 +9,11 @@ use diesel::{
 };
 use diesel_json::Json;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, io::Write, str::FromStr};
+use std::{
+    fmt::{Display, Error},
+    io::Write,
+    str::FromStr,
+};
 use warg_crypto::{
     hash::AnyHash,
     signing::{KeyID, Signature},
@@ -22,6 +26,26 @@ pub enum RecordStatus {
     Pending,
     Rejected,
     Validated,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, diesel_derive_enum::DbEnum)]
+#[ExistingTypePath = "crate::datastore::postgres::schema::sql_types::Direction"]
+pub enum Direction {
+    Import,
+    Export,
+}
+
+impl FromStr for Direction {
+    type Err = std::fmt::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "import" {
+            return Ok(Self::Import);
+        } else if s == "export" {
+            return Ok(Self::Export);
+        }
+        Err(Error {})
+    }
 }
 
 #[derive(FromSqlRow, AsExpression, Debug)]
@@ -87,6 +111,25 @@ pub struct NewCheckpoint<'a> {
     pub key_id: TextRef<'a, KeyID>,
     pub signature: TextRef<'a, Signature>,
     pub timestamp: i64,
+}
+
+// impl Expression for RecordId {
+//     type SqlType = Direction;
+// }
+#[derive(Insertable)]
+#[diesel(table_name = interfaces)]
+pub struct NewInterface<'a> {
+    pub content_id: i32,
+    pub direction: &'a Direction,
+    pub name: &'a str,
+}
+
+#[derive(Selectable, Queryable)]
+#[diesel(table_name = interfaces)]
+pub struct Interface<'a> {
+    // pub content_id: ParsedText<AnyHash>,
+    pub direction: ParsedText<Direction>,
+    pub name: TextRef<'a, String>,
 }
 
 #[derive(Selectable, Queryable)]

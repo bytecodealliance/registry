@@ -1,7 +1,7 @@
 use super::{Json, Path};
 use crate::{
-    datastore::{DataStore, DataStoreError, RecordStatus},
-    extractor::Extractor,
+    datastore::{DataStore, DataStoreError, Direction, RecordStatus},
+    extractor::{interfaces::Interface, Extractor},
     policy::{
         content::{ContentPolicy, ContentPolicyError},
         record::{RecordPolicy, RecordPolicyError},
@@ -32,6 +32,7 @@ use warg_protocol::{
     registry::{LogId, RecordId},
     ProtoEnvelope, Record as _,
 };
+use wasm_metadata::RegistryMetadata;
 
 #[derive(Clone)]
 pub struct Config {
@@ -39,7 +40,8 @@ pub struct Config {
     content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
-    extractor: Option<Arc<dyn Extractor>>,
+    metadata_extractor: Option<Arc<dyn Extractor<RegistryMetadata>>>,
+    interface_extractor: Option<Arc<dyn Extractor<Vec<Interface>>>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 }
@@ -50,7 +52,8 @@ impl Config {
         content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,
-        extractor: Option<Arc<dyn Extractor>>,
+        metadata_extractor: Option<Arc<dyn Extractor<RegistryMetadata>>>,
+        interface_extractor: Option<Arc<dyn Extractor<Vec<Interface>>>>,
         content_policy: Option<Arc<dyn ContentPolicy>>,
         record_policy: Option<Arc<dyn RecordPolicy>>,
     ) -> Self {
@@ -59,7 +62,8 @@ impl Config {
             content_base_url,
             files_dir,
             temp_dir,
-            extractor,
+            metadata_extractor,
+            interface_extractor,
             content_policy,
             record_policy,
         }
@@ -365,7 +369,8 @@ async fn upload_content(
         &tmp_path,
         &digest,
         stream,
-        config.extractor.as_deref(),
+        config.metadata_extractor.as_deref(),
+        config.interface_extractor.as_deref(),
         config.content_policy.as_deref(),
     )
     .await;
@@ -416,7 +421,8 @@ async fn process_content(
     path: &std::path::Path,
     digest: &AnyHash,
     mut stream: BodyStream,
-    extractor: Option<&dyn Extractor>,
+    metadata_extractor: Option<&dyn Extractor<RegistryMetadata>>,
+    interface_extractor: Option<&dyn Extractor<Vec<Interface>>>,
     policy: Option<&dyn ContentPolicy>,
 ) -> Result<(), PackageApiError> {
     let mut tmp_file = tokio::fs::File::create(&path)
@@ -425,7 +431,11 @@ async fn process_content(
 
     let mut hasher = digest.algorithm().hasher();
     let mut policy = policy.map(|p| p.new_stream_policy(digest)).transpose()?;
-    let mut extractor = extractor
+    let mut metadata_extractor = metadata_extractor
+        .map(|e| e.new_extraction_stream())
+        .transpose()
+        .unwrap();
+    let mut interface_extractor = interface_extractor
         .map(|e| e.new_extraction_stream())
         .transpose()
         .unwrap();
@@ -436,11 +446,14 @@ async fn process_content(
         .transpose()
         .map_err(PackageApiError::internal_error)?
     {
-        if let Some(extractor) = extractor.as_mut() {
-            let metadata = extractor.extract(&chunk).unwrap();
+        if let Some(md_extractor) = metadata_extractor.as_mut() {
+            let metadata = md_extractor.extract(&chunk).unwrap();
             if let Some(md) = metadata {
                 store.store_metadata(log_id, record_id, md).await?;
             }
+        }
+        if let Some(iface_extractor) = interface_extractor.as_mut() {
+            iface_extractor.extract(&chunk).unwrap();
         }
         if let Some(policy) = policy.as_mut() {
             policy.check(&chunk)?;
@@ -451,6 +464,10 @@ async fn process_content(
             .write_all(&chunk)
             .await
             .map_err(PackageApiError::internal_error)?;
+    }
+    if let Some(iface_extractor) = interface_extractor {
+        let interfaces = iface_extractor.result();
+        store.store_interfaces(digest, interfaces).await?;
     }
 
     let result = hasher.finalize();

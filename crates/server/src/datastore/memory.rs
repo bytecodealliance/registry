@@ -1,4 +1,6 @@
-use super::{DataStore, DataStoreError};
+use crate::extractor::interfaces::Interface;
+
+use super::{DataStore, DataStoreError, Direction};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
@@ -245,6 +247,18 @@ impl DataStore for MemoryDataStore {
             }
             _ => Err(DataStoreError::RecordNotPending(record_id.clone())),
         }
+    }
+
+    async fn store_interfaces(
+        &self,
+        digest: &AnyHash,
+        names: Vec<Interface>,
+    ) -> Result<(), DataStoreError> {
+        Ok(())
+    }
+
+    async fn get_interfaces(&self, content_id: AnyHash) -> Result<Vec<Interface>, DataStoreError> {
+        Ok(Vec::new())
     }
 
     async fn store_metadata(

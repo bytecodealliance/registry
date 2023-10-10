@@ -2,7 +2,7 @@ use crate::{api::create_router, datastore::MemoryDataStore};
 use anyhow::{Context, Result};
 use axum::Router;
 use datastore::DataStore;
-use extractor::Extractor;
+use extractor::{interfaces::Interface, Extractor};
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
 use services::CoreService;
@@ -17,6 +17,7 @@ use std::{
 use tokio::task::JoinHandle;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
+use wasm_metadata::RegistryMetadata;
 
 pub mod api;
 pub mod args;
@@ -39,7 +40,8 @@ pub struct Config {
     content_base_url: Option<Url>,
     shutdown: Option<ShutdownFut>,
     checkpoint_interval: Option<Duration>,
-    extractor: Option<Arc<dyn Extractor>>,
+    metadata_extractor: Option<Arc<dyn Extractor<RegistryMetadata>>>,
+    interface_extractor: Option<Arc<dyn Extractor<Vec<Interface>>>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 }
@@ -79,7 +81,8 @@ impl Config {
             content_base_url: None,
             shutdown: None,
             checkpoint_interval: None,
-            extractor: None,
+            metadata_extractor: None,
+            interface_extractor: None,
             content_policy: None,
             record_policy: None,
         }
@@ -133,8 +136,20 @@ impl Config {
     }
 
     /// Sets the metadata extractor to use for the server.
-    pub fn with_metadata_extractor(mut self, extractor: impl Extractor + 'static) -> Self {
-        self.extractor = Some(Arc::new(extractor));
+    pub fn with_metadata_extractor(
+        mut self,
+        metadata_extractor: impl Extractor<RegistryMetadata> + 'static,
+    ) -> Self {
+        self.metadata_extractor = Some(Arc::new(metadata_extractor));
+        self
+    }
+
+    /// Sets the metadata extractor to use for the server.
+    pub fn with_interface_extractor(
+        mut self,
+        interface_extractor: impl Extractor<Vec<Interface>> + 'static,
+    ) -> Self {
+        self.interface_extractor = Some(Arc::new(interface_extractor));
         self
     }
 
@@ -230,7 +245,8 @@ impl Server {
             core,
             temp_dir,
             files_dir,
-            self.config.extractor,
+            self.config.metadata_extractor,
+            self.config.interface_extractor,
             self.config.content_policy,
             self.config.record_policy,
         );

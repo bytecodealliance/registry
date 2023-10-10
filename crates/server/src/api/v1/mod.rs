@@ -1,5 +1,5 @@
 use crate::{
-    extractor::Extractor,
+    extractor::{interfaces::Interface, Extractor},
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
 };
@@ -16,6 +16,7 @@ use axum::{
 use serde::{Serialize, Serializer};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
+use wasm_metadata::RegistryMetadata;
 
 pub mod fetch;
 pub mod package;
@@ -95,7 +96,8 @@ pub fn create_router(
     core: CoreService,
     temp_dir: PathBuf,
     files_dir: PathBuf,
-    extractor: Option<Arc<dyn Extractor>>,
+    metadata_extractor: Option<Arc<dyn Extractor<RegistryMetadata>>>,
+    interface_extractor: Option<Arc<dyn Extractor<Vec<Interface>>>>,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
 ) -> Router {
@@ -105,7 +107,8 @@ pub fn create_router(
         content_base_url,
         files_dir,
         temp_dir,
-        extractor,
+        metadata_extractor,
+        interface_extractor,
         content_policy,
         record_policy,
     );

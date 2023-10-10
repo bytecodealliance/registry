@@ -1,53 +1,69 @@
-use wasm_metadata::RegistryMetadata;
-use wasmparser::{Chunk, Parser};
+use core::fmt;
+use std::fmt::Display;
+
+use wasmparser::{Chunk, ComponentExport, ComponentImport, Parser};
+
+use crate::datastore::Direction;
 
 use super::{ExtractionResult, ExtractionStream, Extractor};
 
-#[derive(Default)]
-pub struct MetadataExtractor {}
+#[derive(Debug, Clone)]
+pub struct Interface {
+    pub name: String,
+    pub direction: Direction,
+}
 
-impl Extractor<RegistryMetadata> for MetadataExtractor {
+impl Display for Interface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.name, self.direction)
+    }
+}
+#[derive(Default)]
+pub struct InterfaceExtractor {}
+
+impl Extractor<Vec<Interface>> for InterfaceExtractor {
     fn new_extraction_stream(
         &self,
-    ) -> ExtractionResult<Box<dyn ExtractionStream<Target = RegistryMetadata>>>
+    ) -> ExtractionResult<Box<dyn ExtractionStream<Target = Vec<Interface>>>>
     where
         Self: Sized,
     {
-        Ok(Box::new(MetadataStreamExtractor::new()))
+        Ok(Box::new(InterfaceStreamExtractor::new()))
     }
 }
 
-struct MetadataStreamExtractor {
+struct InterfaceStreamExtractor {
     buffer: Vec<u8>,
     parser: Parser,
     stack: Vec<Parser>,
+    interfaces: Vec<Interface>,
 }
 
-impl ExtractionStream for MetadataStreamExtractor {
-    type Target = RegistryMetadata;
+impl ExtractionStream for InterfaceStreamExtractor {
+    type Target = Vec<Interface>;
     fn extract(
         &mut self,
         bytes: &[u8],
-    ) -> std::result::Result<
-        std::option::Option<wasm_metadata::RegistryMetadata>,
-        wasmparser::BinaryReaderError,
-    > {
+    ) -> std::result::Result<std::option::Option<Vec<Interface>>, wasmparser::BinaryReaderError>
+    {
         self.process(bytes, false)
     }
 
-    fn result(&self) -> RegistryMetadata {
-        RegistryMetadata::from_bytes(&[], 0).unwrap()
+    fn result(&self) -> Vec<Interface> {
+        self.interfaces.clone()
     }
 }
-impl MetadataStreamExtractor {
+impl InterfaceStreamExtractor {
     fn new() -> Self {
         Self {
             buffer: Vec::new(),
             parser: Parser::new(0),
             stack: Vec::new(),
+            interfaces: Vec::new(),
         }
     }
-    fn process(&mut self, bytes: &[u8], eof: bool) -> ExtractionResult<Option<RegistryMetadata>> {
+    fn process(&mut self, bytes: &[u8], eof: bool) -> ExtractionResult<Option<Vec<Interface>>> {
+        let mut imports = Vec::new();
         let buf = if !self.buffer.is_empty() {
             self.buffer.extend(bytes);
             &self.buffer
@@ -56,7 +72,6 @@ impl MetadataStreamExtractor {
         };
         let mut offset = 0;
         let mut depth = 0;
-        // let parser = &mut self.parser;
         loop {
             let (payload, consumed) = match self.parser.parse(&buf[offset..], eof)
             // .map_err(|e| {
@@ -82,9 +97,7 @@ impl MetadataStreamExtractor {
                     } else {
                         self.buffer.clear();
                     }
-                    // continue;
                     return Ok(None);
-                    // unreachable!()
                 }
 
                 Ok(Chunk::Parsed { consumed, payload }) => (payload, consumed),
@@ -107,15 +120,28 @@ impl MetadataStreamExtractor {
                         self.parser = parser;
                         depth -= 1
                     } else {
-                        return Ok(None);
+                        return Ok(Some(imports));
                     }
                 }
-                wasmparser::Payload::CustomSection(c)
-                    if c.name() == "registry-metadata" && depth == 0 =>
-                {
-                    let registry = RegistryMetadata::from_bytes(&c.data(), 0).unwrap();
-                    dbg!(&registry);
-                    return Ok(Some(registry));
+                wasmparser::Payload::ComponentImportSection(s) => {
+                    let iterable = s.clone().into_iter();
+                    for sec in iterable {
+                        let ComponentImport { name, .. } = sec?;
+                        self.interfaces.push(Interface {
+                            name: String::from(name.as_str()),
+                            direction: Direction::Import,
+                        });
+                    }
+                }
+                wasmparser::Payload::ComponentExportSection(s) => {
+                    let iterable = s.clone().into_iter();
+                    for sec in iterable {
+                        let ComponentExport { name, .. } = sec?;
+                        self.interfaces.push(Interface {
+                            name: String::from(name.as_str()),
+                            direction: Direction::Export,
+                        });
+                    }
                 }
                 _ => {}
             }

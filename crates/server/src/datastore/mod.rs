@@ -1,5 +1,6 @@
+use core::fmt;
 use futures::Stream;
-use std::{collections::HashSet, pin::Pin};
+use std::{collections::HashSet, fmt::Display, pin::Pin};
 use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
@@ -19,6 +20,8 @@ pub use memory::*;
 #[cfg(feature = "postgres")]
 pub use postgres::*;
 
+use crate::extractor::interfaces::Interface;
+
 #[derive(Debug, Error)]
 pub enum DataStoreError {
     #[error("a conflicting operation was processed: update to the latest checkpoint and try the operation again")]
@@ -26,6 +29,9 @@ pub enum DataStoreError {
 
     #[error("checkpoint log length `{0}` was not found")]
     CheckpointNotFound(RegistryLen),
+
+    #[error("content `{0}` was not found")]
+    ContentNotFound(AnyHash),
 
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
@@ -84,6 +90,20 @@ pub enum RecordStatus {
     Published,
 }
 
+#[derive(Clone, Debug)]
+pub enum Direction {
+    Import,
+    Export,
+}
+
+impl Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Import => write!(f, "{}", "Import"),
+            Direction::Export => write!(f, "{}", "Export"),
+        }
+    }
+}
 /// Represents a record in a log.
 pub struct Record<T>
 where
@@ -154,6 +174,17 @@ pub trait DataStore: Send + Sync {
         record_id: &RecordId,
         registry_index: RegistryIndex,
     ) -> Result<(), DataStoreError>;
+
+    /// Stores the given package interfaces
+    async fn store_interfaces(
+        &self,
+        digest: &AnyHash,
+        names: Vec<Interface>,
+    ) -> Result<(), DataStoreError>;
+
+    /// Gets the interfaces for the give package
+    // async fn get_interfaces(&self, record_id: RecordId) -> Result<Vec<Interface>, DataStoreError>;
+    async fn get_interfaces(&self, digest: AnyHash) -> Result<Vec<Interface>, DataStoreError>;
 
     /// Stores the given package metadata.
     async fn store_metadata(
