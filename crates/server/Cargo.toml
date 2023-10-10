@@ -1,9 +1,13 @@
 [package]
 name = "warg-server"
+description = "A server library for Warg component registries."
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true}
 
 [dependencies]
 warg-api = { workspace = true }

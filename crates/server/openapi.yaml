@@ -486,11 +486,11 @@ components:
           format: int16
         operator:
           $ref: "#/components/schemas/AnyHash"
-          description: The last known operator record identifier.
+          description: The last known operator record fetch token.
         packages:
           type: object
           description: |
-            The map of package log identifier to last known package record identifier.
+            The map of package log identifier to last known package record fetch token.
 
             If the last package record identifier is null, records are returned from the start of the log.
           patternProperties:
@@ -520,7 +520,7 @@ components:
           description: The operator log records for the given checkpoint since the last known record.
           maxItems: 1000
           items:
-            $ref: "#/components/schemas/PublishedEnvelopeBody"
+            $ref: "#/components/schemas/PublishedRecordEnvelope"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -530,22 +530,25 @@ components:
               description: The package log records for the given checkpoint since the last known record.
               maxItems: 1000
               items:
-                $ref: "#/components/schemas/PublishedEnvelopeBody"
+                $ref: "#/components/schemas/PublishedRecordEnvelope"
           example:
             ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
                 registryIndex: 101
+                fetchToken: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
               - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
                 registryIndex: 305
+                fetchToken: "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
             ? "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
             : - contentBytes: "ZXhhbXBsZQ=="
                 keyId: "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730"
                 signature: "ecdsa-p256:MEUCIQCzWZBW6ux9LecP66Y+hjmLZTP/hZVz7puzlPTXcRT2wwIgQZO7nxP0nugtw18MwHZ26ROFWcJmgCtKOguK031Y1D0="
                 registryIndex: 732
+                fetchToken: "sha256:ygdb4e8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae00a8y"
     PublishPackageRecordRequest:
       type: object
       description: A request to publish a record to a package log.
@@ -802,17 +805,22 @@ components:
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
         - $ref: "#/components/schemas/Signature"
-    PublishedEnvelopeBody:
+    PublishedRecordEnvelope:
       description: A signed envelope body with the published registry log index.
       allOf:
         - type: object
           required:
             - registryIndex
+            - fetchToken
           properties:
             registryIndex:
               type: integer
               description: The index of the published record in the registry log.
               example: 42
+            fetchToken:
+              type: string
+              description: The fetch token for the registry log. Used as a cursor for incrementally fetching log records.
+              example: "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
         - $ref: "#/components/schemas/EnvelopeBody"
         - $ref: "#/components/schemas/Signature"
     Signature:
@@ -985,7 +993,7 @@ components:
           type:
             type: string
             description: The type of entity that was not found.
-            enum: [log, record]
+            enum: [log, fetchToken]
             example: log
           id:
             type: string

@@ -85,7 +85,7 @@ async fn get_records<R: Decode>(
         .await?
         .into_iter()
         .map(
-            |(record_id, c, index)| match ProtoEnvelope::from_protobuf(c) {
+            |(record_id, c, index)| match ProtoEnvelope::from_protobuf(&c) {
                 Ok(envelope) => Ok(PublishedProtoEnvelope {
                     envelope,
                     registry_index: index.unwrap() as RegistryIndex,
@@ -243,7 +243,7 @@ where
                 .optional()?
                 .ok_or_else(|| DataStoreError::RecordNotPending(record_id.clone()))?;
 
-            let record = ProtoEnvelope::<V::Record>::from_protobuf(content).map_err(|e| {
+            let record = ProtoEnvelope::<V::Record>::from_protobuf(&content).map_err(|e| {
                 DataStoreError::InvalidRecordContents {
                     record_id: record_id.clone(),
                     message: e.to_string(),
@@ -344,7 +344,7 @@ where
                 super::RecordStatus::Rejected(record.reason.unwrap_or_default())
             }
         },
-        envelope: ProtoEnvelope::from_protobuf(record.content).map_err(|e| {
+        envelope: ProtoEnvelope::from_protobuf(&record.content).map_err(|e| {
             DataStoreError::InvalidRecordContents {
                 record_id: record_id.clone(),
                 message: e.to_string(),

@@ -1,7 +1,11 @@
 use prost::Message;
 
 fn main() -> anyhow::Result<()> {
-    let proto_files = &["warg/protocol/warg.proto", "warg/transparency/proofs.proto"];
+    let proto_files = &[
+        "warg/protocol/warg.proto",
+        "warg/transparency/proofs.proto",
+        "warg/internal/internal.proto",
+    ];
 
     // Tell cargo to recompile if any of these proto files are changed
     for proto_file in proto_files {
@@ -24,7 +28,7 @@ fn main() -> anyhow::Result<()> {
 
     pbjson_build::Builder::new()
         .register_descriptors(&file_descriptor_set_bytes)?
-        .build(&[".warg.protocol", ".warg.transparency"])?;
+        .build(&[".warg.protocol", ".warg.transparency", ".warg.internal"])?;
 
     Ok(())
 }
