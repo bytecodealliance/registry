@@ -1,6 +1,6 @@
 use super::{Json, Path};
 use crate::{
-    datastore::{DataStore, DataStoreError, Direction, RecordStatus},
+    datastore::{DataStore, DataStoreError, RecordStatus},
     extractor::{interfaces::Interface, Extractor},
     policy::{
         content::{ContentPolicy, ContentPolicyError},
@@ -47,6 +47,7 @@ pub struct Config {
 }
 
 impl Config {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         core_service: CoreService,
         content_base_url: Url,
@@ -215,11 +216,11 @@ async fn publish_record(
         .map_err(PackageApiError::bad_request)?;
 
     // Specifying content sources is not allowed in this implementation
-    // if !body.content_sources.is_empty() {
-    //     return Err(PackageApiError::unsupported(
-    //         "specifying content sources is not supported",
-    //     ));
-    // }
+    if !body.content_sources.is_empty() {
+        return Err(PackageApiError::unsupported(
+            "specifying content sources is not supported",
+        ));
+    }
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
@@ -363,15 +364,7 @@ async fn upload_content(
     let store = config.core_service.store();
 
     let res = process_content(
-        &log_id,
-        &record_id,
-        store,
-        &tmp_path,
-        &digest,
-        stream,
-        config.metadata_extractor.as_deref(),
-        config.interface_extractor.as_deref(),
-        config.content_policy.as_deref(),
+        &log_id, &record_id, store, &tmp_path, &digest, stream, &config,
     )
     .await;
 
@@ -421,24 +414,30 @@ async fn process_content(
     path: &std::path::Path,
     digest: &AnyHash,
     mut stream: BodyStream,
-    metadata_extractor: Option<&dyn Extractor<RegistryMetadata>>,
-    interface_extractor: Option<&dyn Extractor<Vec<Interface>>>,
-    policy: Option<&dyn ContentPolicy>,
+    config: &Config,
 ) -> Result<(), PackageApiError> {
     let mut tmp_file = tokio::fs::File::create(&path)
         .await
         .map_err(PackageApiError::internal_error)?;
 
     let mut hasher = digest.algorithm().hasher();
-    let mut policy = policy.map(|p| p.new_stream_policy(digest)).transpose()?;
-    let mut metadata_extractor = metadata_extractor
+    let mut policy = config
+        .content_policy
+        .as_deref()
+        .map(|p| p.new_stream_policy(digest))
+        .transpose()?;
+    let mut metadata_extractor = config
+        .metadata_extractor
+        .as_deref()
         .map(|e| e.new_extraction_stream())
         .transpose()
-        .unwrap();
-    let mut interface_extractor = interface_extractor
+        .map_err(PackageApiError::internal_error)?;
+    let mut interface_extractor = config
+        .interface_extractor
+        .as_deref()
         .map(|e| e.new_extraction_stream())
         .transpose()
-        .unwrap();
+        .map_err(PackageApiError::internal_error)?;
 
     while let Some(chunk) = stream
         .next()
@@ -447,13 +446,16 @@ async fn process_content(
         .map_err(PackageApiError::internal_error)?
     {
         if let Some(md_extractor) = metadata_extractor.as_mut() {
-            let metadata = md_extractor.extract(&chunk).unwrap();
-            if let Some(md) = metadata {
-                store.store_metadata(log_id, record_id, md).await?;
+            if md_extractor.result().is_none() {
+                md_extractor
+                    .extract(&chunk)
+                    .map_err(PackageApiError::internal_error)?;
             }
         }
         if let Some(iface_extractor) = interface_extractor.as_mut() {
-            iface_extractor.extract(&chunk).unwrap();
+            iface_extractor
+                .extract(&chunk)
+                .map_err(PackageApiError::internal_error)?;
         }
         if let Some(policy) = policy.as_mut() {
             policy.check(&chunk)?;
@@ -465,9 +467,17 @@ async fn process_content(
             .await
             .map_err(PackageApiError::internal_error)?;
     }
+    if let Some(md_extractor) = metadata_extractor {
+        let metadata = md_extractor.result();
+        if let Some(md) = metadata {
+            store.store_metadata(log_id, record_id, md).await?;
+        }
+    }
     if let Some(iface_extractor) = interface_extractor {
         let interfaces = iface_extractor.result();
-        store.store_interfaces(digest, interfaces).await?;
+        if let Some(ifaces) = interfaces {
+            store.store_interfaces(digest, ifaces).await?;
+        }
     }
 
     let result = hasher.finalize();

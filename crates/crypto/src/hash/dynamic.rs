@@ -54,6 +54,10 @@ pub struct AnyHash {
 }
 
 impl AnyHash {
+    pub fn new(algo: HashAlgorithm, bytes: Vec<u8>) -> AnyHash {
+        AnyHash { algo, bytes }
+    }
+
     pub fn algorithm(&self) -> HashAlgorithm {
         self.algo
     }

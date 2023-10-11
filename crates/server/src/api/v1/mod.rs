@@ -91,6 +91,7 @@ pub async fn not_found() -> impl IntoResponse {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_router(
     content_base_url: Url,
     core: CoreService,

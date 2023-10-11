@@ -33,6 +33,9 @@ pub enum DataStoreError {
     #[error("content `{0}` was not found")]
     ContentNotFound(AnyHash),
 
+    #[error("metadata for package was not found")]
+    MetadataNotFound,
+
     #[error("log `{0}` was not found")]
     LogNotFound(LogId),
 
@@ -99,8 +102,8 @@ pub enum Direction {
 impl Display for Direction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Direction::Import => write!(f, "{}", "Import"),
-            Direction::Export => write!(f, "{}", "Export"),
+            Direction::Import => write!(f, "Import"),
+            Direction::Export => write!(f, "Export"),
         }
     }
 }

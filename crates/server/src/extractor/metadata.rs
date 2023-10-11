@@ -21,6 +21,7 @@ struct MetadataStreamExtractor {
     buffer: Vec<u8>,
     parser: Parser,
     stack: Vec<Parser>,
+    metadata: Option<RegistryMetadata>,
 }
 
 impl ExtractionStream for MetadataStreamExtractor {
@@ -35,8 +36,8 @@ impl ExtractionStream for MetadataStreamExtractor {
         self.process(bytes, false)
     }
 
-    fn result(&self) -> RegistryMetadata {
-        RegistryMetadata::from_bytes(&[], 0).unwrap()
+    fn result(&self) -> Option<RegistryMetadata> {
+        self.metadata.clone()
     }
 }
 impl MetadataStreamExtractor {
@@ -45,6 +46,7 @@ impl MetadataStreamExtractor {
             buffer: Vec::new(),
             parser: Parser::new(0),
             stack: Vec::new(),
+            metadata: None,
         }
     }
     fn process(&mut self, bytes: &[u8], eof: bool) -> ExtractionResult<Option<RegistryMetadata>> {
@@ -102,9 +104,10 @@ impl MetadataStreamExtractor {
                     }
                 }
                 wasmparser::Payload::CustomSection(c)
-                    if c.name() == "registry-metadata" && depth == 0 =>
+                    if c.name() == "registry-metadata" && depth <= 0 =>
                 {
-                    let registry = RegistryMetadata::from_bytes(&c.data(), 0).unwrap();
+                    let registry = RegistryMetadata::from_bytes(c.data(), 0).unwrap();
+                    self.metadata = Some(registry.clone());
                     return Ok(Some(registry));
                 }
                 _ => {}

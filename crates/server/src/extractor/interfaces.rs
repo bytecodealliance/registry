@@ -1,7 +1,7 @@
 use core::fmt;
 use std::fmt::Display;
 
-use wasmparser::{Chunk, ComponentExport, ComponentImport, Parser};
+use wasmparser::{Chunk, ComponentExport, ComponentExternName, ComponentImport, Parser};
 
 use crate::datastore::Direction;
 
@@ -49,8 +49,12 @@ impl ExtractionStream for InterfaceStreamExtractor {
         self.process(bytes, false)
     }
 
-    fn result(&self) -> Vec<Interface> {
-        self.interfaces.clone()
+    fn result(&self) -> Option<Vec<Interface>> {
+        if self.interfaces.len() > 0 {
+            Some(self.interfaces.clone())
+        } else {
+            None
+        }
     }
 }
 impl InterfaceStreamExtractor {
@@ -63,7 +67,6 @@ impl InterfaceStreamExtractor {
         }
     }
     fn process(&mut self, bytes: &[u8], eof: bool) -> ExtractionResult<Option<Vec<Interface>>> {
-        let mut imports = Vec::new();
         let buf = if !self.buffer.is_empty() {
             self.buffer.extend(bytes);
             &self.buffer
@@ -73,15 +76,9 @@ impl InterfaceStreamExtractor {
         let mut offset = 0;
         let mut depth = 0;
         loop {
-            let (payload, consumed) = match self.parser.parse(&buf[offset..], eof)
-            // .map_err(|e| {
-              // ::Rejection(format!("content is not valid WebAssembly: {e}"))
-              {
-                // )
+            let (payload, consumed) = match self.parser.parse(&buf[offset..], eof) {
                 Err(e) => {
-                  // e
-                  dbg!(e);
-                  unreachable!()
+                    return Err(e);
                 }
                 Ok(Chunk::NeedMoreData(_)) => {
                     // If the buffer is empty and there's still data in the given slice,
@@ -119,28 +116,32 @@ impl InterfaceStreamExtractor {
                     if let Some(parser) = self.stack.pop() {
                         self.parser = parser;
                         depth -= 1
-                    } else {
-                        return Ok(Some(imports));
+                    } else if depth <= 0 {
+                        return Ok(Some(self.interfaces.clone()));
                     }
                 }
                 wasmparser::Payload::ComponentImportSection(s) => {
                     let iterable = s.clone().into_iter();
                     for sec in iterable {
                         let ComponentImport { name, .. } = sec?;
-                        self.interfaces.push(Interface {
-                            name: String::from(name.as_str()),
-                            direction: Direction::Import,
-                        });
+                        if let ComponentExternName::Interface(name) = name {
+                            self.interfaces.push(Interface {
+                                name: String::from(name),
+                                direction: Direction::Export,
+                            });
+                        }
                     }
                 }
                 wasmparser::Payload::ComponentExportSection(s) => {
                     let iterable = s.clone().into_iter();
                     for sec in iterable {
                         let ComponentExport { name, .. } = sec?;
-                        self.interfaces.push(Interface {
-                            name: String::from(name.as_str()),
-                            direction: Direction::Export,
-                        });
+                        if let ComponentExternName::Interface(name) = name {
+                            self.interfaces.push(Interface {
+                                name: String::from(name),
+                                direction: Direction::Export,
+                            });
+                        }
                     }
                 }
                 _ => {}

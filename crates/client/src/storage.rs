@@ -16,7 +16,6 @@ use warg_protocol::{
     registry::{Checkpoint, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
-use wasm_metadata::RegistryMetadata;
 
 mod fs;
 pub use fs::*;
@@ -111,8 +110,11 @@ pub struct OperatorInfo {
     #[serde(default)]
     pub state: operator::LogState,
     /// The registry log index of the most recent record
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_registry_index: Option<RegistryIndex>,
+    /// The fetch token for the most recent record
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_fetch_token: Option<String>,
 }
 
 /// Represents information about a registry package.
@@ -128,8 +130,11 @@ pub struct PackageInfo {
     #[serde(default)]
     pub state: package::LogState,
     /// The registry log index of the most recent record
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_registry_index: Option<RegistryIndex>,
+    /// The fetch token for the most recent record
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_fetch_token: Option<String>,
 }
 
 impl PackageInfo {
@@ -140,6 +145,7 @@ impl PackageInfo {
             checkpoint: None,
             state: package::LogState::default(),
             head_registry_index: None,
+            head_fetch_token: None,
         }
     }
 }

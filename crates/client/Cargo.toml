@@ -1,9 +1,13 @@
 [package]
 name = "warg-client"
+description = "A client library for Warg component registries."
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true}
 
 [dependencies]
 warg-crypto = { workspace = true }
@@ -31,7 +35,7 @@ once_cell = { workspace = true }
 walkdir = { workspace = true }
 normpath = { workspace = true }
 pathdiff = { workspace = true }
-wasm-metadata.workspace = true
+wasm-metadata = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.48"

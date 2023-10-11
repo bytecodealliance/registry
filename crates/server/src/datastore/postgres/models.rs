@@ -113,9 +113,6 @@ pub struct NewCheckpoint<'a> {
     pub timestamp: i64,
 }
 
-// impl Expression for RecordId {
-//     type SqlType = Direction;
-// }
 #[derive(Insertable)]
 #[diesel(table_name = interfaces)]
 pub struct NewInterface<'a> {
@@ -127,7 +124,6 @@ pub struct NewInterface<'a> {
 #[derive(Selectable, Queryable)]
 #[diesel(table_name = interfaces)]
 pub struct Interface<'a> {
-    // pub content_id: ParsedText<AnyHash>,
     pub direction: ParsedText<Direction>,
     pub name: TextRef<'a, String>,
 }

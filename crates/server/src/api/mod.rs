@@ -22,6 +22,7 @@ pub mod v1;
 pub mod debug;
 
 /// Creates the router for the API.
+#[allow(clippy::too_many_arguments)]
 pub fn create_router(
     content_base_url: Url,
     core: CoreService,

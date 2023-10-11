@@ -1,6 +1,6 @@
 use crate::extractor::interfaces::Interface;
 
-use super::{DataStore, DataStoreError, Direction};
+use super::{DataStore, DataStoreError};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
