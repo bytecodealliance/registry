@@ -622,7 +622,6 @@ impl DataStore for PostgresDataStore {
                 name: name.0,
             })
             .collect::<Vec<Interface>>();
-        dbg!(digest, &interfaces);
         Ok(interfaces)
     }
 

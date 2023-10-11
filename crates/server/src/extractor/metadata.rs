@@ -56,17 +56,10 @@ impl MetadataStreamExtractor {
         };
         let mut offset = 0;
         let mut depth = 0;
-        // let parser = &mut self.parser;
         loop {
-            let (payload, consumed) = match self.parser.parse(&buf[offset..], eof)
-            // .map_err(|e| {
-              // ::Rejection(format!("content is not valid WebAssembly: {e}"))
-              {
-                // )
+            let (payload, consumed) = match self.parser.parse(&buf[offset..], eof) {
                 Err(e) => {
-                  // e
-                  dbg!(e);
-                  unreachable!()
+                    return Err(e);
                 }
                 Ok(Chunk::NeedMoreData(_)) => {
                     // If the buffer is empty and there's still data in the given slice,
@@ -82,9 +75,7 @@ impl MetadataStreamExtractor {
                     } else {
                         self.buffer.clear();
                     }
-                    // continue;
                     return Ok(None);
-                    // unreachable!()
                 }
 
                 Ok(Chunk::Parsed { consumed, payload }) => (payload, consumed),
@@ -114,7 +105,6 @@ impl MetadataStreamExtractor {
                     if c.name() == "registry-metadata" && depth == 0 =>
                 {
                     let registry = RegistryMetadata::from_bytes(&c.data(), 0).unwrap();
-                    dbg!(&registry);
                     return Ok(Some(registry));
                 }
                 _ => {}

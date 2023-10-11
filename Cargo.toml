@@ -47,7 +47,7 @@ default = []
 postgres = ["warg-server/postgres"]
 
 [workspace]
-members = ["crates/server"]
+members = ["crates/server", "crates/ui"]
 
 [workspace.package]
 version = "0.2.0-dev"
@@ -62,7 +62,7 @@ warg-crypto = { path = "crates/crypto" }
 warg-protobuf = { path = "proto" }
 warg-protocol = { path = "crates/protocol" }
 warg-transparency = { path = "crates/transparency" }
-warg-server = { path = "crates/server", features = ["debug"]}
+warg-server = { path = "crates/server", features = ["debug", "postgres"]}
 clap = { version = "4.3.11", features = ["derive", "env"] }
 thiserror = "1.0.43"
 anyhow = "1.0.71"

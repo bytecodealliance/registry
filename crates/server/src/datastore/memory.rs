@@ -84,6 +84,8 @@ struct State {
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
+    metadata: HashMap<LogId, HashMap<RecordId, RegistryMetadata>>,
+    interfaces: HashMap<AnyHash, Vec<Interface>>,
 }
 
 /// Represents an in-memory data store.
@@ -254,10 +256,18 @@ impl DataStore for MemoryDataStore {
         digest: &AnyHash,
         names: Vec<Interface>,
     ) -> Result<(), DataStoreError> {
+        let mut state = self.0.write().await;
+        state.interfaces.insert(digest.clone(), names);
         Ok(())
     }
 
     async fn get_interfaces(&self, content_id: AnyHash) -> Result<Vec<Interface>, DataStoreError> {
+        let state = self.0.read().await;
+        let interfaces = state.interfaces.get(&content_id);
+        if let Some(ifaces) = interfaces {
+            return Ok(ifaces.to_vec());
+        }
+
         Ok(Vec::new())
     }
 
@@ -267,6 +277,11 @@ impl DataStore for MemoryDataStore {
         record_id: &RecordId,
         metadata: RegistryMetadata,
     ) -> Result<(), DataStoreError> {
+        let mut state = self.0.write().await;
+        let log = state.metadata.get_mut(log_id);
+        if let Some(md_map) = log {
+            md_map.insert(record_id.clone(), metadata);
+        }
         Ok(())
     }
 
@@ -275,6 +290,17 @@ impl DataStore for MemoryDataStore {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<RegistryMetadata, DataStoreError> {
+        let mut state = self.0.write().await;
+        let log = state.metadata.get_mut(log_id);
+        if let Some(md_map) = log {
+            let md = md_map.get(record_id);
+            if let Some(md) = md {
+                return Ok(md.clone());
+            } else {
+                return Ok(RegistryMetadata::from_bytes(&[], 0).unwrap());
+            }
+        }
+
         Ok(RegistryMetadata::from_bytes(&[], 0).unwrap())
     }
 
