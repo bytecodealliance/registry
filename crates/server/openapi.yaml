@@ -812,7 +812,7 @@ components:
             discriminator:
               propertyName: type
               mapping:
-                httpPost: "#/components/schemas/HttpUpload"
+                http: "#/components/schemas/HttpUpload"
     HttpUpload:
       type: object
       description: A HTTP upload endpoint.
