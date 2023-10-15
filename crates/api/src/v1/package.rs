@@ -1,5 +1,6 @@
 //! Types relating to the package API.
 
+pub use super::ContentSource;
 use crate::Status;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::{borrow::Cow, collections::HashMap};
@@ -10,27 +11,19 @@ use warg_protocol::{
     ProtoEnvelopeBody,
 };
 
-/// Represents the supported kinds of content sources.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum ContentSource {
-    /// The content is located at an anonymous HTTP URL.
-    Http {
-        /// The URL of the content.
-        url: String,
-    },
-}
-
 /// Represents the supported kinds of content upload endpoints.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum UploadEndpoint {
-    /// Content may be uploaded via HTTP POST to the given URL.
-    /// If the endpoint responds with "201 Created" and a Location header, that
-    /// header's value will be the content source.
-    HttpPost {
+    /// Content may be uploaded via HTTP request to the given URL.
+    Http {
+        /// The http method for the upload request.
+        method: String,
         /// The URL to POST content to.
         url: String,
+        /// Optional header names and values for the upload request.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        headers: HashMap<String, String>,
     },
 }
 
@@ -58,9 +51,10 @@ pub struct PublishRecordRequest<'a> {
 
 /// Represents a package record API entity in a registry.
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageRecord {
     /// The identifier of the package record.
-    pub id: RecordId,
+    pub record_id: RecordId,
     /// The current state of the package.
     #[serde(flatten)]
     pub state: PackageRecordState,
@@ -105,10 +99,6 @@ pub enum PackageRecordState {
     /// The package record was successfully published to the log.
     #[serde(rename_all = "camelCase")]
     Published {
-        /// The envelope of the package record.
-        record: ProtoEnvelopeBody,
-        /// The content sources of the record.
-        content_sources: HashMap<AnyHash, Vec<ContentSource>>,
         /// The published index of the record in the registry log.
         registry_index: RegistryIndex,
     },

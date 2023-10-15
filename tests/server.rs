@@ -9,7 +9,8 @@ use std::{
 };
 use url::Url;
 use warg_api::v1::{
-    package::{ContentSource, PackageRecordState, PublishRecordRequest},
+    content::{ContentSource, ContentSourcesResponse},
+    package::PublishRecordRequest,
     paths,
 };
 use warg_client::{
@@ -408,42 +409,29 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
         .load_package(&id)
         .await?
         .expect("expected the package to exist");
-    let release = package
+    package
         .state
         .release(&Version::parse(PACKAGE_VERSION)?)
         .expect("expected the package version to exist");
 
     // Look up the content URL for the record
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
-    let log_id = LogId::package_log::<Sha256>(&id);
-    let record = client
-        .get_package_record(&log_id, &release.record_id)
-        .await?;
+    let ContentSourcesResponse { content_sources } = client.content_sources(&digest).await?;
+    assert_eq!(content_sources.len(), 1);
+    let sources = content_sources
+        .get(&digest)
+        .expect("expected content source to be provided for the requested digest");
+    assert_eq!(sources.len(), 1);
 
     let expected_url = format!(
         "https://example.com/content/{digest}",
         digest = digest.to_string().replace(':', "-")
     );
 
-    match record.state {
-        PackageRecordState::Published {
-            content_sources, ..
-        } => {
-            assert_eq!(content_sources.len(), 1);
-
-            match content_sources.get(&digest) {
-                Some(sources) => {
-                    assert_eq!(sources.len(), 1);
-                    match &sources[0] {
-                        ContentSource::Http { url } => {
-                            assert_eq!(url, &expected_url);
-                        }
-                    }
-                }
-                None => panic!("expected content source to exist"),
-            }
+    match &sources[0] {
+        ContentSource::HttpGet { url, .. } => {
+            assert_eq!(url, &expected_url);
         }
-        _ => panic!("unexpected record state"),
     }
 
     Ok(())

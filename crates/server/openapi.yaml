@@ -23,6 +23,8 @@ tags:
     description: API for fetching checkpoints and logs from the registry.
   - name: package
     description: API for managing package logs in the registry.
+  - name: content
+    description: API for content sources in the registry.
   - name: proof
     description: API for proving the integrity of the registry.
 
@@ -40,10 +42,6 @@ paths:
         - fetch
       description: |
         Fetch the operator and packages logs from the registry.
-
-        TODO: document operator record format.
-
-        TODO: document package record format.
       requestBody:
         required: true
         content:
@@ -94,7 +92,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /package/{logId}/record:
     post:
-      summary: Publish a new record to a package log.
+      summary: Publish package record
       operationId: publishPackageRecord
       security: []
       tags:
@@ -105,8 +103,6 @@ paths:
         Publishing package records is an asynchronous operation.
 
         The record must be signed by a key that is authorized to modify the package log.
-
-        TODO: document package record format.
       parameters:
         - name: logId
           in: path
@@ -150,21 +146,19 @@ paths:
                 $ref: "#/components/schemas/Error"
   /package/{logId}/record/{recordId}:
     get:
-      summary: Get a package record.
+      summary: Get package record status
       operationId: getPackageRecord
       security: []
       tags:
         - package
       description: |
-        Gets a package record from the registry.
+        Gets package record status from the registry.
 
         A package record is in one of the following states:
           * `sourcing`: The package record needs content sources.
           * `processing`: The package record is being processed.
           * `rejected`: The package record was rejected.
           * `published`: The package record was published to the log.
-
-        TODO: document package record format.
       parameters:
         - name: logId
           in: path
@@ -216,54 +210,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /package/{logId}/record/{recordId}/content/{digest}:
-    post:
-      summary: Post content for a package record.
-      operationId: postPackageRecordContent
+  /content/{digest}:
+    get:
+      summary: Get content sources
+      operationId: getContentSources
       security: []
       tags:
-        - package
+        - content
       description: |
-        Posts package record content directly to the registry.
-
-        The package record must be in the `sourcing` state and the digest of the uploaded
-        content must match the digest parameter.
+        Gets a content sources for the given digest from the registry.
       parameters:
-        - name: logId
-          in: path
-          description: The package log identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
-        - name: recordId
-          in: path
-          description: The record identifier.
-          required: true
-          schema:
-            "$ref": "#/components/schemas/AnyHash"
         - name: digest
           in: path
-          description: The digest of the content being uploaded.
+          description: The content digest.
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
-      requestBody:
-        content:
-          application/octet-stream:
-            schema:
-              type: string
-              format: binary
-              maxLength: 1073741824 # 1 GiB limit
+        - name: X-Proxy-Registry
+          in: header
+          description: The proxy registry URI Authority context to evaluate the request instead of the current registry.
+          required: false
+          schema:
+            type: string
       responses:
-        "201":
-          description: The content was successfully uploaded.
-          headers:
-            Location:
-              description: The URL for accessing the uploaded content.
+        "200":
+          description: The content digest sources.
+          content:
+            application/json:
               schema:
-                type: string
-                format: uri
-                example: https://example.com/content/sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+                "$ref": "#/components/schemas/ContentSourcesResponse"
         "404":
           description: A requested entity was not found.
           content:
@@ -283,30 +258,12 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [log, record]
-                    example: log
+                    enum: [contentDigest]
+                    example: contentDigest
                   id:
                     "$ref": "#/components/schemas/AnyHash"
                     description: |
                       The identifier of the entity that was not found.
-        "405":
-          description: The package record is not in the `sourcing` state.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                status: 405
-                message: the package record is not in the `sourcing` state
-        "422":
-          description: The content was rejected by server policy.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                status: 422
-                message: the content is not valid WebAssembly
         default:
           description: An error occurred when processing the request.
           content:
@@ -315,7 +272,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /proof/consistency:
     post:
-      summary: Prove registry checkpoint consistency.
+      summary: Prove registry checkpoint consistency
       operationId: proveConsistency
       security: []
       tags:
@@ -377,7 +334,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /proof/inclusion:
     post:
-      summary: Prove log leaf inclusion.
+      summary: Prove log leaf inclusion
       operationId: proveInclusion
       security: []
       tags:
@@ -579,9 +536,9 @@ components:
       allOf:
         - type: object
           required:
-            - id
+            - recordId
           properties:
-            id:
+            recordId:
               "$ref": "#/components/schemas/AnyHash"
               description: The record identifier.
         - oneOf:
@@ -710,7 +667,6 @@ components:
       required:
         - state
         - registryIndex
-        - record
       properties:
         state:
           type: string
@@ -720,12 +676,6 @@ components:
         registryIndex:
           type: integer
           description: The index of the record in the registry log.
-        record:
-          "$ref": "#/components/schemas/EnvelopeBody"
-          description: The package record.
-        contentSources:
-          "$ref": "#/components/schemas/ContentSourceMap"
-          description: The content sources for the package record.
     Checkpoint:
       type: object
       description: |
@@ -847,8 +797,9 @@ components:
       example:
         ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"
         : upload:
-            - type: httpPost
-              url: https://example.com/7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773
+            - type: http
+              method: "POST"
+              url: "https://example.com/7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"
     MissingContent:
       description: Information about missing content.
       properties:
@@ -857,25 +808,51 @@ components:
           type: array 
           items:
             oneOf:
-              - "$ref": "#/components/schemas/HttpPostUpload"
+              - "$ref": "#/components/schemas/HttpUpload"
             discriminator:
               propertyName: type
               mapping:
-                httpPost: "#/components/schemas/HttpPostUpload"
-    HttpPostUpload:
+                httpPost: "#/components/schemas/HttpUpload"
+    HttpUpload:
       type: object
-      description: A HTTP POST upload endpoint.
+      description: A HTTP upload endpoint.
+      required:
+        - type
+        - method
+        - url
       properties:
         type:
           type: string
           description: The type of upload endpoint.
-          enum: [httpPost]
-          example: httpPost
+          enum: [http]
+          example: http
+        method:
+          type: string
+          description: The HTTP method for the upload request. Uppercase is required.
+          enum: [POST, PUT]
+          example: POST
         url:
           type: string
           description: The URL of the upload endpoint, which may be relative to the API base URL.
           example: https://example.com/contents.wasm
           format: uri
+        headers:
+          type: object
+          description: The HTTP headers for upload request.
+          additionalProperties:
+            type: string
+            description: The HTTP header value.
+          example:
+            authorization: Bearer asdf
+    ContentSourcesResponse:
+      type: object
+      description: Content digest sources for download.
+      required:
+        - contentSources
+      properties:
+        contentSources:
+          "$ref": "#/components/schemas/ContentSourceMap"
+          description: The content sources for the content digest.
     ContentSourceMap:
       type: object
       description: The map of content digest to sources.
@@ -894,14 +871,17 @@ components:
     ContentSource:
       description: A known content source.
       oneOf:
-        - "$ref": "#/components/schemas/HttpSource"
+        - "$ref": "#/components/schemas/HttpGet"
       discriminator:
         propertyName: type
         mapping:
-          http: "#/components/schemas/HttpSource"
-    HttpSource:
+          http: "#/components/schemas/HttpGet"
+    HttpGet:
       type: object
-      description: A known HTTP content source.
+      description: A known GET HTTP content source.
+      required:
+        - type
+        - url
       properties:
         type:
           type: string
@@ -913,6 +893,21 @@ components:
           description: The URL of the content.
           example: https://example.com/contents.wasm
           format: uri
+        headers:
+          type: object
+          description: The HTTP headers for upload request.
+          additionalProperties:
+            type: string
+            description: The HTTP header value.
+          example:
+            authorization: Bearer asdf
+        supportsRangeHeader:
+          type: boolean
+          description: Flag indicating if the server URL supports Range header.
+        size:
+          type: integer
+          description: Content size in bytes.
+          example: 1024
     PackageNotIncludedError:
       type: object
       additionalProperties: false

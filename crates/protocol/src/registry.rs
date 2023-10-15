@@ -142,9 +142,9 @@ impl PackageId {
     pub fn new(id: impl Into<String>) -> anyhow::Result<Self> {
         let id = id.into();
 
-        if let Some(colon) = id.find(':') {
+        if let Some(colon) = id.rfind(':') {
             // Validate the namespace and name parts are valid kebab strings
-            if KebabStr::new(&id[..colon]).is_some() && KebabStr::new(&id[colon + 1..]).is_some() {
+            if KebabStr::new(&id[colon + 1..]).is_some() && Self::is_valid_namespace(&id[..colon]) {
                 return Ok(Self { id, colon });
             }
         }
@@ -160,6 +160,16 @@ impl PackageId {
     /// Gets the name part of the package identifier.
     pub fn name(&self) -> &str {
         &self.id[self.colon + 1..]
+    }
+
+    /// Check if string is a valid namespace.
+    pub fn is_valid_namespace(namespace: &str) -> bool {
+        const SUPPORTS_NESTED_NAMESPACES: bool = false;
+        if SUPPORTS_NESTED_NAMESPACES {
+            namespace.split(':').all(|s| KebabStr::new(s).is_some())
+        } else {
+            KebabStr::new(namespace).is_some()
+        }
     }
 }
 

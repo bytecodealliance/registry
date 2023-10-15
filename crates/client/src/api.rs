@@ -3,15 +3,17 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
-use reqwest::{Body, IntoUrl, Response, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Body, IntoUrl, Method, Response, StatusCode,
+};
 use serde::de::DeserializeOwned;
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_api::v1::{
+    content::{ContentError, ContentSourcesResponse},
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
-    package::{
-        ContentSource, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
-    },
+    package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
     paths,
     proof::{
         ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
@@ -38,6 +40,9 @@ pub enum ClientError {
     /// An error was returned from the package API.
     #[error(transparent)]
     Package(#[from] PackageError),
+    /// An error was returned from the content API.
+    #[error(transparent)]
+    Content(#[from] ContentError),
     /// An error was returned from the proof API.
     #[error(transparent)]
     Proof(#[from] ProofError),
@@ -80,6 +85,12 @@ pub enum ClientError {
     /// All sources for the given content digest returned an error response.
     #[error("all sources for content digest `{0}` returned an error response")]
     AllSourcesFailed(AnyHash),
+    /// Invalid upload HTTP method.
+    #[error("server returned an invalid HTTP method `{0}`")]
+    InvalidHttpMethod(String),
+    /// Invalid upload HTTP method.
+    #[error("server returned an invalid HTTP header `{0}: {1}`")]
+    InvalidHttpHeader(String, String),
     /// An other error occurred during the requested operation.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -203,35 +214,49 @@ impl Client {
         into_result::<_, PackageError>(response).await
     }
 
+    /// Gets a content sources from the registry.
+    pub async fn content_sources(
+        &self,
+        digest: &AnyHash,
+    ) -> Result<ContentSourcesResponse, ClientError> {
+        let url = self.url.join(&paths::content_sources(digest));
+        tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
+
+        let response = reqwest::get(url).await?;
+        into_result::<_, ContentError>(response).await
+    }
+
     /// Downloads the content associated with a given record.
     pub async fn download_content(
         &self,
-        log_id: &LogId,
-        record_id: &RecordId,
         digest: &AnyHash,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
-        tracing::debug!("fetching record `{record_id}` for package `{log_id}`");
+        tracing::debug!("requesting content download for digest `{digest}`");
 
-        let record = self.get_package_record(log_id, record_id).await?;
-        let sources = match &record.state {
-            PackageRecordState::Published {
-                content_sources, ..
-            } => content_sources
-                .get(digest)
-                .ok_or_else(|| ClientError::NoSourceForContent(digest.clone()))?,
-            _ => {
-                return Err(ClientError::RecordNotPublished(record_id.clone()));
-            }
-        };
+        let ContentSourcesResponse { content_sources } = self.content_sources(digest).await?;
+
+        let sources = content_sources
+            .get(digest)
+            .ok_or(ClientError::AllSourcesFailed(digest.clone()))?;
 
         for source in sources {
-            let url = match source {
-                ContentSource::Http { url } => url,
-            };
+            let ContentSource::HttpGet { url, headers, .. } = source;
+            let headers = headers
+                .iter()
+                .map(|(k, v)| {
+                    let name = HeaderName::try_from(k).map_err(|_| {
+                        ClientError::InvalidHttpHeader(k.to_string(), v.to_string())
+                    })?;
+                    let value = HeaderValue::try_from(k).map_err(|_| {
+                        ClientError::InvalidHttpHeader(k.to_string(), v.to_string())
+                    })?;
+                    Ok((name, value))
+                })
+                .collect::<Result<HeaderMap, ClientError>>()?;
 
             tracing::debug!("downloading content `{digest}` from `{url}`");
 
-            let response = reqwest::get(url).await?;
+            let response = self.client.get(url).headers(headers).send().await?;
             if !response.status().is_success() {
                 tracing::debug!(
                     "failed to download content `{digest}` from `{url}`: {status}",
@@ -317,34 +342,47 @@ impl Client {
     /// Uploads package content to the registry.
     pub async fn upload_content(
         &self,
+        method: &str,
         url: &str,
+        headers: &HashMap<String, String>,
         content: impl Into<Body>,
-    ) -> Result<String, ClientError> {
+    ) -> Result<(), ClientError> {
         // Upload URLs may be relative to the registry URL.
         let url = self.url.join(url);
 
+        let method = match method {
+            "POST" => Method::POST,
+            "PUT" => Method::PUT,
+            method => return Err(ClientError::InvalidHttpMethod(method.to_string())),
+        };
+
+        let headers = headers
+            .iter()
+            .map(|(k, v)| {
+                let name = HeaderName::try_from(k)
+                    .map_err(|_| ClientError::InvalidHttpHeader(k.to_string(), v.to_string()))?;
+                let value = HeaderValue::try_from(k)
+                    .map_err(|_| ClientError::InvalidHttpHeader(k.to_string(), v.to_string()))?;
+                Ok((name, value))
+            })
+            .collect::<Result<HeaderMap, ClientError>>()?;
+
         tracing::debug!("uploading content to `{url}`");
 
-        let response = self.client.post(url).body(content).send().await?;
+        let response = self
+            .client
+            .request(method, url)
+            .headers(headers)
+            .body(content)
+            .send()
+            .await?;
         if !response.status().is_success() {
             return Err(ClientError::Package(
                 deserialize::<PackageError>(response).await?,
             ));
         }
 
-        Ok(response
-            .headers()
-            .get("location")
-            .ok_or_else(|| ClientError::UnexpectedResponse {
-                status: response.status(),
-                message: "location header missing from response".into(),
-            })?
-            .to_str()
-            .map_err(|_| ClientError::UnexpectedResponse {
-                status: response.status(),
-                message: "returned location header was not UTF-8".into(),
-            })?
-            .to_string())
+        Ok(())
     }
 
     fn validate_inclusion_response(
