@@ -893,14 +893,6 @@ components:
           description: The URL of the content.
           example: https://example.com/contents.wasm
           format: uri
-        headers:
-          type: object
-          description: The HTTP headers for upload request.
-          additionalProperties:
-            type: string
-            description: The HTTP header value.
-          example:
-            authorization: Bearer asdf
         supportsRangeHeader:
           type: boolean
           description: Flag indicating if the server URL supports Range header.

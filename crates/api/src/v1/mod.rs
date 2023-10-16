@@ -7,7 +7,6 @@ pub mod paths;
 pub mod proof;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Represents the supported kinds of content sources.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,9 +16,6 @@ pub enum ContentSource {
     HttpGet {
         /// The URL of the content.
         url: String,
-        /// Optional header names and values for the request.
-        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-        headers: HashMap<String, String>,
         /// Optional support for HTTP Range header.
         #[serde(default, skip_serializing_if = "is_false")]
         supports_range_header: bool,

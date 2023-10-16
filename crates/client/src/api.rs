@@ -240,23 +240,11 @@ impl Client {
             .ok_or(ClientError::AllSourcesFailed(digest.clone()))?;
 
         for source in sources {
-            let ContentSource::HttpGet { url, headers, .. } = source;
-            let headers = headers
-                .iter()
-                .map(|(k, v)| {
-                    let name = HeaderName::try_from(k).map_err(|_| {
-                        ClientError::InvalidHttpHeader(k.to_string(), v.to_string())
-                    })?;
-                    let value = HeaderValue::try_from(k).map_err(|_| {
-                        ClientError::InvalidHttpHeader(k.to_string(), v.to_string())
-                    })?;
-                    Ok((name, value))
-                })
-                .collect::<Result<HeaderMap, ClientError>>()?;
+            let ContentSource::HttpGet { url, .. } = source;
 
             tracing::debug!("downloading content `{digest}` from `{url}`");
 
-            let response = self.client.get(url).headers(headers).send().await?;
+            let response = self.client.get(url).send().await?;
             if !response.status().is_success() {
                 tracing::debug!(
                     "failed to download content `{digest}` from `{url}`: {status}",

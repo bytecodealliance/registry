@@ -72,7 +72,6 @@ async fn get_content(
         digest,
         vec![ContentSource::HttpGet {
             url,
-            headers: HashMap::new(),
             supports_range_header: false,
             size: None,
         }],
