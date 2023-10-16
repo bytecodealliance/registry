@@ -866,7 +866,7 @@ components:
           maxItems: 128
       example:
         ? "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"
-        : - type: http
+        : - type: httpGet
             url: https://example.com/7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773
     ContentSource:
       description: A known content source.
@@ -875,7 +875,7 @@ components:
       discriminator:
         propertyName: type
         mapping:
-          http: "#/components/schemas/HttpGet"
+          httpGet: "#/components/schemas/HttpGet"
     HttpGet:
       type: object
       description: A known GET HTTP content source.
@@ -886,8 +886,8 @@ components:
         type:
           type: string
           description: The type of content source.
-          enum: [http]
-          example: http
+          enum: [httpGet]
+          example: httpGet
         url:
           type: string
           description: The URL of the content.
