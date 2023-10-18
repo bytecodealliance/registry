@@ -164,12 +164,7 @@ impl PackageId {
 
     /// Check if string is a valid namespace.
     pub fn is_valid_namespace(namespace: &str) -> bool {
-        const SUPPORTS_NESTED_NAMESPACES: bool = false;
-        if SUPPORTS_NESTED_NAMESPACES {
-            namespace.split(':').all(|s| KebabStr::new(s).is_some())
-        } else {
-            KebabStr::new(namespace).is_some()
-        }
+        KebabStr::new(namespace).is_some()
     }
 }
 
