@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderValue},
     Body, IntoUrl, Method, Response, StatusCode,
 };
 use serde::de::DeserializeOwned;
@@ -347,8 +347,11 @@ impl Client {
         let headers = headers
             .iter()
             .map(|(k, v)| {
-                let name = HeaderName::try_from(k)
-                    .map_err(|_| ClientError::InvalidHttpHeader(k.to_string(), v.to_string()))?;
+                let name = match k.as_str() {
+                    "authorization" => reqwest::header::AUTHORIZATION,
+                    "content-type" => reqwest::header::CONTENT_TYPE,
+                    _ => return Err(ClientError::InvalidHttpHeader(k.to_string(), v.to_string())),
+                };
                 let value = HeaderValue::try_from(k)
                     .map_err(|_| ClientError::InvalidHttpHeader(k.to_string(), v.to_string()))?;
                 Ok((name, value))

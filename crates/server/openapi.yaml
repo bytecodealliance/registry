@@ -838,12 +838,16 @@ components:
           format: uri
         headers:
           type: object
-          description: The HTTP headers for upload request.
-          additionalProperties:
-            type: string
-            description: The HTTP header value.
-          example:
-            authorization: Bearer asdf
+          description: The HTTP headers for upload request. Header name is required to be all lowercase.
+          properties:
+            authorization:
+              type: string
+              description: Authorization header.
+              example: "Bearer cn389ncoiwuencr"
+            "content-type":
+              type: string
+              description: Content type header.
+              example: "application/wasm"
     ContentSourcesResponse:
       type: object
       description: Content digest sources for download.
