@@ -896,9 +896,9 @@ components:
         supportsRangeHeader:
           type: boolean
           description: Flag indicating if the server URL supports Range header.
-        size:
+        sizeHint:
           type: integer
-          description: Content size in bytes.
+          description: Content size hint in bytes.
           example: 1024
     PackageNotIncludedError:
       type: object
