@@ -18,7 +18,7 @@ pub enum UploadEndpoint {
     /// Content may be uploaded via HTTP request to the given URL.
     Http {
         /// The http method for the upload request.
-        /// Only `POST` and `PUT` methods are accepted by the client.
+        /// Only `POST` and `PUT` methods are supported.
         method: String,
         /// The URL to POST content to.
         url: String,
