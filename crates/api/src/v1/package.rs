@@ -23,7 +23,7 @@ pub enum UploadEndpoint {
         /// The URL to POST content to.
         url: String,
         /// Optional header names and values for the upload request.
-        /// Only `authorization` and `content-type` headers are accepted by the client.
+        /// Only `authorization` and `content-type` headers are valid; any other header should be rejected.
         #[serde(default, skip_serializing_if = "HashMap::is_empty")]
         headers: HashMap<String, String>,
     },
