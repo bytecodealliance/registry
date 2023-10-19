@@ -226,12 +226,6 @@ paths:
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
-        - name: X-Proxy-Registry
-          in: header
-          description: The proxy registry URI Authority context to evaluate the request instead of the current registry.
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: The content digest sources.
