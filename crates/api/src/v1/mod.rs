@@ -16,10 +16,10 @@ pub enum ContentSource {
     HttpGet {
         /// The URL of the content.
         url: String,
-        /// Optional accepts for HTTP Range header.
+        /// Optional, server accepts for HTTP Range header.
         #[serde(default, skip_serializing_if = "is_false")]
         accept_ranges: bool,
-        /// Optional content size in bytes.
+        /// Optional, provides content size in bytes.
         #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<u64>,
     },
