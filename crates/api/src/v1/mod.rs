@@ -19,9 +19,9 @@ pub enum ContentSource {
         /// Optional support for HTTP Range header.
         #[serde(default, skip_serializing_if = "is_false")]
         supports_range_header: bool,
-        /// Optional content size hint in bytes.
+        /// Optional content size in bytes.
         #[serde(skip_serializing_if = "Option::is_none")]
-        size_hint: Option<u64>,
+        size: Option<u64>,
     },
 }
 
