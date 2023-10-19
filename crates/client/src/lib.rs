@@ -162,7 +162,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .publish_package_record(
                 &log_id,
                 PublishRecordRequest {
-                    id: Cow::Borrowed(&package.id),
+                    package_id: Cow::Borrowed(&package.id),
                     record: Cow::Owned(record.into()),
                     content_sources: Default::default(),
                 },

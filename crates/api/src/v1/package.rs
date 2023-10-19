@@ -41,7 +41,7 @@ pub struct MissingContent {
 #[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
     /// The id of the package being published.
-    pub id: Cow<'a, PackageId>,
+    pub package_id: Cow<'a, PackageId>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
     /// The complete set of content sources for the record.

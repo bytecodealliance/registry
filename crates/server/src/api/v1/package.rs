@@ -183,11 +183,11 @@ async fn publish_record(
     Path(log_id): Path<LogId>,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
-    let expected_log_id = LogId::package_log::<Sha256>(&body.id);
+    let expected_log_id = LogId::package_log::<Sha256>(&body.package_id);
     if expected_log_id != log_id {
         return Err(PackageApiError::bad_request(format!(
             "package log identifier `{expected_log_id}` derived from `{id}` does not match provided log identifier `{log_id}`",
-            id = body.id
+            id = body.package_id
         )));
     }
 
@@ -207,7 +207,7 @@ async fn publish_record(
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
     if let Some(policy) = &config.record_policy {
-        policy.check(&body.id, &record)?;
+        policy.check(&body.package_id, &record)?;
     }
 
     // Verify the signature on the record itself before storing it
@@ -224,7 +224,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .store_package_record(&log_id, &body.id, &record_id, &record, &missing)
+        .store_package_record(&log_id, &body.package_id, &record_id, &record, &missing)
         .await?;
 
     // If there's no missing content, submit the record for processing now

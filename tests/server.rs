@@ -355,7 +355,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
     )?;
 
     let body = PublishRecordRequest {
-        id: Cow::Borrowed(&id),
+        package_id: Cow::Borrowed(&id),
         record: Cow::Owned(ProtoEnvelopeBody::from(record)),
         content_sources: Default::default(),
     };

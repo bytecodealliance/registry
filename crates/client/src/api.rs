@@ -194,7 +194,7 @@ impl Client {
         let url = self.url.join(&paths::publish_package_record(log_id));
         tracing::debug!(
             "appending record to package `{id}` at `{url}`",
-            id = request.id
+            id = request.package_id
         );
 
         let response = self.client.post(url).json(&request).send().await?;

@@ -505,10 +505,10 @@ components:
       description: A request to publish a record to a package log.
       additionalProperties: false
       required:
-        - id
+        - packageId
         - record
       properties:
-        id:
+        packageId:
           type: string
           description: The name of the package log being published to.
           maxLength: 128
