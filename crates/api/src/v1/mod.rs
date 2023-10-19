@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentSource {
-    /// The content is located at an GET HTTP URL.
+    /// The content can be retrieved with an HTTP GET.
     HttpGet {
         /// The URL of the content.
         url: String,
