@@ -13,7 +13,6 @@ use warg_crypto::hash::AnyHash;
 pub struct ContentSourcesResponse {
     /// The content sources for the requested content digest, as well as additional
     /// content digests imported by the requested content digest.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
 }
 
