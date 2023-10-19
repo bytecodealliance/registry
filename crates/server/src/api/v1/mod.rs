@@ -16,6 +16,7 @@ use serde::{Serialize, Serializer};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
+pub mod content;
 pub mod fetch;
 pub mod package;
 pub mod proof;
@@ -100,16 +101,17 @@ pub fn create_router(
     let proof_config = proof::Config::new(core.clone());
     let package_config = package::Config::new(
         core.clone(),
-        content_base_url,
-        files_dir,
+        files_dir.clone(),
         temp_dir,
         content_policy,
         record_policy,
     );
     let fetch_config = fetch::Config::new(core);
+    let content_config = content::Config::new(content_base_url, files_dir);
 
     Router::new()
         .nest("/package", package_config.into_router())
+        .nest("/content", content_config.into_router())
         .nest("/fetch", fetch_config.into_router())
         .nest("/proof", proof_config.into_router())
         .fallback(not_found)

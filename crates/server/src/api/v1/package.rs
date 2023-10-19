@@ -20,10 +20,9 @@ use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use url::Url;
 use warg_api::v1::package::{
-    ContentSource, MissingContent, PackageError, PackageRecord, PackageRecordState,
-    PublishRecordRequest, UploadEndpoint,
+    MissingContent, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
+    UploadEndpoint,
 };
 use warg_crypto::hash::{AnyHash, Sha256};
 use warg_protocol::{
@@ -35,7 +34,6 @@ use warg_protocol::{
 #[derive(Clone)]
 pub struct Config {
     core_service: CoreService,
-    content_base_url: Url,
     files_dir: PathBuf,
     temp_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
@@ -45,7 +43,6 @@ pub struct Config {
 impl Config {
     pub fn new(
         core_service: CoreService,
-        content_base_url: Url,
         files_dir: PathBuf,
         temp_dir: PathBuf,
         content_policy: Option<Arc<dyn ContentPolicy>>,
@@ -53,7 +50,6 @@ impl Config {
     ) -> Self {
         Self {
             core_service,
-            content_base_url,
             files_dir,
             temp_dir,
             content_policy,
@@ -84,15 +80,6 @@ impl Config {
         self.files_dir.join(self.content_file_name(digest))
     }
 
-    fn content_url(&self, digest: &AnyHash) -> String {
-        self.content_base_url
-            .join("content/")
-            .unwrap()
-            .join(&self.content_file_name(digest))
-            .unwrap()
-            .to_string()
-    }
-
     fn build_missing_content<'a>(
         &self,
         log_id: &LogId,
@@ -106,7 +93,11 @@ impl Config {
                 (
                     digest.clone(),
                     MissingContent {
-                        upload: vec![UploadEndpoint::HttpPost { url }],
+                        upload: vec![UploadEndpoint::Http {
+                            method: "POST".to_string(),
+                            url,
+                            headers: HashMap::new(),
+                        }],
                     },
                 )
             })
@@ -192,11 +183,11 @@ async fn publish_record(
     Path(log_id): Path<LogId>,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
-    let expected_log_id = LogId::package_log::<Sha256>(&body.id);
+    let expected_log_id = LogId::package_log::<Sha256>(&body.package_id);
     if expected_log_id != log_id {
         return Err(PackageApiError::bad_request(format!(
             "package log identifier `{expected_log_id}` derived from `{id}` does not match provided log identifier `{log_id}`",
-            id = body.id
+            id = body.package_id
         )));
     }
 
@@ -216,7 +207,7 @@ async fn publish_record(
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
     if let Some(policy) = &config.record_policy {
-        policy.check(&body.id, &record)?;
+        policy.check(&body.package_id, &record)?;
     }
 
     // Verify the signature on the record itself before storing it
@@ -233,7 +224,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .store_package_record(&log_id, &body.id, &record_id, &record, &missing)
+        .store_package_record(&log_id, &body.package_id, &record_id, &record, &missing)
         .await?;
 
     // If there's no missing content, submit the record for processing now
@@ -246,7 +237,7 @@ async fn publish_record(
         return Ok((
             StatusCode::ACCEPTED,
             Json(PackageRecord {
-                id: record_id,
+                record_id,
                 state: PackageRecordState::Processing,
             }),
         ));
@@ -256,7 +247,7 @@ async fn publish_record(
     Ok((
         StatusCode::ACCEPTED,
         Json(PackageRecord {
-            id: record_id,
+            record_id,
             state: PackageRecordState::Sourcing { missing_content },
         }),
     ))
@@ -277,44 +268,25 @@ async fn get_record(
         RecordStatus::MissingContent(missing) => {
             let missing_content = config.build_missing_content(&log_id, &record_id, &missing);
             Ok(Json(PackageRecord {
-                id: record_id,
+                record_id,
                 state: PackageRecordState::Sourcing { missing_content },
             }))
         }
         // Validated is considered still processing until included in a checkpoint
         RecordStatus::Pending | RecordStatus::Validated => Ok(Json(PackageRecord {
-            id: record_id,
+            record_id,
             state: PackageRecordState::Processing,
         })),
         RecordStatus::Rejected(reason) => Ok(Json(PackageRecord {
-            id: record_id,
+            record_id,
             state: PackageRecordState::Rejected { reason },
         })),
         RecordStatus::Published => {
-            let content_sources = record
-                .envelope
-                .as_ref()
-                .contents()
-                .into_iter()
-                .map(|digest| {
-                    (
-                        digest.clone(),
-                        vec![ContentSource::Http {
-                            url: config.content_url(digest),
-                        }],
-                    )
-                })
-                .collect();
-
             let registry_index = record.registry_index.unwrap();
 
             Ok(Json(PackageRecord {
-                id: record_id,
-                state: PackageRecordState::Published {
-                    record: record.envelope.into(),
-                    registry_index,
-                    content_sources,
-                },
+                record_id,
+                state: PackageRecordState::Published { registry_index },
             }))
         }
     }
@@ -388,10 +360,7 @@ async fn upload_content(
             .await;
     }
 
-    Ok((
-        StatusCode::CREATED,
-        [(axum::http::header::LOCATION, config.content_url(&digest))],
-    ))
+    Ok(StatusCode::CREATED)
 }
 
 async fn process_content(

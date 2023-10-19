@@ -85,6 +85,14 @@ impl FileSystemRegistryStorage {
 
 #[async_trait]
 impl RegistryStorage for FileSystemRegistryStorage {
+    async fn reset(&self, all_registries: bool) -> Result<()> {
+        if all_registries {
+            remove(self.base_dir.parent().unwrap()).await
+        } else {
+            remove(&self.base_dir).await
+        }
+    }
+
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>> {
         load(&self.base_dir.join("checkpoint")).await
     }
@@ -231,6 +239,10 @@ impl FileSystemContentStorage {
 
 #[async_trait]
 impl ContentStorage for FileSystemContentStorage {
+    async fn clear(&self) -> Result<()> {
+        remove(&self.base_dir).await
+    }
+
     fn content_location(&self, digest: &AnyHash) -> Option<PathBuf> {
         let path = self.content_path(digest);
         if path.is_file() {
@@ -314,6 +326,18 @@ impl ContentStorage for FileSystemContentStorage {
 
         Ok(hash)
     }
+}
+
+async fn remove(path: &Path) -> Result<()> {
+    if path.is_file() {
+        return tokio::fs::remove_file(path)
+            .await
+            .with_context(|| format!("failed to remove file `{path}`", path = path.display()));
+    }
+
+    tokio::fs::remove_dir_all(path)
+        .await
+        .with_context(|| format!("failed to remove directory `{path}`", path = path.display()))
 }
 
 async fn load<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>> {

@@ -29,6 +29,9 @@ pub use fs::*;
 /// multiple threads and processes.
 #[async_trait]
 pub trait RegistryStorage: Send + Sync {
+    /// Reset registry local data
+    async fn reset(&self, all_registries: bool) -> Result<()>;
+
     /// Loads most recent checkpoint
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
@@ -74,6 +77,9 @@ pub trait RegistryStorage: Send + Sync {
 /// multiple threads and processes.
 #[async_trait]
 pub trait ContentStorage: Send + Sync {
+    /// Clear content local data
+    async fn clear(&self) -> Result<()>;
+
     /// Gets the location of the content associated with the given digest if it
     /// exists as a file on disk.
     ///
