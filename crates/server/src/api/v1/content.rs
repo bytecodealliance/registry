@@ -72,7 +72,7 @@ async fn get_content(
         digest,
         vec![ContentSource::HttpGet {
             url,
-            supports_range_header: false,
+            accept_ranges: false,
             size: None,
         }],
     );

@@ -891,9 +891,9 @@ components:
           description: The URL of the content.
           example: https://example.com/contents.wasm
           format: uri
-        supportsRangeHeader:
+        acceptRanges:
           type: boolean
-          description: Flag indicating if the server URL supports Range header.
+          description: Flag indicating if the server accepts byte ranges with `Range` header.
         size:
           type: integer
           description: Content size in bytes.
