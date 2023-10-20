@@ -13,11 +13,18 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentSource {
     /// The content can be retrieved with an HTTP GET.
+    #[serde(rename_all = "camelCase")]
     HttpGet {
         /// The URL of the content.
         url: String,
         /// Optional, server accepts for HTTP Range header.
-        #[serde(default, skip_serializing_if = "is_false")]
+        /// TODO remove rename, see issue: https://github.com/bytecodealliance/registry/issues/221
+        #[serde(
+            default,
+            skip_serializing_if = "is_false",
+            rename = "accept_ranges",
+            alias = "acceptRanges"
+        )]
         accept_ranges: bool,
         /// Optional, provides content size in bytes.
         #[serde(skip_serializing_if = "Option::is_none")]

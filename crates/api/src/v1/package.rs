@@ -16,6 +16,7 @@ use warg_protocol::{
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum UploadEndpoint {
     /// Content may be uploaded via HTTP request to the given URL.
+    #[serde(rename_all = "camelCase")]
     Http {
         /// The http method for the upload request.
         /// Only `POST` and `PUT` methods are supported.
