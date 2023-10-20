@@ -53,7 +53,7 @@ postgres = ["warg-server/postgres"]
 members = ["crates/server"]
 
 [workspace.package]
-version = "0.2.0-dev"
+version = "0.2.0"
 authors = ["The Warg Registry Project Developers"]
 edition = "2021"
 rust-version = "1.66.0"
@@ -62,13 +62,13 @@ homepage = "https://warg.io/"
 repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
-warg-api = { path = "crates/api", version = "0.2.0-dev" }
-warg-client = { path = "crates/client", version = "0.2.0-dev" }
-warg-crypto = { path = "crates/crypto", version = "0.2.0-dev" }
-warg-protobuf = { path = "proto", version = "0.2.0-dev" }
-warg-protocol = { path = "crates/protocol", version = "0.2.0-dev" }
-warg-transparency = { path = "crates/transparency", version = "0.2.0-dev" }
-warg-server = { path = "crates/server", version = "0.2.0-dev" }
+warg-api = { path = "crates/api", version = "0.2.0" }
+warg-client = { path = "crates/client", version = "0.2.0" }
+warg-crypto = { path = "crates/crypto", version = "0.2.0" }
+warg-protobuf = { path = "proto", version = "0.2.0" }
+warg-protocol = { path = "crates/protocol", version = "0.2.0" }
+warg-transparency = { path = "crates/transparency", version = "0.2.0" }
+warg-server = { path = "crates/server", version = "0.2.0" }
 clap = { version = "4.3.11", features = ["derive", "env"] }
 thiserror = "1.0.43"
 anyhow = "1.0.71"
