@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentSource {
     /// The content can be retrieved with an HTTP GET.
+    #[serde(rename_all = "camelCase")]
     HttpGet {
         /// The URL of the content.
         url: String,
