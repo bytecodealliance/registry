@@ -3579,19 +3579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha256"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7895c8ae88588ccead14ff438b939b0c569cd619116f14b4d13fdff7b8333386"
-dependencies = [
- "async-trait",
- "bytes",
- "hex",
- "sha2",
- "tokio",
-]
-
-[[package]]
 name = "sharded-slab"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4352,8 +4339,8 @@ dependencies = [
  "warg-protocol",
  "warg-server",
  "wasm-compose",
- "wasm-encoder 0.32.0",
- "wasmparser 0.112.0",
+ "wasm-encoder 0.35.0",
+ "wasmparser 0.115.0",
  "wasmtime",
  "wasmtime-wasi",
  "wat 1.0.67",
@@ -4450,7 +4437,7 @@ dependencies = [
  "warg-crypto",
  "warg-protobuf",
  "warg-transparency",
- "wasmparser 0.112.0",
+ "wasmparser 0.115.0",
 ]
 
 [[package]]
@@ -4486,7 +4473,7 @@ dependencies = [
  "warg-crypto",
  "warg-protocol",
  "warg-transparency",
- "wasmparser 0.112.0",
+ "wasmparser 0.115.0",
 ]
 
 [[package]]
@@ -4627,7 +4614,7 @@ checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
 
 [[package]]
 name = "wasm-compose"
-version = "0.4.2"
+version = "0.4.10"
 dependencies = [
  "anyhow",
  "heck",
@@ -4635,11 +4622,12 @@ dependencies = [
  "log",
  "petgraph",
  "serde 1.0.171",
+ "serde_derive",
  "serde_yaml",
  "smallvec",
- "wasm-encoder 0.32.0",
- "wasmparser 0.112.0",
- "wat 1.0.71",
+ "wasm-encoder 0.35.0",
+ "wasmparser 0.115.0",
+ "wat 1.0.77",
 ]
 
 [[package]]
@@ -4662,10 +4650,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.32.0"
+version = "0.35.0"
 dependencies = [
  "leb128",
- "sha256",
 ]
 
 [[package]]
@@ -4718,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.112.0"
+version = "0.115.0"
 dependencies = [
  "indexmap 2.0.0",
  "semver",
@@ -5061,12 +5048,12 @@ dependencies = [
 
 [[package]]
 name = "wast"
-version = "64.0.0"
+version = "66.0.2"
 dependencies = [
  "leb128",
  "memchr",
  "unicode-width",
- "wasm-encoder 0.32.0",
+ "wasm-encoder 0.35.0",
 ]
 
 [[package]]
@@ -5080,9 +5067,9 @@ dependencies = [
 
 [[package]]
 name = "wat"
-version = "1.0.71"
+version = "1.0.77"
 dependencies = [
- "wast 64.0.0",
+ "wast 66.0.2",
 ]
 
 [[package]]

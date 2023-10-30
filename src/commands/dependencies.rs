@@ -9,8 +9,9 @@ use warg_client::{
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId, VersionReq};
-use wasmparser::ComponentImportName;
-use wasmparser::{Chunk, ComponentImport, ComponentImportSectionReader, Parser, Payload};
+use wasmparser::{
+    Chunk, ComponentImport, ComponentImportName, ComponentImportSectionReader, Parser, Payload,
+};
 
 /// Print Dependency Tree
 #[derive(Args)]
@@ -65,7 +66,9 @@ impl DependenciesCommand {
                         let bytes = fs::read(p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
-                            if let ComponentImportName::Unlocked(name) = dep.name {
+                            let name = dep.name.0;
+                            let kindless_name = name.splitn(2, '=').last();
+                            if let Some(name) = kindless_name {
                                 let mut name_and_version = name.split('@');
                                 let versionless_name = name_and_version.next();
                                 let version = name_and_version.next();
@@ -99,7 +102,9 @@ impl DependenciesCommand {
                         let bytes = fs::read(&p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
-                            if let ComponentImportName::Unlocked(name) = dep.name {
+                            let name = dep.name.0;
+                            let kindless_name = name.splitn(2, '=').last();
+                            if let Some(name) = kindless_name {
                                 let child = tree.begin_child(name.to_string());
                                 let mut name_and_version = name.split('@');
                                 let versionless_name = name_and_version.next();

@@ -33,17 +33,10 @@ impl LockListBuilder {
     ) -> Result<()> {
         let clone = parser.clone();
         for import in clone.into_iter_with_offsets() {
-            let (_, imp) = import.unwrap().clone();
-            match imp.name {
-                wasmparser::ComponentImportName::Kebab(_) => todo!(),
-                wasmparser::ComponentImportName::Interface(name) => {}
-                wasmparser::ComponentImportName::Url(metadata) => todo!(),
-                wasmparser::ComponentImportName::Relative(metadata) => todo!(),
-                wasmparser::ComponentImportName::Naked(metadata) => todo!(),
-                wasmparser::ComponentImportName::Locked(metadata) => {}
-                wasmparser::ComponentImportName::Unlocked(name) => {
-                    imports.push(name.to_string());
-                }
+            let (_, imp) = import?;
+            let kindless_name = imp.name.0.splitn(2, '=').last();
+            if let Some(name) = kindless_name {
+                imports.push(name.to_string());
             }
         }
         Ok(())
@@ -98,7 +91,7 @@ impl LockListBuilder {
                 let mut name_and_version = name.split('@');
                 let identifier = name_and_version.next();
                 if let Some(pkg_name) = identifier {
-                    let id = PackageId::new(pkg_name)?;
+                    let id = PackageId::new(pkg_name.replace('<', ""))?;
                     if let Some(info) = client.registry().load_package(&id).await? {
                         let release = info.state.releases().last();
                         if let Some(r) = release {
@@ -111,7 +104,12 @@ impl LockListBuilder {
                                 }
                             }
                         }
-                        self.lock_list.insert(name.to_string());
+                        // let mut locked_import = "locked-dep=".to_string();
+                        // locked_import.push_str(name);
+                        // locked_import.push_str("integrity=<\"asdflkjasdf\"");
+                        self.lock_list.insert(name.replace('<', "").to_string());
+                        // self.lock_list.insert(name.to_string());
+                        // self.lock_list.insert(locked_import);
                     }
                 }
             }
@@ -179,7 +177,7 @@ impl LockCommand {
             let name = name_and_version.next();
             let version = name_and_version.next();
             if let Some(pkg_id) = name {
-                let id = PackageId::new(pkg_id)?;
+                let id = PackageId::new(pkg_id.replace('<', ""))?;
                 let info = client.registry().load_package(&id).await?;
                 if let Some(inf) = info {
                     let release = if let Some(v) = version {
@@ -291,6 +289,7 @@ impl LockCommand {
             }
         }
         let final_name = &info.id.id;
+        dbg!(&final_name);
         let id = handled.get(final_name);
         let options = if let Some(id) = id {
             EncodeOptions {
