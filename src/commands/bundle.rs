@@ -1,7 +1,7 @@
 use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
-use std::{fs, path::Path};
+use std::fs;
 use warg_client::{
     storage::{
         ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, RegistryStorage,
@@ -10,9 +10,9 @@ use warg_client::{
 };
 use warg_protocol::{package::ReleaseState, registry::PackageId};
 use wasm_encoder::{
-    Component, ComponentImportSection, ComponentSectionId, ComponentTypeRef, ExportKind, RawSection,
+    Component, ComponentImportSection, ComponentSectionId, ComponentTypeRef, RawSection,
 };
-use wasmparser::{Chunk, ComponentImportName, ComponentImportSectionReader, Parser, Payload};
+use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
 
 /// Bundle With Registry Dependencies
 #[derive(Args)]
@@ -68,47 +68,46 @@ impl<'a> Bundler<'a> {
         let mut imports = ComponentImportSection::new();
         for import in parser.into_iter_with_offsets() {
             let (_, imp) = import?;
-            // match imp.name {
-            // ComponentImportName::Kebab(name)
-            // | ComponentImportName::Locked((name, _))
-            // | ComponentImportName::Unlocked(name) => {
             let mut full_name = imp.name.0.split('/');
             let name = full_name.next();
-            if let Some(name) = name {
-                let mut version_and_name = name.split('@');
-                let identifier = version_and_name.next();
-                if let Some(name) = identifier {
-                    let pkg_id = PackageId::new(name)?;
-                    if let Some(info) = self.client.registry().load_package(&pkg_id).await? {
-                        let release_state = &info.state.releases().last().unwrap().state;
-                        if let ReleaseState::Released { content } = release_state {
-                            let path = self.client.content().content_location(content);
-                            if let Some(p) = path {
-                                let bytes = fs::read(p)?;
-                                component.section(&RawSection {
-                                    id: ComponentSectionId::Component.into(),
-                                    data: &bytes,
-                                });
+            if (!imp.name.0.contains('/')) {
+                if let Some(name) = name {
+                    let kindless_name = imp.name.0.splitn(2, '=').last();
+                    if let Some(name) = kindless_name {
+                        let mut version_and_name = name.split('@');
+                        let identifier = version_and_name.next();
+                        if let Some(name) = identifier {
+                            let pkg_id = PackageId::new(name.replace('<', ""))?;
+                            if let Some(info) = self.client.registry().load_package(&pkg_id).await?
+                            {
+                                let release_state = &info.state.releases().last().unwrap().state;
+                                if let ReleaseState::Released { content } = release_state {
+                                    let path = self.client.content().content_location(content);
+                                    if let Some(p) = path {
+                                        let bytes = fs::read(p)?;
+                                        component.section(&RawSection {
+                                            id: ComponentSectionId::Component.into(),
+                                            data: &bytes,
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            } else {
+                match imp.ty {
+                    wasmparser::ComponentTypeRef::Module(_) => todo!(),
+                    wasmparser::ComponentTypeRef::Func(_) => todo!(),
+                    wasmparser::ComponentTypeRef::Value(_) => todo!(),
+                    wasmparser::ComponentTypeRef::Type(_) => todo!(),
+                    wasmparser::ComponentTypeRef::Instance(i) => {
+                        imports.import(imp.name.0, ComponentTypeRef::Instance(i));
+                    }
+                    wasmparser::ComponentTypeRef::Component(_) => todo!(),
+                }
             }
         }
-        // ComponentImportName::Interface(name) => match imp.ty {
-        //     wasmparser::ComponentTypeRef::Module(_) => todo!(),
-        //     wasmparser::ComponentTypeRef::Func(_) => todo!(),
-        //     wasmparser::ComponentTypeRef::Value(_) => todo!(),
-        //     wasmparser::ComponentTypeRef::Type(_) => todo!(),
-        //     wasmparser::ComponentTypeRef::Instance(i) => {
-        //         let extern_name = wasm_encoder::ComponentExternName::Interface(&name);
-        //         imports.import(extern_name, ComponentTypeRef::Instance(i));
-        //     }
-        //     wasmparser::ComponentTypeRef::Component(_) => todo!(),
-        // },
-        // _ => {}
-        // }
-        // }
         component.section(&imports);
         Ok(Vec::new())
     }

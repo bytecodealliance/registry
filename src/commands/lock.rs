@@ -104,12 +104,7 @@ impl LockListBuilder {
                                 }
                             }
                         }
-                        // let mut locked_import = "locked-dep=".to_string();
-                        // locked_import.push_str(name);
-                        // locked_import.push_str("integrity=<\"asdflkjasdf\"");
                         self.lock_list.insert(name.replace('<', "").to_string());
-                        // self.lock_list.insert(name.to_string());
-                        // self.lock_list.insert(locked_import);
                     }
                 }
             }
@@ -255,22 +250,35 @@ impl LockCommand {
                         let state = &r.state;
                         if let ReleaseState::Released { content } = state {
                             let mut locked_package = package.split('@').next().unwrap().to_string();
-                            locked_package.push_str(&format!("@{}", &r.version.to_string()));
+                            locked_package = format!(
+                                "locked-dep=<{}@{}>,integrity=<{}>",
+                                locked_package,
+                                &r.version.to_string(),
+                                content.to_string().replace(':', "-")
+                            );
                             let path = client.content().content_location(content);
                             if let Some(p) = path {
                                 let component =
-                                    wasm_compose::graph::Component::from_file(locked_package, p)?;
-                                let component_index = composer.add_component(component)?;
+                                    wasm_compose::graph::Component::from_file(&locked_package, p)?;
+                                let component_index = if let Some(c) =
+                                    composer.get_component_by_name(&locked_package)
+                                {
+                                    c.0
+                                } else {
+                                    composer.add_component(component)?
+                                };
                                 let instance_id = composer.instantiate(component_index)?;
-
                                 let added = composer.get_component(component_index);
                                 handled.insert(package, instance_id);
                                 let mut args = Vec::new();
                                 if let Some(added) = added {
                                     for (index, name, _) in added.imports() {
-                                        let iid = handled.get(name);
-                                        if let Some(arg) = iid {
-                                            args.push((arg, index));
+                                        let kindless_name = name.splitn(2, '=').last();
+                                        if let Some(name) = kindless_name {
+                                            let iid = handled.get(&name.replace('<', ""));
+                                            if let Some(arg) = iid {
+                                                args.push((arg, index));
+                                            }
                                         }
                                     }
                                 }
@@ -289,7 +297,7 @@ impl LockCommand {
             }
         }
         let final_name = &info.id.id;
-        dbg!(&final_name);
+
         let id = handled.get(final_name);
         let options = if let Some(id) = id {
             EncodeOptions {

@@ -129,6 +129,9 @@ chrono = "0.4.26"
 regex = "1"
 protox = "0.4.1"
 toml = "0.7.6"
-wasmparser = { path = "../wasm-tools/crates/wasmparser" }
-wasm-encoder = { path = "../wasm-tools/crates/wasm-encoder" }
+#wasmparser = { path = "../wasm-tools/crates/wasmparser" }
+#wasm-encoder = { path = "../wasm-tools/crates/wasm-encoder" }
 wasm-compose = { path = "../wasm-tools/crates/wasm-compose" }
+wasmparser = "0.116.0"
+wasm-encoder = "0.36.1"
+#wasm-compose = "0.4.12"
