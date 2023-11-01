@@ -21,8 +21,8 @@ use warg_api::v1::{
     proof::{ConsistencyRequest, InclusionRequest},
 };
 use warg_crypto::{
-    hash::{AnyHash, Hash, Sha256},
-    signing,
+    hash::{AnyHash, Sha256},
+    signing, Encode, Signable,
 };
 use warg_protocol::{
     operator, package,
@@ -69,6 +69,24 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Gets the content storage used by the client.
     pub fn content(&self) -> &C {
         &self.content
+    }
+
+    /// Reset client storage for the registry.
+    pub async fn reset_registry(&self, all_registries: bool) -> ClientResult<()> {
+        tracing::info!("resetting registry local state");
+        self.registry
+            .reset(all_registries)
+            .await
+            .or(Err(ClientError::ResettingRegistryLocalStateFailed))
+    }
+
+    /// Clear client content cache.
+    pub async fn clear_content_cache(&self) -> ClientResult<()> {
+        tracing::info!("removing content cache");
+        self.content
+            .clear()
+            .await
+            .or(Err(ClientError::ClearContentCacheFailed))
     }
 
     /// Submits the publish information in client storage.
@@ -145,7 +163,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .publish_package_record(
                 &log_id,
                 PublishRecordRequest {
-                    id: Cow::Borrowed(&package.id),
+                    package_id: Cow::Borrowed(&package.id),
                     record: Cow::Owned(record.into()),
                     content_sources: Default::default(),
                 },
@@ -164,13 +182,20 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         // TODO: parallelize this
         for (digest, MissingContent { upload }) in record.missing_content() {
             // Upload the missing content, if the registry supports it
-            let Some(UploadEndpoint::HttpPost { url }) = upload.first() else {
+            let Some(UploadEndpoint::Http {
+                method,
+                url,
+                headers,
+            }) = upload.first()
+            else {
                 continue;
             };
 
             self.api
                 .upload_content(
+                    method,
                     url,
+                    headers,
                     Body::wrap_stream(self.content.load_content(digest).await?.ok_or_else(
                         || ClientError::ContentNotFound {
                             digest: digest.clone(),
@@ -182,7 +207,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     api::ClientError::Package(PackageError::Rejection(reason)) => {
                         ClientError::PublishRejected {
                             id: package.id.clone(),
-                            record_id: record.id.clone(),
+                            record_id: record.record_id.clone(),
                             reason,
                         }
                     }
@@ -190,7 +215,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
         }
 
-        Ok(record.id)
+        Ok(record.record_id)
     }
 
     /// Waits for a package record to transition to the `published` state.
@@ -287,7 +312,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     ) -> Result<Option<PackageDownload>, ClientError> {
         tracing::info!("downloading package `{id}` with requirement `{requirement}`");
         let info = self.fetch_package(id).await?;
-        let log_id = LogId::package_log::<Sha256>(&info.id);
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -295,9 +319,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     .content()
                     .context("invalid state: not yanked but missing content")?
                     .clone();
-                let path = self
-                    .download_content(&log_id, &release.record_id, &digest)
-                    .await?;
+                let path = self.download_content(&digest).await?;
                 Ok(Some(PackageDownload {
                     version: release.version.clone(),
                     digest,
@@ -324,7 +346,6 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     ) -> Result<PackageDownload, ClientError> {
         tracing::info!("downloading version {version} of package `{package}`");
         let info = self.fetch_package(package).await?;
-        let log_id = LogId::package_log::<Sha256>(&info.id);
 
         let release =
             info.state
@@ -344,9 +365,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(PackageDownload {
             version: version.clone(),
             digest: digest.clone(),
-            path: self
-                .download_content(&log_id, &release.record_id, digest)
-                .await?,
+            path: self.download_content(digest).await?,
         })
     }
 
@@ -357,8 +376,10 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
         let checkpoint = &ts_checkpoint.as_ref().checkpoint;
-        let checkpoint_id: AnyHash = Hash::<Sha256>::of(checkpoint).into();
-        tracing::info!("updating to checkpoint `{checkpoint_id}`");
+        tracing::info!(
+            "updating to checkpoint log length `{}`",
+            checkpoint.log_length
+        );
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
 
@@ -378,12 +399,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let mut last_known = packages
             .iter()
-            .map(|(id, p)| {
-                (
-                    id.clone(),
-                    p.state.head().as_ref().map(|h| h.digest.clone()),
-                )
-            })
+            .map(|(id, p)| (id.clone(), p.head_fetch_token.clone()))
             .collect::<HashMap<_, _>>();
 
         loop {
@@ -392,10 +408,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .fetch_logs(FetchLogsRequest {
                     log_length: checkpoint.log_length,
                     operator: operator
-                        .state
-                        .head()
+                        .head_fetch_token
                         .as_ref()
-                        .map(|h| Cow::Borrowed(&h.digest)),
+                        .map(|t| Cow::Borrowed(t.as_str())),
                     limit: None,
                     packages: Cow::Borrowed(&last_known),
                 })
@@ -407,12 +422,20 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
             for record in response.operator {
-                let record: PublishedProtoEnvelope<operator::OperatorRecord> = record.try_into()?;
-                operator
-                    .state
-                    .validate(&record.envelope)
-                    .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
-                operator.head_registry_index = Some(record.registry_index);
+                let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
+                    record.envelope.try_into()?;
+
+                // skip over records that has already seen
+                if operator.head_registry_index.is_none()
+                    || proto_envelope.registry_index > operator.head_registry_index.unwrap()
+                {
+                    operator
+                        .state
+                        .validate(&proto_envelope.envelope)
+                        .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
+                    operator.head_registry_index = Some(proto_envelope.registry_index);
+                    operator.head_fetch_token = Some(record.fetch_token);
+                }
             }
 
             for (log_id, records) in response.packages {
@@ -421,15 +444,23 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 })?;
 
                 for record in records {
-                    let record: PublishedProtoEnvelope<package::PackageRecord> =
-                        record.try_into()?;
-                    package.state.validate(&record.envelope).map_err(|inner| {
-                        ClientError::PackageValidationFailed {
-                            id: package.id.clone(),
-                            inner,
-                        }
-                    })?;
-                    package.head_registry_index = Some(record.registry_index);
+                    let proto_envelope: PublishedProtoEnvelope<package::PackageRecord> =
+                        record.envelope.try_into()?;
+
+                    // skip over records that has already seen
+                    if package.head_registry_index.is_none()
+                        || proto_envelope.registry_index > package.head_registry_index.unwrap()
+                    {
+                        package
+                            .state
+                            .validate(&proto_envelope.envelope)
+                            .map_err(|inner| ClientError::PackageValidationFailed {
+                                id: package.id.clone(),
+                                inner,
+                            })?;
+                        package.head_registry_index = Some(proto_envelope.registry_index);
+                        package.head_fetch_token = Some(record.fetch_token);
+                    }
                 }
 
                 // At this point, the package log should not be empty
@@ -444,29 +475,50 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 break;
             }
 
-            // Update the last known record ids for each package log
-            for (id, record_id) in last_known.iter_mut() {
-                *record_id = packages[id].state.head().as_ref().map(|h| h.digest.clone());
+            // Update the last known record fetch token for each package log
+            for (id, fetch_token) in last_known.iter_mut() {
+                *fetch_token = packages[id].head_fetch_token.clone();
             }
         }
+
+        // verify checkpoint signature
+        TimestampedCheckpoint::verify(
+            operator.state.public_key(ts_checkpoint.key_id()).ok_or(
+                ClientError::InvalidCheckpointKeyId {
+                    key_id: ts_checkpoint.key_id().clone(),
+                },
+            )?,
+            &ts_checkpoint.as_ref().encode(),
+            ts_checkpoint.signature(),
+        )
+        .or(Err(ClientError::InvalidCheckpointSignature))?;
 
         // Prove inclusion for the current log heads
         let mut leaf_indices = Vec::with_capacity(packages.len() + 1 /* for operator */);
         let mut leafs = Vec::with_capacity(leaf_indices.len());
+
+        // operator record inclusion
         if let Some(index) = operator.head_registry_index {
             leaf_indices.push(index);
             leafs.push(LogLeaf {
                 log_id: LogId::operator_log::<Sha256>(),
                 record_id: operator.state.head().as_ref().unwrap().digest.clone(),
             });
+        } else {
+            return Err(ClientError::NoOperatorRecords);
         }
 
+        // package records inclusion
         for (log_id, package) in &packages {
             if let Some(index) = package.head_registry_index {
                 leaf_indices.push(index);
                 leafs.push(LogLeaf {
                     log_id: log_id.clone(),
                     record_id: package.state.head().as_ref().unwrap().digest.clone(),
+                });
+            } else {
+                return Err(ClientError::PackageLogEmpty {
+                    id: package.id.clone(),
                 });
             }
         }
@@ -547,12 +599,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(record)
     }
 
-    async fn download_content(
-        &self,
-        log_id: &LogId,
-        record_id: &RecordId,
-        digest: &AnyHash,
-    ) -> Result<PathBuf, ClientError> {
+    async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
@@ -561,7 +608,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             None => {
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(log_id, record_id, digest).await?),
+                        Box::pin(self.api.download_content(digest).await?),
                         Some(digest),
                     )
                     .await?;
@@ -660,6 +707,29 @@ pub enum ClientError {
     /// No default registry server URL is configured.
     #[error("no default registry server URL is configured")]
     NoDefaultUrl,
+
+    /// Reset registry local state.
+    #[error("reset registry state failed")]
+    ResettingRegistryLocalStateFailed,
+
+    /// Clearing content local cache.
+    #[error("clear content cache failed")]
+    ClearContentCacheFailed,
+
+    /// Checkpoint signature failed verification
+    #[error("invalid checkpoint signature")]
+    InvalidCheckpointSignature,
+
+    /// Checkpoint signature failed verification
+    #[error("invalid checkpoint key ID `{key_id}`")]
+    InvalidCheckpointKeyId {
+        /// The signature key ID.
+        key_id: signing::KeyID,
+    },
+
+    /// The server did not provide operator records.
+    #[error("the server did not provide any operator records")]
+    NoOperatorRecords,
 
     /// The operator failed validation.
     #[error("operator failed validation: {inner}")]

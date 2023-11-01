@@ -4295,7 +4295,7 @@ dependencies = [
 
 [[package]]
 name = "warg-api"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "itertools 0.11.0",
  "serde 1.0.171",
@@ -4307,7 +4307,7 @@ dependencies = [
 
 [[package]]
 name = "warg-cli"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -4350,7 +4350,7 @@ dependencies = [
 
 [[package]]
 name = "warg-client"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4382,7 +4382,7 @@ dependencies = [
 
 [[package]]
 name = "warg-crypto"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "base64 0.21.2",
@@ -4402,7 +4402,7 @@ dependencies = [
 
 [[package]]
 name = "warg-protobuf"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "pbjson",
@@ -4419,7 +4419,7 @@ dependencies = [
 
 [[package]]
 name = "warg-protocol"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "base64 0.21.2",
@@ -4442,7 +4442,7 @@ dependencies = [
 
 [[package]]
 name = "warg-server"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "axum",
@@ -4478,7 +4478,7 @@ dependencies = [
 
 [[package]]
 name = "warg-transparency"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "anyhow",
  "criterion",

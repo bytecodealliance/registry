@@ -9,6 +9,7 @@ use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::signing::PrivateKey;
 
 mod bundle;
+mod clear;
 mod config;
 mod dependencies;
 mod download;
@@ -16,12 +17,14 @@ mod info;
 mod key;
 mod lock;
 mod publish;
+mod reset;
 mod run;
 mod update;
 
 use crate::keyring::get_signing_key;
 
 pub use self::bundle::*;
+pub use self::clear::*;
 pub use self::config::*;
 pub use self::dependencies::*;
 pub use self::download::*;
@@ -29,6 +32,7 @@ pub use self::info::*;
 pub use self::key::*;
 pub use self::lock::*;
 pub use self::publish::*;
+pub use self::reset::*;
 pub use self::run::*;
 pub use self::update::*;
 

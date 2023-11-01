@@ -105,7 +105,7 @@ used to sign package log entries when publishing to the registry.
 A new package can be initialized by running:
 
 ```
-warg publish init hello
+warg publish init example:hello
 ```
 
 This creates a new package in the `example` namespace with the package ID `hello`.
@@ -179,6 +179,29 @@ echo 'hello world' | warg run demo:simple-grep hello
 ```
 
 This should download and run the package, and print out the line `hello world` as it matches the pattern `hello`.
+
+### Resetting and clearing local data
+
+To reset local data for the default registry:
+```
+warg reset
+```
+
+To reset local data for a specific registry, such as `registry.example.com`:
+```
+warg reset --registry registry.example.com
+```
+
+To reset local data for all registries:
+```
+warg reset --all
+```
+
+To clear local content for all registries:
+```
+warg clear
+```
+
 
 ## Contributing
 

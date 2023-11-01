@@ -1,9 +1,13 @@
 [package]
 name = "warg-crypto"
+description = "A collection of cryptographic primitives for Warg registries."
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true}
 
 [dependencies]
 hex = { workspace = true }

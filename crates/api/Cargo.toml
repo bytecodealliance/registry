@@ -1,9 +1,13 @@
 [package]
 name = "warg-api"
+description = "Serializable types for the Warg registry REST API."
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true}
 
 [dependencies]
 warg-protocol = { workspace = true }

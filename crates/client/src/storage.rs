@@ -29,6 +29,9 @@ pub use fs::*;
 /// multiple threads and processes.
 #[async_trait]
 pub trait RegistryStorage: Send + Sync {
+    /// Reset registry local data
+    async fn reset(&self, all_registries: bool) -> Result<()>;
+
     /// Loads most recent checkpoint
     async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
@@ -74,6 +77,9 @@ pub trait RegistryStorage: Send + Sync {
 /// multiple threads and processes.
 #[async_trait]
 pub trait ContentStorage: Send + Sync {
+    /// Clear content local data
+    async fn clear(&self) -> Result<()>;
+
     /// Gets the location of the content associated with the given digest if it
     /// exists as a file on disk.
     ///
@@ -110,8 +116,11 @@ pub struct OperatorInfo {
     #[serde(default)]
     pub state: operator::LogState,
     /// The registry log index of the most recent record
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_registry_index: Option<RegistryIndex>,
+    /// The fetch token for the most recent record
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_fetch_token: Option<String>,
 }
 
 /// Represents information about a registry package.
@@ -127,8 +136,11 @@ pub struct PackageInfo {
     #[serde(default)]
     pub state: package::LogState,
     /// The registry log index of the most recent record
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_registry_index: Option<RegistryIndex>,
+    /// The fetch token for the most recent record
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_fetch_token: Option<String>,
 }
 
 impl PackageInfo {
@@ -139,6 +151,7 @@ impl PackageInfo {
             checkpoint: None,
             state: package::LogState::default(),
             head_registry_index: None,
+            head_fetch_token: None,
         }
     }
 }

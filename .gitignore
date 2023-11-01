@@ -2,5 +2,8 @@
 /target
 *.swp
 *.swo
-node_modules
-bundled
+
+# Used by the `publish verify` to ensure all packages can be published
+.cargo
+vendor/
+publish
