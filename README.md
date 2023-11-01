@@ -91,7 +91,7 @@ default.
 Next, create a new signing key to publish packages with:
 
 ```
-warg key new 127.0.0.1
+warg key new 127.0.0.1:8090
 ```
 
 The new signing key will be stored in your operating system's key store and
