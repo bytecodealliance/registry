@@ -1,5 +1,8 @@
 use futures::Stream;
-use std::{collections::HashSet, pin::Pin};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+};
 use thiserror::Error;
 use warg_crypto::{hash::AnyHash, signing::KeyID};
 use warg_protocol::{
@@ -225,6 +228,25 @@ pub trait DataStore: Send + Sync {
     async fn get_latest_checkpoint(
         &self,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
+
+    /// Get checkpoint by log length.
+    async fn get_checkpoint(
+        &self,
+        log_length: RegistryLen,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
+
+    /// Gets package IDs from log IDs. If `PackageId` is unavailable, a corresponding `None` is returned.
+    async fn get_package_ids(
+        &self,
+        log_ids: &[LogId],
+    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError>;
+
+    /// Gets a batch of log leafs starting with a registry log index.  
+    async fn get_log_leafs_starting_with_registry_index(
+        &self,
+        starting_index: RegistryIndex,
+        limit: Option<usize>,
+    ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError>;
 
     /// Gets the operator records for the given registry log length.
     async fn get_operator_records(

@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, RegistryLen},
+    registry::{LogId, PackageId, RegistryLen},
     PublishedProtoEnvelopeBody,
 };
 
@@ -51,6 +51,24 @@ pub struct FetchLogsResponse {
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub packages: HashMap<LogId, Vec<PublishedRecord>>,
+}
+
+/// Represents a fetch package IDs request.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchPackageIdsRequest<'a> {
+    /// List of package log IDs to request the package name.
+    pub packages: Cow<'a, Vec<LogId>>,
+}
+
+/// Represents a fetch package IDs response. If the requested number of packages exceeds the limit
+/// that the server can fulfill on a single request, the client should retry with the log IDs that
+/// are absent in the response body.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchPackageIdsResponse {
+    /// The log ID hash mapping to a package ID. If `None`, the package ID cannot be provided.
+    pub packages: HashMap<LogId, Option<PackageId>>,
 }
 
 /// Represents a fetch API error.

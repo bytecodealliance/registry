@@ -4,20 +4,24 @@ use crate::{
 };
 use anyhow::Result;
 use axum::{
+    async_trait,
     extract::{
         rejection::{JsonRejection, PathRejection},
         FromRequest, FromRequestParts,
     },
-    http::StatusCode,
+    http::{request::Parts, uri, StatusCode},
     response::IntoResponse,
     Router,
 };
 use serde::{Serialize, Serializer};
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 use url::Url;
+use warg_api::v1::REGISTRY_HEADER_NAME;
 
 pub mod content;
 pub mod fetch;
+pub mod ledger;
+pub mod monitor;
 pub mod package;
 pub mod proof;
 
@@ -90,6 +94,40 @@ pub async fn not_found() -> impl IntoResponse {
     }
 }
 
+/// An extractor for the `Warg-Registry` header.
+pub struct RegistryHeader(Option<uri::Authority>);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for RegistryHeader
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        if let Some(registry) = parts.headers.get(REGISTRY_HEADER_NAME) {
+            uri::Authority::try_from(registry.as_bytes()).or(Err((
+                StatusCode::BAD_REQUEST,
+                "`Warg-Registry` header is not a valid Authority URI",
+            )))?;
+
+            Err((
+                StatusCode::NOT_IMPLEMENTED,
+                "`Warg-Registry` header is not supported",
+            ))
+        } else {
+            Ok(RegistryHeader(None))
+        }
+    }
+}
+
+impl FromStr for RegistryHeader {
+    type Err = uri::InvalidUri;
+    fn from_str(src: &str) -> Result<Self, Self::Err> {
+        Ok(RegistryHeader(Some(uri::Authority::try_from(src)?)))
+    }
+}
+
 pub fn create_router(
     content_base_url: Url,
     core: CoreService,
@@ -106,13 +144,17 @@ pub fn create_router(
         content_policy,
         record_policy,
     );
-    let fetch_config = fetch::Config::new(core);
+    let fetch_config = fetch::Config::new(core.clone());
     let content_config = content::Config::new(content_base_url, files_dir);
+    let monitor_config = monitor::Config::new(core.clone());
+    let ledger_config = ledger::Config::new(core);
 
     Router::new()
-        .nest("/package", package_config.into_router())
         .nest("/content", content_config.into_router())
         .nest("/fetch", fetch_config.into_router())
+        .nest("/ledger", ledger_config.into_router())
+        .nest("/package", package_config.into_router())
         .nest("/proof", proof_config.into_router())
+        .nest("/verify", monitor_config.into_router())
         .fallback(not_found)
 }

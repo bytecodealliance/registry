@@ -1,4 +1,4 @@
-use super::{Json, Path};
+use super::{Json, Path, RegistryHeader};
 use crate::{
     datastore::{DataStoreError, RecordStatus},
     policy::{
@@ -181,6 +181,7 @@ impl IntoResponse for PackageApiError {
 async fn publish_record(
     State(config): State<Config>,
     Path(log_id): Path<LogId>,
+    RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
     let expected_log_id = LogId::package_log::<Sha256>(&body.package_id);
@@ -257,6 +258,7 @@ async fn publish_record(
 async fn get_record(
     State(config): State<Config>,
     Path((log_id, record_id)): Path<(LogId, RecordId)>,
+    RegistryHeader(_registry_header): RegistryHeader,
 ) -> Result<Json<PackageRecord>, PackageApiError> {
     let record = config
         .core_service
@@ -296,6 +298,7 @@ async fn get_record(
 async fn upload_content(
     State(config): State<Config>,
     Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
+    RegistryHeader(_registry_header): RegistryHeader,
     stream: BodyStream,
 ) -> Result<impl IntoResponse, PackageApiError> {
     match config

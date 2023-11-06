@@ -2,7 +2,7 @@ use super::{DataStore, DataStoreError};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     pin::Pin,
     sync::Arc,
 };
@@ -77,7 +77,7 @@ enum RecordStatus {
 struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
-    package_ids: BTreeSet<PackageId>,
+    package_ids: HashMap<LogId, Option<PackageId>>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
@@ -121,6 +121,26 @@ impl DataStore for MemoryDataStore {
         Ok(Box::pin(futures::stream::empty()))
     }
 
+    async fn get_log_leafs_starting_with_registry_index(
+        &self,
+        starting_index: RegistryIndex,
+        limit: Option<usize>,
+    ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError> {
+        let state = self.0.read().await;
+
+        let limit = limit.unwrap_or(state.log_leafs.len() - starting_index);
+
+        let mut leafs = Vec::with_capacity(limit);
+        for entry in starting_index..starting_index + limit {
+            match state.log_leafs.get(&entry) {
+                Some(log_leaf) => leafs.push((entry, log_leaf.clone())),
+                None => break,
+            }
+        }
+
+        Ok(leafs)
+    }
+
     async fn get_log_leafs_with_registry_index(
         &self,
         entries: &[RegistryIndex],
@@ -136,6 +156,24 @@ impl DataStore for MemoryDataStore {
         }
 
         Ok(leafs)
+    }
+
+    async fn get_package_ids(
+        &self,
+        log_ids: &[LogId],
+    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
+        let state = self.0.read().await;
+
+        log_ids
+            .iter()
+            .map(|log_id| {
+                if let Some(opt_package_id) = state.package_ids.get(log_id) {
+                    Ok((log_id.clone(), opt_package_id.clone()))
+                } else {
+                    Err(DataStoreError::LogNotFound(log_id.clone()))
+                }
+            })
+            .collect::<Result<HashMap<LogId, Option<PackageId>>, _>>()
     }
 
     async fn store_operator_record(
@@ -269,7 +307,9 @@ impl DataStore for MemoryDataStore {
                 missing: missing.iter().map(|&d| d.clone()).collect(),
             }),
         );
-        state.package_ids.insert(package_id.clone());
+        state
+            .package_ids
+            .insert(log_id.clone(), Some(package_id.clone()));
 
         assert!(prev.is_none());
         Ok(())
@@ -446,6 +486,18 @@ impl DataStore for MemoryDataStore {
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
         let state = self.0.read().await;
         let checkpoint = state.checkpoints.values().last().unwrap();
+        Ok(checkpoint.clone())
+    }
+
+    async fn get_checkpoint(
+        &self,
+        log_length: RegistryLen,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
+        let state = self.0.read().await;
+        let checkpoint = state
+            .checkpoints
+            .get(&log_length)
+            .ok_or_else(|| DataStoreError::CheckpointNotFound(log_length))?;
         Ok(checkpoint.clone())
     }
 
@@ -661,6 +713,11 @@ impl DataStore for MemoryDataStore {
     #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         let state = self.0.read().await;
-        Ok(state.package_ids.iter().cloned().collect())
+        Ok(state
+            .package_ids
+            .values()
+            .filter_map(|opt_package_id| opt_package_id)
+            .cloned()
+            .collect())
     }
 }

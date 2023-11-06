@@ -1,4 +1,4 @@
-use super::{Json, Path};
+use super::{Json, Path, RegistryHeader};
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::get, Router,
 };
@@ -61,6 +61,7 @@ impl IntoResponse for ContentApiError {
 async fn get_content(
     State(config): State<Config>,
     Path(digest): Path<AnyHash>,
+    RegistryHeader(_registry_header): RegistryHeader,
 ) -> Result<Json<ContentSourcesResponse>, ContentApiError> {
     if !config.content_present(&digest) {
         return Err(ContentApiError(ContentError::ContentDigestNotFound(digest)));

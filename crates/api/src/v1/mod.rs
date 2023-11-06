@@ -2,11 +2,18 @@
 
 pub mod content;
 pub mod fetch;
+pub mod ledger;
+pub mod monitor;
 pub mod package;
 pub mod paths;
 pub mod proof;
 
 use serde::{Deserialize, Serialize};
+
+/// The HTTP request and response header name that specifies the registry domain whose data is the
+/// subject of the request. This header is only expected to be used if referring to a different
+/// registry than the host registry.
+pub const REGISTRY_HEADER_NAME: &str = "warg-registry";
 
 /// Represents the supported kinds of content sources.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
