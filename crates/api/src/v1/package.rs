@@ -120,6 +120,12 @@ pub enum PackageError {
     /// The record is not currently sourcing content.
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
+    /// The provided package ID's namespace was not found in the operator log.
+    #[error("namespace `{0}` was not found")]
+    NamespaceNotFound(String),
+    /// The provided package ID's namespace is an imported namespace.
+    #[error("namespace `{0}` is an imported namespace from another registry")]
+    NamespaceImported(String),
     /// The operation was not authorized by the registry.
     #[error("unauthorized operation: {0}")]
     Unauthorized(String),
@@ -146,7 +152,8 @@ impl PackageError {
             // Note: this is 403 and not a 401 as the registry does not use
             // HTTP authentication.
             Self::Unauthorized { .. } => 403,
-            Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
+            Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotFound(_) => 404,
+            Self::NamespaceImported(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -160,6 +167,7 @@ impl PackageError {
 enum EntityType {
     Log,
     Record,
+    Namespace,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,6 +183,12 @@ where
     },
     NotFound {
         status: Status<404>,
+        #[serde(rename = "type")]
+        ty: EntityType,
+        id: Cow<'a, T>,
+    },
+    Conflict {
+        status: Status<409>,
         #[serde(rename = "type")]
         ty: EntityType,
         id: Cow<'a, T>,
@@ -214,6 +228,18 @@ impl Serialize for PackageError {
                 status: Status::<404>,
                 ty: EntityType::Record,
                 id: Cow::Borrowed(record_id),
+            }
+            .serialize(serializer),
+            Self::NamespaceNotFound(namespace) => RawError::NotFound {
+                status: Status::<404>,
+                ty: EntityType::Namespace,
+                id: Cow::Borrowed(namespace),
+            }
+            .serialize(serializer),
+            Self::NamespaceImported(namespace) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Namespace,
+                id: Cow::Borrowed(namespace),
             }
             .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
@@ -266,7 +292,13 @@ impl<'de> Deserialize<'de> for PackageError {
                         })?
                         .into(),
                 )),
+                EntityType::Namespace => Ok(Self::NamespaceNotFound(id.into_owned())),
             },
+            RawError::Conflict {
+                status: _,
+                ty: _,
+                id,
+            } => Ok(Self::NamespaceImported(id.into_owned())),
             RawError::RecordNotSourcing { status: _ } => Ok(Self::RecordNotSourcing),
             RawError::Rejection { status: _, message } => Ok(Self::Rejection(message.into_owned())),
             RawError::NotSupported { status: _, message } => {
