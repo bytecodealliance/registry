@@ -49,10 +49,7 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         required: true
         content:
@@ -64,10 +61,7 @@ paths:
           description: The package IDs were successfully fetched.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -76,10 +70,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -107,10 +98,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -127,10 +115,7 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         required: true
         content:
@@ -142,10 +127,7 @@ paths:
           description: The logs were successfully fetched.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -154,10 +136,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -168,10 +147,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -187,19 +163,13 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The checkpoint was successfully fetched.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -208,10 +178,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -238,10 +205,7 @@ paths:
             "$ref": "#/components/schemas/AnyHash"
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         required: true
         content:
@@ -253,10 +217,7 @@ paths:
           description: The package record was accepted.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -266,10 +227,7 @@ paths:
             The key used to sign the record was not authorized to publish a record to the log.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -280,10 +238,7 @@ paths:
             specified content source locations.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -292,10 +247,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -330,19 +282,13 @@ paths:
             "$ref": "#/components/schemas/AnyHash"
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The package record.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -351,10 +297,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -382,10 +325,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -408,19 +348,13 @@ paths:
             "$ref": "#/components/schemas/AnyHash"
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The content digest sources.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -429,10 +363,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -460,10 +391,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -480,10 +408,7 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         content:
           application/json:
@@ -494,10 +419,7 @@ paths:
           description: The consistency proof was generated successfully.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -506,10 +428,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -536,10 +455,7 @@ paths:
           description: The proof bundle could not be generated.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -551,6 +467,9 @@ paths:
                     failure: "#/components/schemas/BundleFailureError"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -567,10 +486,7 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         content:
           application/json:
@@ -581,10 +497,7 @@ paths:
           description: The inclusion proof was generated successfully.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -593,10 +506,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -623,10 +533,7 @@ paths:
           description: The proof bundle could not be generated.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -644,10 +551,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -663,10 +567,7 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         content:
           application/json:
@@ -677,10 +578,7 @@ paths:
           description: The checkpoint was successfully verified.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -698,10 +596,7 @@ paths:
           description: A requested entity was not found.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -728,10 +623,7 @@ paths:
           description: The checkpoint verification failed.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -758,10 +650,7 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -777,19 +666,13 @@ paths:
       parameters:
         - name: Warg-Registry
           in: header
-          description: URI Authority of another registry, if present and supported the registry will respond on behalf of another registry.
-          required: false
-          schema:
-            type: string
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The ledger sources was successfully fetched.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -798,16 +681,20 @@ paths:
           description: An error occurred when processing the request.
           headers:
             Warg-Registry:
-              schema:
-                type: string
-              description: URI Authority of another registry, if present and supported the registry responded on behalf of another registry.
-              required: false
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
 
 components:
+  headers:
+    WargRegistryHeader:
+      description: If present and supported, this registry responds on behalf of the other registry specified in this header value.
+      required: false
+      schema:
+        type: string
+      example: registry.example.com
   schemas:
     Error:
       type: object
