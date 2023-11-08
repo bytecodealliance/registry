@@ -9,7 +9,7 @@ use axum::{
         rejection::{JsonRejection, PathRejection},
         FromRequest, FromRequestParts,
     },
-    http::{request::Parts, uri, StatusCode},
+    http::{request::Parts, StatusCode},
     response::IntoResponse,
     Router,
 };
@@ -95,7 +95,7 @@ pub async fn not_found() -> impl IntoResponse {
 }
 
 /// An extractor for the `Warg-Registry` header.
-pub struct RegistryHeader(Option<uri::Authority>);
+pub struct RegistryHeader(Option<String>);
 
 #[async_trait]
 impl<S> FromRequestParts<S> for RegistryHeader
@@ -105,12 +105,7 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        if let Some(registry) = parts.headers.get(REGISTRY_HEADER_NAME) {
-            uri::Authority::try_from(registry.as_bytes()).or(Err((
-                StatusCode::BAD_REQUEST,
-                "`Warg-Registry` header is not a valid Authority URI",
-            )))?;
-
+        if parts.headers.contains_key(REGISTRY_HEADER_NAME) {
             Err((
                 StatusCode::NOT_IMPLEMENTED,
                 "`Warg-Registry` header is not supported",
@@ -122,9 +117,9 @@ where
 }
 
 impl FromStr for RegistryHeader {
-    type Err = uri::InvalidUri;
+    type Err = std::convert::Infallible;
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Ok(RegistryHeader(Some(uri::Authority::try_from(src)?)))
+        Ok(RegistryHeader(Some(src.to_string())))
     }
 }
 

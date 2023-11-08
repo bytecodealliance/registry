@@ -1,4 +1,5 @@
 use super::{model, OPERATOR_RECORD_VERSION};
+use crate::registry::PackageId;
 use crate::registry::RecordId;
 use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
@@ -57,6 +58,25 @@ pub enum ValidationError {
 
     #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
+
+    #[error("the namespace `{name}` is invalid; namespace must be a kebab case string")]
+    InvalidNamespace { name: String },
+    #[error("the namespace `{name}` is already defined and cannot be redefined")]
+    NamespaceAlreadyDefined { name: String },
+}
+
+/// The namespace definition for defining or importing from other registries.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NamespaceDefinition {
+    /// The namespace is defined for the registry to use for its own package logs.
+    Defined,
+    /// The namespace is imported from another registry.
+    #[serde(rename_all = "camelCase")]
+    Imported {
+        /// The imported registry.
+        registry: String,
+    },
 }
 
 /// Information about the current head of the operator log.
@@ -89,6 +109,9 @@ pub struct LogState {
     /// The keys known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
+    /// The namespaces known to the validator.
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    namespaces: IndexMap<String, NamespaceDefinition>,
 }
 
 impl LogState {
@@ -261,6 +284,16 @@ impl LogState {
                     key_id,
                     permissions,
                 } => self.validate_revoke_entry(signer_key_id, key_id, permissions)?,
+                model::OperatorEntry::DefineNamespace { name } => {
+                    self.validate_namespace(name, NamespaceDefinition::Defined)?
+                }
+                model::OperatorEntry::ImportNamespace { name, registry } => self
+                    .validate_namespace(
+                        name,
+                        NamespaceDefinition::Imported {
+                            registry: registry.to_string(),
+                        },
+                    )?,
             }
         }
 
@@ -334,6 +367,25 @@ impl LogState {
         Ok(())
     }
 
+    fn validate_namespace(
+        &mut self,
+        name: &str,
+        definition: NamespaceDefinition,
+    ) -> Result<(), ValidationError> {
+        let name = name.to_lowercase();
+
+        if !PackageId::is_valid_namespace(&name) {
+            return Err(ValidationError::InvalidNamespace { name });
+        }
+        if self.namespaces.contains_key(&name) {
+            return Err(ValidationError::NamespaceAlreadyDefined { name });
+        }
+
+        self.namespaces.insert(name, definition);
+
+        Ok(())
+    }
+
     fn check_key_permissions(
         &self,
         key_id: &signing::KeyID,
@@ -361,6 +413,7 @@ impl LogState {
             head,
             permissions,
             keys,
+            namespaces,
         } = self;
 
         Snapshot {
@@ -368,6 +421,7 @@ impl LogState {
             head: head.clone(),
             permissions: permissions.len(),
             keys: keys.len(),
+            namespaces: namespaces.len(),
         }
     }
 
@@ -377,12 +431,14 @@ impl LogState {
             head,
             permissions,
             keys,
+            namespaces,
         } = snapshot;
 
         self.algorithm = algorithm;
         self.head = head;
         self.permissions.truncate(permissions);
         self.keys.truncate(keys);
+        self.namespaces.truncate(namespaces);
     }
 }
 
@@ -400,6 +456,7 @@ struct Snapshot {
     head: Option<Head>,
     permissions: usize,
     keys: usize,
+    namespaces: usize,
 }
 
 #[cfg(test)]
@@ -446,6 +503,7 @@ mod tests {
                     IndexSet::from([model::Permission::Commit]),
                 )]),
                 keys: IndexMap::from([(alice_id, alice_pub)]),
+                namespaces: IndexMap::new(),
             }
         );
     }
@@ -483,6 +541,7 @@ mod tests {
                 IndexSet::from([model::Permission::Commit]),
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
+            namespaces: IndexMap::new(),
         };
 
         assert_eq!(validator, expected);
@@ -502,6 +561,10 @@ mod tests {
                     key_id: "not-valid".to_string().into(),
                     permissions: vec![model::Permission::Commit],
                 },
+                // This entry is valid but should be rolled back since there is an invalid entry
+                model::OperatorEntry::DefineNamespace {
+                    name: "example-namespace".to_string(),
+                },
             ],
         };
 
@@ -511,6 +574,90 @@ mod tests {
         // This validation should fail and the validator state should remain unchanged
         match validator.validate(&envelope).unwrap_err() {
             ValidationError::PermissionNotFoundToRevoke { .. } => {}
+            _ => panic!("expected a different error"),
+        }
+
+        // The validator should not have changed
+        assert_eq!(validator, expected);
+    }
+
+    #[test]
+    fn test_namespaces() {
+        let (alice_pub, alice_priv) = generate_p256_pair();
+        let alice_id = alice_pub.fingerprint();
+
+        let timestamp = SystemTime::now();
+        let record = model::OperatorRecord {
+            prev: None,
+            version: 0,
+            timestamp,
+            entries: vec![
+                model::OperatorEntry::Init {
+                    hash_algorithm: HashAlgorithm::Sha256,
+                    key: alice_pub.clone(),
+                },
+                model::OperatorEntry::DefineNamespace {
+                    name: "my-namespace".to_string(),
+                },
+                model::OperatorEntry::ImportNamespace {
+                    name: "imported-namespace".to_string(),
+                    registry: "registry.example.com".to_string(),
+                },
+            ],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+        let mut validator = LogState::default();
+        validator.validate(&envelope).unwrap();
+
+        let expected = LogState {
+            head: Some(Head {
+                digest: RecordId::operator_record::<Sha256>(&envelope),
+                timestamp,
+            }),
+            algorithm: Some(HashAlgorithm::Sha256),
+            permissions: IndexMap::from([(
+                alice_id.clone(),
+                IndexSet::from([model::Permission::Commit]),
+            )]),
+            keys: IndexMap::from([(alice_id, alice_pub)]),
+            namespaces: IndexMap::from([
+                ("my-namespace".to_string(), NamespaceDefinition::Defined),
+                (
+                    "imported-namespace".to_string(),
+                    NamespaceDefinition::Imported {
+                        registry: "registry.example.com".to_string(),
+                    },
+                ),
+            ]),
+        };
+
+        assert_eq!(validator, expected);
+
+        let record = model::OperatorRecord {
+            prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
+            version: 0,
+            timestamp: SystemTime::now(),
+            entries: vec![
+                // This entry is valid
+                model::OperatorEntry::DefineNamespace {
+                    name: "other-namespace".to_string(),
+                },
+                // This entry is not valid
+                model::OperatorEntry::ImportNamespace {
+                    name: "my-NAMESPACE".to_string(),
+                    registry: "registry.alternative.com".to_string(),
+                },
+            ],
+        };
+
+        let envelope =
+            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+
+        // This validation should fail and the validator state should remain unchanged
+        match validator.validate(&envelope).unwrap_err() {
+            ValidationError::NamespaceAlreadyDefined { .. } => {}
             _ => panic!("expected a different error"),
         }
 

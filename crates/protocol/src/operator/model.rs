@@ -82,6 +82,10 @@ pub enum OperatorEntry {
         key_id: signing::KeyID,
         permissions: Vec<Permission>,
     },
+    /// The registry defines a namespace to be used in its own package logs.
+    DefineNamespace { name: String },
+    /// The registry defines a namespace as imported from another registry.
+    ImportNamespace { name: String, registry: String },
 }
 
 impl OperatorEntry {
@@ -89,7 +93,10 @@ impl OperatorEntry {
     pub fn required_permission(&self) -> Option<Permission> {
         match self {
             Self::Init { .. } => None,
-            Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(Permission::Commit),
+            Self::GrantFlat { .. }
+            | Self::RevokeFlat { .. }
+            | Self::DefineNamespace { .. }
+            | Self::ImportNamespace { .. } => Some(Permission::Commit),
         }
     }
 }
