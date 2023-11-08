@@ -53,21 +53,21 @@ pub struct FetchLogsResponse {
     pub packages: HashMap<LogId, Vec<PublishedRecord>>,
 }
 
-/// Represents a fetch package IDs request.
+/// Represents a fetch package names request.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchPackageIdsRequest<'a> {
+pub struct FetchPackageNamesRequest<'a> {
     /// List of package log IDs to request the package name.
     pub packages: Cow<'a, Vec<LogId>>,
 }
 
-/// Represents a fetch package IDs response. If the requested number of packages exceeds the limit
+/// Represents a fetch package names response. If the requested number of packages exceeds the limit
 /// that the server can fulfill on a single request, the client should retry with the log IDs that
 /// are absent in the response body.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchPackageIdsResponse {
-    /// The log ID hash mapping to a package ID. If `None`, the package ID cannot be provided.
+pub struct FetchPackageNamesResponse {
+    /// The log ID hash mapping to a package ID. If `None`, the package name cannot be provided.
     pub packages: HashMap<LogId, Option<PackageId>>,
 }
 

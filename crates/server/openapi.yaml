@@ -20,7 +20,7 @@ x-42c-skipIssues:
 
 tags:
   - name: fetch
-    description: API for fetching checkpoints, logs and package IDs from the registry.
+    description: API for fetching checkpoints, logs and package names from the registry.
   - name: package
     description: API for managing package logs in the registry.
   - name: content
@@ -37,15 +37,15 @@ servers:
     description: Local development server
 
 paths:
-  /fetch/ids:
+  /fetch/names:
     post:
-      summary: Fetch package IDs
-      operationId: fetchIds
+      summary: Fetch package names
+      operationId: fetchNames
       security: []
       tags:
         - fetch
       description: |
-        Fetch the package IDs for registry log IDs.
+        Fetch the package names for registry log IDs.
       parameters:
         - name: Warg-Registry
           in: header
@@ -55,17 +55,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/FetchPackageIdsRequest"
+              $ref: "#/components/schemas/FetchPackageNamesRequest"
       responses:
         "200":
-          description: The package IDs were successfully fetched.
+          description: The package names were successfully fetched.
           headers:
             Warg-Registry:
               $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FetchPackageIdsResponse"
+                $ref: "#/components/schemas/FetchPackageNamesResponse"
         "404":
           description: A requested entity was not found.
           headers:
@@ -717,9 +717,9 @@ components:
       description: Represents a supported hash.
       example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
       pattern: ^[a-z0-9-]+:[a-f0-9]+$
-    FetchPackageIdsRequest:
+    FetchPackageNamesRequest:
       type: object
-      description: A request to fetch package IDs from the registry.
+      description: A request to fetch package names from the registry.
       additionalProperties: false
       required:
         - packages
@@ -732,19 +732,19 @@ components:
           items:
             $ref: "#/components/schemas/AnyHash"
             description: The log ID for each package.
-    FetchPackageIdsResponse:
+    FetchPackageNamesResponse:
       type: object
-      description: A response containing the requested package IDs.
+      description: A response containing the requested package names.
       additionalProperties: false
       properties:
         packages:
           type: object
-          description: The map of log ID to package ID.
+          description: The map of log ID to package name.
           patternProperties:
             "^[a-z0-9-]+:[a-f0-9]+$":
               type: string
               nullable: true
-              description: The package ID for each package. If `null`, the package ID is not able to be provided for the log ID.
+              description: The package name for each package. If `null`, the package name is not able to be provided for the log ID.
           example:
             "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773": "example-namespace:package-name"
             "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c": null

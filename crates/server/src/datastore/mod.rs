@@ -235,8 +235,8 @@ pub trait DataStore: Send + Sync {
         log_length: RegistryLen,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
 
-    /// Gets package IDs from log IDs. If `PackageId` is unavailable, a corresponding `None` is returned.
-    async fn get_package_ids(
+    /// Gets package names from log IDs. If package name is unavailable, a corresponding `None` is returned.
+    async fn get_package_names(
         &self,
         log_ids: &[LogId],
     ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError>;
@@ -245,7 +245,7 @@ pub trait DataStore: Send + Sync {
     async fn get_log_leafs_starting_with_registry_index(
         &self,
         starting_index: RegistryIndex,
-        limit: Option<usize>,
+        limit: usize,
     ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError>;
 
     /// Gets the operator records for the given registry log length.

@@ -96,7 +96,7 @@ async fn get_ledger_records(
     let log_leafs = config
         .core_service
         .store()
-        .get_log_leafs_starting_with_registry_index(start, Some(MAX_LEDGER_RECORDS_LIMIT))
+        .get_log_leafs_starting_with_registry_index(start, MAX_LEDGER_RECORDS_LIMIT)
         .await?;
 
     let mut body: Vec<u8> = Vec::with_capacity(log_leafs.len() * 64);

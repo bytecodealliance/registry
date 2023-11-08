@@ -124,11 +124,15 @@ impl DataStore for MemoryDataStore {
     async fn get_log_leafs_starting_with_registry_index(
         &self,
         starting_index: RegistryIndex,
-        limit: Option<usize>,
+        limit: usize,
     ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError> {
         let state = self.0.read().await;
 
-        let limit = limit.unwrap_or(state.log_leafs.len() - starting_index);
+        let limit = if limit > state.log_leafs.len() - starting_index {
+            state.log_leafs.len() - starting_index
+        } else {
+            limit
+        };
 
         let mut leafs = Vec::with_capacity(limit);
         for entry in starting_index..starting_index + limit {
@@ -158,7 +162,7 @@ impl DataStore for MemoryDataStore {
         Ok(leafs)
     }
 
-    async fn get_package_ids(
+    async fn get_package_names(
         &self,
         log_ids: &[LogId],
     ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
@@ -167,8 +171,8 @@ impl DataStore for MemoryDataStore {
         log_ids
             .iter()
             .map(|log_id| {
-                if let Some(opt_package_id) = state.package_ids.get(log_id) {
-                    Ok((log_id.clone(), opt_package_id.clone()))
+                if let Some(opt_package_name) = state.package_ids.get(log_id) {
+                    Ok((log_id.clone(), opt_package_name.clone()))
                 } else {
                     Err(DataStoreError::LogNotFound(log_id.clone()))
                 }

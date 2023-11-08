@@ -452,11 +452,11 @@ impl DataStore for PostgresDataStore {
     async fn get_log_leafs_starting_with_registry_index(
         &self,
         starting_index: RegistryIndex,
-        limit: Option<usize>,
+        limit: usize,
     ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
-        let query = schema::records::table
+        Ok(schema::records::table
             .inner_join(schema::logs::table)
             .select((
                 schema::records::registry_log_index,
@@ -464,15 +464,8 @@ impl DataStore for PostgresDataStore {
                 schema::records::record_id,
             ))
             .filter(schema::records::registry_log_index.ge(starting_index as i64))
-            .order(schema::records::registry_log_index.asc());
-
-        let query = if let Some(limit) = limit {
-            query.limit(limit as i64)
-        } else {
-            query
-        };
-
-        Ok(query
+            .order(schema::records::registry_log_index.asc())
+            .limit(limit as i64)
             .load::<(Option<i64>, ParsedText<AnyHash>, ParsedText<AnyHash>)>(&mut conn)
             .await?
             .into_iter()
@@ -530,7 +523,7 @@ impl DataStore for PostgresDataStore {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    async fn get_package_ids(
+    async fn get_package_names(
         &self,
         log_ids: &[LogId],
     ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
@@ -549,10 +542,10 @@ impl DataStore for PostgresDataStore {
             .load::<(ParsedText<AnyHash>, Option<String>)>(&mut conn)
             .await?
             .into_iter()
-            .map(|(log_id, opt_package_id)| {
+            .map(|(log_id, opt_package_name)| {
                 (
                     log_id.0.into(),
-                    opt_package_id.map(|id| PackageId::new(id).unwrap()),
+                    opt_package_name.map(|name| PackageId::new(name).unwrap()),
                 )
             })
             .collect::<HashMap<LogId, Option<PackageId>>>();

@@ -13,9 +13,9 @@ pub fn fetch_checkpoint() -> &'static str {
     "v1/fetch/checkpoint"
 }
 
-/// The path of the "fetch package IDs" API.
-pub fn fetch_package_ids() -> &'static str {
-    "v1/fetch/ids"
+/// The path of the "fetch package names" API.
+pub fn fetch_package_names() -> &'static str {
+    "v1/fetch/names"
 }
 
 /// The path of the get ledger sources.
