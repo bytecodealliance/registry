@@ -720,8 +720,7 @@ impl DataStore for MemoryDataStore {
         Ok(state
             .package_ids
             .values()
-            .filter_map(|opt_package_id| opt_package_id)
-            .cloned()
+            .filter_map(|opt_package_id| opt_package_id.clone())
             .collect())
     }
 }
