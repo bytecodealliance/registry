@@ -500,7 +500,7 @@ mod tests {
                 algorithm: Some(HashAlgorithm::Sha256),
                 permissions: IndexMap::from([(
                     alice_id.clone(),
-                    IndexSet::from([model::Permission::Commit]),
+                    IndexSet::from([model::Permission::Commit, model::Permission::DefineNamespace, model::Permission::ImportNamespace]),
                 )]),
                 keys: IndexMap::from([(alice_id, alice_pub)]),
                 namespaces: IndexMap::new(),
@@ -538,7 +538,7 @@ mod tests {
             algorithm: Some(HashAlgorithm::Sha256),
             permissions: IndexMap::from([(
                 alice_id.clone(),
-                IndexSet::from([model::Permission::Commit]),
+                IndexSet::from([model::Permission::Commit, model::Permission::DefineNamespace, model::Permission::ImportNamespace]),
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
             namespaces: IndexMap::new(),
@@ -619,7 +619,7 @@ mod tests {
             algorithm: Some(HashAlgorithm::Sha256),
             permissions: IndexMap::from([(
                 alice_id.clone(),
-                IndexSet::from([model::Permission::Commit]),
+                IndexSet::from([model::Permission::Commit, model::Permission::DefineNamespace, model::Permission::ImportNamespace]),
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
             namespaces: IndexMap::from([

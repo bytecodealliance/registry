@@ -110,6 +110,8 @@ impl TryFrom<i32> for model::Permission {
                 Err(Error::new(PermissionParseError { value: permission }))
             }
             protobuf::OperatorPermission::Commit => Ok(model::Permission::Commit),
+            protobuf::OperatorPermission::DefineNamespace => Ok(model::Permission::DefineNamespace),
+            protobuf::OperatorPermission::ImportNamespace => Ok(model::Permission::ImportNamespace),
         }
     }
 }
@@ -187,6 +189,8 @@ impl<'a> From<&'a model::Permission> for i32 {
     fn from(permission: &'a model::Permission) -> Self {
         let proto_perm = match permission {
             model::Permission::Commit => protobuf::OperatorPermission::Commit,
+            model::Permission::DefineNamespace => protobuf::OperatorPermission::DefineNamespace,
+            model::Permission::ImportNamespace => protobuf::OperatorPermission::ImportNamespace,
         };
         proto_perm.into()
     }

@@ -31,12 +31,14 @@ impl crate::Record for OperatorRecord {
 #[non_exhaustive]
 pub enum Permission {
     Commit,
+    DefineNamespace,
+    ImportNamespace,
 }
 
 impl Permission {
     /// Gets an array of all permissions.
-    pub const fn all() -> [Permission; 1] {
-        [Permission::Commit]
+    pub const fn all() -> [Permission; 3] {
+        [Permission::Commit, Permission::DefineNamespace, Permission::ImportNamespace]
     }
 }
 
@@ -44,6 +46,8 @@ impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Permission::Commit => write!(f, "commit"),
+            Permission::DefineNamespace => write!(f, "defineNamespace"),
+            Permission::ImportNamespace => write!(f, "importNamespace"),
         }
     }
 }
@@ -54,6 +58,8 @@ impl FromStr for Permission {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "commit" => Ok(Permission::Commit),
+            "defineNamespace" => Ok(Permission::DefineNamespace),
+            "importNamespace" => Ok(Permission::ImportNamespace),
             _ => Err(()),
         }
     }
@@ -94,9 +100,9 @@ impl OperatorEntry {
         match self {
             Self::Init { .. } => None,
             Self::GrantFlat { .. }
-            | Self::RevokeFlat { .. }
-            | Self::DefineNamespace { .. }
-            | Self::ImportNamespace { .. } => Some(Permission::Commit),
+            | Self::RevokeFlat { .. } => Some(Permission::Commit),
+            Self::DefineNamespace { .. } => Some(Permission::DefineNamespace),
+            Self::ImportNamespace { .. } => Some(Permission::ImportNamespace),
         }
     }
 }

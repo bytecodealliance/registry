@@ -36,6 +36,8 @@ message OperatorEntry {
 enum OperatorPermission {
     OPERATOR_PERMISSION_UNSPECIFIED = 0;
     OPERATOR_PERMISSION_COMMIT = 1;
+    OPERATOR_PERMISSION_DEFINE_NAMESPACE = 2;
+    OPERATOR_PERMISSION_IMPORT_NAMESPACE = 3;
 }
 
 message OperatorInit {
