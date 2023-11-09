@@ -38,7 +38,11 @@ pub enum Permission {
 impl Permission {
     /// Gets an array of all permissions.
     pub const fn all() -> [Permission; 3] {
-        [Permission::Commit, Permission::DefineNamespace, Permission::ImportNamespace]
+        [
+            Permission::Commit,
+            Permission::DefineNamespace,
+            Permission::ImportNamespace,
+        ]
     }
 }
 
@@ -99,8 +103,7 @@ impl OperatorEntry {
     pub fn required_permission(&self) -> Option<Permission> {
         match self {
             Self::Init { .. } => None,
-            Self::GrantFlat { .. }
-            | Self::RevokeFlat { .. } => Some(Permission::Commit),
+            Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(Permission::Commit),
             Self::DefineNamespace { .. } => Some(Permission::DefineNamespace),
             Self::ImportNamespace { .. } => Some(Permission::ImportNamespace),
         }
