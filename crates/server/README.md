@@ -14,8 +14,10 @@ will be lost when the server is stopped.
 To start the server, provide the `WARG_OPERATOR_KEY` environment variable,
 which is used to sign the entries in the server's operator log:
 
+Also, provide the `WARG_NAMESPACE` environment variable to define the initial namespace for package publishing.
+
 ```console
-$ WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -- --content-dir content
+$ WARG_NAMESPACE=example WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -- --content-dir content
 2023-04-18T23:48:52.149746Z  INFO warg_server::services::core: initializing core service
 2023-04-18T23:48:52.170199Z  INFO warg_server::services::core: core service is running
 2023-04-18T23:48:52.170233Z  INFO warg_server: listening on 127.0.0.1:8090
@@ -55,7 +57,7 @@ To start the registry server, provide both the `WARG_OPERATOR_KEY` and
 `WARG_DATABASE_URL` environment variables:
 
 ```console
-WARG_DATABASE_URL=postgres://postgres:password@localhost/registry WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -p warg-server --features postgres -- --content-dir content --data-store postgres
+WARG_NAMESPACE=example WARG_DATABASE_URL=postgres://postgres:password@localhost/registry WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -p warg-server --features postgres -- --content-dir content --data-store postgres
 ```
 
 The `--data-store postgres` flag starts the server with PostgreSQL data storage.

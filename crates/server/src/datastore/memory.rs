@@ -714,6 +714,32 @@ impl DataStore for MemoryDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed)
     }
 
+    async fn verify_package_namespace_is_defined_and_not_imported(
+        &self,
+        operator_log_id: &LogId,
+        package: &PackageId,
+    ) -> Result<(), DataStoreError> {
+        let state = self.0.read().await;
+
+        match state
+            .operators
+            .get(operator_log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
+            .validator
+            .namespace(package.namespace())
+        {
+            Some(definition) => match definition {
+                operator::NamespaceDefinition::Defined => Ok(()),
+                operator::NamespaceDefinition::Imported { .. } => Err(
+                    DataStoreError::PackageNamespaceImported(package.namespace().to_string()),
+                ),
+            },
+            None => Err(DataStoreError::PackageNamespaceNotDefined(
+                package.namespace().to_string(),
+            )),
+        }
+    }
+
     #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         let state = self.0.read().await;

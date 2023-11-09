@@ -142,6 +142,8 @@ impl From<DataStoreError> for PackageApiError {
             DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed => {
                 PackageError::Unauthorized(e.to_string())
             }
+            DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),
+            DataStoreError::PackageNamespaceImported(id) => PackageError::NamespaceImported(id),
             // Other errors are internal server errors
             e => {
                 tracing::error!("unexpected data store error: {e}");
@@ -204,6 +206,17 @@ async fn publish_record(
             "specifying content sources is not supported",
         ));
     }
+
+    // Verify the namespace is defined in the operator log and not imported
+    // from another registry.
+    config
+        .core_service
+        .store()
+        .verify_package_namespace_is_defined_and_not_imported(
+            &LogId::operator_log::<Sha256>(),
+            &body.package_id,
+        )
+        .await?;
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record

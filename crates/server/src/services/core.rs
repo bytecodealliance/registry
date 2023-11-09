@@ -44,6 +44,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// copies of the service handle to allow for graceful shutdown.
     pub async fn start(
         operator_key: PrivateKey,
+        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
         store: Box<dyn DataStore>,
         checkpoint_interval: Duration,
     ) -> Result<(Self, JoinHandle<()>), CoreServiceError> {
@@ -53,7 +54,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
             store,
             state: Default::default(),
         };
-        inner.initialize().await?;
+        inner.initialize(namespaces).await?;
 
         // Spawn state update task
         let inner = Arc::new(inner);
@@ -182,7 +183,10 @@ struct Inner<Digest: SupportedDigest> {
 impl<Digest: SupportedDigest> Inner<Digest> {
     // Load state from DataStore or initialize empty state, returning any
     // entries that are not yet part of a checkpoint.
-    async fn initialize(&mut self) -> Result<(), CoreServiceError> {
+    async fn initialize(
+        &mut self,
+        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+    ) -> Result<(), CoreServiceError> {
         tracing::debug!("Initializing CoreService");
 
         let published = self.store.get_all_validated_records().await?.peekable();
@@ -191,7 +195,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         // If there are no published records, initialize a new state
         if published.as_mut().peek().await.is_none() {
             tracing::debug!("No existing records; initializing new state");
-            return self.initialize_new().await;
+            return self.initialize_new(namespaces).await;
         }
 
         // Reconstruct internal state from previously-stored data
@@ -217,18 +221,40 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         Ok(())
     }
 
-    async fn initialize_new(&mut self) -> Result<(), CoreServiceError> {
+    async fn initialize_new(
+        &mut self,
+        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+    ) -> Result<(), CoreServiceError> {
         let state = self.state.get_mut();
 
         // Construct operator init record
+        let init = operator::OperatorEntry::Init {
+            hash_algorithm: Digest::ALGORITHM,
+            key: self.operator_key.public_key(),
+        };
+        let entries = if let Some(namespaces) = namespaces {
+            let mut entries = Vec::with_capacity(1 + namespaces.len());
+            entries.push(init);
+            for (name, def) in namespaces.into_iter() {
+                entries.push(match def {
+                    operator::NamespaceDefinition::Defined => {
+                        operator::OperatorEntry::DefineNamespace { name }
+                    }
+                    operator::NamespaceDefinition::Imported { registry } => {
+                        operator::OperatorEntry::ImportNamespace { name, registry }
+                    }
+                });
+            }
+            entries
+        } else {
+            vec![init]
+        };
+
         let init_record = operator::OperatorRecord {
             prev: None,
             version: 0,
             timestamp: SystemTime::now(),
-            entries: vec![operator::OperatorEntry::Init {
-                hash_algorithm: Digest::ALGORITHM,
-                key: self.operator_key.public_key(),
-            }],
+            entries,
         };
         let signed_init_record =
             ProtoEnvelope::signed_contents(&self.operator_key, init_record).unwrap();

@@ -16,6 +16,7 @@ use std::{
 use tokio::task::JoinHandle;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
+use warg_protocol::operator;
 
 pub mod api;
 pub mod args;
@@ -31,6 +32,7 @@ type ShutdownFut = Pin<Box<dyn Future<Output = ()> + Send + Sync>>;
 /// The server configuration.
 pub struct Config {
     operator_key: PrivateKey,
+    namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
     addr: Option<SocketAddr>,
     data_store: Option<Box<dyn DataStore>>,
     content_dir: PathBuf,
@@ -45,6 +47,7 @@ impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
             .field("operator_key", &"<redacted>")
+            .field("namespaces", &self.namespaces)
             .field("addr", &self.addr)
             .field(
                 "data_store",
@@ -67,9 +70,14 @@ impl std::fmt::Debug for Config {
 
 impl Config {
     /// Creates a new server configuration.
-    pub fn new(operator_key: PrivateKey, content_dir: PathBuf) -> Self {
+    pub fn new(
+        operator_key: PrivateKey,
+        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+        content_dir: PathBuf,
+    ) -> Self {
         Self {
             operator_key,
+            namespaces,
             addr: None,
             data_store: None,
             content_dir,
@@ -187,6 +195,7 @@ impl Server {
             .unwrap_or_else(|| Box::<MemoryDataStore>::default());
         let (core, core_handle) = CoreService::start(
             self.config.operator_key,
+            self.config.namespaces,
             store,
             self.config
                 .checkpoint_interval

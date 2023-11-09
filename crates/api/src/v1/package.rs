@@ -120,10 +120,10 @@ pub enum PackageError {
     /// The record is not currently sourcing content.
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
-    /// The provided package ID's namespace was not found in the operator log.
-    #[error("namespace `{0}` was not found")]
-    NamespaceNotFound(String),
-    /// The provided package ID's namespace is an imported namespace.
+    /// The provided package's namespace was not found in the operator log.
+    #[error("namespace `{0}` is not defined on the registry")]
+    NamespaceNotDefined(String),
+    /// The provided package's namespace is imported from another registry.
     #[error("namespace `{0}` is an imported namespace from another registry")]
     NamespaceImported(String),
     /// The operation was not authorized by the registry.
@@ -152,7 +152,7 @@ impl PackageError {
             // Note: this is 403 and not a 401 as the registry does not use
             // HTTP authentication.
             Self::Unauthorized { .. } => 403,
-            Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotFound(_) => 404,
+            Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
             Self::NamespaceImported(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
@@ -230,7 +230,7 @@ impl Serialize for PackageError {
                 id: Cow::Borrowed(record_id),
             }
             .serialize(serializer),
-            Self::NamespaceNotFound(namespace) => RawError::NotFound {
+            Self::NamespaceNotDefined(namespace) => RawError::NotFound {
                 status: Status::<404>,
                 ty: EntityType::Namespace,
                 id: Cow::Borrowed(namespace),
@@ -292,7 +292,7 @@ impl<'de> Deserialize<'de> for PackageError {
                         })?
                         .into(),
                 )),
-                EntityType::Namespace => Ok(Self::NamespaceNotFound(id.into_owned())),
+                EntityType::Namespace => Ok(Self::NamespaceNotDefined(id.into_owned())),
             },
             RawError::Conflict {
                 status: _,

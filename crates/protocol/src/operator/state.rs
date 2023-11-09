@@ -155,6 +155,11 @@ impl LogState {
         self.keys.get(key_id)
     }
 
+    /// Gets the namespace defintion.
+    pub fn namespace(&self, namespace: &str) -> Option<&NamespaceDefinition> {
+        self.namespaces.get(&namespace.to_lowercase())
+    }
+
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()

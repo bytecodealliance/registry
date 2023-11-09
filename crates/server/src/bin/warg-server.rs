@@ -6,6 +6,7 @@ use tokio::signal;
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 use warg_crypto::signing::PrivateKey;
+use warg_protocol::operator;
 use warg_server::{args::get_opt_secret, policy::record::AuthorizedKeyPolicy, Config, Server};
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,6 +70,10 @@ struct Args {
     /// The path to the authorized keys record policy file.
     #[arg(long, env = "WARG_AUTHORIZED_KEYS_FILE")]
     authorized_keys_file: Option<PathBuf>,
+
+    /// The initial namespace defined for this registry.
+    #[arg(long, env = "WARG_NAMESPACE")]
+    namespace: Option<String>,
 }
 
 impl Args {
@@ -94,8 +99,14 @@ async fn main() -> Result<()> {
         get_opt_secret("operator-key", args.operator_key_file, args.operator_key)?;
     let operator_key =
         PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
+    let namespaces = args.namespace.as_ref().map(|namespace| {
+        vec![(
+            namespace.to_lowercase(),
+            operator::NamespaceDefinition::Defined,
+        )]
+    });
 
-    let mut config = Config::new(operator_key, args.content_dir)
+    let mut config = Config::new(operator_key, namespaces, args.content_dir)
         .with_addr(args.listen)
         .with_shutdown(shutdown_signal());
 

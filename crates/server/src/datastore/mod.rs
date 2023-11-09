@@ -53,6 +53,14 @@ pub enum DataStoreError {
     #[error("the package record was invalid: {0}")]
     PackageValidationFailed(#[from] package::ValidationError),
 
+    #[error("the package namespace `{0}` is not defined")]
+    PackageNamespaceNotDefined(String),
+
+    #[error(
+        "the package namespace `{0}` is imported from another registry and cannot accept publishes"
+    )]
+    PackageNamespaceImported(String),
+
     #[error("unknown key id `{0}`")]
     UnknownKey(KeyID),
 
@@ -290,6 +298,14 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record: &ProtoEnvelope<package::PackageRecord>,
+    ) -> Result<(), DataStoreError>;
+
+    /// Verifies the package namespace is defined for this registry
+    /// and is not imported from another registry.
+    async fn verify_package_namespace_is_defined_and_not_imported(
+        &self,
+        operator_log_id: &LogId,
+        package: &PackageId,
     ) -> Result<(), DataStoreError>;
 
     // Returns a list of package names, for debugging only.

@@ -17,13 +17,20 @@ use warg_crypto::{
     hash::AnyHash,
     signing::{KeyID, PrivateKey},
 };
-use warg_protocol::registry::PackageId;
+use warg_protocol::{operator, registry::PackageId};
 use warg_server::{
     datastore::DataStore,
     policy::{content::WasmContentPolicy, record::AuthorizedKeyPolicy},
     Config, Server,
 };
 use wit_parser::{Resolve, UnresolvedPackage};
+
+pub fn test_namespaces() -> Option<Vec<(String, operator::NamespaceDefinition)>> {
+    Some(vec![(
+        "test".to_string(),
+        operator::NamespaceDefinition::Defined,
+    )])
+}
 
 pub fn test_operator_key() -> PrivateKey {
     let key = "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=";
@@ -113,7 +120,7 @@ pub async fn spawn_server(
     let _subscriber_guard = thread_test_logging();
 
     let shutdown = CancellationToken::new();
-    let mut config = Config::new(test_operator_key(), root.join("server"))
+    let mut config = Config::new(test_operator_key(), test_namespaces(), root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100))
