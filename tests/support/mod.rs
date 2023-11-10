@@ -25,10 +25,10 @@ use warg_server::{
 };
 use wit_parser::{Resolve, UnresolvedPackage};
 
-pub fn test_namespaces() -> Option<Vec<(String, operator::NamespaceDefinition)>> {
+pub fn test_namespaces() -> Option<Vec<(String, operator::NamespaceState)>> {
     Some(vec![(
         "test".to_string(),
-        operator::NamespaceDefinition::Defined,
+        operator::NamespaceState::Defined,
     )])
 }
 

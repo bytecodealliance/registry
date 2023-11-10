@@ -99,12 +99,10 @@ async fn main() -> Result<()> {
         get_opt_secret("operator-key", args.operator_key_file, args.operator_key)?;
     let operator_key =
         PrivateKey::decode(operator_key_str).context("failed to parse operator key")?;
-    let namespaces = args.namespace.as_ref().map(|namespace| {
-        vec![(
-            namespace.to_lowercase(),
-            operator::NamespaceDefinition::Defined,
-        )]
-    });
+    let namespaces = args
+        .namespace
+        .as_ref()
+        .map(|namespace| vec![(namespace.to_lowercase(), operator::NamespaceState::Defined)]);
 
     let mut config = Config::new(operator_key, namespaces, args.content_dir)
         .with_addr(args.listen)

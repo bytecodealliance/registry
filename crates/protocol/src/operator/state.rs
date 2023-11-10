@@ -61,14 +61,15 @@ pub enum ValidationError {
 
     #[error("the namespace `{name}` is invalid; namespace must be a kebab case string")]
     InvalidNamespace { name: String },
+
     #[error("the namespace `{name}` is already defined and cannot be redefined")]
     NamespaceAlreadyDefined { name: String },
 }
 
-/// The namespace definition for defining or importing from other registries.
+/// The namespace state for defining or importing from other registries.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum NamespaceDefinition {
+pub enum NamespaceState {
     /// The namespace is defined for the registry to use for its own package logs.
     Defined,
     /// The namespace is imported from another registry.
@@ -111,7 +112,7 @@ pub struct LogState {
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
     /// The namespaces known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    namespaces: IndexMap<String, NamespaceDefinition>,
+    namespaces: IndexMap<String, NamespaceState>,
 }
 
 impl LogState {
@@ -156,7 +157,7 @@ impl LogState {
     }
 
     /// Gets the namespace defintion.
-    pub fn namespace(&self, namespace: &str) -> Option<&NamespaceDefinition> {
+    pub fn namespace(&self, namespace: &str) -> Option<&NamespaceState> {
         self.namespaces.get(&namespace.to_lowercase())
     }
 
@@ -290,12 +291,12 @@ impl LogState {
                     permissions,
                 } => self.validate_revoke_entry(signer_key_id, key_id, permissions)?,
                 model::OperatorEntry::DefineNamespace { name } => {
-                    self.validate_namespace(name, NamespaceDefinition::Defined)?
+                    self.validate_namespace(name, NamespaceState::Defined)?
                 }
                 model::OperatorEntry::ImportNamespace { name, registry } => self
                     .validate_namespace(
                         name,
-                        NamespaceDefinition::Imported {
+                        NamespaceState::Imported {
                             registry: registry.to_string(),
                         },
                     )?,
@@ -375,18 +376,19 @@ impl LogState {
     fn validate_namespace(
         &mut self,
         name: &str,
-        definition: NamespaceDefinition,
+        state: NamespaceState,
     ) -> Result<(), ValidationError> {
         let name = name.to_lowercase();
 
         if !PackageId::is_valid_namespace(&name) {
             return Err(ValidationError::InvalidNamespace { name });
         }
+
         if self.namespaces.contains_key(&name) {
             return Err(ValidationError::NamespaceAlreadyDefined { name });
         }
 
-        self.namespaces.insert(name, definition);
+        self.namespaces.insert(name, state);
 
         Ok(())
     }
@@ -640,10 +642,10 @@ mod tests {
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
             namespaces: IndexMap::from([
-                ("my-namespace".to_string(), NamespaceDefinition::Defined),
+                ("my-namespace".to_string(), NamespaceState::Defined),
                 (
                     "imported-namespace".to_string(),
-                    NamespaceDefinition::Imported {
+                    NamespaceState::Imported {
                         registry: "registry.example.com".to_string(),
                     },
                 ),

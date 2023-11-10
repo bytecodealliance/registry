@@ -10,7 +10,7 @@ mod model;
 mod state;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use state::{LogState, NamespaceDefinition, ValidationError};
+pub use state::{LogState, NamespaceState, ValidationError};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;

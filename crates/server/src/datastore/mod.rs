@@ -305,7 +305,7 @@ pub trait DataStore: Send + Sync {
     async fn verify_package_namespace_is_defined_and_not_imported(
         &self,
         operator_log_id: &LogId,
-        package: &PackageId,
+        namespace: &str,
     ) -> Result<(), DataStoreError>;
 
     // Returns a list of package names, for debugging only.

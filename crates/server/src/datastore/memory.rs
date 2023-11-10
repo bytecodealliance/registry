@@ -717,7 +717,7 @@ impl DataStore for MemoryDataStore {
     async fn verify_package_namespace_is_defined_and_not_imported(
         &self,
         operator_log_id: &LogId,
-        package: &PackageId,
+        namespace: &str,
     ) -> Result<(), DataStoreError> {
         let state = self.0.read().await;
 
@@ -726,16 +726,16 @@ impl DataStore for MemoryDataStore {
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
             .validator
-            .namespace(package.namespace())
+            .namespace(namespace)
         {
-            Some(definition) => match definition {
-                operator::NamespaceDefinition::Defined => Ok(()),
-                operator::NamespaceDefinition::Imported { .. } => Err(
-                    DataStoreError::PackageNamespaceImported(package.namespace().to_string()),
+            Some(state) => match state {
+                operator::NamespaceState::Defined => Ok(()),
+                operator::NamespaceState::Imported { .. } => Err(
+                    DataStoreError::PackageNamespaceImported(namespace.to_string()),
                 ),
             },
             None => Err(DataStoreError::PackageNamespaceNotDefined(
-                package.namespace().to_string(),
+                namespace.to_string(),
             )),
         }
     }

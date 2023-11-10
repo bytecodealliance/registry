@@ -32,7 +32,7 @@ type ShutdownFut = Pin<Box<dyn Future<Output = ()> + Send + Sync>>;
 /// The server configuration.
 pub struct Config {
     operator_key: PrivateKey,
-    namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+    namespaces: Option<Vec<(String, operator::NamespaceState)>>,
     addr: Option<SocketAddr>,
     data_store: Option<Box<dyn DataStore>>,
     content_dir: PathBuf,
@@ -72,7 +72,7 @@ impl Config {
     /// Creates a new server configuration.
     pub fn new(
         operator_key: PrivateKey,
-        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+        namespaces: Option<Vec<(String, operator::NamespaceState)>>,
         content_dir: PathBuf,
     ) -> Self {
         Self {

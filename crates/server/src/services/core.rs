@@ -44,7 +44,7 @@ impl<Digest: SupportedDigest> CoreService<Digest> {
     /// copies of the service handle to allow for graceful shutdown.
     pub async fn start(
         operator_key: PrivateKey,
-        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+        namespaces: Option<Vec<(String, operator::NamespaceState)>>,
         store: Box<dyn DataStore>,
         checkpoint_interval: Duration,
     ) -> Result<(Self, JoinHandle<()>), CoreServiceError> {
@@ -185,7 +185,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
     // entries that are not yet part of a checkpoint.
     async fn initialize(
         &mut self,
-        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+        namespaces: Option<Vec<(String, operator::NamespaceState)>>,
     ) -> Result<(), CoreServiceError> {
         tracing::debug!("Initializing CoreService");
 
@@ -223,7 +223,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
     async fn initialize_new(
         &mut self,
-        namespaces: Option<Vec<(String, operator::NamespaceDefinition)>>,
+        namespaces: Option<Vec<(String, operator::NamespaceState)>>,
     ) -> Result<(), CoreServiceError> {
         let state = self.state.get_mut();
 
@@ -237,10 +237,10 @@ impl<Digest: SupportedDigest> Inner<Digest> {
             entries.push(init);
             for (name, def) in namespaces.into_iter() {
                 entries.push(match def {
-                    operator::NamespaceDefinition::Defined => {
+                    operator::NamespaceState::Defined => {
                         operator::OperatorEntry::DefineNamespace { name }
                     }
-                    operator::NamespaceDefinition::Imported { registry } => {
+                    operator::NamespaceState::Imported { registry } => {
                         operator::OperatorEntry::ImportNamespace { name, registry }
                     }
                 });
