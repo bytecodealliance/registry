@@ -84,10 +84,10 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
                     .collect::<Result<_, _>>()?,
             },
             Contents::DefineNamespace(define_namespace) => model::OperatorEntry::DefineNamespace {
-                name: define_namespace.name,
+                namespace: define_namespace.namespace,
             },
             Contents::ImportNamespace(import_namespace) => model::OperatorEntry::ImportNamespace {
-                name: import_namespace.name,
+                namespace: import_namespace.namespace,
                 registry: import_namespace.registry,
             },
         };
@@ -170,15 +170,18 @@ impl<'a> From<&'a model::OperatorEntry> for protobuf::OperatorEntry {
                 key_id: key_id.to_string(),
                 permissions: permissions.iter().map(Into::into).collect(),
             }),
-            model::OperatorEntry::DefineNamespace { name } => {
-                Contents::DefineNamespace(protobuf::OperatorDefineNamespace { name: name.clone() })
-            }
-            model::OperatorEntry::ImportNamespace { name, registry } => {
-                Contents::ImportNamespace(protobuf::OperatorImportNamespace {
-                    name: name.clone(),
-                    registry: registry.clone(),
+            model::OperatorEntry::DefineNamespace { namespace } => {
+                Contents::DefineNamespace(protobuf::OperatorDefineNamespace {
+                    namespace: namespace.clone(),
                 })
             }
+            model::OperatorEntry::ImportNamespace {
+                namespace,
+                registry,
+            } => Contents::ImportNamespace(protobuf::OperatorImportNamespace {
+                namespace: namespace.clone(),
+                registry: registry.clone(),
+            }),
         };
         let contents = Some(contents);
         protobuf::OperatorEntry { contents }

@@ -311,7 +311,7 @@ pub trait DataStore: Send + Sync {
     async fn verify_package_namespace_is_defined_and_not_imported(
         &self,
         operator_log_id: &LogId,
-        namespace: &str,
+        package_id: &PackageId,
     ) -> Result<(), DataStoreError>;
 
     /// Verifies the TimestampedCheckpoint signature.

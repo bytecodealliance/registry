@@ -132,6 +132,7 @@ impl VisitBytes for LogLeaf {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct PackageId {
     id: String,
+    id_lowercase: String,
     colon: usize,
 }
 
@@ -145,7 +146,12 @@ impl PackageId {
         if let Some(colon) = id.rfind(':') {
             // Validate the namespace and name parts are valid kebab strings
             if KebabStr::new(&id[colon + 1..]).is_some() && Self::is_valid_namespace(&id[..colon]) {
-                return Ok(Self { id, colon });
+                let id_lowercase = id.to_ascii_lowercase();
+                return Ok(Self {
+                    id,
+                    id_lowercase,
+                    colon,
+                });
             }
         }
 
@@ -157,9 +163,19 @@ impl PackageId {
         &self.id[..self.colon]
     }
 
+    /// Gets the namespace (guaranteed to be lowercased) part of the package identifier.
+    pub fn namespace_lowercase(&self) -> &str {
+        &self.id_lowercase[..self.colon]
+    }
+
     /// Gets the name part of the package identifier.
     pub fn name(&self) -> &str {
         &self.id[self.colon + 1..]
+    }
+
+    /// Gets the name (guaranteed to be lowercased) part of the package identifier.
+    pub fn name_lowercase(&self) -> &str {
+        &self.id_lowercase[self.colon + 1..]
     }
 
     /// Check if string is a valid namespace.
@@ -191,7 +207,7 @@ impl fmt::Display for PackageId {
 impl prefix::VisitPrefixEncode for PackageId {
     fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
         visitor.visit_str_raw("WARG-PACKAGE-ID-V0");
-        visitor.visit_str(&self.id);
+        visitor.visit_str(&self.id_lowercase);
     }
 }
 

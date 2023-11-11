@@ -964,7 +964,7 @@ impl DataStore for PostgresDataStore {
     async fn verify_package_namespace_is_defined_and_not_imported(
         &self,
         operator_log_id: &LogId,
-        namespace: &str,
+        package_id: &PackageId,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
 
@@ -976,15 +976,15 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
 
-        match validator.namespace(namespace) {
+        match validator.namespace_state(package_id) {
             Some(state) => match state {
                 operator::NamespaceState::Defined => Ok(()),
                 operator::NamespaceState::Imported { .. } => Err(
-                    DataStoreError::PackageNamespaceImported(namespace.to_string()),
+                    DataStoreError::PackageNamespaceImported(package_id.namespace().to_string()),
                 ),
             },
             None => Err(DataStoreError::PackageNamespaceNotDefined(
-                namespace.to_string(),
+                package_id.namespace().to_string(),
             )),
         }
     }

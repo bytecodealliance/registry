@@ -59,11 +59,11 @@ pub enum ValidationError {
     #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
 
-    #[error("the namespace `{name}` is invalid; namespace must be a kebab case string")]
-    InvalidNamespace { name: String },
+    #[error("the namespace `{namespace}` is invalid; namespace must be a kebab case string")]
+    InvalidNamespace { namespace: String },
 
-    #[error("the namespace `{name}` is already defined and cannot be redefined")]
-    NamespaceAlreadyDefined { name: String },
+    #[error("the namespace `{namespace}` is already defined and cannot be redefined")]
+    NamespaceAlreadyDefined { namespace: String },
 }
 
 /// The namespace state for defining or importing from other registries.
@@ -156,9 +156,9 @@ impl LogState {
         self.keys.get(key_id)
     }
 
-    /// Gets the namespace defintion.
-    pub fn namespace(&self, namespace: &str) -> Option<&NamespaceState> {
-        self.namespaces.get(&namespace.to_lowercase())
+    /// Gets the namespace state from a package.
+    pub fn namespace_state(&self, package_id: &PackageId) -> Option<&NamespaceState> {
+        self.namespaces.get(package_id.namespace_lowercase())
     }
 
     ///
@@ -296,16 +296,18 @@ impl LogState {
                     key_id,
                     permissions,
                 } => self.validate_revoke_entry(signer_key_id, key_id, permissions)?,
-                model::OperatorEntry::DefineNamespace { name } => {
-                    self.validate_namespace(name, NamespaceState::Defined)?
+                model::OperatorEntry::DefineNamespace { namespace } => {
+                    self.validate_namespace(namespace, NamespaceState::Defined)?
                 }
-                model::OperatorEntry::ImportNamespace { name, registry } => self
-                    .validate_namespace(
-                        name,
-                        NamespaceState::Imported {
-                            registry: registry.to_string(),
-                        },
-                    )?,
+                model::OperatorEntry::ImportNamespace {
+                    namespace,
+                    registry,
+                } => self.validate_namespace(
+                    namespace,
+                    NamespaceState::Imported {
+                        registry: registry.to_string(),
+                    },
+                )?,
             }
         }
 
@@ -381,20 +383,20 @@ impl LogState {
 
     fn validate_namespace(
         &mut self,
-        name: &str,
+        namespace: &str,
         state: NamespaceState,
     ) -> Result<(), ValidationError> {
-        let name = name.to_lowercase();
+        let namespace = namespace.to_lowercase();
 
-        if !PackageId::is_valid_namespace(&name) {
-            return Err(ValidationError::InvalidNamespace { name });
+        if !PackageId::is_valid_namespace(&namespace) {
+            return Err(ValidationError::InvalidNamespace { namespace });
         }
 
-        if self.namespaces.contains_key(&name) {
-            return Err(ValidationError::NamespaceAlreadyDefined { name });
+        if self.namespaces.contains_key(&namespace) {
+            return Err(ValidationError::NamespaceAlreadyDefined { namespace });
         }
 
-        self.namespaces.insert(name, state);
+        self.namespaces.insert(namespace, state);
 
         Ok(())
     }
@@ -584,7 +586,7 @@ mod tests {
                 },
                 // This entry is valid but should be rolled back since there is an invalid entry
                 model::OperatorEntry::DefineNamespace {
-                    name: "example-namespace".to_string(),
+                    namespace: "example-namespace".to_string(),
                 },
             ],
         };
@@ -618,10 +620,10 @@ mod tests {
                     key: alice_pub.clone(),
                 },
                 model::OperatorEntry::DefineNamespace {
-                    name: "my-namespace".to_string(),
+                    namespace: "my-namespace".to_string(),
                 },
                 model::OperatorEntry::ImportNamespace {
-                    name: "imported-namespace".to_string(),
+                    namespace: "imported-namespace".to_string(),
                     registry: "registry.example.com".to_string(),
                 },
             ],
@@ -667,11 +669,11 @@ mod tests {
             entries: vec![
                 // This entry is valid
                 model::OperatorEntry::DefineNamespace {
-                    name: "other-namespace".to_string(),
+                    namespace: "other-namespace".to_string(),
                 },
                 // This entry is not valid
                 model::OperatorEntry::ImportNamespace {
-                    name: "my-NAMESPACE".to_string(),
+                    namespace: "my-NAMESPACE".to_string(),
                     registry: "registry.alternative.com".to_string(),
                 },
             ],

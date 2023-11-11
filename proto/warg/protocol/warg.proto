@@ -63,12 +63,12 @@ message OperatorRevokeFlat {
 
 message OperatorDefineNamespace {
     // The registry defined namespace to be used in its own package logs. 
-    string name = 1;
+    string namespace = 1;
 }
 
 message OperatorImportNamespace {
     // The registry defined namespace to be imported from another registry.
-    string name = 1;
+    string namespace = 1;
     // The registry that the namespace is imported from.
     string registry = 2;
 }

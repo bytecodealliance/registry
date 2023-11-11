@@ -96,9 +96,9 @@ pub enum OperatorEntry {
         permissions: Vec<Permission>,
     },
     /// The registry defines a namespace to be used in its own package logs.
-    DefineNamespace { name: String },
+    DefineNamespace { namespace: String },
     /// The registry defines a namespace as imported from another registry.
-    ImportNamespace { name: String, registry: String },
+    ImportNamespace { namespace: String, registry: String },
 }
 
 impl OperatorEntry {

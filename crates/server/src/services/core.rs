@@ -235,13 +235,16 @@ impl<Digest: SupportedDigest> Inner<Digest> {
         let entries = if let Some(namespaces) = namespaces {
             let mut entries = Vec::with_capacity(1 + namespaces.len());
             entries.push(init);
-            for (name, def) in namespaces.into_iter() {
-                entries.push(match def {
+            for (namespace, state) in namespaces.into_iter() {
+                entries.push(match state {
                     operator::NamespaceState::Defined => {
-                        operator::OperatorEntry::DefineNamespace { name }
+                        operator::OperatorEntry::DefineNamespace { namespace }
                     }
                     operator::NamespaceState::Imported { registry } => {
-                        operator::OperatorEntry::ImportNamespace { name, registry }
+                        operator::OperatorEntry::ImportNamespace {
+                            namespace,
+                            registry,
+                        }
                     }
                 });
             }

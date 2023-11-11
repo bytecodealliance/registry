@@ -214,7 +214,7 @@ async fn publish_record(
         .store()
         .verify_package_namespace_is_defined_and_not_imported(
             &LogId::operator_log::<Sha256>(),
-            body.package_id.namespace(),
+            &body.package_id,
         )
         .await?;
 
