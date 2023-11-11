@@ -584,12 +584,14 @@ paths:
               schema:
                 oneOf:
                   - "$ref": "#/components/schemas/CheckpointVerified"
+                  - "$ref": "#/components/schemas/CheckpointVerifiedButSignatureUnverified"
                   - "$ref": "#/components/schemas/CheckpointRetry"
                   - "$ref": "#/components/schemas/CheckpointUnverified"
                 discriminator:
                   propertyName: state
                   mapping:
                     verified: "#/components/schemas/CheckpointVerified"
+                    verifiedButSignatureUnverified: "#/components/schemas/CheckpointVerifiedButSignatureUnverified"
                     retry: "#/components/schemas/CheckpointRetry"
                     unverified: "#/components/schemas/CheckpointUnverified"
         "404":
@@ -600,25 +602,14 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  type:
-                    type: string
-                    description: The type of entity that was not found.
-                    enum: [logLength]
-                    example: logLength
-                  id:
-                    type: integer
-                    description: The identifier of the entity that was not found.
+                oneOf:
+                  - "$ref": "#/components/schemas/CheckpointNotFoundError"
+                  - "$ref": "#/components/schemas/CheckpointSignatureKeyIdNotFoundError"
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    logLength: "#/components/schemas/CheckpointNotFoundError"
+                    keyId: "#/components/schemas/CheckpointSignatureKeyIdNotFoundError"
         "422":
           description: The checkpoint verification failed.
           headers:
@@ -627,25 +618,17 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - type
-                  - id
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 422
-                  type:
-                    type: string
-                    description: The type of entity that was invalid.
-                    enum: [keyId, signature, logRoot, mapRoot]
-                    example: logRoot
-                  id:
-                    type: string
-                    description: The identifier of the entity that was not found. 
+                oneOf:
+                  - "$ref": "#/components/schemas/CheckpointInvalidLogLengthError"
+                  - "$ref": "#/components/schemas/CheckpointInvalidError"
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    logLength: "#/components/schemas/CheckpointInvalidLogLengthError"
+                    keyId: "#/components/schemas/CheckpointInvalidError"
+                    signature: "#/components/schemas/CheckpointInvalidError"
+                    logRoot: "#/components/schemas/CheckpointInvalidError"
+                    mapRoot: "#/components/schemas/CheckpointInvalidError"
         default:
           description: An error occurred when processing the request.
           headers:
@@ -1242,6 +1225,17 @@ components:
           description: The verified checkpoint state.
           enum: [verified]
           example: verified
+    CheckpointVerifiedButSignatureUnverified:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+      properties:
+        state:
+          type: string
+          description: The state when the checkpoint log and map roots were verified but the signature was not verified.
+          enum: [verifiedButSignatureUnverified]
+          example: verifiedButSignatureUnverified
     CheckpointRetry:
       type: object
       additionalProperties: false
@@ -1418,3 +1412,83 @@ components:
                 description: The content type of source.
                 enum: ["application/vnd.bytecodealliance.registry.ledger.packed"]
                 example: "application/vnd.bytecodealliance.registry.ledger.packed"
+    CheckpointNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [logLength]
+            example: logLength
+          id:
+            type: integer
+            description: The identifier of the entity that was not found.
+    CheckpointSignatureKeyIdNotFoundError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 404
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [keyId]
+            example: keyId
+          id:
+            "$ref": "#/components/schemas/AnyHash"
+            description: The identifier of the entity that was not found.
+    CheckpointInvalidError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 422
+          type:
+            type: string
+            description: The type of entity that was invalid.
+            enum: [keyId, signature, logRoot, mapRoot]
+            example: logRoot
+          id:
+            type: string
+            description: The identifier of the entity that was not found. 
+    CheckpointInvalidLogLengthError:
+        type: object
+        additionalProperties: false
+        required:
+          - status
+          - type
+          - id
+        properties:
+          status:
+            type: integer
+            description: The HTTP status code for the error.
+            example: 422
+          type:
+            type: string
+            description: The type of entity that was not found.
+            enum: [logLength]
+            example: logLength
+          id:
+            type: integer
+            description: The identifier of the entity that was not found.

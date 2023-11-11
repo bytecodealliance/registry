@@ -379,7 +379,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
         "unexpected response from server: {status}\n{body}",
     );
     assert!(
-        body.contains("record signature verification failed"),
+        body.contains("verification failed"),
         "unexpected response body: {body}"
     );
 

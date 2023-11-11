@@ -4,7 +4,10 @@ use std::{
     pin::Pin,
 };
 use thiserror::Error;
-use warg_crypto::{hash::AnyHash, signing::KeyID};
+use warg_crypto::{
+    hash::AnyHash,
+    signing::{KeyID, Signature},
+};
 use warg_protocol::{
     operator, package,
     registry::{
@@ -61,11 +64,14 @@ pub enum DataStoreError {
     )]
     PackageNamespaceImported(String),
 
+    #[error("key id `{0}` does not have permission")]
+    KeyUnauthorized(KeyID),
+
     #[error("unknown key id `{0}`")]
     UnknownKey(KeyID),
 
-    #[error("record signature verification failed")]
-    SignatureVerificationFailed,
+    #[error("signature `{0}` verification failed")]
+    SignatureVerificationFailed(Signature),
 
     #[error("the record was rejected: {0}")]
     Rejection(String),
@@ -306,6 +312,13 @@ pub trait DataStore: Send + Sync {
         &self,
         operator_log_id: &LogId,
         namespace: &str,
+    ) -> Result<(), DataStoreError>;
+
+    /// Verifies the TimestampedCheckpoint signature.
+    async fn verify_timestamped_checkpoint_signature(
+        &self,
+        operator_log_id: &LogId,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError>;
 
     // Returns a list of package names, for debugging only.

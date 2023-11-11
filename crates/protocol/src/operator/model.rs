@@ -30,8 +30,11 @@ impl crate::Record for OperatorRecord {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum Permission {
+    /// Permission to sign checkpoints.
     Commit,
+    /// Permission to define namespace in operator log.
     DefineNamespace,
+    /// Permission to import namespace from another registry and add to the operator log.
     ImportNamespace,
 }
 

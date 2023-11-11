@@ -4,7 +4,8 @@ use crate::services::CoreService;
 use axum::http::StatusCode;
 use axum::{debug_handler, extract::State, response::IntoResponse, routing::post, Router};
 use warg_api::v1::monitor::{CheckpointVerificationResponse, MonitorError};
-use warg_protocol::registry::TimestampedCheckpoint;
+use warg_crypto::hash::Sha256;
+use warg_protocol::registry::{LogId, TimestampedCheckpoint};
 use warg_protocol::SerdeEnvelope;
 
 #[derive(Clone)]
@@ -32,6 +33,15 @@ impl From<DataStoreError> for MonitorApiError {
             DataStoreError::CheckpointNotFound(log_length) => {
                 MonitorError::CheckpointNotFound(log_length)
             }
+            DataStoreError::UnknownKey(key_id) => {
+                MonitorError::CheckpointSignatureKeyIdNotFound(key_id)
+            }
+            DataStoreError::SignatureVerificationFailed(signature) => {
+                MonitorError::CheckpointSignatureInvalid(signature)
+            }
+            DataStoreError::KeyUnauthorized(key_id) => {
+                MonitorError::CheckpointSignatureKeyIdUnauthorized(key_id)
+            }
             e => {
                 tracing::error!("unexpected data store error: {e}");
                 MonitorError::Message {
@@ -55,33 +65,43 @@ async fn verify_checkpoint(
     RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<SerdeEnvelope<TimestampedCheckpoint>>,
 ) -> Result<Json<CheckpointVerificationResponse>, MonitorApiError> {
+    // look up checkpoint, if not found returns CheckpointNotFound
     let checkpoint = config
         .core_service
         .store()
         .get_checkpoint(body.as_ref().checkpoint.log_length)
         .await?;
 
-    if checkpoint.key_id() != body.key_id() {
-        return Err(MonitorApiError(
-            MonitorError::CheckpointSignatureKeyIdInvalid(body.key_id().clone()),
-        ));
+    // if exact match, return Verified
+    if checkpoint.signature() == body.signature()
+        && checkpoint.key_id() == body.key_id()
+        && checkpoint.as_ref().checkpoint.log_root == body.as_ref().checkpoint.log_root
+        && checkpoint.as_ref().checkpoint.map_root == body.as_ref().checkpoint.map_root
+    {
+        return Ok(Json(CheckpointVerificationResponse::Verified));
     }
 
+    // verify signature, which may return:
+    //  - CheckpointSignatureKeyIdNotFound
+    //  - CheckpointSignatureKeyIdUnauthorized
+    //  - CheckpointSignatureInvalid
+    config
+        .core_service
+        .store()
+        .verify_timestamped_checkpoint_signature(&LogId::operator_log::<Sha256>(), &body)
+        .await?;
+
+    // verify log root, if not returns CheckpointLogRootInvalid
     if checkpoint.as_ref().checkpoint.log_root != body.as_ref().checkpoint.log_root {
-        return Err(MonitorApiError(MonitorError::CheckpointLogRootIncorrect(
+        return Err(MonitorApiError(MonitorError::CheckpointLogRootInvalid(
             body.as_ref().checkpoint.log_root.clone(),
         )));
     }
 
+    // verify map root, if not returns CheckpointMapRootInvalid
     if checkpoint.as_ref().checkpoint.map_root != body.as_ref().checkpoint.map_root {
-        return Err(MonitorApiError(MonitorError::CheckpointMapRootIncorrect(
+        return Err(MonitorApiError(MonitorError::CheckpointMapRootInvalid(
             body.as_ref().checkpoint.map_root.clone(),
-        )));
-    }
-
-    if checkpoint.signature() != body.signature() {
-        return Err(MonitorApiError(MonitorError::CheckpointSignatureInvalid(
-            body.signature().clone(),
         )));
     }
 

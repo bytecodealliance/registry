@@ -139,7 +139,7 @@ impl From<DataStoreError> for PackageApiError {
             }
             DataStoreError::LogNotFound(id) => PackageError::LogNotFound(id),
             DataStoreError::RecordNotFound(id) => PackageError::RecordNotFound(id),
-            DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed => {
+            DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed(_) => {
                 PackageError::Unauthorized(e.to_string())
             }
             DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),

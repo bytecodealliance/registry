@@ -161,6 +161,12 @@ impl LogState {
         self.namespaces.get(&namespace.to_lowercase())
     }
 
+    ///
+    pub fn key_has_permission_to_sign_checkpoints(&self, key_id: &signing::KeyID) -> bool {
+        self.check_key_permissions(key_id, &[model::Permission::Commit])
+            .is_ok()
+    }
+
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()

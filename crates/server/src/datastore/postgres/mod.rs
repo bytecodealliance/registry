@@ -20,7 +20,7 @@ use std::{
     collections::{HashMap, HashSet},
     pin::Pin,
 };
-use warg_crypto::{hash::AnyHash, Decode, Signable};
+use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
@@ -958,7 +958,7 @@ impl DataStore for PostgresDataStore {
         };
 
         package::PackageRecord::verify(key, record.content_bytes(), record.signature())
-            .map_err(|_| DataStoreError::SignatureVerificationFailed)
+            .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
     }
 
     async fn verify_package_namespace_is_defined_and_not_imported(
@@ -987,6 +987,41 @@ impl DataStore for PostgresDataStore {
                 namespace.to_string(),
             )),
         }
+    }
+
+    async fn verify_timestamped_checkpoint_signature(
+        &self,
+        operator_log_id: &LogId,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let validator = schema::logs::table
+            .select(schema::logs::validator)
+            .filter(schema::logs::log_id.eq(TextRef(operator_log_id)))
+            .first::<Json<operator::LogState>>(&mut conn)
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
+
+        TimestampedCheckpoint::verify(
+            validator
+                .public_key(ts_checkpoint.key_id())
+                .ok_or(DataStoreError::UnknownKey(ts_checkpoint.key_id().clone()))?,
+            &ts_checkpoint.as_ref().encode(),
+            ts_checkpoint.signature(),
+        )
+        .or(Err(DataStoreError::SignatureVerificationFailed(
+            ts_checkpoint.signature().clone(),
+        )))?;
+
+        if !validator.key_has_permission_to_sign_checkpoints(ts_checkpoint.key_id()) {
+            return Err(DataStoreError::KeyUnauthorized(
+                ts_checkpoint.key_id().clone(),
+            ));
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "debug")]

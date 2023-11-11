@@ -16,6 +16,9 @@ pub enum CheckpointVerificationResponse {
     /// The checkpoint is verified.
     #[serde(rename_all = "camelCase")]
     Verified,
+    /// The checkpoint is verified but has not verified the signature.
+    #[serde(rename_all = "camelCase")]
+    VerifiedButSignatureUnverified,
     /// The checkpoint is unverified but should retry verification.
     #[serde(rename_all = "camelCase")]
     Retry {
@@ -31,22 +34,30 @@ pub enum CheckpointVerificationResponse {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum MonitorError {
+    /// The provided checkpoint log length is not known to the registry.
+    #[error("checkpoint log length `{0}` is not known to the registry")]
+    CheckpointNotFound(RegistryLen),
     /// The provided checkpoint log length is greater than the most recent checkpoint. The monitor
     /// is expected to only return this after it is certain that it has the most recent checkpoint.
-    #[error("checkpoint log length `{0} is greater than the most recent checkpoint")]
-    CheckpointNotFound(RegistryLen),
+    #[error("checkpoint log length `{0}` is invalid and greater than the most recent checkpoint")]
+    CheckpointInvalidLogLength(RegistryLen),
     /// The checkpoint signature keyId was not found.
-    #[error("checkpoint signature keyId `{0}` is invalid for checkpoint")]
-    CheckpointSignatureKeyIdInvalid(signing::KeyID),
+    #[error("checkpoint signature keyId `{0}` is unknown")]
+    CheckpointSignatureKeyIdNotFound(signing::KeyID),
+    /// The checkpoint signature keyId does not currently have permission to sign checkpoints.
+    #[error(
+        "checkpoint signature keyId `{0}` does not currently have permission to sign checkpoints"
+    )]
+    CheckpointSignatureKeyIdUnauthorized(signing::KeyID),
     /// The checkpoint signature invalid.
     #[error("checkpoint signature `{0}` is invalid")]
     CheckpointSignatureInvalid(signing::Signature),
     /// The provided checkpoint log root does not match.
-    #[error("checkpoint log root `{0}` is incorrect")]
-    CheckpointLogRootIncorrect(AnyHash),
+    #[error("checkpoint log root `{0}` is invalid")]
+    CheckpointLogRootInvalid(AnyHash),
     /// The provided checkpoint map root does not match.
-    #[error("checkpoint map root `{0}` is incorrect")]
-    CheckpointMapRootIncorrect(AnyHash),
+    #[error("checkpoint map root `{0}` is invalid")]
+    CheckpointMapRootInvalid(AnyHash),
     /// An error with a message occurred.
     #[error("{message}")]
     Message {
@@ -61,11 +72,12 @@ impl MonitorError {
     /// Returns the HTTP status code of the error.
     pub fn status(&self) -> u16 {
         match self {
-            Self::CheckpointNotFound(_) => 404,
-            Self::CheckpointSignatureKeyIdInvalid(_)
+            Self::CheckpointNotFound(_) | Self::CheckpointSignatureKeyIdNotFound(_) => 404,
+            Self::CheckpointInvalidLogLength(_)
+            | Self::CheckpointSignatureKeyIdUnauthorized(_)
             | Self::CheckpointSignatureInvalid(_)
-            | Self::CheckpointLogRootIncorrect(_)
-            | Self::CheckpointMapRootIncorrect(_) => 422,
+            | Self::CheckpointLogRootInvalid(_)
+            | Self::CheckpointMapRootInvalid(_) => 422,
             Self::Message { status, .. } => *status,
         }
     }
@@ -94,6 +106,18 @@ where
         ty: EntityType,
         id: RegistryLen,
     },
+    CheckpointInvalid {
+        status: Status<422>,
+        #[serde(rename = "type")]
+        ty: EntityType,
+        id: RegistryLen,
+    },
+    NotFound {
+        status: Status<404>,
+        #[serde(rename = "type")]
+        ty: EntityType,
+        id: Cow<'a, T>,
+    },
     Invalid {
         status: Status<422>,
         #[serde(rename = "type")]
@@ -115,7 +139,21 @@ impl Serialize for MonitorError {
                 id: *log_length,
             }
             .serialize(serializer),
-            Self::CheckpointSignatureKeyIdInvalid(key_id) => RawError::Invalid {
+            Self::CheckpointInvalidLogLength(log_length) => {
+                RawError::CheckpointInvalid::<RegistryLen> {
+                    status: Status::<422>,
+                    ty: EntityType::LogLength,
+                    id: *log_length,
+                }
+                .serialize(serializer)
+            }
+            Self::CheckpointSignatureKeyIdNotFound(key_id) => RawError::NotFound {
+                status: Status::<404>,
+                ty: EntityType::KeyId,
+                id: Cow::Borrowed(key_id),
+            }
+            .serialize(serializer),
+            Self::CheckpointSignatureKeyIdUnauthorized(key_id) => RawError::Invalid {
                 status: Status::<422>,
                 ty: EntityType::KeyId,
                 id: Cow::Borrowed(key_id),
@@ -127,13 +165,13 @@ impl Serialize for MonitorError {
                 id: Cow::Borrowed(signature),
             }
             .serialize(serializer),
-            Self::CheckpointLogRootIncorrect(log_root) => RawError::Invalid {
+            Self::CheckpointLogRootInvalid(log_root) => RawError::Invalid {
                 status: Status::<422>,
                 ty: EntityType::LogRoot,
                 id: Cow::Borrowed(log_root),
             }
             .serialize(serializer),
-            Self::CheckpointMapRootIncorrect(map_root) => RawError::Invalid {
+            Self::CheckpointMapRootInvalid(map_root) => RawError::Invalid {
                 status: Status::<422>,
                 ty: EntityType::MapRoot,
                 id: Cow::Borrowed(map_root),
@@ -155,8 +193,18 @@ impl<'de> Deserialize<'de> for MonitorError {
     {
         match RawError::<String>::deserialize(deserializer)? {
             RawError::CheckpointNotFound { id, .. } => Ok(Self::CheckpointNotFound(id)),
+            RawError::CheckpointInvalid { id, .. } => Ok(Self::CheckpointInvalidLogLength(id)),
+            RawError::NotFound { status: _, ty, id } => match ty {
+                EntityType::KeyId => Ok(Self::CheckpointSignatureKeyIdNotFound(
+                    signing::KeyID::from(id.into_owned()),
+                )),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Str(&id),
+                    &"unexpected type",
+                )),
+            },
             RawError::Invalid { status: _, ty, id } => match ty {
-                EntityType::KeyId => Ok(Self::CheckpointSignatureKeyIdInvalid(
+                EntityType::KeyId => Ok(Self::CheckpointSignatureKeyIdUnauthorized(
                     signing::KeyID::from(id.into_owned()),
                 )),
                 EntityType::Signature => Ok(Self::CheckpointSignatureInvalid(
@@ -164,12 +212,12 @@ impl<'de> Deserialize<'de> for MonitorError {
                         serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid signature")
                     })?,
                 )),
-                EntityType::LogRoot => Ok(Self::CheckpointLogRootIncorrect(
+                EntityType::LogRoot => Ok(Self::CheckpointLogRootInvalid(
                     id.parse::<AnyHash>().map_err(|_| {
                         serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid log root")
                     })?,
                 )),
-                EntityType::MapRoot => Ok(Self::CheckpointMapRootIncorrect(
+                EntityType::MapRoot => Ok(Self::CheckpointMapRootInvalid(
                     id.parse::<AnyHash>().map_err(|_| {
                         serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid map root")
                     })?,
