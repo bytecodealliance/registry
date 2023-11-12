@@ -976,7 +976,7 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
 
-        match validator.package_namespace_state(package_id) {
+        match validator.namespace_state(package_id.namespace_lowercase()) {
             Some(state) => match state {
                 operator::NamespaceState::Defined => Ok(()),
                 operator::NamespaceState::Imported { .. } => Err(

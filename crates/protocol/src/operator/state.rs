@@ -156,12 +156,12 @@ impl LogState {
         self.keys.get(key_id)
     }
 
-    /// Gets the namespace state for a package.
-    pub fn package_namespace_state(&self, package_id: &PackageId) -> Option<&NamespaceState> {
-        self.namespaces.get(package_id.namespace_lowercase())
+    /// Gets the namespace state. Expects the namespace to be lowercase.
+    pub fn namespace_state(&self, lowerspaced_namespace: &str) -> Option<&NamespaceState> {
+        self.namespaces.get(lowerspaced_namespace)
     }
 
-    ///
+    /// Checks the key has permission to sign checkpoints.
     pub fn key_has_permission_to_sign_checkpoints(&self, key_id: &signing::KeyID) -> bool {
         self.check_key_permissions(key_id, &[model::Permission::Commit])
             .is_ok()

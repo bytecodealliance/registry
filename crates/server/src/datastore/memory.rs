@@ -726,7 +726,7 @@ impl DataStore for MemoryDataStore {
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
             .validator
-            .package_namespace_state(package_id)
+            .namespace_state(package_id.namespace_lowercase())
         {
             Some(state) => match state {
                 operator::NamespaceState::Defined => Ok(()),
