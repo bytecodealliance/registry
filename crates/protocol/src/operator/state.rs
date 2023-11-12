@@ -156,8 +156,8 @@ impl LogState {
         self.keys.get(key_id)
     }
 
-    /// Gets the namespace state from a package.
-    pub fn namespace_state(&self, package_id: &PackageId) -> Option<&NamespaceState> {
+    /// Gets the namespace state for a package.
+    pub fn package_namespace_state(&self, package_id: &PackageId) -> Option<&NamespaceState> {
         self.namespaces.get(package_id.namespace_lowercase())
     }
 

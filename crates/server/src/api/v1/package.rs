@@ -212,10 +212,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .verify_package_namespace_is_defined_and_not_imported(
-            &LogId::operator_log::<Sha256>(),
-            &body.package_id,
-        )
+        .can_publish_to_package_namespace(&LogId::operator_log::<Sha256>(), &body.package_id)
         .await?;
 
     // Preemptively perform the policy check on the record before storing it

@@ -714,7 +714,7 @@ impl DataStore for MemoryDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
     }
 
-    async fn verify_package_namespace_is_defined_and_not_imported(
+    async fn can_publish_to_package_namespace(
         &self,
         operator_log_id: &LogId,
         package_id: &PackageId,
@@ -726,7 +726,7 @@ impl DataStore for MemoryDataStore {
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
             .validator
-            .namespace_state(package_id)
+            .package_namespace_state(package_id)
         {
             Some(state) => match state {
                 operator::NamespaceState::Defined => Ok(()),

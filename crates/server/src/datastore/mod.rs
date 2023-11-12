@@ -308,7 +308,7 @@ pub trait DataStore: Send + Sync {
 
     /// Verifies the package namespace is defined for this registry
     /// and is not imported from another registry.
-    async fn verify_package_namespace_is_defined_and_not_imported(
+    async fn can_publish_to_package_namespace(
         &self,
         operator_log_id: &LogId,
         package_id: &PackageId,
