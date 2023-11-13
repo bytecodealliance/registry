@@ -24,20 +24,15 @@ pub struct LedgerSource {
     pub last_registry_index: RegistryIndex,
     /// The HTTP GET URL location for the ledger source.
     pub url: String,
+    /// Content type for the ledger source.
+    pub content_type: LedgerSourceContentType,
     /// Optional, server accepts for HTTP Range header.
     #[serde(skip_serializing_if = "is_false")]
     pub accept_ranges: bool,
-    /// Content type for the ledger source.
-    #[serde(default, skip_serializing_if = "is_ledger_packed")]
-    pub content_type: LedgerSourceContentType,
 }
 
 fn is_false(b: &bool) -> bool {
     !b
-}
-
-fn is_ledger_packed(content_type: &LedgerSourceContentType) -> bool {
-    content_type == &LedgerSourceContentType::Packed
 }
 
 /// Content type for the ledger source.
@@ -47,7 +42,7 @@ pub enum LedgerSourceContentType {
     /// In the case of `sha256` hash algorithm, this is a repeating sequence of 64 bytes (32 bytes
     /// for each the LogId and RecordId) without padding.
     #[default]
-    #[serde(rename = "application/vnd.bytecodealliance.registry.ledger.packed")]
+    #[serde(rename = "application/vnd.warg.ledger.packed")]
     Packed,
 }
 
@@ -55,7 +50,7 @@ impl LedgerSourceContentType {
     /// Returns the content type represented as a string.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Packed => "application/vnd.bytecodealliance.registry.ledger.packed",
+            Self::Packed => "application/vnd.warg.ledger.packed",
         }
     }
 }

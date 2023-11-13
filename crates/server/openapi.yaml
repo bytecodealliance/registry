@@ -1391,6 +1391,7 @@ components:
               - firstRegistryIndex
               - lastRegistryIndex
               - url
+              - contentType
             properties:
               firstRegistryIndex:
                 type: integer
@@ -1404,14 +1405,14 @@ components:
                 type: string
                 description: The HTTP GET URL to fetch the source.
                 example: http://registry.example.com/ledger/0
-              acceptRanges:
-                type: boolean
-                description: Flag indicating if the server accepts byte ranges with `Range` header.
               contentType:
                 type: string
                 description: The content type of source.
-                enum: ["application/vnd.bytecodealliance.registry.ledger.packed"]
-                example: "application/vnd.bytecodealliance.registry.ledger.packed"
+                enum: ["application/vnd.warg.ledger.packed"]
+                example: "application/vnd.warg.ledger.packed"
+              acceptRanges:
+                type: boolean
+                description: Flag indicating if the server accepts byte ranges with `Range` header.
     CheckpointNotFoundError:
         type: object
         additionalProperties: false
