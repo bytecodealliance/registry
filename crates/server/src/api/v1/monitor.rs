@@ -72,7 +72,7 @@ async fn verify_checkpoint(
         .await
     {
         Ok(checkpoint) => {
-            // if exact match, return Verified for both `checkpoint` and `signature`
+            // check log root and map root
             let checkpoint_verification = if checkpoint.as_ref().checkpoint.log_root
                 == body.as_ref().checkpoint.log_root
                 && checkpoint.as_ref().checkpoint.map_root == body.as_ref().checkpoint.map_root
@@ -82,6 +82,7 @@ async fn verify_checkpoint(
                 CheckpointVerificationState::Invalid
             };
 
+            // check for exact match on signature and key ID
             let signature_verification = if checkpoint.signature() == body.signature()
                 && checkpoint.key_id() == body.key_id()
             {
