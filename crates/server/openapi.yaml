@@ -563,7 +563,7 @@ paths:
       security: []
       tags:
         - monitor
-      description: Verify checkpoint from the registry.
+      description: Verify checkpoint from the registry. The server may return a `503` status code and instruct to retry the request.
       parameters:
         - name: Warg-Registry
           in: header
@@ -582,53 +582,31 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - "$ref": "#/components/schemas/CheckpointVerified"
-                  - "$ref": "#/components/schemas/CheckpointVerifiedButSignatureUnverified"
-                  - "$ref": "#/components/schemas/CheckpointRetry"
-                  - "$ref": "#/components/schemas/CheckpointUnverified"
-                discriminator:
-                  propertyName: state
-                  mapping:
-                    verified: "#/components/schemas/CheckpointVerified"
-                    verifiedButSignatureUnverified: "#/components/schemas/CheckpointVerifiedButSignatureUnverified"
-                    retry: "#/components/schemas/CheckpointRetry"
-                    unverified: "#/components/schemas/CheckpointUnverified"
-        "404":
+                $ref: "#/components/schemas/CheckpointVerificationResponse"
+        "503":
           description: A requested entity was not found.
           headers:
             Warg-Registry:
               $ref: "#/components/headers/WargRegistryHeader"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
           content:
             application/json:
               schema:
-                oneOf:
-                  - "$ref": "#/components/schemas/CheckpointNotFoundError"
-                  - "$ref": "#/components/schemas/CheckpointSignatureKeyIdNotFoundError"
-                discriminator:
-                  propertyName: type
-                  mapping:
-                    logLength: "#/components/schemas/CheckpointNotFoundError"
-                    keyId: "#/components/schemas/CheckpointSignatureKeyIdNotFoundError"
-        "422":
-          description: The checkpoint verification failed.
-          headers:
-            Warg-Registry:
-              $ref: "#/components/headers/WargRegistryHeader"
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - "$ref": "#/components/schemas/CheckpointInvalidLogLengthError"
-                  - "$ref": "#/components/schemas/CheckpointInvalidError"
-                discriminator:
-                  propertyName: type
-                  mapping:
-                    logLength: "#/components/schemas/CheckpointInvalidLogLengthError"
-                    keyId: "#/components/schemas/CheckpointInvalidError"
-                    signature: "#/components/schemas/CheckpointInvalidError"
-                    logRoot: "#/components/schemas/CheckpointInvalidError"
-                    mapRoot: "#/components/schemas/CheckpointInvalidError"
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - retryAfter
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  retryAfter:
+                    type: integer
+                    description: Instructs to retry after specified number of seconds.
+                    example: 60
         default:
           description: An error occurred when processing the request.
           headers:
@@ -678,6 +656,12 @@ components:
       schema:
         type: string
       example: registry.example.com
+    RetryAfter:
+      description: Instructs to retry the request after specified number of seconds.
+      required: false
+      schema:
+        type: integer
+      example: 60
   schemas:
     Error:
       type: object
@@ -1214,55 +1198,6 @@ components:
           type: integer
           description: Content size in bytes.
           example: 1024
-    CheckpointVerified:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-      properties:
-        state:
-          type: string
-          description: The verified checkpoint state.
-          enum: [verified]
-          example: verified
-    CheckpointVerifiedButSignatureUnverified:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-      properties:
-        state:
-          type: string
-          description: The state when the checkpoint log and map roots were verified but the signature was not verified.
-          enum: [verifiedButSignatureUnverified]
-          example: verifiedButSignatureUnverified
-    CheckpointRetry:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-        - waitSeconds
-      properties:
-        state:
-          type: string
-          description: The unable to verify the checkpoint and instructs to retry.
-          enum: [retry]
-          example: retry
-        waitSeconds:
-          type: integer
-          description: The number of seconds to wait until retrying checkpoint verification.
-          example: 60
-    CheckpointUnverified:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-      properties:
-        state:
-          type: string
-          description: The not able to verify checkpoint state.
-          enum: [unverified]
-          example: unverified
     PackageNotIncludedError:
       type: object
       additionalProperties: false
@@ -1413,83 +1348,32 @@ components:
               acceptRanges:
                 type: boolean
                 description: Flag indicating if the server accepts byte ranges with `Range` header.
-    CheckpointNotFoundError:
-        type: object
-        additionalProperties: false
-        required:
-          - status
-          - type
-          - id
-        properties:
-          status:
-            type: integer
-            description: The HTTP status code for the error.
-            example: 404
-          type:
-            type: string
-            description: The type of entity that was not found.
-            enum: [logLength]
-            example: logLength
-          id:
-            type: integer
-            description: The identifier of the entity that was not found.
-    CheckpointSignatureKeyIdNotFoundError:
-        type: object
-        additionalProperties: false
-        required:
-          - status
-          - type
-          - id
-        properties:
-          status:
-            type: integer
-            description: The HTTP status code for the error.
-            example: 404
-          type:
-            type: string
-            description: The type of entity that was not found.
-            enum: [keyId]
-            example: keyId
-          id:
-            "$ref": "#/components/schemas/AnyHash"
-            description: The identifier of the entity that was not found.
-    CheckpointInvalidError:
-        type: object
-        additionalProperties: false
-        required:
-          - status
-          - type
-          - id
-        properties:
-          status:
-            type: integer
-            description: The HTTP status code for the error.
-            example: 422
-          type:
-            type: string
-            description: The type of entity that was invalid.
-            enum: [keyId, signature, logRoot, mapRoot]
-            example: logRoot
-          id:
-            type: string
-            description: The identifier of the entity that was not found. 
-    CheckpointInvalidLogLengthError:
-        type: object
-        additionalProperties: false
-        required:
-          - status
-          - type
-          - id
-        properties:
-          status:
-            type: integer
-            description: The HTTP status code for the error.
-            example: 422
-          type:
-            type: string
-            description: The type of entity that was not found.
-            enum: [logLength]
-            example: logLength
-          id:
-            type: integer
-            description: The identifier of the entity that was not found.
+    CheckpointVerificationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - checkpoint
+        - signature
+      properties:
+        checkpoint:
+          type: string
+          description: |
+            The verification of the checkpoint's `logLength`, `logRoot` and `mapRoot`:
+
+              * `unverified`: checkpoint may be valid or invalid;
+              * `verified`: `logLength`, `logRoot` and `mapRoot` are verified;
+              * `notFound`: checkpoint with the specified `logLength` does not exist;
+              * `invalid`: checkpoint with the specified `logLength` does not match the correct `logRoot` and `mapRoot`;
+          enum: [unverified, verified, notFound, invalid]
+          example: verified
+        signature:
+          type: string
+          description: |
+            The verification of the checkpoint's `keyId` and `signature`:
+
+              * `unverified`: checkpoint's signature may be valid or invalid;
+              * `verified`: checkpoint's signature is verified;
+              * `unauthorized`: checkpoint's signature `keyId` does not have authorization to sign checkpoints; authorization may have been revoked or never granted;
+              * `invalid`: checkpoint's signature `keyId` is not known or the signature itself is invalid;
+          enum: [unverified, verified, unauthorized, invalid]
+          example: verified
