@@ -12,7 +12,12 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_api::v1::{
     content::{ContentError, ContentSourcesResponse},
-    fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
+    fetch::{
+        FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
+        FetchPackageNamesResponse,
+    },
+    ledger::{LedgerError, LedgerSourcesResponse},
+    monitor::{CheckpointVerificationResponse, MonitorError},
     package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
     paths,
     proof::{
@@ -46,6 +51,12 @@ pub enum ClientError {
     /// An error was returned from the proof API.
     #[error(transparent)]
     Proof(#[from] ProofError),
+    /// An error was returned from the monitor API.
+    #[error(transparent)]
+    Monitor(#[from] MonitorError),
+    /// An error was returned from the ledger API.
+    #[error(transparent)]
+    Ledger(#[from] LedgerError),
     /// An error occurred while communicating with the registry.
     #[error("failed to send request to registry server: {0}")]
     Communication(#[from] reqwest::Error),
@@ -173,6 +184,18 @@ impl Client {
         into_result::<_, FetchError>(reqwest::get(url).await?).await
     }
 
+    /// Verify checkpoint of the registry.
+    pub async fn verify_checkpoint(
+        &self,
+        request: SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<CheckpointVerificationResponse, ClientError> {
+        let url = self.url.join(paths::verify_checkpoint());
+        tracing::debug!("verifying checkpoint at `{url}`");
+
+        let response = self.client.post(url).json(&request).send().await?;
+        into_result::<_, MonitorError>(response).await
+    }
+
     /// Fetches package log entries from the registry.
     pub async fn fetch_logs(
         &self,
@@ -183,6 +206,27 @@ impl Client {
 
         let response = self.client.post(url).json(&request).send().await?;
         into_result::<_, FetchError>(response).await
+    }
+
+    /// Fetches package names from the registry.
+    pub async fn fetch_package_names(
+        &self,
+        request: FetchPackageNamesRequest<'_>,
+    ) -> Result<FetchPackageNamesResponse, ClientError> {
+        let url = self.url.join(paths::fetch_package_names());
+        tracing::debug!("fetching package names at `{url}`");
+
+        let response = self.client.post(url).json(&request).send().await?;
+        into_result::<_, FetchError>(response).await
+    }
+
+    /// Gets ledger sources from the registry.
+    pub async fn ledger_sources(&self) -> Result<LedgerSourcesResponse, ClientError> {
+        let url = self.url.join(paths::ledger_sources());
+        tracing::debug!("getting ledger sources at `{url}`");
+
+        let response = reqwest::get(url).await?;
+        into_result::<_, LedgerError>(response).await
     }
 
     /// Publish a new record to a package log.

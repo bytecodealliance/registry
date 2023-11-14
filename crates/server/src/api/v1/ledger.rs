@@ -1,11 +1,13 @@
-use super::{Error, Json, Path, RegistryHeader};
+use super::{Json, Path, RegistryHeader};
 use crate::datastore::DataStoreError;
 use crate::services::CoreService;
 use axum::http::StatusCode;
 use axum::{
     debug_handler, extract::State, response::IntoResponse, response::Response, routing::get, Router,
 };
-use warg_api::v1::ledger::{LedgerSource, LedgerSourceContentType, LedgerSourcesResponse};
+use warg_api::v1::ledger::{
+    LedgerError, LedgerSource, LedgerSourceContentType, LedgerSourcesResponse,
+};
 use warg_crypto::hash::HashAlgorithm;
 use warg_protocol::registry::RegistryIndex;
 
@@ -29,14 +31,14 @@ impl Config {
     }
 }
 
-struct LedgerApiError(Error);
+struct LedgerApiError(LedgerError);
 
 impl From<DataStoreError> for LedgerApiError {
     fn from(e: DataStoreError) -> Self {
         tracing::error!("unexpected data store error: {e}");
 
-        Self(Error {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+        Self(LedgerError::Message {
+            status: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             message: "an error occurred while processing the request".into(),
         })
     }
@@ -44,7 +46,7 @@ impl From<DataStoreError> for LedgerApiError {
 
 impl IntoResponse for LedgerApiError {
     fn into_response(self) -> axum::response::Response {
-        self.0.into_response()
+        (StatusCode::from_u16(self.0.status()).unwrap(), Json(self.0)).into_response()
     }
 }
 
