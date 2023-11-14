@@ -1340,9 +1340,9 @@ components:
           description: |
             The verification of the checkpoint's `keyId` and `signature`:
 
-              * `unverified`: checkpoint's signature may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
-              * `verified`: checkpoint's signature is verified;
-              * `invalid`: `keyId` is not known or does not have authorization (could have been revoke or never granted) to sign checkpoints or the signature itself is invalid;
+              * `unverified`: checkpoint's `signature` may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
+              * `verified`: checkpoint's `signature` is verified;
+              * `invalid`: `keyId` is not known or does not have authorization (could have been revoke or never granted) to sign checkpoints or the `signature` itself is invalid;
           enum: [unverified, verified, invalid]
           example: verified
         retryAfter:
