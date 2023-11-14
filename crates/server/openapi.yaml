@@ -1344,7 +1344,7 @@ components:
               * `verified`: checkpoint's `signature` is verified;
               * `invalid`: `keyId` is not known or does not have authorization (could have been revoke or never granted) to sign checkpoints or the `signature` itself is invalid;
           enum: [unverified, verified, invalid]
-          example: verified
+          example: unverified
         retryAfter:
           type: integer
           description: If either `checkpoint` or `signature` is `unverified` status, then the server may instruct the client to retry the request after the specified number of seconds.
