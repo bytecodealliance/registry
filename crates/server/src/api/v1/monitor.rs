@@ -1,11 +1,10 @@
 use super::{Json, RegistryHeader};
 use crate::datastore::DataStoreError;
 use crate::services::CoreService;
-use axum::http::{header, StatusCode};
+use axum::http::StatusCode;
 use axum::{debug_handler, extract::State, response::IntoResponse, routing::post, Router};
 use warg_api::v1::monitor::{
-    CheckpointSignatureVerificationState, CheckpointVerificationResponse,
-    CheckpointVerificationState, MonitorError,
+    CheckpointVerificationResponse, CheckpointVerificationState, MonitorError,
 };
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, TimestampedCheckpoint};
@@ -33,6 +32,7 @@ struct MonitorApiError(MonitorError);
 impl From<DataStoreError> for MonitorApiError {
     fn from(e: DataStoreError) -> Self {
         tracing::error!("unexpected data store error: {e}");
+
         Self(MonitorError::Message {
             status: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             message: "an error occurred while processing the request".into(),
@@ -42,19 +42,7 @@ impl From<DataStoreError> for MonitorApiError {
 
 impl IntoResponse for MonitorApiError {
     fn into_response(self) -> axum::response::Response {
-        match self.0 {
-            MonitorError::RetryAfter(seconds) => {
-                let mut headers = header::HeaderMap::new();
-                headers.insert(header::RETRY_AFTER, seconds.into());
-                (
-                    StatusCode::from_u16(self.0.status()).unwrap(),
-                    headers,
-                    Json(self.0),
-                )
-                    .into_response()
-            }
-            _ => (StatusCode::from_u16(self.0.status()).unwrap(), Json(self.0)).into_response(),
-        }
+        (StatusCode::from_u16(self.0.status()).unwrap(), Json(self.0)).into_response()
     }
 }
 
@@ -64,7 +52,11 @@ async fn verify_checkpoint(
     RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<SerdeEnvelope<TimestampedCheckpoint>>,
 ) -> Result<Json<CheckpointVerificationResponse>, MonitorApiError> {
-    // look up checkpoint
+    // check checkpoint:
+    // - if `log_length` not found, `checkpoint` is `Invalid`;
+    // - if `log_root` or `map_root` is incorrect, `checkpoint` is `Invalid`;
+    // - if `key_id` and `signature` does not match previously stored value,
+    //   `signature` is `Unverified` and will check against the operator log;
     let (checkpoint_verification, mut signature_verification) = match config
         .core_service
         .store()
@@ -86,23 +78,26 @@ async fn verify_checkpoint(
             let signature_verification = if checkpoint.signature() == body.signature()
                 && checkpoint.key_id() == body.key_id()
             {
-                CheckpointSignatureVerificationState::Verified
+                CheckpointVerificationState::Verified
             } else {
                 // set to Unverified and check against operator log keys below
-                CheckpointSignatureVerificationState::Unverified
+                CheckpointVerificationState::Unverified
             };
 
             (checkpoint_verification, signature_verification)
         }
         Err(DataStoreError::CheckpointNotFound(_)) => (
-            CheckpointVerificationState::NotFound,
-            CheckpointSignatureVerificationState::Unverified,
+            CheckpointVerificationState::Invalid,
+            CheckpointVerificationState::Unverified,
         ),
         Err(error) => return Err(MonitorApiError::from(error)),
     };
 
-    // if Unverified, check signature against keys in operator log
-    if signature_verification == CheckpointSignatureVerificationState::Unverified {
+    // if `Unverified`, check signature against keys in operator log:
+    //
+    // - if `key_id` is not known or it does not have permission to sign checkpoints or
+    //   the `signature` is invalid, `signature` is `Invalid`;
+    if signature_verification == CheckpointVerificationState::Unverified {
         match config
             .core_service
             .store()
@@ -110,14 +105,12 @@ async fn verify_checkpoint(
             .await
         {
             Ok(_) => {
-                signature_verification = CheckpointSignatureVerificationState::Verified;
+                signature_verification = CheckpointVerificationState::Verified;
             }
             Err(DataStoreError::UnknownKey(_))
-            | Err(DataStoreError::SignatureVerificationFailed(_)) => {
-                signature_verification = CheckpointSignatureVerificationState::Invalid;
-            }
-            Err(DataStoreError::KeyUnauthorized(_)) => {
-                signature_verification = CheckpointSignatureVerificationState::Unauthorized;
+            | Err(DataStoreError::SignatureVerificationFailed(_))
+            | Err(DataStoreError::KeyUnauthorized(_)) => {
+                signature_verification = CheckpointVerificationState::Invalid;
             }
             Err(error) => return Err(MonitorApiError::from(error)),
         };
@@ -126,5 +119,6 @@ async fn verify_checkpoint(
     Ok(Json(CheckpointVerificationResponse {
         checkpoint: checkpoint_verification,
         signature: signature_verification,
+        retry_after: None,
     }))
 }

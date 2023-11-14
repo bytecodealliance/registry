@@ -563,7 +563,7 @@ paths:
       security: []
       tags:
         - monitor
-      description: Verify checkpoint from the registry. The server may return a `503` status code and instruct to retry the request.
+      description: Verify checkpoint from the registry. The client must interpret the response body to determine the verification status.
       parameters:
         - name: Warg-Registry
           in: header
@@ -575,7 +575,7 @@ paths:
               $ref: "#/components/schemas/SignedCheckpoint"
       responses:
         "200":
-          description: The checkpoint was successfully verified.
+          description: The checkpoint verification request was processed. The client must interpret the response body to determine the verification status. 
           headers:
             Warg-Registry:
               $ref: "#/components/headers/WargRegistryHeader"
@@ -583,30 +583,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckpointVerificationResponse"
-        "503":
-          description: A requested entity was not found.
-          headers:
-            Warg-Registry:
-              $ref: "#/components/headers/WargRegistryHeader"
-            Retry-After:
-              $ref: "#/components/headers/RetryAfter"
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required:
-                  - status
-                  - retryAfter
-                properties:
-                  status:
-                    type: integer
-                    description: The HTTP status code for the error.
-                    example: 404
-                  retryAfter:
-                    type: integer
-                    description: Instructs to retry after specified number of seconds.
-                    example: 60
         default:
           description: An error occurred when processing the request.
           headers:
@@ -656,12 +632,6 @@ components:
       schema:
         type: string
       example: registry.example.com
-    RetryAfter:
-      description: Instructs to retry the request after specified number of seconds.
-      required: false
-      schema:
-        type: integer
-      example: 60
   schemas:
     Error:
       type: object
@@ -1360,20 +1330,22 @@ components:
           description: |
             The verification of the checkpoint's `logLength`, `logRoot` and `mapRoot`:
 
-              * `unverified`: checkpoint may be valid or invalid;
+              * `unverified`: checkpoint may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
               * `verified`: `logLength`, `logRoot` and `mapRoot` are verified;
-              * `notFound`: checkpoint with the specified `logLength` does not exist;
-              * `invalid`: checkpoint with the specified `logLength` does not match the correct `logRoot` and `mapRoot`;
-          enum: [unverified, verified, notFound, invalid]
+              * `invalid`: checkpoint with the specified `logLength` was either not produced or does not match the correct `logRoot` and `mapRoot`;
+          enum: [unverified, verified, invalid]
           example: verified
         signature:
           type: string
           description: |
             The verification of the checkpoint's `keyId` and `signature`:
 
-              * `unverified`: checkpoint's signature may be valid or invalid;
+              * `unverified`: checkpoint's signature may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
               * `verified`: checkpoint's signature is verified;
-              * `unauthorized`: checkpoint's signature `keyId` does not have authorization to sign checkpoints; authorization may have been revoked or never granted;
-              * `invalid`: checkpoint's signature `keyId` is not known or the signature itself is invalid;
-          enum: [unverified, verified, unauthorized, invalid]
+              * `invalid`: `keyId` is not known or does not have authorization (could have been revoke or never granted) to sign checkpoints or the signature itself is invalid;
+          enum: [unverified, verified, invalid]
           example: verified
+        retryAfter:
+          type: integer
+          description: If either `checkpoint` or `signature` is `unverified` status, then the server may instruct the client to retry the request after the specified number of seconds.
+          example: 60 
