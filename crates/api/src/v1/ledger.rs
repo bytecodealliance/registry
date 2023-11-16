@@ -29,7 +29,7 @@ pub struct LedgerSource {
     /// Content type for the ledger source.
     pub content_type: LedgerSourceContentType,
     /// Optional, server accepts for HTTP Range header.
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub accept_ranges: bool,
 }
 
@@ -38,7 +38,7 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// Content type for the ledger source.
-#[derive(Default, PartialEq, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Serialize, Deserialize, Debug)]
 pub enum LedgerSourceContentType {
     /// The content type is binary representation of the LogId and RecordId hashes without padding.
     /// In the case of `sha256` hash algorithm, this is a repeating sequence of 64 bytes (32 bytes

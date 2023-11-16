@@ -114,3 +114,9 @@ async fn it_formats_custom_content_urls() -> Result<()> {
     .await?;
     test_custom_content_url(&config).await
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_get_ledger() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
+    test_get_ledger(&config).await
+}

@@ -11,6 +11,7 @@ use url::Url;
 use warg_api::v1::{
     content::{ContentSource, ContentSourcesResponse},
     fetch::{FetchPackageNamesRequest, FetchPackageNamesResponse},
+    ledger::{LedgerSource, LedgerSourceContentType, LedgerSourcesResponse},
     package::PublishRecordRequest,
     paths,
 };
@@ -19,7 +20,11 @@ use warg_client::{
     storage::{PublishEntry, PublishInfo, RegistryStorage},
     ClientError, Config,
 };
-use warg_crypto::{hash::Sha256, signing::PrivateKey, Encode, Signable};
+use warg_crypto::{
+    hash::{HashAlgorithm, Sha256},
+    signing::PrivateKey,
+    Encode, Signable,
+};
 use warg_protocol::{
     package::{PackageEntry, PackageRecord, PACKAGE_RECORD_VERSION},
     registry::{LogId, PackageId},
@@ -500,6 +505,86 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
         lookup_id_1,
         Some(&Some(id_1.clone())),
         "fetch of package name {id_1} mismatched to {lookup_id_1:?}"
+    );
+
+    Ok(())
+}
+
+async fn test_get_ledger(config: &Config) -> Result<()> {
+    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+
+    let ts_checkpoint = client.latest_checkpoint().await?;
+    let checkpoint = &ts_checkpoint.as_ref().checkpoint;
+
+    let url = Url::parse(config.default_url.as_ref().unwrap())?
+        .join(paths::ledger_sources())
+        .unwrap();
+
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await?;
+
+    let status = response.status();
+    let ledger_sources = response.json::<LedgerSourcesResponse>().await?;
+
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "unexpected response from server: {status}",
+    );
+
+    let hash_algorithm = ledger_sources.hash_algorithm;
+    assert_eq!(
+        hash_algorithm,
+        HashAlgorithm::Sha256,
+        "unexpected hash_algorithm: {hash_algorithm}",
+    );
+
+    let sources_len = ledger_sources.sources.len();
+    assert_eq!(sources_len, 1, "unexpected sources length: {sources_len}",);
+
+    let LedgerSource {
+        first_registry_index,
+        last_registry_index,
+        url,
+        content_type,
+        ..
+    } = ledger_sources.sources.get(0).unwrap();
+
+    assert_eq!(
+        content_type,
+        &LedgerSourceContentType::Packed,
+        "unexpected ledger source content type",
+    );
+    assert_eq!(
+        *first_registry_index, 0,
+        "unexpected ledger source first registry index: {first_registry_index}",
+    );
+    assert_eq!(
+        *last_registry_index,
+        checkpoint.log_length - 1,
+        "unexpected ledger source last registry index: {last_registry_index}",
+    );
+
+    let url = Url::parse(config.default_url.as_ref().unwrap())?
+        .join(url)
+        .unwrap();
+
+    // get ledger source
+    let response = client.get(url).send().await?;
+
+    let status = response.status();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "unexpected response from server: {status}",
+    );
+
+    let bytes = response.bytes().await?;
+    let bytes_len = bytes.len();
+    assert_eq!(
+        bytes_len,
+        checkpoint.log_length * 64,
+        "unexpected response body length for ledger source from server: {bytes_len}",
     );
 
     Ok(())
