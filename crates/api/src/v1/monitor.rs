@@ -9,9 +9,9 @@ use thiserror::Error;
 #[serde(rename_all = "camelCase")]
 pub struct CheckpointVerificationResponse {
     /// The checkpoint verification state.
-    pub checkpoint: CheckpointVerificationState,
+    pub checkpoint: VerificationState,
     /// The checkpoint signature verification state.
-    pub signature: CheckpointVerificationState,
+    pub signature: VerificationState,
     /// Optional, retry after specified number of seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after: Option<u16>,
@@ -20,7 +20,7 @@ pub struct CheckpointVerificationResponse {
 /// Represents checkpoint verification state.
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum CheckpointVerificationState {
+pub enum VerificationState {
     /// The checkpoint is unverified and could be valid or invalid.
     #[serde(rename_all = "camelCase")]
     Unverified,

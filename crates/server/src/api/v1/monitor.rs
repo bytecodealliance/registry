@@ -3,9 +3,7 @@ use crate::datastore::DataStoreError;
 use crate::services::CoreService;
 use axum::http::StatusCode;
 use axum::{debug_handler, extract::State, response::IntoResponse, routing::post, Router};
-use warg_api::v1::monitor::{
-    CheckpointVerificationResponse, CheckpointVerificationState, MonitorError,
-};
+use warg_api::v1::monitor::{CheckpointVerificationResponse, MonitorError, VerificationState};
 use warg_crypto::hash::Sha256;
 use warg_protocol::registry::{LogId, TimestampedCheckpoint};
 use warg_protocol::SerdeEnvelope;
@@ -46,79 +44,103 @@ impl IntoResponse for MonitorApiError {
     }
 }
 
+/// Verifies a checkpoint and its signature.
+///
+/// Note: Other implementations may choose to perform validation differently
+/// and to respond with `Unverified` in cases where the required information
+/// is not available or would be too expensive to compute.
+///
+/// Checkpoint verification is `Verified` when
+/// a checkpoint with the provided `log_length` is found in the store
+/// and both the log and map roots match the stored checkpoint.
+///
+/// Checkpoint verification is `Invalid` otherwise.
+///
+/// Signature verification is `Verified` when either
+/// A) It matches the signature on the stored checkpoint, or
+/// B) It is a valid and authorized signature by a key in the operator log.
+///
+/// Signature verification is `Invalid` otherwise.
 #[debug_handler]
 async fn verify_checkpoint(
     State(config): State<Config>,
     RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<SerdeEnvelope<TimestampedCheckpoint>>,
 ) -> Result<Json<CheckpointVerificationResponse>, MonitorApiError> {
-    // check checkpoint:
-    // - if `log_length` not found, `checkpoint` is `Invalid`;
-    // - if `log_root` or `map_root` is incorrect, `checkpoint` is `Invalid`;
-    // - if `key_id` and `signature` does not match previously stored value,
-    //   `signature` is `Unverified` and will check against the operator log;
-    let (checkpoint_verification, mut signature_verification) = match config
-        .core_service
-        .store()
-        .get_checkpoint(body.as_ref().checkpoint.log_length)
-        .await
-    {
-        Ok(checkpoint) => {
-            // check log root and map root
-            let checkpoint_verification = if checkpoint.as_ref().checkpoint.log_root
-                == body.as_ref().checkpoint.log_root
-                && checkpoint.as_ref().checkpoint.map_root == body.as_ref().checkpoint.map_root
-            {
-                CheckpointVerificationState::Verified
-            } else {
-                CheckpointVerificationState::Invalid
-            };
+    // Do a first pass checking the provided checkpoint against the data store
+    let (checkpoint_verification, signature_verification) =
+        try_verify_exact_match(&config.core_service, &body).await;
 
-            // check for exact match on signature and key ID
-            let signature_verification = if checkpoint.signature() == body.signature()
-                && checkpoint.key_id() == body.key_id()
-            {
-                CheckpointVerificationState::Verified
-            } else {
-                // set to Unverified and check against operator log keys below
-                CheckpointVerificationState::Unverified
-            };
-
-            (checkpoint_verification, signature_verification)
-        }
-        Err(DataStoreError::CheckpointNotFound(_)) => (
-            CheckpointVerificationState::Invalid,
-            CheckpointVerificationState::Unverified,
-        ),
-        Err(error) => return Err(MonitorApiError::from(error)),
-    };
-
-    // if `Unverified`, check signature against keys in operator log:
-    //
-    // - if `key_id` is not known or it does not have permission to sign checkpoints or
-    //   the `signature` is invalid, `signature` is `Invalid`;
-    if signature_verification == CheckpointVerificationState::Unverified {
+    // If the signature is `Unverified`, check signature against keys in operator log:
+    let signature_verification = if signature_verification == VerificationState::Unverified {
         match config
             .core_service
             .store()
             .verify_timestamped_checkpoint_signature(&LogId::operator_log::<Sha256>(), &body)
             .await
         {
-            Ok(_) => {
-                signature_verification = CheckpointVerificationState::Verified;
-            }
-            Err(DataStoreError::UnknownKey(_))
-            | Err(DataStoreError::SignatureVerificationFailed(_))
-            | Err(DataStoreError::KeyUnauthorized(_)) => {
-                signature_verification = CheckpointVerificationState::Invalid;
-            }
-            Err(error) => return Err(MonitorApiError::from(error)),
-        };
-    }
+            Ok(_) => VerificationState::Verified,
+            Err(error) => match error {
+                DataStoreError::UnknownKey(_)
+                | DataStoreError::SignatureVerificationFailed(_)
+                | DataStoreError::KeyUnauthorized(_) => VerificationState::Invalid,
+                _ => return Err(MonitorApiError::from(error)),
+            },
+        }
+    } else {
+        signature_verification
+    };
 
     Ok(Json(CheckpointVerificationResponse {
         checkpoint: checkpoint_verification,
         signature: signature_verification,
         retry_after: None,
     }))
+}
+
+/// Attempt to verify checkpoint by looking for an exact match in the store.
+/// Returns (checkpoint: Invalid, signature: Unverified) if one isn't found.
+async fn try_verify_exact_match(
+    core_service: &CoreService,
+    checkpoint_envelope: &SerdeEnvelope<TimestampedCheckpoint>,
+) -> (VerificationState, VerificationState) {
+    let checkpoint = &checkpoint_envelope.as_ref().checkpoint;
+
+    // Look for a stored checkpoint with the same log_length as was specified
+    let found = core_service
+        .store()
+        .get_checkpoint(checkpoint.log_length)
+        .await;
+
+    if let Ok(found_checkpoint_envelope) = found {
+        let found_checkpoint = &found_checkpoint_envelope.as_ref().checkpoint;
+        // Check log root and map root
+        let log_matches = found_checkpoint.log_root == checkpoint.log_root;
+        let map_matches = found_checkpoint.map_root == checkpoint.map_root;
+
+        // A checkpoint is verified if the exact checkpoint was recorded in the store.
+        // Otherwise it is considered invalid by the reference implementation.
+        let checkpoint_verification = if log_matches && map_matches {
+            VerificationState::Verified
+        } else {
+            VerificationState::Invalid
+        };
+
+        // Check for exact match on signature and key ID
+        let signature_matches =
+            found_checkpoint_envelope.signature() == checkpoint_envelope.signature();
+        let key_id_matches = found_checkpoint_envelope.key_id() == checkpoint_envelope.key_id();
+
+        // A checkpoint is verified if the signature and key_id match the found checkpoint.
+        // Otherwise it is consdered unverified by this function, but can be checked against known keys afterwards.
+        let signature_verification = if signature_matches && key_id_matches {
+            VerificationState::Verified
+        } else {
+            VerificationState::Unverified
+        };
+
+        (checkpoint_verification, signature_verification)
+    } else {
+        (VerificationState::Invalid, VerificationState::Unverified)
+    }
 }
