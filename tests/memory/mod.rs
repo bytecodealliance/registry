@@ -24,6 +24,8 @@ async fn it_publishes_a_component() -> Result<()> {
         "expected two log entries (initial + component)"
     );
 
+    test_fetch_package_names(&config).await?;
+
     Ok(())
 }
 
@@ -90,6 +92,12 @@ async fn it_rejects_unknown_signing_key() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_rejects_package_name_conflict() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
+    test_publishing_name_conflict(&config).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_rejects_invalid_signature() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_invalid_signature(&config).await
@@ -105,4 +113,10 @@ async fn it_formats_custom_content_urls() -> Result<()> {
     )
     .await?;
     test_custom_content_url(&config).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_get_ledger() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
+    test_get_ledger(&config).await
 }

@@ -30,13 +30,22 @@ impl crate::Record for OperatorRecord {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum Permission {
+    /// Permission to sign checkpoints.
     Commit,
+    /// Permission to define namespace in operator log.
+    DefineNamespace,
+    /// Permission to import namespace from another registry and add to the operator log.
+    ImportNamespace,
 }
 
 impl Permission {
     /// Gets an array of all permissions.
-    pub const fn all() -> [Permission; 1] {
-        [Permission::Commit]
+    pub const fn all() -> [Permission; 3] {
+        [
+            Permission::Commit,
+            Permission::DefineNamespace,
+            Permission::ImportNamespace,
+        ]
     }
 }
 
@@ -44,6 +53,8 @@ impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Permission::Commit => write!(f, "commit"),
+            Permission::DefineNamespace => write!(f, "defineNamespace"),
+            Permission::ImportNamespace => write!(f, "importNamespace"),
         }
     }
 }
@@ -54,6 +65,8 @@ impl FromStr for Permission {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "commit" => Ok(Permission::Commit),
+            "defineNamespace" => Ok(Permission::DefineNamespace),
+            "importNamespace" => Ok(Permission::ImportNamespace),
             _ => Err(()),
         }
     }
@@ -82,6 +95,10 @@ pub enum OperatorEntry {
         key_id: signing::KeyID,
         permissions: Vec<Permission>,
     },
+    /// The registry defines a namespace to be used in its own package logs.
+    DefineNamespace { namespace: String },
+    /// The registry defines a namespace as imported from another registry.
+    ImportNamespace { namespace: String, registry: String },
 }
 
 impl OperatorEntry {
@@ -90,6 +107,8 @@ impl OperatorEntry {
         match self {
             Self::Init { .. } => None,
             Self::GrantFlat { .. } | Self::RevokeFlat { .. } => Some(Permission::Commit),
+            Self::DefineNamespace { .. } => Some(Permission::DefineNamespace),
+            Self::ImportNamespace { .. } => Some(Permission::ImportNamespace),
         }
     }
 }

@@ -4,6 +4,7 @@ use self::models::{
 };
 use super::{DataStore, DataStoreError, Record};
 use anyhow::{anyhow, Result};
+use diesel::sql_types::{Nullable, Text};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
     pooled_connection::{deadpool::Pool, AsyncDieselConnectionManager},
@@ -20,7 +21,7 @@ use std::{
     collections::{HashMap, HashSet},
     pin::Pin,
 };
-use warg_crypto::{hash::AnyHash, Decode, Signable};
+use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
@@ -33,6 +34,8 @@ use warg_protocol::{
 
 mod models;
 mod schema;
+
+sql_function!(fn lower(x: Nullable<Text>) -> Nullable<Text>);
 
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
@@ -449,6 +452,38 @@ impl DataStore for PostgresDataStore {
         ))
     }
 
+    async fn get_log_leafs_starting_with_registry_index(
+        &self,
+        starting_index: RegistryIndex,
+        limit: usize,
+    ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        Ok(schema::records::table
+            .inner_join(schema::logs::table)
+            .select((
+                schema::records::registry_log_index,
+                schema::logs::log_id,
+                schema::records::record_id,
+            ))
+            .filter(schema::records::registry_log_index.ge(starting_index as i64))
+            .order(schema::records::registry_log_index.asc())
+            .limit(limit as i64)
+            .load::<(Option<i64>, ParsedText<AnyHash>, ParsedText<AnyHash>)>(&mut conn)
+            .await?
+            .into_iter()
+            .map(|(registry_index, log_id, record_id)| {
+                (
+                    registry_index.unwrap() as RegistryIndex,
+                    LogLeaf {
+                        log_id: log_id.0.into(),
+                        record_id: record_id.0.into(),
+                    },
+                )
+            })
+            .collect::<Vec<(RegistryIndex, LogLeaf)>>())
+    }
+
     // Note: order of the entries is expected to match to the corresponding returned log leafs.
     async fn get_log_leafs_with_registry_index(
         &self,
@@ -489,6 +524,39 @@ impl DataStore for PostgresDataStore {
                     .ok_or(DataStoreError::LogLeafNotFound(*registry_index))
             })
             .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    async fn get_package_names(
+        &self,
+        log_ids: &[LogId],
+    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let map = schema::logs::table
+            .select((schema::logs::log_id, schema::logs::name))
+            .filter(
+                schema::logs::log_id
+                    .eq_any(log_ids.iter().map(TextRef).collect::<Vec<TextRef<LogId>>>()),
+            )
+            .load::<(ParsedText<AnyHash>, Option<String>)>(&mut conn)
+            .await?
+            .into_iter()
+            .map(|(log_id, opt_package_name)| {
+                (
+                    log_id.0.into(),
+                    opt_package_name.map(|name| PackageId::new(name).unwrap()),
+                )
+            })
+            .collect::<HashMap<LogId, Option<PackageId>>>();
+
+        // check if any log IDs were not found
+        for log_id in log_ids {
+            if !map.contains_key(log_id) {
+                return Err(DataStoreError::LogNotFound(log_id.clone()));
+            }
+        }
+
+        Ok(map)
     }
 
     async fn store_operator_record(
@@ -780,6 +848,33 @@ impl DataStore for PostgresDataStore {
         ))
     }
 
+    async fn get_checkpoint(
+        &self,
+        log_length: RegistryLen,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let checkpoint = schema::checkpoints::table
+            .filter(schema::checkpoints::log_length.eq(log_length as i64))
+            .first::<CheckpointData>(&mut conn)
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::CheckpointNotFound(log_length))?;
+
+        Ok(SerdeEnvelope::from_parts_unchecked(
+            TimestampedCheckpoint {
+                checkpoint: Checkpoint {
+                    log_root: checkpoint.log_root.0,
+                    log_length,
+                    map_root: checkpoint.map_root.0,
+                },
+                timestamp: checkpoint.timestamp.try_into().unwrap(),
+            },
+            checkpoint.key_id.0,
+            checkpoint.signature.0,
+        ))
+    }
+
     async fn get_operator_records(
         &self,
         log_id: &LogId,
@@ -862,7 +957,100 @@ impl DataStore for PostgresDataStore {
         };
 
         package::PackageRecord::verify(key, record.content_bytes(), record.signature())
-            .map_err(|_| DataStoreError::SignatureVerificationFailed)
+            .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
+    }
+
+    async fn verify_can_publish_package(
+        &self,
+        operator_log_id: &LogId,
+        package_id: &PackageId,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let validator = schema::logs::table
+            .select(schema::logs::validator)
+            .filter(schema::logs::log_id.eq(TextRef(operator_log_id)))
+            .first::<Json<operator::LogState>>(&mut conn)
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
+
+        // verify namespace is defined and not imported
+        match validator.namespace_state(package_id.namespace()) {
+            Ok(Some(state)) => match state {
+                operator::NamespaceState::Defined => {}
+                operator::NamespaceState::Imported { .. } => {
+                    return Err(DataStoreError::PackageNamespaceImported(
+                        package_id.namespace().to_string(),
+                    ))
+                }
+            },
+            Ok(None) => {
+                return Err(DataStoreError::PackageNamespaceNotDefined(
+                    package_id.namespace().to_string(),
+                ))
+            }
+            Err(existing_namespace) => {
+                return Err(DataStoreError::PackageNamespaceConflict {
+                    namespace: package_id.namespace().to_string(),
+                    existing: existing_namespace.to_string(),
+                })
+            }
+        }
+
+        // verify package name is unique in a case insensitive way
+        match schema::logs::table
+            .select(schema::logs::name)
+            .filter(
+                lower(schema::logs::name).eq(TextRef(&package_id.as_ref().to_ascii_lowercase())),
+            )
+            .first::<Option<String>>(&mut conn)
+            .await
+            .optional()?
+        {
+            Some(Some(name)) if name != package_id.as_ref() => {
+                Err(DataStoreError::PackageNameConflict {
+                    name: package_id.clone(),
+                    existing: PackageId::new(name).unwrap(),
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+
+    async fn verify_timestamped_checkpoint_signature(
+        &self,
+        operator_log_id: &LogId,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().await?;
+
+        let validator = schema::logs::table
+            .select(schema::logs::validator)
+            .filter(schema::logs::log_id.eq(TextRef(operator_log_id)))
+            .first::<Json<operator::LogState>>(&mut conn)
+            .await
+            .optional()?
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
+
+        TimestampedCheckpoint::verify(
+            validator
+                .public_key(ts_checkpoint.key_id())
+                .ok_or(DataStoreError::UnknownKey(ts_checkpoint.key_id().clone()))?,
+            &ts_checkpoint.as_ref().encode(),
+            ts_checkpoint.signature(),
+        )
+        .or(Err(DataStoreError::SignatureVerificationFailed(
+            ts_checkpoint.signature().clone(),
+        )))?;
+
+        if !validator.key_has_permission_to_sign_checkpoints(ts_checkpoint.key_id()) {
+            return Err(DataStoreError::KeyUnauthorized(
+                ts_checkpoint.key_id().clone(),
+            ));
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "debug")]

@@ -1,7 +1,13 @@
 use futures::Stream;
-use std::{collections::HashSet, pin::Pin};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+};
 use thiserror::Error;
-use warg_crypto::{hash::AnyHash, signing::KeyID};
+use warg_crypto::{
+    hash::AnyHash,
+    signing::{KeyID, Signature},
+};
 use warg_protocol::{
     operator, package,
     registry::{
@@ -50,11 +56,31 @@ pub enum DataStoreError {
     #[error("the package record was invalid: {0}")]
     PackageValidationFailed(#[from] package::ValidationError),
 
+    #[error("the package `{name}` conflicts with package `{existing}`; package names must be unique in a case insensitive way")]
+    PackageNameConflict {
+        name: PackageId,
+        existing: PackageId,
+    },
+
+    #[error("the package namespace `{namespace}` conflicts with existing namespace `{existing}`; package namespaces must be unique in a case insensitive way")]
+    PackageNamespaceConflict { namespace: String, existing: String },
+
+    #[error("the package namespace `{0}` is not defined")]
+    PackageNamespaceNotDefined(String),
+
+    #[error(
+        "the package namespace `{0}` is imported from another registry and cannot accept publishes"
+    )]
+    PackageNamespaceImported(String),
+
+    #[error("key id `{0}` does not have permission")]
+    KeyUnauthorized(KeyID),
+
     #[error("unknown key id `{0}`")]
     UnknownKey(KeyID),
 
-    #[error("record signature verification failed")]
-    SignatureVerificationFailed,
+    #[error("signature `{0}` verification failed")]
+    SignatureVerificationFailed(Signature),
 
     #[error("the record was rejected: {0}")]
     Rejection(String),
@@ -226,6 +252,25 @@ pub trait DataStore: Send + Sync {
         &self,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
 
+    /// Get checkpoint by log length.
+    async fn get_checkpoint(
+        &self,
+        log_length: RegistryLen,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError>;
+
+    /// Gets package names from log IDs. If package name is unavailable, a corresponding `None` is returned.
+    async fn get_package_names(
+        &self,
+        log_ids: &[LogId],
+    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError>;
+
+    /// Gets a batch of log leafs starting with a registry log index.  
+    async fn get_log_leafs_starting_with_registry_index(
+        &self,
+        starting_index: RegistryIndex,
+        limit: usize,
+    ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError>;
+
     /// Gets the operator records for the given registry log length.
     async fn get_operator_records(
         &self,
@@ -268,6 +313,22 @@ pub trait DataStore: Send + Sync {
         &self,
         log_id: &LogId,
         record: &ProtoEnvelope<package::PackageRecord>,
+    ) -> Result<(), DataStoreError>;
+
+    /// Verifies the package name is unique in a case insensitive way and that the
+    /// package namespace is defined for this registry and is not imported
+    /// from another registry.
+    async fn verify_can_publish_package(
+        &self,
+        operator_log_id: &LogId,
+        package_id: &PackageId,
+    ) -> Result<(), DataStoreError>;
+
+    /// Verifies the TimestampedCheckpoint signature.
+    async fn verify_timestamped_checkpoint_signature(
+        &self,
+        operator_log_id: &LogId,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<(), DataStoreError>;
 
     // Returns a list of package names, for debugging only.

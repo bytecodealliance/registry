@@ -2,12 +2,12 @@ use super::{DataStore, DataStoreError};
 use futures::Stream;
 use indexmap::IndexMap;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     pin::Pin,
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use warg_crypto::{hash::AnyHash, Signable};
+use warg_crypto::{hash::AnyHash, Encode, Signable};
 use warg_protocol::{
     operator,
     package::{self, PackageEntry},
@@ -77,7 +77,8 @@ enum RecordStatus {
 struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
-    package_ids: BTreeSet<PackageId>,
+    package_ids: HashMap<LogId, Option<PackageId>>,
+    package_ids_lowercase: HashMap<String, PackageId>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
@@ -121,6 +122,30 @@ impl DataStore for MemoryDataStore {
         Ok(Box::pin(futures::stream::empty()))
     }
 
+    async fn get_log_leafs_starting_with_registry_index(
+        &self,
+        starting_index: RegistryIndex,
+        limit: usize,
+    ) -> Result<Vec<(RegistryIndex, LogLeaf)>, DataStoreError> {
+        let state = self.0.read().await;
+
+        let limit = if limit > state.log_leafs.len() - starting_index {
+            state.log_leafs.len() - starting_index
+        } else {
+            limit
+        };
+
+        let mut leafs = Vec::with_capacity(limit);
+        for entry in starting_index..starting_index + limit {
+            match state.log_leafs.get(&entry) {
+                Some(log_leaf) => leafs.push((entry, log_leaf.clone())),
+                None => break,
+            }
+        }
+
+        Ok(leafs)
+    }
+
     async fn get_log_leafs_with_registry_index(
         &self,
         entries: &[RegistryIndex],
@@ -136,6 +161,24 @@ impl DataStore for MemoryDataStore {
         }
 
         Ok(leafs)
+    }
+
+    async fn get_package_names(
+        &self,
+        log_ids: &[LogId],
+    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
+        let state = self.0.read().await;
+
+        log_ids
+            .iter()
+            .map(|log_id| {
+                if let Some(opt_package_name) = state.package_ids.get(log_id) {
+                    Ok((log_id.clone(), opt_package_name.clone()))
+                } else {
+                    Err(DataStoreError::LogNotFound(log_id.clone()))
+                }
+            })
+            .collect::<Result<HashMap<LogId, Option<PackageId>>, _>>()
     }
 
     async fn store_operator_record(
@@ -269,7 +312,12 @@ impl DataStore for MemoryDataStore {
                 missing: missing.iter().map(|&d| d.clone()).collect(),
             }),
         );
-        state.package_ids.insert(package_id.clone());
+        state
+            .package_ids
+            .insert(log_id.clone(), Some(package_id.clone()));
+        state
+            .package_ids_lowercase
+            .insert(package_id.as_ref().to_ascii_lowercase(), package_id.clone());
 
         assert!(prev.is_none());
         Ok(())
@@ -446,6 +494,18 @@ impl DataStore for MemoryDataStore {
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
         let state = self.0.read().await;
         let checkpoint = state.checkpoints.values().last().unwrap();
+        Ok(checkpoint.clone())
+    }
+
+    async fn get_checkpoint(
+        &self,
+        log_length: RegistryLen,
+    ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, DataStoreError> {
+        let state = self.0.read().await;
+        let checkpoint = state
+            .checkpoints
+            .get(&log_length)
+            .ok_or_else(|| DataStoreError::CheckpointNotFound(log_length))?;
         Ok(checkpoint.clone())
     }
 
@@ -655,12 +715,100 @@ impl DataStore for MemoryDataStore {
         .ok_or_else(|| DataStoreError::UnknownKey(record.key_id().clone()))?;
 
         package::PackageRecord::verify(key, record.content_bytes(), record.signature())
-            .map_err(|_| DataStoreError::SignatureVerificationFailed)
+            .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
+    }
+
+    async fn verify_can_publish_package(
+        &self,
+        operator_log_id: &LogId,
+        package_id: &PackageId,
+    ) -> Result<(), DataStoreError> {
+        let state = self.0.read().await;
+
+        // verify namespace is defined and not imported
+        match state
+            .operators
+            .get(operator_log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
+            .validator
+            .namespace_state(package_id.namespace())
+        {
+            Ok(Some(state)) => match state {
+                operator::NamespaceState::Defined => {}
+                operator::NamespaceState::Imported { .. } => {
+                    return Err(DataStoreError::PackageNamespaceImported(
+                        package_id.namespace().to_string(),
+                    ))
+                }
+            },
+            Ok(None) => {
+                return Err(DataStoreError::PackageNamespaceNotDefined(
+                    package_id.namespace().to_string(),
+                ))
+            }
+            Err(existing_namespace) => {
+                return Err(DataStoreError::PackageNamespaceConflict {
+                    namespace: package_id.namespace().to_string(),
+                    existing: existing_namespace.to_string(),
+                })
+            }
+        }
+
+        // verify package name is unique in a case insensitive way
+        match state
+            .package_ids_lowercase
+            .get(&package_id.as_ref().to_ascii_lowercase())
+        {
+            Some(existing) if existing.as_ref() != package_id.as_ref() => {
+                Err(DataStoreError::PackageNameConflict {
+                    name: package_id.clone(),
+                    existing: existing.clone(),
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+
+    async fn verify_timestamped_checkpoint_signature(
+        &self,
+        operator_log_id: &LogId,
+        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+    ) -> Result<(), DataStoreError> {
+        let state = self.0.read().await;
+
+        let validator = &state
+            .operators
+            .get(operator_log_id)
+            .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
+            .validator;
+
+        TimestampedCheckpoint::verify(
+            validator
+                .public_key(ts_checkpoint.key_id())
+                .ok_or(DataStoreError::UnknownKey(ts_checkpoint.key_id().clone()))?,
+            &ts_checkpoint.as_ref().encode(),
+            ts_checkpoint.signature(),
+        )
+        .or(Err(DataStoreError::SignatureVerificationFailed(
+            ts_checkpoint.signature().clone(),
+        )))?;
+
+        if !validator.key_has_permission_to_sign_checkpoints(ts_checkpoint.key_id()) {
+            return Err(DataStoreError::KeyUnauthorized(
+                ts_checkpoint.key_id().clone(),
+            ));
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "debug")]
     async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
         let state = self.0.read().await;
-        Ok(state.package_ids.iter().cloned().collect())
+        Ok(state
+            .package_ids
+            .values()
+            .filter_map(|opt_package_id| opt_package_id.clone())
+            .collect())
     }
 }
