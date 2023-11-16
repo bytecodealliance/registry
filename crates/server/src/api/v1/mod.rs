@@ -94,7 +94,8 @@ pub async fn not_found() -> impl IntoResponse {
     }
 }
 
-/// An extractor for the `Warg-Registry` header.
+/// An extractor for the `Warg-Registry` header. Currently, this server implementation
+/// does not support this header and returns a `501` error.
 pub struct RegistryHeader(Option<String>);
 
 #[async_trait]
