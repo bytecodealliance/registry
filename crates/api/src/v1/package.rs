@@ -41,7 +41,8 @@ pub struct MissingContent {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
-    /// The id of the package being published.
+    /// The package name being published.
+    #[serde(alias = "packageName")]
     pub package_id: Cow<'a, PackageId>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
