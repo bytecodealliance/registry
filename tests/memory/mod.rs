@@ -24,6 +24,8 @@ async fn it_publishes_a_component() -> Result<()> {
         "expected two log entries (initial + component)"
     );
 
+    test_fetch_package_names(&config).await?;
+
     Ok(())
 }
 

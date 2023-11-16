@@ -10,6 +10,7 @@ use std::{
 use url::Url;
 use warg_api::v1::{
     content::{ContentSource, ContentSourcesResponse},
+    fetch::{FetchPackageNamesRequest, FetchPackageNamesResponse},
     package::PublishRecordRequest,
     paths,
 };
@@ -462,6 +463,44 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
             assert_eq!(url, &expected_url);
         }
     }
+
+    Ok(())
+}
+
+async fn test_fetch_package_names(config: &Config) -> Result<()> {
+    let id_1 = PackageId::new("test:component")?;
+    let log_id_1 = LogId::package_log::<Sha256>(&id_1);
+
+    let url = Url::parse(config.default_url.as_ref().unwrap())?
+        .join(paths::fetch_package_names())
+        .unwrap();
+
+    let body = FetchPackageNamesRequest {
+        packages: Cow::Owned(vec![log_id_1.clone()]),
+    };
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(url)
+        .json(&serde_json::to_value(&body).unwrap())
+        .send()
+        .await?;
+
+    let status = response.status();
+    let names_resp = response.json::<FetchPackageNamesResponse>().await?;
+
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "unexpected response from server: {status}",
+    );
+
+    let lookup_id_1 = names_resp.packages.get(&log_id_1);
+    assert_eq!(
+        lookup_id_1,
+        Some(&Some(id_1.clone())),
+        "fetch of package name {id_1} mismatched to {lookup_id_1:?}"
+    );
 
     Ok(())
 }

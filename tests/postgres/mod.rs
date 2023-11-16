@@ -54,6 +54,7 @@ async fn it_works_with_postgres() -> TestResult {
     // allows any signing key
     //test_unknown_signing_key(&config).await?;
     test_invalid_signature(&config).await?;
+    test_fetch_package_names(&config).await?;
 
     let mut packages = vec![
         PackageId::new("test:component")?,
