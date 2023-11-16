@@ -143,6 +143,9 @@ impl From<DataStoreError> for PackageApiError {
                 PackageError::Unauthorized(e.to_string())
             }
             DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),
+            DataStoreError::PackageNamespaceConflict { existing, .. } => {
+                PackageError::NamespaceConflict(existing)
+            }
             DataStoreError::PackageNamespaceImported(id) => PackageError::NamespaceImported(id),
             DataStoreError::PackageNameConflict { existing, .. } => {
                 PackageError::PackageNameConflict(existing)

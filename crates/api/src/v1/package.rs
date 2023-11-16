@@ -127,6 +127,9 @@ pub enum PackageError {
     /// The provided package's namespace is imported from another registry.
     #[error("namespace `{0}` is an imported namespace from another registry")]
     NamespaceImported(String),
+    /// The provided package's namespace conflicts with an existing namespace where the name only differs by case.
+    #[error("namespace conflicts with existing namespace `{0}`; package namespaces must be unique in a case insensitive way")]
+    NamespaceConflict(String),
     /// The provided package name conflicts with an existing package where the name only differs by case.
     #[error("the package conflicts with existing package name `{0}`; package names must be unique in a case insensitive way")]
     PackageNameConflict(PackageId),
@@ -157,7 +160,9 @@ impl PackageError {
             // HTTP authentication.
             Self::Unauthorized { .. } => 403,
             Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
-            Self::NamespaceImported(_) | Self::PackageNameConflict(_) => 409,
+            Self::NamespaceImported(_)
+            | Self::NamespaceConflict(_)
+            | Self::PackageNameConflict(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -172,6 +177,7 @@ enum EntityType {
     Log,
     Record,
     Namespace,
+    NamespaceImport,
     Name,
 }
 
@@ -243,8 +249,14 @@ impl Serialize for PackageError {
             .serialize(serializer),
             Self::NamespaceImported(namespace) => RawError::Conflict {
                 status: Status::<409>,
-                ty: EntityType::Namespace,
+                ty: EntityType::NamespaceImport,
                 id: Cow::Borrowed(namespace),
+            }
+            .serialize(serializer),
+            Self::NamespaceConflict(existing) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Namespace,
+                id: Cow::Borrowed(existing),
             }
             .serialize(serializer),
             Self::PackageNameConflict(existing) => RawError::Conflict {
@@ -310,7 +322,8 @@ impl<'de> Deserialize<'de> for PackageError {
                 )),
             },
             RawError::Conflict { status: _, ty, id } => match ty {
-                EntityType::Namespace => Ok(Self::NamespaceImported(id.into_owned())),
+                EntityType::Namespace => Ok(Self::NamespaceConflict(id.into_owned())),
+                EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
                 EntityType::Name => Ok(Self::PackageNameConflict(
                     PackageId::new(id.into_owned()).unwrap(),
                 )),

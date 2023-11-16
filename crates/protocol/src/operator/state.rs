@@ -62,8 +62,21 @@ pub enum ValidationError {
     #[error("the namespace `{namespace}` is invalid; namespace must be a kebab case string")]
     InvalidNamespace { namespace: String },
 
+    #[error("the namespace `{namespace}` conflicts with the existing namespace `{existing}`; namespace must be unique in a case insensitive way")]
+    NamespaceConflict { namespace: String, existing: String },
+
     #[error("the namespace `{namespace}` is already defined and cannot be redefined")]
     NamespaceAlreadyDefined { namespace: String },
+}
+
+/// The namespace definition.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct NamespaceDefinition {
+    /// Case sensitive namespace name.
+    namespace: String,
+    /// Namespace state.
+    state: NamespaceState,
 }
 
 /// The namespace state for defining or importing from other registries.
@@ -110,9 +123,9 @@ pub struct LogState {
     /// The keys known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
-    /// The lowercased namespaces known to the validator.
+    /// The namespaces known to the validator. The key is the lowercased namespace.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
-    namespaces: IndexMap<String, NamespaceState>,
+    namespaces: IndexMap<String, NamespaceDefinition>,
 }
 
 impl LogState {
@@ -156,9 +169,21 @@ impl LogState {
         self.keys.get(key_id)
     }
 
-    /// Gets the namespace state. Expects the namespace to be lowercase.
-    pub fn namespace_state(&self, lowerspaced_namespace: &str) -> Option<&NamespaceState> {
-        self.namespaces.get(lowerspaced_namespace)
+    /// Gets the namespace state.
+    pub fn namespace_state(&self, namespace: &str) -> Result<Option<&NamespaceState>, &str> {
+        if let Some(def) = self.namespaces.get(&namespace.to_ascii_lowercase()) {
+            if def.namespace == namespace {
+                // namespace exact match, return namespace state
+                Ok(Some(&def.state))
+            } else {
+                // namespace matches a namespace but differ in a case sensitive way,
+                // so return error with existing namespace
+                Err(&def.namespace)
+            }
+        } else {
+            // namespace is not defined
+            Ok(None)
+        }
     }
 
     /// Checks the key has permission to sign checkpoints.
@@ -386,19 +411,39 @@ impl LogState {
         namespace: &str,
         state: NamespaceState,
     ) -> Result<(), ValidationError> {
-        let namespace = namespace.to_lowercase();
-
-        if !PackageId::is_valid_namespace(&namespace) {
-            return Err(ValidationError::InvalidNamespace { namespace });
+        if !PackageId::is_valid_namespace(namespace) {
+            return Err(ValidationError::InvalidNamespace {
+                namespace: namespace.to_string(),
+            });
         }
 
-        if self.namespaces.contains_key(&namespace) {
-            return Err(ValidationError::NamespaceAlreadyDefined { namespace });
+        let namespace_lowercase = namespace.to_ascii_lowercase();
+
+        if let Some(def) = self.namespaces.get(&namespace_lowercase) {
+            if namespace == def.namespace {
+                // namespace matches exactly
+                Err(ValidationError::NamespaceAlreadyDefined {
+                    namespace: namespace.to_string(),
+                })
+            } else {
+                // namespace matches an existing namespace but differs in a case sensitive way
+                Err(ValidationError::NamespaceConflict {
+                    namespace: namespace.to_string(),
+                    existing: def.namespace.to_string(),
+                })
+            }
+        } else {
+            // namespace is not defined
+            self.namespaces.insert(
+                namespace_lowercase,
+                NamespaceDefinition {
+                    namespace: namespace.to_string(),
+                    state,
+                },
+            );
+
+            Ok(())
         }
-
-        self.namespaces.insert(namespace, state);
-
-        Ok(())
     }
 
     fn check_key_permissions(
@@ -650,11 +695,20 @@ mod tests {
             )]),
             keys: IndexMap::from([(alice_id, alice_pub)]),
             namespaces: IndexMap::from([
-                ("my-namespace".to_string(), NamespaceState::Defined),
+                (
+                    "my-namespace".to_string(),
+                    NamespaceDefinition {
+                        namespace: "my-namespace".to_string(),
+                        state: NamespaceState::Defined,
+                    },
+                ),
                 (
                     "imported-namespace".to_string(),
-                    NamespaceState::Imported {
-                        registry: "registry.example.com".to_string(),
+                    NamespaceDefinition {
+                        namespace: "imported-namespace".to_string(),
+                        state: NamespaceState::Imported {
+                            registry: "registry.example.com".to_string(),
+                        },
                     },
                 ),
             ]),
@@ -662,33 +716,66 @@ mod tests {
 
         assert_eq!(validator, expected);
 
-        let record = model::OperatorRecord {
-            prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
-            version: 0,
-            timestamp: SystemTime::now(),
-            entries: vec![
-                // This entry is valid
-                model::OperatorEntry::DefineNamespace {
-                    namespace: "other-namespace".to_string(),
-                },
-                // This entry is not valid
-                model::OperatorEntry::ImportNamespace {
-                    namespace: "my-NAMESPACE".to_string(),
-                    registry: "registry.alternative.com".to_string(),
-                },
-            ],
-        };
+        {
+            let record = model::OperatorRecord {
+                prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
+                version: 0,
+                timestamp: SystemTime::now(),
+                entries: vec![
+                    // This entry is valid
+                    model::OperatorEntry::DefineNamespace {
+                        namespace: "other-namespace".to_string(),
+                    },
+                    // This entry is not valid
+                    model::OperatorEntry::ImportNamespace {
+                        namespace: "my-namespace".to_string(),
+                        registry: "registry.alternative.com".to_string(),
+                    },
+                ],
+            };
 
-        let envelope =
-            ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
+            let envelope = ProtoEnvelope::signed_contents(&alice_priv, record)
+                .expect("failed to sign envelope");
 
-        // This validation should fail and the validator state should remain unchanged
-        match validator.validate(&envelope).unwrap_err() {
-            ValidationError::NamespaceAlreadyDefined { .. } => {}
-            _ => panic!("expected a different error"),
+            // This validation should fail and the validator state should remain unchanged
+            match validator.validate(&envelope).unwrap_err() {
+                ValidationError::NamespaceAlreadyDefined { .. } => {}
+                _ => panic!("expected a different error"),
+            }
+
+            // The validator should not have changed
+            assert_eq!(validator, expected);
         }
 
-        // The validator should not have changed
-        assert_eq!(validator, expected);
+        {
+            let record = model::OperatorRecord {
+                prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
+                version: 0,
+                timestamp: SystemTime::now(),
+                entries: vec![
+                    // This entry is valid
+                    model::OperatorEntry::DefineNamespace {
+                        namespace: "other-namespace".to_string(),
+                    },
+                    // This entry is not valid
+                    model::OperatorEntry::ImportNamespace {
+                        namespace: "my-NAMESPACE".to_string(),
+                        registry: "registry.alternative.com".to_string(),
+                    },
+                ],
+            };
+
+            let envelope = ProtoEnvelope::signed_contents(&alice_priv, record)
+                .expect("failed to sign envelope");
+
+            // This validation should fail and the validator state should remain unchanged
+            match validator.validate(&envelope).unwrap_err() {
+                ValidationError::NamespaceConflict { .. } => {}
+                _ => panic!("expected a different error"),
+            }
+
+            // The validator should not have changed
+            assert_eq!(validator, expected);
+        }
     }
 }

@@ -62,6 +62,9 @@ pub enum DataStoreError {
         existing: PackageId,
     },
 
+    #[error("the package namespace `{namespace}` conflicts with existing namespace `{existing}`; package namespaces must be unique in a case insensitive way")]
+    PackageNamespaceConflict { namespace: String, existing: String },
+
     #[error("the package namespace `{0}` is not defined")]
     PackageNamespaceNotDefined(String),
 

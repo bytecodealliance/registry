@@ -278,11 +278,11 @@ paths:
                   status:
                     type: integer
                     description: The HTTP status code for the error.
-                    example: 404
+                    example: 409
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [name, namespace]
+                    enum: [name, namespace, namespaceImport]
                     example: namespace
                   id:
                     type: string
