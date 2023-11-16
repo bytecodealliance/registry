@@ -110,7 +110,7 @@ pub struct LogState {
     /// The keys known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
-    /// The namespaces known to the validator.
+    /// The lowercased namespaces known to the validator.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     namespaces: IndexMap<String, NamespaceState>,
 }

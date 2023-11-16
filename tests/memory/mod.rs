@@ -90,6 +90,12 @@ async fn it_rejects_unknown_signing_key() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn it_rejects_package_name_conflict() -> Result<()> {
+    let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
+    test_publishing_name_conflict(&config).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn it_rejects_invalid_signature() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
     test_invalid_signature(&config).await

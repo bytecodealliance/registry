@@ -144,6 +144,9 @@ impl From<DataStoreError> for PackageApiError {
             }
             DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),
             DataStoreError::PackageNamespaceImported(id) => PackageError::NamespaceImported(id),
+            DataStoreError::PackageNameConflict { existing, .. } => {
+                PackageError::PackageNameConflict(existing)
+            }
             // Other errors are internal server errors
             e => {
                 tracing::error!("unexpected data store error: {e}");
@@ -207,12 +210,13 @@ async fn publish_record(
         ));
     }
 
-    // Verify the namespace is defined in the operator log and not imported
+    // Verify the package name is unique in a case insensitive way and
+    // the namespace is defined in the operator log and not imported
     // from another registry.
     config
         .core_service
         .store()
-        .can_publish_to_package_namespace(&LogId::operator_log::<Sha256>(), &body.package_id)
+        .verify_can_publish_package(&LogId::operator_log::<Sha256>(), &body.package_id)
         .await?;
 
     // Preemptively perform the policy check on the record before storing it

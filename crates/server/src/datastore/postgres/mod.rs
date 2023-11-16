@@ -4,6 +4,7 @@ use self::models::{
 };
 use super::{DataStore, DataStoreError, Record};
 use anyhow::{anyhow, Result};
+use diesel::sql_types::{Nullable, Text};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use diesel_async::{
     pooled_connection::{deadpool::Pool, AsyncDieselConnectionManager},
@@ -33,6 +34,8 @@ use warg_protocol::{
 
 mod models;
 mod schema;
+
+sql_function!(fn lower(x: Nullable<Text>) -> Nullable<Text>);
 
 async fn get_records<R: Decode>(
     conn: &mut AsyncPgConnection,
@@ -532,12 +535,8 @@ impl DataStore for PostgresDataStore {
         let map = schema::logs::table
             .select((schema::logs::log_id, schema::logs::name))
             .filter(
-                schema::logs::log_id.eq_any(
-                    log_ids
-                        .iter()
-                        .map(|log_id| TextRef(log_id))
-                        .collect::<Vec<TextRef<LogId>>>(),
-                ),
+                schema::logs::log_id
+                    .eq_any(log_ids.iter().map(TextRef).collect::<Vec<TextRef<LogId>>>()),
             )
             .load::<(ParsedText<AnyHash>, Option<String>)>(&mut conn)
             .await?
@@ -961,7 +960,7 @@ impl DataStore for PostgresDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
     }
 
-    async fn can_publish_to_package_namespace(
+    async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
         package_id: &PackageId,
@@ -976,16 +975,40 @@ impl DataStore for PostgresDataStore {
             .optional()?
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
 
-        match validator.namespace_state(package_id.namespace_lowercase()) {
+        // verify namespace is defined and not imported
+        match validator.namespace_state(&package_id.namespace().to_ascii_lowercase()) {
             Some(state) => match state {
-                operator::NamespaceState::Defined => Ok(()),
-                operator::NamespaceState::Imported { .. } => Err(
-                    DataStoreError::PackageNamespaceImported(package_id.namespace().to_string()),
-                ),
+                operator::NamespaceState::Defined => {}
+                operator::NamespaceState::Imported { .. } => {
+                    return Err(DataStoreError::PackageNamespaceImported(
+                        package_id.namespace().to_string(),
+                    ));
+                }
             },
-            None => Err(DataStoreError::PackageNamespaceNotDefined(
-                package_id.namespace().to_string(),
-            )),
+            None => {
+                return Err(DataStoreError::PackageNamespaceNotDefined(
+                    package_id.namespace().to_string(),
+                ))
+            }
+        }
+
+        // verify package name is unique in a case insensitive way
+        match schema::logs::table
+            .select(schema::logs::name)
+            .filter(
+                lower(schema::logs::name).eq(TextRef(&package_id.as_ref().to_ascii_lowercase())),
+            )
+            .first::<Option<String>>(&mut conn)
+            .await
+            .optional()?
+        {
+            Some(Some(name)) if name != package_id.as_ref() => {
+                Err(DataStoreError::PackageNameConflict {
+                    name: package_id.clone(),
+                    existing: PackageId::new(name).unwrap(),
+                })
+            }
+            _ => Ok(()),
         }
     }
 

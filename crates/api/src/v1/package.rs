@@ -126,6 +126,9 @@ pub enum PackageError {
     /// The provided package's namespace is imported from another registry.
     #[error("namespace `{0}` is an imported namespace from another registry")]
     NamespaceImported(String),
+    /// The provided package name conflicts with an existing package where the name only differs by case.
+    #[error("the package conflicts with existing package name `{0}`; package names must be unique in a case insensitive way")]
+    PackageNameConflict(PackageId),
     /// The operation was not authorized by the registry.
     #[error("unauthorized operation: {0}")]
     Unauthorized(String),
@@ -153,7 +156,7 @@ impl PackageError {
             // HTTP authentication.
             Self::Unauthorized { .. } => 403,
             Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
-            Self::NamespaceImported(_) => 409,
+            Self::NamespaceImported(_) | Self::PackageNameConflict(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -168,6 +171,7 @@ enum EntityType {
     Log,
     Record,
     Namespace,
+    Name,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -242,6 +246,12 @@ impl Serialize for PackageError {
                 id: Cow::Borrowed(namespace),
             }
             .serialize(serializer),
+            Self::PackageNameConflict(existing) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Name,
+                id: Cow::Borrowed(existing),
+            }
+            .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
                 status: Status::<405>,
             }
@@ -293,12 +303,21 @@ impl<'de> Deserialize<'de> for PackageError {
                         .into(),
                 )),
                 EntityType::Namespace => Ok(Self::NamespaceNotDefined(id.into_owned())),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Enum,
+                    &"a valid entity type",
+                )),
             },
-            RawError::Conflict {
-                status: _,
-                ty: _,
-                id,
-            } => Ok(Self::NamespaceImported(id.into_owned())),
+            RawError::Conflict { status: _, ty, id } => match ty {
+                EntityType::Namespace => Ok(Self::NamespaceImported(id.into_owned())),
+                EntityType::Name => Ok(Self::PackageNameConflict(
+                    PackageId::new(id.into_owned()).unwrap(),
+                )),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Enum,
+                    &"a valid entity type",
+                )),
+            },
             RawError::RecordNotSourcing { status: _ } => Ok(Self::RecordNotSourcing),
             RawError::Rejection { status: _, message } => Ok(Self::Rejection(message.into_owned())),
             RawError::NotSupported { status: _, message } => {

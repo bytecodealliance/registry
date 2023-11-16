@@ -56,6 +56,12 @@ pub enum DataStoreError {
     #[error("the package record was invalid: {0}")]
     PackageValidationFailed(#[from] package::ValidationError),
 
+    #[error("the package `{name}` conflicts with package `{existing}`; package names must be unique in a case insensitive way")]
+    PackageNameConflict {
+        name: PackageId,
+        existing: PackageId,
+    },
+
     #[error("the package namespace `{0}` is not defined")]
     PackageNamespaceNotDefined(String),
 
@@ -306,9 +312,10 @@ pub trait DataStore: Send + Sync {
         record: &ProtoEnvelope<package::PackageRecord>,
     ) -> Result<(), DataStoreError>;
 
-    /// Verifies the package namespace is defined for this registry
-    /// and is not imported from another registry.
-    async fn can_publish_to_package_namespace(
+    /// Verifies the package name is unique in a case insensitive way and that the
+    /// package namespace is defined for this registry and is not imported
+    /// from another registry.
+    async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
         package_id: &PackageId,

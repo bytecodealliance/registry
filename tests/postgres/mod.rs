@@ -49,6 +49,7 @@ async fn it_works_with_postgres() -> TestResult {
     test_wit_publishing(&config).await?;
     test_wasm_content_policy(&config).await?;
     test_unauthorized_signing_key(&config).await?;
+    test_publishing_name_conflict(&config).await?;
     // This is tested below where a different server is used that
     // allows any signing key
     //test_unknown_signing_key(&config).await?;
@@ -59,6 +60,7 @@ async fn it_works_with_postgres() -> TestResult {
         PackageId::new("test:yankee")?,
         PackageId::new("test:wit-package")?,
         PackageId::new("test:unauthorized-key")?,
+        PackageId::new("test:name")?,
     ];
 
     // There should be two log entries in the registry

@@ -232,6 +232,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "404":
+          description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [namespace]
+                    example: namespace
+                  id:
+                    type: string
+                    description: |
+                      The identifier of the entity that was not found.
+        "409":
+          description: The requested package publish conflicts.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [name, namespace]
+                    example: namespace
+                  id:
+                    type: string
+                    description: |
+                      The identifier of the entity that was not found.
+        "422":
+          description: |
+            The package was rejected by the registry.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "501":
           description: |
             The server does not support publishing package records with explicitly

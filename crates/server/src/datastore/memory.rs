@@ -78,6 +78,7 @@ struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_ids: HashMap<LogId, Option<PackageId>>,
+    package_ids_lowercase: HashMap<String, PackageId>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
@@ -314,6 +315,9 @@ impl DataStore for MemoryDataStore {
         state
             .package_ids
             .insert(log_id.clone(), Some(package_id.clone()));
+        state
+            .package_ids_lowercase
+            .insert(package_id.as_ref().to_ascii_lowercase(), package_id.clone());
 
         assert!(prev.is_none());
         Ok(())
@@ -714,29 +718,48 @@ impl DataStore for MemoryDataStore {
             .map_err(|_| DataStoreError::SignatureVerificationFailed(record.signature().clone()))
     }
 
-    async fn can_publish_to_package_namespace(
+    async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
         package_id: &PackageId,
     ) -> Result<(), DataStoreError> {
         let state = self.0.read().await;
 
+        // verify namespace is defined and not imported
         match state
             .operators
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
             .validator
-            .namespace_state(package_id.namespace_lowercase())
+            .namespace_state(&package_id.namespace().to_ascii_lowercase())
         {
             Some(state) => match state {
-                operator::NamespaceState::Defined => Ok(()),
-                operator::NamespaceState::Imported { .. } => Err(
-                    DataStoreError::PackageNamespaceImported(package_id.namespace().to_string()),
-                ),
+                operator::NamespaceState::Defined => {}
+                operator::NamespaceState::Imported { .. } => {
+                    return Err(DataStoreError::PackageNamespaceImported(
+                        package_id.namespace().to_string(),
+                    ))
+                }
             },
-            None => Err(DataStoreError::PackageNamespaceNotDefined(
-                package_id.namespace().to_string(),
-            )),
+            None => {
+                return Err(DataStoreError::PackageNamespaceNotDefined(
+                    package_id.namespace().to_string(),
+                ))
+            }
+        }
+
+        // verify package name is unique in a case insensitive way
+        match state
+            .package_ids_lowercase
+            .get(&package_id.as_ref().to_ascii_lowercase())
+        {
+            Some(existing) if existing.as_ref() != package_id.as_ref() => {
+                Err(DataStoreError::PackageNameConflict {
+                    name: package_id.clone(),
+                    existing: existing.clone(),
+                })
+            }
+            _ => Ok(()),
         }
     }
 
