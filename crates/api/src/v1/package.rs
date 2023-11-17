@@ -7,7 +7,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, PackageId, RecordId, RegistryIndex},
+    registry::{LogId, PackageName, RecordId, RegistryIndex},
     ProtoEnvelopeBody,
 };
 
@@ -42,8 +42,9 @@ pub struct MissingContent {
 #[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
     /// The package name being published.
-    #[serde(alias = "packageName")]
-    pub package_id: Cow<'a, PackageId>,
+    /// TODO: Remove the alias for `packageId` according to compatibility release schedule.
+    #[serde(alias = "packageId")]
+    pub package_name: Cow<'a, PackageName>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
     /// The complete set of content sources for the record.
@@ -132,7 +133,7 @@ pub enum PackageError {
     NamespaceConflict(String),
     /// The provided package name conflicts with an existing package where the name only differs by case.
     #[error("the package conflicts with existing package name `{0}`; package names must be unique in a case insensitive way")]
-    PackageNameConflict(PackageId),
+    PackageNameConflict(PackageName),
     /// The operation was not authorized by the registry.
     #[error("unauthorized operation: {0}")]
     Unauthorized(String),
@@ -325,7 +326,7 @@ impl<'de> Deserialize<'de> for PackageError {
                 EntityType::Namespace => Ok(Self::NamespaceConflict(id.into_owned())),
                 EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
                 EntityType::Name => Ok(Self::PackageNameConflict(
-                    PackageId::new(id.into_owned()).unwrap(),
+                    PackageName::new(id.into_owned()).unwrap(),
                 )),
                 _ => Err(serde::de::Error::invalid_value(
                     Unexpected::Enum,

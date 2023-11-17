@@ -1,5 +1,5 @@
 use super::{model, OPERATOR_RECORD_VERSION};
-use crate::registry::PackageId;
+use crate::registry::PackageName;
 use crate::registry::RecordId;
 use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
@@ -411,7 +411,7 @@ impl LogState {
         namespace: &str,
         state: NamespaceState,
     ) -> Result<(), ValidationError> {
-        if !PackageId::is_valid_namespace(namespace) {
+        if !PackageName::is_valid_namespace(namespace) {
             return Err(ValidationError::InvalidNamespace {
                 namespace: namespace.to_string(),
             });

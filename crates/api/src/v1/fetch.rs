@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, PackageId, RegistryLen},
+    registry::{LogId, PackageName, RegistryLen},
     PublishedProtoEnvelopeBody,
 };
 
@@ -67,8 +67,8 @@ pub struct FetchPackageNamesRequest<'a> {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchPackageNamesResponse {
-    /// The log ID hash mapping to a package ID. If `None`, the package name cannot be provided.
-    pub packages: HashMap<LogId, Option<PackageId>>,
+    /// The log ID hash mapping to a package name. If `None`, the package name cannot be provided.
+    pub packages: HashMap<LogId, Option<PackageName>>,
 }
 
 /// Represents a fetch API error.

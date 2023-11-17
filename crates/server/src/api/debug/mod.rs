@@ -16,7 +16,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     package::{LogState, Permission, Release},
-    registry::{LogId, PackageId, RecordId},
+    registry::{LogId, PackageName, RecordId},
     Version,
 };
 
@@ -35,7 +35,7 @@ impl Config {
     pub fn into_router(self) -> Router {
         Router::new()
             .route("/packages", get(list_package_names))
-            .route("/package/:package_id", get(get_package_info))
+            .route("/package/:package_name", get(get_package_info))
             .with_state(self)
     }
 }
@@ -43,15 +43,19 @@ impl Config {
 #[debug_handler]
 async fn list_package_names(
     State(config): State<Config>,
-) -> Result<Json<Vec<PackageId>>, DebugError> {
-    let ids = config.core_service.store().debug_list_package_ids().await?;
-    Ok(Json(ids))
+) -> Result<Json<Vec<PackageName>>, DebugError> {
+    let names = config
+        .core_service
+        .store()
+        .debug_list_package_names()
+        .await?;
+    Ok(Json(names))
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PackageInfo {
-    package_id: PackageId,
+    package_name: PackageName,
     log_id: LogId,
     records: Vec<RecordInfo>,
     releases: Vec<Release>,
@@ -84,7 +88,7 @@ struct EntryInfo {
 #[debug_handler]
 async fn get_package_info(
     State(config): State<Config>,
-    Path(package_id): Path<PackageId>,
+    Path(package_name): Path<PackageName>,
 ) -> Result<Json<PackageInfo>, DebugError> {
     let store = config.core_service.store();
 
@@ -94,7 +98,7 @@ async fn get_package_info(
         .context("get_latest_checkpoint")?;
     let checkpoint_log_length = checkpoint.as_ref().checkpoint.log_length;
 
-    let log_id = LogId::package_log::<Sha256>(&package_id);
+    let log_id = LogId::package_log::<Sha256>(&package_name);
     let records = store
         .get_package_records(&log_id, checkpoint_log_length, None, u16::MAX)
         .await
@@ -173,7 +177,7 @@ async fn get_package_info(
     let releases = package_state.releases().cloned().collect();
 
     Ok(Json(PackageInfo {
-        package_id,
+        package_name,
         log_id,
         records,
         releases,

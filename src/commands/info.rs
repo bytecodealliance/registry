@@ -3,7 +3,7 @@ use anyhow::Result;
 use clap::Args;
 use warg_client::storage::{PackageInfo, RegistryStorage};
 use warg_crypto::hash::AnyHash;
-use warg_protocol::{registry::PackageId, Version};
+use warg_protocol::{registry::PackageName, Version};
 
 /// Display client storage information.
 #[derive(Args)]
@@ -14,7 +14,7 @@ pub struct InfoCommand {
 
     /// Only show information for the specified package.
     #[clap(value_name = "PACKAGE")]
-    pub package: Option<PackageId>,
+    pub package: Option<PackageName>,
 }
 
 impl InfoCommand {
@@ -45,7 +45,7 @@ impl InfoCommand {
     }
 
     fn print_package_info(info: &PackageInfo) {
-        println!("  id: {id}", id = info.id);
+        println!("  name: {name}", name = info.name);
         println!("  versions:");
         info.state.releases().for_each(|r| {
             if let Some(content) = r.content() {

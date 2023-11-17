@@ -19,7 +19,7 @@ use tokio_util::io::ReaderStream;
 use walkdir::WalkDir;
 use warg_crypto::hash::{AnyHash, Digest, Hash, Sha256};
 use warg_protocol::{
-    registry::{LogId, PackageId, TimestampedCheckpoint},
+    registry::{LogId, PackageName, TimestampedCheckpoint},
     SerdeEnvelope,
 };
 
@@ -70,9 +70,9 @@ impl FileSystemRegistryStorage {
         self.base_dir.join("operator.log")
     }
 
-    fn package_path(&self, id: &PackageId) -> PathBuf {
+    fn package_path(&self, name: &PackageName) -> PathBuf {
         self.base_dir.join(PACKAGE_LOGS_DIR).join(
-            LogId::package_log::<Sha256>(id)
+            LogId::package_log::<Sha256>(name)
                 .to_string()
                 .replace(':', "/"),
         )
@@ -150,12 +150,12 @@ impl RegistryStorage for FileSystemRegistryStorage {
         store(&self.operator_path(), info).await
     }
 
-    async fn load_package(&self, package: &PackageId) -> Result<Option<PackageInfo>> {
+    async fn load_package(&self, package: &PackageName) -> Result<Option<PackageInfo>> {
         Ok(load(&self.package_path(package)).await?)
     }
 
     async fn store_package(&self, info: &PackageInfo) -> Result<()> {
-        store(&self.package_path(&info.id), info).await
+        store(&self.package_path(&info.name), info).await
     }
 
     async fn load_publish(&self) -> Result<Option<PublishInfo>> {

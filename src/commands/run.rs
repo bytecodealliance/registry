@@ -3,7 +3,7 @@ use crate::demo;
 use anyhow::{anyhow, Result};
 use clap::Args;
 use warg_client::storage::ContentStorage;
-use warg_protocol::{registry::PackageId, VersionReq};
+use warg_protocol::{registry::PackageName, VersionReq};
 
 /// Run a package.
 #[derive(Args)]
@@ -15,9 +15,9 @@ pub struct RunCommand {
     /// The version requirement of the package to download; defaults to `*`.
     #[clap(long, short, value_name = "VERSION")]
     pub version: Option<VersionReq>,
-    /// The identifier of the package to run.
+    /// The package name to run.
     #[clap(value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// The arguments to the package.
     pub args: Vec<String>,
 }
@@ -28,22 +28,25 @@ impl RunCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        println!("downloading package `{id}`...", id = self.id);
+        println!("downloading package `{name}`...", name = self.name);
 
         let res = client
-            .download(&self.id, self.version.as_ref().unwrap_or(&VersionReq::STAR))
+            .download(
+                &self.name,
+                self.version.as_ref().unwrap_or(&VersionReq::STAR),
+            )
             .await?
             .ok_or_else(|| {
                 anyhow!(
-                    "a version of package `{id}` that satisfies `{version}` was not found",
-                    id = self.id,
+                    "a version of package `{name}` that satisfies `{version}` was not found",
+                    name = self.name,
                     version = self.version.as_ref().unwrap_or(&VersionReq::STAR)
                 )
             })?;
 
         println!(
-            "running version {version} of package `{id}` ({digest})",
-            id = self.id,
+            "running version {version} of package `{name}` ({digest})",
+            name = self.name,
             version = res.version,
             digest = res.digest
         );
