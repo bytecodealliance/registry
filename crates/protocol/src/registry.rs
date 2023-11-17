@@ -122,44 +122,48 @@ impl VisitBytes for LogLeaf {
     }
 }
 
-/// Represents a valid package identifier in the registry.
+/// Represents a valid package name in the registry.
 ///
-/// Valid package identifiers conform to the component model specification
-/// for identifiers.
+/// Valid package names conform to the component model specification.
 ///
-/// A valid component model identifier is the format `<namespace>:<name>`,
+/// A valid component model package name is the format `<namespace>:<name>`,
 /// where both parts are also valid WIT identifiers (i.e. kebab-cased).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct PackageId {
-    id: String,
+pub struct PackageName {
+    package_name: String,
     colon: usize,
 }
 
-impl PackageId {
-    /// Creates a package identifier from the given string.
+impl PackageName {
+    /// Creates a package name from the given string.
     ///
-    /// Returns an error if the given string is not a valid package identifier.
-    pub fn new(id: impl Into<String>) -> anyhow::Result<Self> {
-        let id = id.into();
+    /// Returns an error if the given string is not a valid package name.
+    pub fn new(name: impl Into<String>) -> anyhow::Result<Self> {
+        let name = name.into();
 
-        if let Some(colon) = id.rfind(':') {
+        if let Some(colon) = name.rfind(':') {
             // Validate the namespace and name parts are valid kebab strings
-            if KebabStr::new(&id[colon + 1..]).is_some() && Self::is_valid_namespace(&id[..colon]) {
-                return Ok(Self { id, colon });
+            if KebabStr::new(&name[colon + 1..]).is_some()
+                && Self::is_valid_namespace(&name[..colon])
+            {
+                return Ok(Self {
+                    package_name: name,
+                    colon,
+                });
             }
         }
 
-        bail!("invalid package identifier `{id}`: expected format is `<namespace>:<name>`")
+        bail!("invalid package name `{name}`: expected format is `<namespace>:<name>`")
     }
 
     /// Gets the namespace part of the package identifier.
     pub fn namespace(&self) -> &str {
-        &self.id[..self.colon]
+        &self.package_name[..self.colon]
     }
 
     /// Gets the name part of the package identifier.
     pub fn name(&self) -> &str {
-        &self.id[self.colon + 1..]
+        &self.package_name[self.colon + 1..]
     }
 
     /// Check if string is a valid namespace.
@@ -168,13 +172,13 @@ impl PackageId {
     }
 }
 
-impl AsRef<str> for PackageId {
+impl AsRef<str> for PackageName {
     fn as_ref(&self) -> &str {
-        &self.id
+        &self.package_name
     }
 }
 
-impl FromStr for PackageId {
+impl FromStr for PackageName {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -182,35 +186,35 @@ impl FromStr for PackageId {
     }
 }
 
-impl fmt::Display for PackageId {
+impl fmt::Display for PackageName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{id}", id = self.id)
+        write!(f, "{package_name}", package_name = self.package_name)
     }
 }
 
-impl prefix::VisitPrefixEncode for PackageId {
+impl prefix::VisitPrefixEncode for PackageName {
     fn visit_pe<BV: ?Sized + ByteVisitor>(&self, visitor: &mut prefix::PrefixEncodeVisitor<BV>) {
         visitor.visit_str_raw("WARG-PACKAGE-ID-V0");
-        visitor.visit_str(&self.id);
+        visitor.visit_str(&self.package_name);
     }
 }
 
-impl VisitBytes for PackageId {
+impl VisitBytes for PackageName {
     fn visit<BV: ?Sized + ByteVisitor>(&self, visitor: &mut BV) {
         self.visit_bv(visitor);
     }
 }
 
-impl Serialize for PackageId {
+impl Serialize for PackageName {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.id)
+        serializer.serialize_str(&self.package_name)
     }
 }
 
-impl<'de> Deserialize<'de> for PackageId {
+impl<'de> Deserialize<'de> for PackageName {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let id = String::deserialize(deserializer)?;
-        PackageId::new(id).map_err(serde::de::Error::custom)
+        PackageName::new(id).map_err(serde::de::Error::custom)
     }
 }
 
@@ -225,9 +229,9 @@ impl LogId {
         Self(hash.into())
     }
 
-    pub fn package_log<D: SupportedDigest>(id: &PackageId) -> Self {
+    pub fn package_log<D: SupportedDigest>(name: &PackageName) -> Self {
         let prefix: &[u8] = b"WARG-PACKAGE-LOG-ID-V0:".as_slice();
-        let hash: Hash<D> = Hash::of((prefix, id));
+        let hash: Hash<D> = Hash::of((prefix, name));
         Self(hash.into())
     }
 }

@@ -192,11 +192,11 @@ async fn publish_record(
     RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
-    let expected_log_id = LogId::package_log::<Sha256>(&body.package_id);
+    let expected_log_id = LogId::package_log::<Sha256>(&body.package_name);
     if expected_log_id != log_id {
         return Err(PackageApiError::bad_request(format!(
-            "package log identifier `{expected_log_id}` derived from `{id}` does not match provided log identifier `{log_id}`",
-            id = body.package_id
+            "package log identifier `{expected_log_id}` derived from `{name}` does not match provided log identifier `{log_id}`",
+            name = body.package_name
         )));
     }
 
@@ -219,13 +219,13 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .verify_can_publish_package(&LogId::operator_log::<Sha256>(), &body.package_id)
+        .verify_can_publish_package(&LogId::operator_log::<Sha256>(), &body.package_name)
         .await?;
 
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
     if let Some(policy) = &config.record_policy {
-        policy.check(&body.package_id, &record)?;
+        policy.check(&body.package_name, &record)?;
     }
 
     // Verify the signature on the record itself before storing it
@@ -242,7 +242,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .store_package_record(&log_id, &body.package_id, &record_id, &record, &missing)
+        .store_package_record(&log_id, &body.package_name, &record_id, &record, &missing)
         .await?;
 
     // If there's no missing content, submit the record for processing now

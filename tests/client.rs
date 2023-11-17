@@ -5,7 +5,7 @@ use warg_client::{
     storage::{ContentStorage, PublishEntry, PublishInfo, RegistryStorage},
     Config, FileSystemClient, StorageLockResult,
 };
-use warg_protocol::registry::PackageId;
+use warg_protocol::registry::PackageName;
 
 pub mod support;
 
@@ -19,7 +19,7 @@ fn create_client(config: &Config) -> Result<FileSystemClient> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn client_incrementally_fetches() -> Result<()> {
     const RELEASE_COUNT: usize = 300;
-    const PACKAGE_ID: &str = "test:package";
+    const PACKAGE_NAME: &str = "test:package";
 
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
@@ -39,12 +39,12 @@ async fn client_incrementally_fetches() -> Result<()> {
 
     // Here we don't wait for a single publish operation to complete, except for the last one
     // If the last one is accepted, it implies that all the previous ones were accepted as well
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let mut head = client
         .publish_with_info(
             &signing_key,
             PublishInfo {
-                id: id.clone(),
+                name: name.clone(),
                 head: None,
                 entries: vec![PublishEntry::Init],
             },
@@ -56,7 +56,7 @@ async fn client_incrementally_fetches() -> Result<()> {
             .publish_with_info(
                 &signing_key,
                 PublishInfo {
-                    id: id.clone(),
+                    name: name.clone(),
                     head: Some(head),
                     entries: vec![PublishEntry::Release {
                         version: format!("0.{i}.0").parse().unwrap(),
@@ -68,7 +68,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     }
 
     client
-        .wait_for_publish(&id, &head, Duration::from_millis(100))
+        .wait_for_publish(&name, &head, Duration::from_millis(100))
         .await?;
 
     drop(client);
@@ -84,16 +84,16 @@ async fn client_incrementally_fetches() -> Result<()> {
     client.update().await?;
 
     // Fetch the package log
-    client.upsert([&id]).await?;
+    client.upsert([&name]).await?;
 
     // Ensure that the package is in the packages list
     let packages = client.registry().load_packages().await?;
-    assert_eq!(packages[0].id.as_ref(), PACKAGE_ID);
+    assert_eq!(packages[0].name.as_ref(), PACKAGE_NAME);
 
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
-        .load_package(&id)
+        .load_package(&name)
         .await?
         .context("package does not exist in client storage")?;
 

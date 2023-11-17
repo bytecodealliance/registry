@@ -25,7 +25,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, PackageId, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, PackageName, RecordId, TimestampedCheckpoint},
     PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
@@ -121,24 +121,24 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     ) -> ClientResult<RecordId> {
         if info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
-                id: info.id.clone(),
+                name: info.name.clone(),
             });
         }
 
         let initializing = info.initializing();
 
         tracing::info!(
-            "publishing {new}package `{id}`",
-            id = info.id,
+            "publishing {new}package `{name}`",
+            name = info.name,
             new = if initializing { "new " } else { "" }
         );
         tracing::debug!("entries: {:?}", info.entries);
 
         let mut package = self
             .registry
-            .load_package(&info.id)
+            .load_package(&info.name)
             .await?
-            .unwrap_or_else(|| PackageInfo::new(info.id.clone()));
+            .unwrap_or_else(|| PackageInfo::new(info.name.clone()));
 
         // If we're not initializing the package and a head was not explicitly specified,
         // updated to the latest checkpoint to get the latest known head.
@@ -150,19 +150,23 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         match (initializing, info.head.is_some()) {
-            (true, true) => return Err(ClientError::CannotInitializePackage { id: package.id }),
-            (false, false) => return Err(ClientError::MustInitializePackage { id: package.id }),
+            (true, true) => {
+                return Err(ClientError::CannotInitializePackage { name: package.name })
+            }
+            (false, false) => {
+                return Err(ClientError::MustInitializePackage { name: package.name })
+            }
             _ => (),
         }
 
         let record = info.finalize(signing_key)?;
-        let log_id = LogId::package_log::<Sha256>(&package.id);
+        let log_id = LogId::package_log::<Sha256>(&package.name);
         let record = self
             .api
             .publish_package_record(
                 &log_id,
                 PublishRecordRequest {
-                    package_id: Cow::Borrowed(&package.id),
+                    package_name: Cow::Borrowed(&package.name),
                     record: Cow::Owned(record.into()),
                     content_sources: Default::default(),
                 },
@@ -171,7 +175,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .map_err(|e| {
                 ClientError::translate_log_not_found(e, |id| {
                     if id == &log_id {
-                        Some(package.id.clone())
+                        Some(package.name.clone())
                     } else {
                         None
                     }
@@ -205,7 +209,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .map_err(|e| match e {
                     api::ClientError::Package(PackageError::Rejection(reason)) => {
                         ClientError::PublishRejected {
-                            id: package.id.clone(),
+                            name: package.name.clone(),
                             record_id: record.record_id.clone(),
                             reason,
                         }
@@ -224,7 +228,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Returns an error if the package record was rejected.
     pub async fn wait_for_publish(
         &self,
-        package: &PackageId,
+        package: &PackageName,
         record_id: &RecordId,
         interval: Duration,
     ) -> ClientResult<()> {
@@ -241,7 +245,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 }
                 PackageRecordState::Rejected { reason } => {
                     return Err(ClientError::PublishRejected {
-                        id: package.clone(),
+                        name: package.clone(),
                         record_id: record_id.clone(),
                         reason,
                     });
@@ -269,7 +273,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// the latest registry checkpoint.
     pub async fn upsert<'a, I>(&self, packages: I) -> Result<(), ClientError>
     where
-        I: IntoIterator<Item = &'a PackageId>,
+        I: IntoIterator<Item = &'a PackageName>,
         I::IntoIter: ExactSizeIterator,
     {
         tracing::info!("updating specific packages to latest checkpoint");
@@ -306,11 +310,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// the resolved version.
     pub async fn download(
         &self,
-        id: &PackageId,
+        name: &PackageName,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
-        tracing::info!("downloading package `{id}` with requirement `{requirement}`");
-        let info = self.fetch_package(id).await?;
+        tracing::info!("downloading package `{name}` with requirement `{requirement}`");
+        let info = self.fetch_package(name).await?;
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -340,7 +344,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// the specified version.
     pub async fn download_exact(
         &self,
-        package: &PackageId,
+        package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
         tracing::info!("downloading version {version} of package `{package}`");
@@ -351,14 +355,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .release(version)
                 .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
                     version: version.clone(),
-                    id: package.clone(),
+                    name: package.clone(),
                 })?;
 
         let digest = release
             .content()
             .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
                 version: version.clone(),
-                id: package.clone(),
+                name: package.clone(),
             })?;
 
         Ok(PackageDownload {
@@ -381,15 +385,15 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let mut operator = self.registry.load_operator().await?.unwrap_or_default();
 
-        // Map package identifiers to package logs that need to be updated
+        // Map package names to package logs that need to be updated
         let mut packages = packages
             .into_iter()
             .filter_map(|p| match &p.checkpoint {
                 // Don't bother updating if the package is already at the specified checkpoint
                 Some(c) if c == checkpoint => None,
-                _ => Some((LogId::package_log::<Sha256>(&p.id), p)),
+                _ => Some((LogId::package_log::<Sha256>(&p.name), p)),
             })
-            .inspect(|(_, p)| tracing::info!("package `{id}` will be updated", id = p.id))
+            .inspect(|(_, p)| tracing::info!("package `{name}` will be updated", name = p.name))
             .collect::<HashMap<_, _>>();
         if packages.is_empty() {
             return Ok(());
@@ -415,7 +419,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .await
                 .map_err(|e| {
                     ClientError::translate_log_not_found(e, |id| {
-                        packages.get(id).map(|p| p.id.clone())
+                        packages.get(id).map(|p| p.name.clone())
                     })
                 })?;
 
@@ -453,7 +457,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             .state
                             .validate(&proto_envelope.envelope)
                             .map_err(|inner| ClientError::PackageValidationFailed {
-                                id: package.id.clone(),
+                                name: package.name.clone(),
                                 inner,
                             })?;
                         package.head_registry_index = Some(proto_envelope.registry_index);
@@ -464,7 +468,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 // At this point, the package log should not be empty
                 if package.state.head().is_none() {
                     return Err(ClientError::PackageLogEmpty {
-                        id: package.id.clone(),
+                        name: package.name.clone(),
                     });
                 }
             }
@@ -516,7 +520,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 });
             } else {
                 return Err(ClientError::PackageLogEmpty {
-                    id: package.id.clone(),
+                    name: package.name.clone(),
                 });
             }
         }
@@ -559,14 +563,14 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(())
     }
 
-    async fn fetch_package(&self, id: &PackageId) -> Result<PackageInfo, ClientError> {
-        match self.registry.load_package(id).await? {
+    async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
+        match self.registry.load_package(name).await? {
             Some(info) => {
-                tracing::info!("log for package `{id}` already exists in storage");
+                tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
             }
             None => {
-                let mut info = PackageInfo::new(id.clone());
+                let mut info = PackageInfo::new(name.clone());
                 self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
                     .await?;
 
@@ -577,7 +581,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
     async fn get_package_record(
         &self,
-        package: &PackageId,
+        package: &PackageName,
         log_id: &LogId,
         record_id: &RecordId,
     ) -> ClientResult<PackageRecord> {
@@ -737,17 +741,17 @@ pub enum ClientError {
     },
 
     /// The package already exists and cannot be initialized.
-    #[error("package `{id}` already exists and cannot be initialized")]
+    #[error("package `{name}` already exists and cannot be initialized")]
     CannotInitializePackage {
-        /// The identifier of the package that already exists.
-        id: PackageId,
+        /// The package name that already exists.
+        name: PackageName,
     },
 
     /// The package must be initialized before publishing.
-    #[error("package `{id}` must be initialized before publishing")]
+    #[error("package `{name}` must be initialized before publishing")]
     MustInitializePackage {
         /// The name of the package that must be initialized.
-        id: PackageId,
+        name: PackageName,
     },
 
     /// There is no publish operation in progress.
@@ -755,33 +759,33 @@ pub enum ClientError {
     NotPublishing,
 
     /// The package has no records to publish.
-    #[error("package `{id}` has no records to publish")]
+    #[error("package `{name}` has no records to publish")]
     NothingToPublish {
-        /// The identifier of the package that has no publish operations.
-        id: PackageId,
+        /// The package that has no publish operations.
+        name: PackageName,
     },
 
     /// The package does not exist.
-    #[error("package `{id}` does not exist")]
+    #[error("package `{name}` does not exist")]
     PackageDoesNotExist {
-        /// The identifier of the missing package.
-        id: PackageId,
+        /// The missing package.
+        name: PackageName,
     },
 
     /// The package version does not exist.
-    #[error("version `{version}` of package `{id}` does not exist")]
+    #[error("version `{version}` of package `{name}` does not exist")]
     PackageVersionDoesNotExist {
         /// The missing version of the package.
         version: Version,
-        /// The identifier of the package with the missing version.
-        id: PackageId,
+        /// The package with the missing version.
+        name: PackageName,
     },
 
     /// The package failed validation.
-    #[error("package `{id}` failed validation: {inner}")]
+    #[error("package `{name}` failed validation: {inner}")]
     PackageValidationFailed {
-        /// The identifier of the package that failed validation.
-        id: PackageId,
+        /// The package that failed validation.
+        name: PackageName,
         /// The validation error.
         inner: package::ValidationError,
     },
@@ -796,15 +800,15 @@ pub enum ClientError {
     /// The package log is empty and cannot be validated.
     #[error("package log is empty and cannot be validated")]
     PackageLogEmpty {
-        /// The identifier of the package with an empty package log.
-        id: PackageId,
+        /// The package with an empty package log.
+        name: PackageName,
     },
 
     /// A publish operation was rejected.
-    #[error("the publishing of package `{id}` was rejected due to: {reason}")]
+    #[error("the publishing of package `{name}` was rejected due to: {reason}")]
     PublishRejected {
-        /// The identifier of the package that was rejected.
-        id: PackageId,
+        /// The package that was rejected.
+        name: PackageName,
         /// The record identifier for the record that was rejected.
         record_id: RecordId,
         /// The reason it was rejected.
@@ -827,13 +831,13 @@ pub enum ClientError {
 impl ClientError {
     fn translate_log_not_found(
         e: api::ClientError,
-        lookup: impl Fn(&LogId) -> Option<PackageId>,
+        lookup: impl Fn(&LogId) -> Option<PackageName>,
     ) -> Self {
         match &e {
             api::ClientError::Fetch(FetchError::LogNotFound(id))
             | api::ClientError::Package(PackageError::LogNotFound(id)) => {
-                if let Some(id) = lookup(id) {
-                    return Self::PackageDoesNotExist { id };
+                if let Some(name) = lookup(id) {
+                    return Self::PackageDoesNotExist { name };
                 }
             }
             _ => {}

@@ -27,7 +27,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     package::{PackageEntry, PackageRecord, PACKAGE_RECORD_VERSION},
-    registry::{LogId, PackageId},
+    registry::{LogId, PackageName},
     ProtoEnvelope, ProtoEnvelopeBody, Version,
 };
 use wit_component::DecodedWasm;
@@ -67,15 +67,15 @@ async fn test_initial_checkpoint(config: &Config) -> Result<()> {
 }
 
 async fn test_component_publishing(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:component";
+    const PACKAGE_NAME: &str = "test:component";
     const PACKAGE_VERSION: &str = "0.1.0";
 
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         "(component)",
         true,
@@ -84,9 +84,9 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     .await?;
 
     // Assert that the package can be downloaded
-    client.upsert([&id]).await?;
+    client.upsert([&name]).await?;
     let download = client
-        .download(&id, &PACKAGE_VERSION.parse()?)
+        .download(&name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -109,22 +109,22 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&id, &"0.2.0".parse()?).await?.is_none());
+    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
 
     Ok(())
 }
 
 async fn test_package_yanking(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:yankee";
+    const PACKAGE_NAME: &str = "test:yankee";
     const PACKAGE_VERSION: &str = "0.1.0";
 
     // Publish release
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     publish(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         wat::parse_str("(component)")?,
         true,
@@ -137,7 +137,7 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
         .publish_with_info(
             &signing_key,
             PublishInfo {
-                id: id.clone(),
+                name: name.clone(),
                 head: None,
                 entries: vec![PublishEntry::Yank {
                     version: PACKAGE_VERSION.parse()?,
@@ -146,37 +146,37 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
         )
         .await?;
     client
-        .wait_for_publish(&id, &record_id, Duration::from_millis(100))
+        .wait_for_publish(&name, &record_id, Duration::from_millis(100))
         .await?;
 
     // Assert that the package is yanked
-    client.upsert([&id]).await?;
-    let opt = client.download(&id, &PACKAGE_VERSION.parse()?).await?;
+    client.upsert([&name]).await?;
+    let opt = client.download(&name, &PACKAGE_VERSION.parse()?).await?;
     assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
 }
 
 async fn test_wit_publishing(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:wit-package";
+    const PACKAGE_NAME: &str = "test:wit-package";
     const PACKAGE_VERSION: &str = "0.1.0";
 
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     let digest = publish_wit(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
-        &format!("package {PACKAGE_ID}\nworld foo {{}}"),
+        &format!("package {PACKAGE_NAME}\nworld foo {{}}"),
         true,
         &signing_key,
     )
     .await?;
 
     // Assert that the package can be downloaded
-    client.upsert([&id]).await?;
+    client.upsert([&name]).await?;
     let download = client
-        .download(&id, &PACKAGE_VERSION.parse()?)
+        .download(&name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -199,23 +199,23 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&id, &"0.2.0".parse()?).await?.is_none());
+    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
 
     Ok(())
 }
 
 async fn test_wasm_content_policy(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:bad-content";
+    const PACKAGE_NAME: &str = "test:bad-content";
     const PACKAGE_VERSION: &str = "0.1.0";
 
     // Publish empty content to the server
     // This should be rejected by policy because it is not valid WebAssembly
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     match publish(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         Vec::new(),
         true,
@@ -226,11 +226,11 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
     .downcast::<ClientError>()
     {
         Ok(ClientError::PublishRejected {
-            id: rejected_id,
+            name: rejected_name,
             record_id,
             reason,
         }) => {
-            assert_eq!(id, rejected_id);
+            assert_eq!(name, rejected_name);
             assert_eq!(
                 reason,
                 "content is not valid WebAssembly: unexpected end-of-file (at offset 0x0)"
@@ -238,16 +238,16 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
 
             // Waiting on the publish should fail with a rejection as well
             match client
-                .wait_for_publish(&id, &record_id, Duration::from_millis(100))
+                .wait_for_publish(&name, &record_id, Duration::from_millis(100))
                 .await
                 .expect_err("expected wait for publish to fail")
             {
                 ClientError::PublishRejected {
-                    id: rejected_id,
+                    name: rejected_name,
                     record_id: other,
                     reason,
                 } => {
-                    assert_eq!(id, rejected_id);
+                    assert_eq!(name, rejected_name);
                     assert_eq!(record_id, other);
                     assert_eq!(
                         reason,
@@ -264,16 +264,16 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
 }
 
 async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:unauthorized-key";
+    const PACKAGE_NAME: &str = "test:unauthorized-key";
     const PACKAGE_VERSION: &str = "0.1.0";
 
     // Start by publishing a new component package
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         "(component)",
         true,
@@ -286,7 +286,7 @@ async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
 
     let message = format!(
         "{:#}",
-        publish_component(&client, &id, "0.2.0", "(component)", false, &signing_key,)
+        publish_component(&client, &name, "0.2.0", "(component)", false, &signing_key,)
             .await
             .expect_err("expected publish to fail")
     );
@@ -300,16 +300,16 @@ async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
 }
 
 async fn test_unknown_signing_key(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:unknown-key";
+    const PACKAGE_NAME: &str = "test:unknown-key";
     const PACKAGE_VERSION: &str = "0.1.0";
 
     // Start by publishing a new component package
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         "(component)",
         true,
@@ -323,7 +323,7 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
 
     let message = format!(
         "{:#}",
-        publish_component(&client, &id, "0.2.0", "(component)", false, &signing_key,)
+        publish_component(&client, &name, "0.2.0", "(component)", false, &signing_key,)
             .await
             .expect_err("expected publish to fail")
     );
@@ -342,7 +342,7 @@ async fn test_publishing_name_conflict(config: &Config) -> Result<()> {
 
     publish_component(
         &client,
-        &PackageId::new("test:name")?,
+        &PackageName::new("test:name")?,
         "0.1.0",
         "(component)",
         true,
@@ -353,7 +353,7 @@ async fn test_publishing_name_conflict(config: &Config) -> Result<()> {
     // should be rejected
     publish_component(
         &client,
-        &PackageId::new("test:NAME")?,
+        &PackageName::new("test:NAME")?,
         "0.1.1",
         "(component)",
         true,
@@ -366,11 +366,11 @@ async fn test_publishing_name_conflict(config: &Config) -> Result<()> {
 }
 
 async fn test_invalid_signature(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:invalid-signature";
+    const PACKAGE_NAME: &str = "test:invalid-signature";
 
     // Use a reqwest client directly here as we're going to be sending an invalid signature
-    let id = PackageId::new(PACKAGE_ID)?;
-    let log_id = LogId::package_log::<Sha256>(&id);
+    let name = PackageName::new(PACKAGE_NAME)?;
+    let log_id = LogId::package_log::<Sha256>(&name);
     let url = Url::parse(config.default_url.as_ref().unwrap())?
         .join(&paths::publish_package_record(&log_id))
         .unwrap();
@@ -390,7 +390,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
     )?;
 
     let body = PublishRecordRequest {
-        package_id: Cow::Borrowed(&id),
+        package_name: Cow::Borrowed(&name),
         record: Cow::Owned(ProtoEnvelopeBody::from(record)),
         content_sources: Default::default(),
     };
@@ -422,15 +422,15 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
 }
 
 async fn test_custom_content_url(config: &Config) -> Result<()> {
-    const PACKAGE_ID: &str = "test:custom-content-url";
+    const PACKAGE_NAME: &str = "test:custom-content-url";
     const PACKAGE_VERSION: &str = "0.1.0";
 
-    let id = PackageId::new(PACKAGE_ID)?;
+    let name = PackageName::new(PACKAGE_NAME)?;
     let client = create_client(config)?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
-        &id,
+        &name,
         PACKAGE_VERSION,
         "(component)",
         true,
@@ -438,10 +438,10 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     )
     .await?;
 
-    client.upsert([&id]).await?;
+    client.upsert([&name]).await?;
     let package = client
         .registry()
-        .load_package(&id)
+        .load_package(&name)
         .await?
         .expect("expected the package to exist");
     package
@@ -473,8 +473,8 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
 }
 
 async fn test_fetch_package_names(config: &Config) -> Result<()> {
-    let id_1 = PackageId::new("test:component")?;
-    let log_id_1 = LogId::package_log::<Sha256>(&id_1);
+    let name_1 = PackageName::new("test:component")?;
+    let log_id_1 = LogId::package_log::<Sha256>(&name_1);
 
     let url = Url::parse(config.default_url.as_ref().unwrap())?
         .join(paths::fetch_package_names())
@@ -500,11 +500,11 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
         "unexpected response from server: {status}",
     );
 
-    let lookup_id_1 = names_resp.packages.get(&log_id_1);
+    let lookup_name_1 = names_resp.packages.get(&log_id_1);
     assert_eq!(
-        lookup_id_1,
-        Some(&Some(id_1.clone())),
-        "fetch of package name {id_1} mismatched to {lookup_id_1:?}"
+        lookup_name_1,
+        Some(&Some(name_1.clone())),
+        "fetch of package name {name_1} mismatched to {lookup_name_1:?}"
     );
 
     Ok(())

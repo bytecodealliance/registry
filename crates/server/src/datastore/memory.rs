@@ -12,7 +12,7 @@ use warg_protocol::{
     operator,
     package::{self, PackageEntry},
     registry::{
-        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+        LogId, LogLeaf, PackageName, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
     },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
@@ -77,8 +77,8 @@ enum RecordStatus {
 struct State {
     operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
-    package_ids: HashMap<LogId, Option<PackageId>>,
-    package_ids_lowercase: HashMap<String, PackageId>,
+    package_names: HashMap<LogId, Option<PackageName>>,
+    package_names_lowercase: HashMap<String, PackageName>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
     log_leafs: HashMap<RegistryIndex, LogLeaf>,
@@ -166,19 +166,19 @@ impl DataStore for MemoryDataStore {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
+    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError> {
         let state = self.0.read().await;
 
         log_ids
             .iter()
             .map(|log_id| {
-                if let Some(opt_package_name) = state.package_ids.get(log_id) {
+                if let Some(opt_package_name) = state.package_names.get(log_id) {
                     Ok((log_id.clone(), opt_package_name.clone()))
                 } else {
                     Err(DataStoreError::LogNotFound(log_id.clone()))
                 }
             })
-            .collect::<Result<HashMap<LogId, Option<PackageId>>, _>>()
+            .collect::<Result<HashMap<LogId, Option<PackageName>>, _>>()
     }
 
     async fn store_operator_record(
@@ -292,7 +292,7 @@ impl DataStore for MemoryDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -313,11 +313,12 @@ impl DataStore for MemoryDataStore {
             }),
         );
         state
-            .package_ids
-            .insert(log_id.clone(), Some(package_id.clone()));
-        state
-            .package_ids_lowercase
-            .insert(package_id.as_ref().to_ascii_lowercase(), package_id.clone());
+            .package_names
+            .insert(log_id.clone(), Some(package_name.clone()));
+        state.package_names_lowercase.insert(
+            package_name.as_ref().to_ascii_lowercase(),
+            package_name.clone(),
+        );
 
         assert!(prev.is_none());
         Ok(())
@@ -721,7 +722,7 @@ impl DataStore for MemoryDataStore {
     async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
     ) -> Result<(), DataStoreError> {
         let state = self.0.read().await;
 
@@ -731,24 +732,24 @@ impl DataStore for MemoryDataStore {
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
             .validator
-            .namespace_state(package_id.namespace())
+            .namespace_state(package_name.namespace())
         {
             Ok(Some(state)) => match state {
                 operator::NamespaceState::Defined => {}
                 operator::NamespaceState::Imported { .. } => {
                     return Err(DataStoreError::PackageNamespaceImported(
-                        package_id.namespace().to_string(),
+                        package_name.namespace().to_string(),
                     ))
                 }
             },
             Ok(None) => {
                 return Err(DataStoreError::PackageNamespaceNotDefined(
-                    package_id.namespace().to_string(),
+                    package_name.namespace().to_string(),
                 ))
             }
             Err(existing_namespace) => {
                 return Err(DataStoreError::PackageNamespaceConflict {
-                    namespace: package_id.namespace().to_string(),
+                    namespace: package_name.namespace().to_string(),
                     existing: existing_namespace.to_string(),
                 })
             }
@@ -756,12 +757,12 @@ impl DataStore for MemoryDataStore {
 
         // verify package name is unique in a case insensitive way
         match state
-            .package_ids_lowercase
-            .get(&package_id.as_ref().to_ascii_lowercase())
+            .package_names_lowercase
+            .get(&package_name.as_ref().to_ascii_lowercase())
         {
-            Some(existing) if existing.as_ref() != package_id.as_ref() => {
+            Some(existing) if existing.as_ref() != package_name.as_ref() => {
                 Err(DataStoreError::PackageNameConflict {
-                    name: package_id.clone(),
+                    name: package_name.clone(),
                     existing: existing.clone(),
                 })
             }
@@ -803,12 +804,12 @@ impl DataStore for MemoryDataStore {
     }
 
     #[cfg(feature = "debug")]
-    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+    async fn debug_list_package_names(&self) -> anyhow::Result<Vec<PackageName>> {
         let state = self.0.read().await;
         Ok(state
-            .package_ids
+            .package_names
             .values()
-            .filter_map(|opt_package_id| opt_package_id.clone())
+            .filter_map(|opt_package_name| opt_package_name.clone())
             .collect())
     }
 }

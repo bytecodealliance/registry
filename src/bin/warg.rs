@@ -67,11 +67,11 @@ fn describe_client_error(e: &ClientError) {
         ClientError::NoDefaultUrl => {
             eprintln!("error: {e}; use the `config` subcommand to set a default URL");
         }
-        ClientError::PackageValidationFailed { id, inner } => {
-            eprintln!("error: the log for package `{id}` is invalid: {inner}")
+        ClientError::PackageValidationFailed { name, inner } => {
+            eprintln!("error: the log for package `{name}` is invalid: {inner}")
         }
-        ClientError::PackageLogEmpty { id } => {
-            eprintln!("error: the log for package `{id}` is empty (the registry could be lying)");
+        ClientError::PackageLogEmpty { name } => {
+            eprintln!("error: the log for package `{name}` is empty (the registry could be lying)");
             eprintln!("see issue https://github.com/bytecodealliance/registry/issues/66");
         }
         _ => eprintln!("error: {e}"),

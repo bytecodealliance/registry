@@ -26,7 +26,7 @@ use warg_protocol::{
     operator,
     package::{self, PackageEntry},
     registry::{
-        Checkpoint, LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen,
+        Checkpoint, LogId, LogLeaf, PackageName, RecordId, RegistryIndex, RegistryLen,
         TimestampedCheckpoint,
     },
     ProtoEnvelope, PublishedProtoEnvelope, Record as _, SerdeEnvelope, Validator,
@@ -529,7 +529,7 @@ impl DataStore for PostgresDataStore {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError> {
+    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
         let map = schema::logs::table
@@ -544,10 +544,10 @@ impl DataStore for PostgresDataStore {
             .map(|(log_id, opt_package_name)| {
                 (
                     log_id.0.into(),
-                    opt_package_name.map(|name| PackageId::new(name).unwrap()),
+                    opt_package_name.map(|name| PackageName::new(name).unwrap()),
                 )
             })
-            .collect::<HashMap<LogId, Option<PackageId>>>();
+            .collect::<HashMap<LogId, Option<PackageName>>>();
 
         // check if any log IDs were not found
         for log_id in log_ids {
@@ -624,7 +624,7 @@ impl DataStore for PostgresDataStore {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -633,7 +633,7 @@ impl DataStore for PostgresDataStore {
         insert_record::<package::LogState>(
             conn.as_mut(),
             log_id,
-            Some(package_id.as_ref()),
+            Some(package_name.as_ref()),
             record_id,
             record,
             missing,
@@ -963,7 +963,7 @@ impl DataStore for PostgresDataStore {
     async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
 
@@ -976,23 +976,23 @@ impl DataStore for PostgresDataStore {
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?;
 
         // verify namespace is defined and not imported
-        match validator.namespace_state(package_id.namespace()) {
+        match validator.namespace_state(package_name.namespace()) {
             Ok(Some(state)) => match state {
                 operator::NamespaceState::Defined => {}
                 operator::NamespaceState::Imported { .. } => {
                     return Err(DataStoreError::PackageNamespaceImported(
-                        package_id.namespace().to_string(),
+                        package_name.namespace().to_string(),
                     ))
                 }
             },
             Ok(None) => {
                 return Err(DataStoreError::PackageNamespaceNotDefined(
-                    package_id.namespace().to_string(),
+                    package_name.namespace().to_string(),
                 ))
             }
             Err(existing_namespace) => {
                 return Err(DataStoreError::PackageNamespaceConflict {
-                    namespace: package_id.namespace().to_string(),
+                    namespace: package_name.namespace().to_string(),
                     existing: existing_namespace.to_string(),
                 })
             }
@@ -1002,16 +1002,16 @@ impl DataStore for PostgresDataStore {
         match schema::logs::table
             .select(schema::logs::name)
             .filter(
-                lower(schema::logs::name).eq(TextRef(&package_id.as_ref().to_ascii_lowercase())),
+                lower(schema::logs::name).eq(TextRef(&package_name.as_ref().to_ascii_lowercase())),
             )
             .first::<Option<String>>(&mut conn)
             .await
             .optional()?
         {
-            Some(Some(name)) if name != package_id.as_ref() => {
+            Some(Some(name)) if name != package_name.as_ref() => {
                 Err(DataStoreError::PackageNameConflict {
-                    name: package_id.clone(),
-                    existing: PackageId::new(name).unwrap(),
+                    name: package_name.clone(),
+                    existing: PackageName::new(name).unwrap(),
                 })
             }
             _ => Ok(()),
@@ -1054,7 +1054,7 @@ impl DataStore for PostgresDataStore {
     }
 
     #[cfg(feature = "debug")]
-    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+    async fn debug_list_package_names(&self) -> anyhow::Result<Vec<PackageName>> {
         let mut conn = self.pool.get().await?;
         let names = schema::logs::table
             .select(schema::logs::name)

@@ -11,7 +11,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator, package,
     registry::{
-        LogId, LogLeaf, PackageId, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
+        LogId, LogLeaf, PackageName, RecordId, RegistryIndex, RegistryLen, TimestampedCheckpoint,
     },
     ProtoEnvelope, PublishedProtoEnvelope, SerdeEnvelope,
 };
@@ -58,8 +58,8 @@ pub enum DataStoreError {
 
     #[error("the package `{name}` conflicts with package `{existing}`; package names must be unique in a case insensitive way")]
     PackageNameConflict {
-        name: PackageId,
-        existing: PackageId,
+        name: PackageName,
+        existing: PackageName,
     },
 
     #[error("the package namespace `{namespace}` conflicts with existing namespace `{existing}`; package namespaces must be unique in a case insensitive way")]
@@ -187,7 +187,7 @@ pub trait DataStore: Send + Sync {
     async fn store_package_record(
         &self,
         log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
         missing: &HashSet<&AnyHash>,
@@ -262,7 +262,7 @@ pub trait DataStore: Send + Sync {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageId>>, DataStoreError>;
+    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError>;
 
     /// Gets a batch of log leafs starting with a registry log index.  
     async fn get_log_leafs_starting_with_registry_index(
@@ -321,7 +321,7 @@ pub trait DataStore: Send + Sync {
     async fn verify_can_publish_package(
         &self,
         operator_log_id: &LogId,
-        package_id: &PackageId,
+        package_name: &PackageName,
     ) -> Result<(), DataStoreError>;
 
     /// Verifies the TimestampedCheckpoint signature.
@@ -334,7 +334,7 @@ pub trait DataStore: Send + Sync {
     // Returns a list of package names, for debugging only.
     #[cfg(feature = "debug")]
     #[doc(hidden)]
-    async fn debug_list_package_ids(&self) -> anyhow::Result<Vec<PackageId>> {
+    async fn debug_list_package_names(&self) -> anyhow::Result<Vec<PackageName>> {
         anyhow::bail!("not implemented")
     }
 }
