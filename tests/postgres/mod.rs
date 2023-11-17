@@ -49,16 +49,20 @@ async fn it_works_with_postgres() -> TestResult {
     test_wit_publishing(&config).await?;
     test_wasm_content_policy(&config).await?;
     test_unauthorized_signing_key(&config).await?;
+    test_publishing_name_conflict(&config).await?;
     // This is tested below where a different server is used that
     // allows any signing key
     //test_unknown_signing_key(&config).await?;
     test_invalid_signature(&config).await?;
+    test_fetch_package_names(&config).await?;
+    test_get_ledger(&config).await?;
 
     let mut packages = vec![
-        PackageId::new("test:component")?,
-        PackageId::new("test:yankee")?,
-        PackageId::new("test:wit-package")?,
-        PackageId::new("test:unauthorized-key")?,
+        PackageName::new("test:component")?,
+        PackageName::new("test:yankee")?,
+        PackageName::new("test:wit-package")?,
+        PackageName::new("test:unauthorized-key")?,
+        PackageName::new("test:name")?,
     ];
 
     // There should be two log entries in the registry
@@ -78,7 +82,7 @@ async fn it_works_with_postgres() -> TestResult {
 
     test_unknown_signing_key(&config).await?;
 
-    packages.push(PackageId::new("test:unknown-key")?);
+    packages.push(PackageName::new("test:unknown-key")?);
 
     let client = api::Client::new(config.default_url.as_ref().unwrap())?;
     let ts_checkpoint = client.latest_checkpoint().await?;

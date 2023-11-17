@@ -16,7 +16,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     package::Permission,
-    registry::{PackageId, RecordId},
+    registry::{PackageName, RecordId},
     Version,
 };
 
@@ -27,7 +27,7 @@ const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
 /// was no pending publish.
 async fn enqueue<'a, T>(
     client: &'a FileSystemClient,
-    id: &PackageId,
+    name: &PackageName,
     entry: impl FnOnce(&'a FileSystemClient) -> T,
 ) -> Result<Option<PublishEntry>>
 where
@@ -35,17 +35,17 @@ where
 {
     match client.registry().load_publish().await? {
         Some(mut info) => {
-            if &info.id != id {
+            if &info.name != name {
                 bail!(
-                    "there is already publish in progress for package `{id}`",
-                    id = info.id
+                    "there is already publish in progress for package `{name}`",
+                    name = info.name
                 );
             }
 
             let entry = entry(client).await?;
 
             if matches!(entry, PublishEntry::Init) && info.initializing() {
-                bail!("there is already a pending initializing for package `{id}`");
+                bail!("there is already a pending initializing for package `{name}`");
             }
 
             info.entries.push(entry);
@@ -106,9 +106,9 @@ pub struct PublishInitCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package being initialized.
+    /// The package name being initialized.
     #[clap(value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// Whether to wait for the publish to complete.
     #[clap(long)]
     pub no_wait: bool,
@@ -120,7 +120,7 @@ impl PublishInitCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match enqueue(&client, &self.id, |_| {
+        match enqueue(&client, &self.name, |_| {
             std::future::ready(Ok(PublishEntry::Init))
         })
         .await?
@@ -131,7 +131,7 @@ impl PublishInitCommand {
                     .publish_with_info(
                         &signing_key,
                         PublishInfo {
-                            id: self.id.clone(),
+                            name: self.name.clone(),
                             head: None,
                             entries: vec![entry],
                         },
@@ -142,16 +142,19 @@ impl PublishInitCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
-                    println!("published initialization of package `{id}`", id = self.id,);
+                    println!(
+                        "published initialization of package `{name}`",
+                        name = self.name,
+                    );
                 }
             }
             None => {
                 println!(
-                    "added initialization of package `{id}` to pending publish",
-                    id = self.id
+                    "added initialization of package `{name}` to pending publish",
+                    name = self.name
                 );
             }
         }
@@ -167,9 +170,9 @@ pub struct PublishReleaseCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package being published.
+    /// The package name being published.
     #[clap(long, short, value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// The version of the package being published.
     #[clap(long, short, value_name = "VERSION")]
     pub version: Version,
@@ -189,7 +192,7 @@ impl PublishReleaseCommand {
 
         let path = self.path.clone();
         let version = self.version.clone();
-        match enqueue(&client, &self.id, move |c| async move {
+        match enqueue(&client, &self.name, move |c| async move {
             let content = c
                 .content()
                 .store_content(
@@ -215,7 +218,7 @@ impl PublishReleaseCommand {
                     .publish_with_info(
                         &signing_key,
                         PublishInfo {
-                            id: self.id.clone(),
+                            name: self.name.clone(),
                             head: None,
                             entries: vec![entry],
                         },
@@ -226,21 +229,21 @@ impl PublishReleaseCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     println!(
-                        "published version {version} of package `{id}`",
+                        "published version {version} of package `{name}`",
                         version = self.version,
-                        id = self.id
+                        name = self.name
                     );
                 }
             }
             None => {
                 println!(
-                    "added release of version {version} for package `{id}` to pending publish",
+                    "added release of version {version} for package `{name}` to pending publish",
                     version = self.version,
-                    id = self.id
+                    name = self.name
                 );
             }
         }
@@ -256,9 +259,9 @@ pub struct PublishYankCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package being yanked.
+    /// The package name being yanked.
     #[clap(long, short, value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// The version of the package being yanked.
     #[clap(long, short, value_name = "VERSION")]
     pub version: Version,
@@ -274,7 +277,7 @@ impl PublishYankCommand {
         let client = self.common.create_client(&config)?;
 
         let version = self.version.clone();
-        match enqueue(&client, &self.id, move |_| async move {
+        match enqueue(&client, &self.name, move |_| async move {
             Ok(PublishEntry::Yank { version })
         })
         .await?
@@ -285,7 +288,7 @@ impl PublishYankCommand {
                     .publish_with_info(
                         &signing_key,
                         PublishInfo {
-                            id: self.id.clone(),
+                            name: self.name.clone(),
                             head: None,
                             entries: vec![entry],
                         },
@@ -296,21 +299,21 @@ impl PublishYankCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     println!(
-                        "yanked version {version} of package `{id}`",
+                        "yanked version {version} of package `{name}`",
                         version = self.version,
-                        id = self.id
+                        name = self.name
                     );
                 }
             }
             None => {
                 println!(
-                    "added yank of version {version} for package `{id}` to pending publish",
+                    "added yank of version {version} for package `{name}` to pending publish",
                     version = self.version,
-                    id = self.id
+                    name = self.name
                 );
             }
         }
@@ -326,9 +329,9 @@ pub struct PublishGrantCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package.
+    /// The package name.
     #[clap(long, short, value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// The public key to grant permissions to.
     #[clap(value_name = "PUBLIC_KEY")]
     pub public_key: PublicKey,
@@ -350,7 +353,7 @@ impl PublishGrantCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match enqueue(&client, &self.id, |_| async {
+        match enqueue(&client, &self.name, |_| async {
             Ok(PublishEntry::Grant {
                 key: self.public_key.clone(),
                 permissions: self.permissions.clone(),
@@ -364,7 +367,7 @@ impl PublishGrantCommand {
                     .publish_with_info(
                         &signing_key,
                         PublishInfo {
-                            id: self.id.clone(),
+                            name: self.name.clone(),
                             head: None,
                             entries: vec![entry],
                         },
@@ -375,23 +378,23 @@ impl PublishGrantCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     println!(
-                        "granted ({permissions_str}) to key ID `{key_id}` for package `{id}`",
+                        "granted ({permissions_str}) to key ID `{key_id}` for package `{name}`",
                         permissions_str = self.permissions.iter().join(","),
                         key_id = self.public_key.fingerprint(),
-                        id = self.id
+                        name = self.name
                     );
                 }
             }
             None => {
                 println!(
-                    "added grant of ({permissions_str}) to key ID `{key_id}` for package `{id}` to pending publish",
+                    "added grant of ({permissions_str}) to key ID `{key_id}` for package `{name}` to pending publish",
                     permissions_str = self.permissions.iter().join(","),
                     key_id = self.public_key.fingerprint(),
-                    id = self.id
+                    name = self.name
                 );
             }
         }
@@ -407,9 +410,9 @@ pub struct PublishRevokeCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package.
+    /// The package name.
     #[clap(long, short, value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
     /// The key ID to revoke permissions from.
     #[clap(value_name = "KEY_ID")]
     pub key: KeyID,
@@ -431,7 +434,7 @@ impl PublishRevokeCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        match enqueue(&client, &self.id, |_| async {
+        match enqueue(&client, &self.name, |_| async {
             Ok(PublishEntry::Revoke {
                 key_id: self.key.clone(),
                 permissions: self.permissions.clone(),
@@ -445,7 +448,7 @@ impl PublishRevokeCommand {
                     .publish_with_info(
                         &signing_key,
                         PublishInfo {
-                            id: self.id.clone(),
+                            name: self.name.clone(),
                             head: None,
                             entries: vec![entry],
                         },
@@ -456,23 +459,23 @@ impl PublishRevokeCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&self.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&self.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     println!(
-                        "revoked ({permissions_str}) from key ID `{key_id}` for package `{id}`",
+                        "revoked ({permissions_str}) from key ID `{key_id}` for package `{name}`",
                         permissions_str = self.permissions.iter().join(","),
                         key_id = self.key,
-                        id = self.id
+                        name = self.name
                     );
                 }
             }
             None => {
                 println!(
-                    "added revoke of ({permissions_str}) from key ID `{key_id}` for package `{id}` to pending publish",
+                    "added revoke of ({permissions_str}) from key ID `{key_id}` for package `{name}` to pending publish",
                     permissions_str = self.permissions.iter().join(","),
                     key_id = self.key,
-                    id = self.id
+                    name = self.name
                 );
             }
         }
@@ -488,9 +491,9 @@ pub struct PublishStartCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-    /// The identifier of the package being published.
+    /// The package name being published.
     #[clap(value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
 }
 
 impl PublishStartCommand {
@@ -500,18 +503,18 @@ impl PublishStartCommand {
         let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
-            Some(info) => bail!("a publish is already in progress for package `{id}`; use `publish abort` to abort the current publish", id = info.id),
+            Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
             None => {
                 client.registry().store_publish(Some(&PublishInfo {
-                    id: self.id.clone(),
+                    name: self.name.clone(),
                     head: None,
                     entries: Default::default(),
                 }))
                 .await?;
 
                 println!(
-                    "started new pending publish for package `{id}`",
-                    id = self.id
+                    "started new pending publish for package `{name}`",
+                    name = self.name
                 );
                 Ok(())
             },
@@ -536,8 +539,8 @@ impl PublishListCommand {
         match client.registry().load_publish().await? {
             Some(info) => {
                 println!(
-                    "publishing package `{id}` with {count} record(s) to publish\n",
-                    id = info.id,
+                    "publishing package `{name}` with {count} record(s) to publish\n",
+                    name = info.name,
                     count = info.entries.len()
                 );
 
@@ -593,8 +596,8 @@ impl PublishAbortCommand {
             Some(info) => {
                 client.registry().store_publish(None).await?;
                 println!(
-                    "aborted the pending publish for package `{id}`",
-                    id = info.id
+                    "aborted the pending publish for package `{name}`",
+                    name = info.name
                 );
             }
             None => bail!("no pending publish to abort"),
@@ -623,7 +626,10 @@ impl PublishSubmitCommand {
 
         match client.registry().load_publish().await? {
             Some(info) => {
-                println!("submitting publish for package `{id}`...", id = info.id);
+                println!(
+                    "submitting publish for package `{name}`...",
+                    name = info.name
+                );
 
                 let signing_key = self.common.signing_key(client.url())?;
                 let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
@@ -634,20 +640,20 @@ impl PublishSubmitCommand {
                     println!("submitted record `{record_id}` for publishing");
                 } else {
                     client
-                        .wait_for_publish(&info.id, &record_id, DEFAULT_WAIT_INTERVAL)
+                        .wait_for_publish(&info.name, &record_id, DEFAULT_WAIT_INTERVAL)
                         .await?;
 
                     for entry in &info.entries {
-                        let id = &info.id;
+                        let name = &info.name;
                         match entry {
                             PublishEntry::Init => {
-                                println!("published initialization of package `{id}`");
+                                println!("published initialization of package `{name}`");
                             }
                             PublishEntry::Release { version, .. } => {
-                                println!("published version {version} of package `{id}`");
+                                println!("published version {version} of package `{name}`");
                             }
                             PublishEntry::Yank { version } => {
-                                println!("yanked version {version} of package `{id}`")
+                                println!("yanked version {version} of package `{name}`")
                             }
                             PublishEntry::Grant { key, permissions } => {
                                 println!(
@@ -683,7 +689,7 @@ pub struct PublishWaitCommand {
 
     /// The name of the published package.
     #[clap(value_name = "PACKAGE")]
-    pub id: PackageId,
+    pub name: PackageName,
 
     /// The identifier of the package record to wait for completion.
     #[clap(value_name = "RECORD")]
@@ -698,17 +704,17 @@ impl PublishWaitCommand {
         let record_id = RecordId::from(self.record_id);
 
         println!(
-            "waiting for record `{record_id} of package `{id}` to be published...",
-            id = self.id
+            "waiting for record `{record_id} of package `{name}` to be published...",
+            name = self.name
         );
 
         client
-            .wait_for_publish(&self.id, &record_id, Duration::from_secs(1))
+            .wait_for_publish(&self.name, &record_id, Duration::from_secs(1))
             .await?;
 
         println!(
-            "record `{record_id} of package `{id}` has been published",
-            id = self.id
+            "record `{record_id} of package `{name}` has been published",
+            name = self.name
         );
 
         Ok(())

@@ -17,13 +17,20 @@ use warg_crypto::{
     hash::AnyHash,
     signing::{KeyID, PrivateKey},
 };
-use warg_protocol::registry::PackageId;
+use warg_protocol::{operator, registry::PackageName};
 use warg_server::{
     datastore::DataStore,
     policy::{content::WasmContentPolicy, record::AuthorizedKeyPolicy},
     Config, Server,
 };
 use wit_parser::{Resolve, UnresolvedPackage};
+
+pub fn test_namespaces() -> Option<Vec<(String, operator::NamespaceState)>> {
+    Some(vec![(
+        "test".to_string(),
+        operator::NamespaceState::Defined,
+    )])
+}
 
 pub fn test_operator_key() -> PrivateKey {
     let key = "ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=";
@@ -113,7 +120,7 @@ pub async fn spawn_server(
     let _subscriber_guard = thread_test_logging();
 
     let shutdown = CancellationToken::new();
-    let mut config = Config::new(test_operator_key(), root.join("server"))
+    let mut config = Config::new(test_operator_key(), test_namespaces(), root.join("server"))
         .with_addr(([127, 0, 0, 1], 0))
         .with_shutdown(shutdown.clone().cancelled_owned())
         .with_checkpoint_interval(Duration::from_millis(100))
@@ -163,7 +170,7 @@ pub async fn spawn_server(
 
 pub async fn publish(
     client: &FileSystemClient,
-    id: &PackageId,
+    name: &PackageName,
     version: &str,
     content: Vec<u8>,
     init: bool,
@@ -190,7 +197,7 @@ pub async fn publish(
         .publish_with_info(
             signing_key,
             PublishInfo {
-                id: id.clone(),
+                name: name.clone(),
                 head: None,
                 entries,
             },
@@ -198,7 +205,7 @@ pub async fn publish(
         .await?;
 
     client
-        .wait_for_publish(id, &record_id, Duration::from_millis(100))
+        .wait_for_publish(name, &record_id, Duration::from_millis(100))
         .await?;
 
     Ok(digest)
@@ -206,18 +213,26 @@ pub async fn publish(
 
 pub async fn publish_component(
     client: &FileSystemClient,
-    id: &PackageId,
+    name: &PackageName,
     version: &str,
     wat: &str,
     init: bool,
     signing_key: &PrivateKey,
 ) -> Result<AnyHash> {
-    publish(client, id, version, wat::parse_str(wat)?, init, signing_key).await
+    publish(
+        client,
+        name,
+        version,
+        wat::parse_str(wat)?,
+        init,
+        signing_key,
+    )
+    .await
 }
 
 pub async fn publish_wit(
     client: &FileSystemClient,
-    id: &PackageId,
+    name: &PackageName,
     version: &str,
     wit: &str,
     init: bool,
@@ -228,7 +243,7 @@ pub async fn publish_wit(
 
     publish(
         client,
-        id,
+        name,
         version,
         wit_component::encode(&resolve, pkg)?,
         init,

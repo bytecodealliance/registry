@@ -91,7 +91,7 @@ default.
 Next, create a new signing key to publish packages with:
 
 ```
-warg key new 127.0.0.1
+warg key new 127.0.0.1:8090
 ```
 
 The new signing key will be stored in your operating system's key store and
@@ -108,15 +108,15 @@ A new package can be initialized by running:
 warg publish init example:hello
 ```
 
-This creates a new package in the `example` namespace with the package ID `hello`.
+This creates a new package in the `example` namespace with the name `hello`.
 
 A version of the package can be published by running:
 
 ```
-warg publish release --id example:hello --version 0.1.0 hello.wasm
+warg publish release --name example:hello --version 0.1.0 hello.wasm
 ```
 
-This publishes a package named `hello` in the `example` namespace with version `0.1.0` and content from 
+This publishes a package named `example:hello` with version `0.1.0` and content from 
 `hello.wasm`.
 
 Alternatively, the above can be batched into a single publish operation:
@@ -124,7 +124,7 @@ Alternatively, the above can be batched into a single publish operation:
 ```
 warg publish start example:hello
 warg publish init example:hello
-warg publish release --id example:hello --version 0.1.0 hello.wasm
+warg publish release --name example:hello --version 0.1.0 hello.wasm
 warg publish submit
 ```
 
@@ -140,7 +140,7 @@ Use `warg publish abort` to abort a pending publish operation.
 You can grant permissions to another public key with the `warg publish grant` subcommand:
 
 ```
-warg publish grant --id example:hello ecdsa-p256:ABC...
+warg publish grant --name example:hello ecdsa-p256:ABC...
 ```
 
 > You can get your own public key with the `warg key info` subcommand.
@@ -151,7 +151,7 @@ Similarly, permissions may be revoked via `warg publish revoke`. Note that
 keys are identified by ID (fingerprint) for revocation:
 
 ```
-warg publish revoke --id example:hello sha256:abc...
+warg publish revoke --name example:hello sha256:abc...
 ```
 
 ### Running a package
@@ -168,7 +168,7 @@ To publish the demo module:
 ```
 warg publish start demo:simple-grep
 warg publish init demo:simple-grep
-warg publish release --id demo:simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
+warg publish release --name demo:simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
 warg publish submit
 ```
 

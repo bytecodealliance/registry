@@ -1,4 +1,4 @@
-use super::Json;
+use super::{Json, RegistryHeader};
 use crate::services::{CoreService, CoreServiceError};
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::post, Router,
@@ -60,6 +60,7 @@ impl IntoResponse for ProofApiError {
 #[debug_handler]
 async fn prove_consistency(
     State(config): State<Config>,
+    RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<ConsistencyRequest>,
 ) -> Result<Json<ConsistencyResponse>, ProofApiError> {
     let bundle = config
@@ -75,6 +76,7 @@ async fn prove_consistency(
 #[debug_handler]
 async fn prove_inclusion(
     State(config): State<Config>,
+    RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<InclusionRequest>,
 ) -> Result<Json<InclusionResponse>, ProofApiError> {
     let log_length = body.log_length as RegistryLen;

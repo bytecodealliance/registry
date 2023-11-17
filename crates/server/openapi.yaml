@@ -20,19 +20,89 @@ x-42c-skipIssues:
 
 tags:
   - name: fetch
-    description: API for fetching checkpoints and logs from the registry.
+    description: API for fetching checkpoints, logs and package names from the registry.
   - name: package
     description: API for managing package logs in the registry.
   - name: content
     description: API for content sources in the registry.
   - name: proof
     description: API for proving the integrity of the registry.
+  - name: monitor
+    description: API for verifying registry checkpoints.
+  - name: ledger
+    description: API for fetching the ledger.
 
 servers:
   - url: http://localhost:8090/v1
     description: Local development server
 
 paths:
+  /fetch/names:
+    post:
+      summary: Fetch package names
+      operationId: fetchNames
+      security: []
+      tags:
+        - fetch
+      description: |
+        Fetch the package names for registry log IDs.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FetchPackageNamesRequest"
+      responses:
+        "200":
+          description: The package names were successfully fetched.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchPackageNamesResponse"
+        "404":
+          description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [log]
+                    example: log
+                  id:
+                    type: string
+                    description: The identifier of the entity that was not found.
+                    example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
+        default:
+          description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /fetch/logs:
     post:
       summary: Fetch registry logs
@@ -42,6 +112,10 @@ paths:
         - fetch
       description: |
         Fetch the operator and packages logs from the registry.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         required: true
         content:
@@ -51,12 +125,18 @@ paths:
       responses:
         "200":
           description: The logs were successfully fetched.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/FetchLogsResponse"
         "404":
           description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -65,6 +145,9 @@ paths:
                   - "$ref": "#/components/schemas/FetchLogsLogLengthNotFoundError"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -77,15 +160,25 @@ paths:
       tags:
         - fetch
       description: Fetch the latest checkpoint from the registry.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The checkpoint was successfully fetched.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignedCheckpoint"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -110,6 +203,9 @@ paths:
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         required: true
         content:
@@ -119,6 +215,9 @@ paths:
       responses:
         "202":
           description: The package record was accepted.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -126,6 +225,75 @@ paths:
         "403":
           description: |
             The key used to sign the record was not authorized to publish a record to the log.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 404
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [namespace]
+                    example: namespace
+                  id:
+                    type: string
+                    description: |
+                      The identifier of the entity that was not found.
+        "409":
+          description: The requested package publish conflicts.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                  - type
+                  - id
+                properties:
+                  status:
+                    type: integer
+                    description: The HTTP status code for the error.
+                    example: 409
+                  type:
+                    type: string
+                    description: The type of entity that was not found.
+                    enum: [name, namespace, namespaceImport]
+                    example: namespace
+                  id:
+                    type: string
+                    description: |
+                      The identifier of the entity that was not found.
+        "422":
+          description: |
+            The package was rejected by the registry.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -134,12 +302,18 @@ paths:
           description: |
             The server does not support publishing package records with explicitly
             specified content source locations.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -172,15 +346,24 @@ paths:
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The package record.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/PackageRecord"
         "404":
           description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -206,6 +389,9 @@ paths:
                       The identifier of the entity that was not found.
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -226,15 +412,24 @@ paths:
           required: true
           schema:
             "$ref": "#/components/schemas/AnyHash"
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       responses:
         "200":
           description: The content digest sources.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ContentSourcesResponse"
         "404":
           description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -260,6 +455,9 @@ paths:
                       The identifier of the entity that was not found.
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -273,6 +471,10 @@ paths:
         - proof
       description: |
         Proves the consistency of the registry between two specified checkpoints.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         content:
           application/json:
@@ -281,12 +483,18 @@ paths:
       responses:
         "200":
           description: The consistency proof was generated successfully.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProveConsistencyResponse"
         "404":
           description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -311,6 +519,9 @@ paths:
                     description: The identifier of the entity that was not found. 
         "422":
           description: The proof bundle could not be generated.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -322,6 +533,9 @@ paths:
                     failure: "#/components/schemas/BundleFailureError"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -335,6 +549,10 @@ paths:
         - proof
       description: |
         Proves that the given log leafs are present in the given registry checkpoint.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
       requestBody:
         content:
           application/json:
@@ -343,12 +561,18 @@ paths:
       responses:
         "200":
           description: The inclusion proof was generated successfully.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProveInclusionResponse"
         "404":
           description: A requested entity was not found.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -373,6 +597,9 @@ paths:
                     description: The identifier of the entity that was not found.
         "422":
           description: The proof bundle could not be generated.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
@@ -388,11 +615,89 @@ paths:
                     failure: "#/components/schemas/BundleFailureError"
         default:
           description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /verify/checkpoint:
+    post:
+      summary: Verify registry checkpoint
+      operationId: verifyCheckpoint
+      security: []
+      tags:
+        - monitor
+      description: Verify checkpoint from the registry. The client must interpret the response body to determine the verification status.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignedCheckpoint"
+      responses:
+        "200":
+          description: The checkpoint verification request was processed. The client must interpret the response body to determine the verification status. 
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointVerificationResponse"
+        default:
+          description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /ledger:
+    get:
+      summary: Fetch ledger sources
+      operationId: getLedgerSources
+      security: []
+      tags:
+        - ledger
+      description: Fetch the registry ledger download URL sources.
+      parameters:
+        - name: Warg-Registry
+          in: header
+          $ref: "#/components/headers/WargRegistryHeader"
+      responses:
+        "200":
+          description: The ledger sources was successfully fetched.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerSourcesResponse"
+        default:
+          description: An error occurred when processing the request.
+          headers:
+            Warg-Registry:
+              $ref: "#/components/headers/WargRegistryHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
+  headers:
+    WargRegistryHeader:
+      description: If present and supported, this registry responds on behalf of the other registry specified in this header value.
+      required: false
+      schema:
+        type: string
+      example: registry.example.com
   schemas:
     Error:
       type: object
@@ -415,6 +720,37 @@ components:
       description: Represents a supported hash.
       example: sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c
       pattern: ^[a-z0-9-]+:[a-f0-9]+$
+    FetchPackageNamesRequest:
+      type: object
+      description: A request to fetch package names from the registry.
+      additionalProperties: false
+      required:
+        - packages
+      properties:
+        packages:
+          type: array
+          description: The log ID for each requested package.
+          example: ["sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773"]
+          minimum: 1
+          items:
+            $ref: "#/components/schemas/AnyHash"
+            description: The log ID for each package.
+    FetchPackageNamesResponse:
+      type: object
+      description: A response containing the requested package names.
+      additionalProperties: false
+      properties:
+        packages:
+          type: object
+          description: The map of log ID to package name.
+          patternProperties:
+            "^[a-z0-9-]+:[a-f0-9]+$":
+              type: string
+              nullable: true
+              description: The package name for each package. If `null`, the package name is not able to be provided for the log ID.
+          example:
+            "sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded9773": "example-namespace:package-name"
+            "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c": null
     FetchLogsRequest:
       type: object
       description: A request to fetch logs from the registry.
@@ -505,10 +841,10 @@ components:
       description: A request to publish a record to a package log.
       additionalProperties: false
       required:
-        - packageId
+        - packageName
         - record
       properties:
-        packageId:
+        packageName:
           type: string
           description: The name of the package log being published to.
           maxLength: 128
@@ -1005,3 +1341,77 @@ components:
             type: integer
             description: The log length that was not found.
             example: 1001
+    LedgerSourcesResponse:
+      type: object
+      description: A response containing the registry ledger sources.
+      additionalProperties: false
+      properties:
+        hashAlgorithm:
+          type: string
+          description: The type of hash algorithm used for log and record IDs.
+          enum: [sha256]
+          example: sha256
+        sources:
+          type: array
+          description: The ledger sources.
+          items:
+            type: object
+            description: Ledger source HTTP get URL.
+            additionalProperties: false
+            required:
+              - firstRegistryIndex
+              - lastRegistryIndex
+              - url
+              - contentType
+            properties:
+              firstRegistryIndex:
+                type: integer
+                description: The first registry index included in the source.
+                example: 0
+              lastRegistryIndex:
+                type: integer
+                description: The last registry index included in the source.
+                example: 999
+              url:
+                type: string
+                description: The HTTP GET URL to fetch the source.
+                example: http://registry.example.com/ledger/0
+              contentType:
+                type: string
+                description: The content type of source.
+                enum: ["application/vnd.warg.ledger.packed"]
+                example: "application/vnd.warg.ledger.packed"
+              acceptRanges:
+                type: boolean
+                description: Flag indicating if the server accepts byte ranges with `Range` header.
+    CheckpointVerificationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - checkpoint
+        - signature
+      properties:
+        checkpoint:
+          type: string
+          description: |
+            The verification of the checkpoint's `logLength`, `logRoot` and `mapRoot`:
+
+              * `unverified`: checkpoint may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
+              * `verified`: `logLength`, `logRoot` and `mapRoot` are verified;
+              * `invalid`: checkpoint with the specified `logLength` was either not produced or does not match the correct `logRoot` and `mapRoot`;
+          enum: [unverified, verified, invalid]
+          example: verified
+        signature:
+          type: string
+          description: |
+            The verification of the checkpoint's `keyId` and `signature`:
+
+              * `unverified`: checkpoint's `signature` may be valid or invalid; if `retryAfter` is provided, the client should retry the request;
+              * `verified`: checkpoint's `signature` is verified;
+              * `invalid`: `keyId` is not known or does not have authorization (could have been revoke or never granted) to sign checkpoints or the `signature` itself is invalid;
+          enum: [unverified, verified, invalid]
+          example: unverified
+        retryAfter:
+          type: integer
+          description: If either `checkpoint` or `signature` is `unverified` status, then the server may instruct the client to retry the request after the specified number of seconds.
+          example: 60 

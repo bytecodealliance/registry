@@ -1,6 +1,6 @@
 //! Module for server record policy implementations.
 use thiserror::Error;
-use warg_protocol::{package::PackageRecord, registry::PackageId, ProtoEnvelope};
+use warg_protocol::{package::PackageRecord, registry::PackageName, ProtoEnvelope};
 
 mod authorization;
 pub use authorization::*;
@@ -27,7 +27,7 @@ pub trait RecordPolicy: Send + Sync {
     /// Checks the record against the policy.
     fn check(
         &self,
-        id: &PackageId,
+        name: &PackageName,
         record: &ProtoEnvelope<PackageRecord>,
     ) -> RecordPolicyResult<()>;
 }
@@ -56,11 +56,11 @@ impl RecordPolicyCollection {
 impl RecordPolicy for RecordPolicyCollection {
     fn check(
         &self,
-        id: &PackageId,
+        name: &PackageName,
         record: &ProtoEnvelope<PackageRecord>,
     ) -> RecordPolicyResult<()> {
         for policy in &self.policies {
-            policy.check(id, record)?;
+            policy.check(name, record)?;
         }
 
         Ok(())

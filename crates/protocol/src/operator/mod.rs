@@ -10,7 +10,7 @@ mod model;
 mod state;
 
 pub use model::{OperatorEntry, OperatorRecord};
-pub use state::{LogState, ValidationError};
+pub use state::{LogState, NamespaceState, ValidationError};
 
 /// The currently supported operator protocol version.
 pub const OPERATOR_RECORD_VERSION: u32 = 0;
@@ -83,6 +83,13 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
                     .map(TryInto::try_into)
                     .collect::<Result<_, _>>()?,
             },
+            Contents::DefineNamespace(define_namespace) => model::OperatorEntry::DefineNamespace {
+                namespace: define_namespace.namespace,
+            },
+            Contents::ImportNamespace(import_namespace) => model::OperatorEntry::ImportNamespace {
+                namespace: import_namespace.namespace,
+                registry: import_namespace.registry,
+            },
         };
         Ok(output)
     }
@@ -103,6 +110,8 @@ impl TryFrom<i32> for model::Permission {
                 Err(Error::new(PermissionParseError { value: permission }))
             }
             protobuf::OperatorPermission::Commit => Ok(model::Permission::Commit),
+            protobuf::OperatorPermission::DefineNamespace => Ok(model::Permission::DefineNamespace),
+            protobuf::OperatorPermission::ImportNamespace => Ok(model::Permission::ImportNamespace),
         }
     }
 }
@@ -161,6 +170,18 @@ impl<'a> From<&'a model::OperatorEntry> for protobuf::OperatorEntry {
                 key_id: key_id.to_string(),
                 permissions: permissions.iter().map(Into::into).collect(),
             }),
+            model::OperatorEntry::DefineNamespace { namespace } => {
+                Contents::DefineNamespace(protobuf::OperatorDefineNamespace {
+                    namespace: namespace.clone(),
+                })
+            }
+            model::OperatorEntry::ImportNamespace {
+                namespace,
+                registry,
+            } => Contents::ImportNamespace(protobuf::OperatorImportNamespace {
+                namespace: namespace.clone(),
+                registry: registry.clone(),
+            }),
         };
         let contents = Some(contents);
         protobuf::OperatorEntry { contents }
@@ -171,6 +192,8 @@ impl<'a> From<&'a model::Permission> for i32 {
     fn from(permission: &'a model::Permission) -> Self {
         let proto_perm = match permission {
             model::Permission::Commit => protobuf::OperatorPermission::Commit,
+            model::Permission::DefineNamespace => protobuf::OperatorPermission::DefineNamespace,
+            model::Permission::ImportNamespace => protobuf::OperatorPermission::ImportNamespace,
         };
         proto_perm.into()
     }

@@ -1,4 +1,4 @@
-use super::{Json, Path};
+use super::{Json, Path, RegistryHeader};
 use crate::{
     datastore::{DataStoreError, RecordStatus},
     policy::{
@@ -139,8 +139,16 @@ impl From<DataStoreError> for PackageApiError {
             }
             DataStoreError::LogNotFound(id) => PackageError::LogNotFound(id),
             DataStoreError::RecordNotFound(id) => PackageError::RecordNotFound(id),
-            DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed => {
+            DataStoreError::UnknownKey(_) | DataStoreError::SignatureVerificationFailed(_) => {
                 PackageError::Unauthorized(e.to_string())
+            }
+            DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),
+            DataStoreError::PackageNamespaceConflict { existing, .. } => {
+                PackageError::NamespaceConflict(existing)
+            }
+            DataStoreError::PackageNamespaceImported(id) => PackageError::NamespaceImported(id),
+            DataStoreError::PackageNameConflict { existing, .. } => {
+                PackageError::PackageNameConflict(existing)
             }
             // Other errors are internal server errors
             e => {
@@ -181,13 +189,14 @@ impl IntoResponse for PackageApiError {
 async fn publish_record(
     State(config): State<Config>,
     Path(log_id): Path<LogId>,
+    RegistryHeader(_registry_header): RegistryHeader,
     Json(body): Json<PublishRecordRequest<'static>>,
 ) -> Result<impl IntoResponse, PackageApiError> {
-    let expected_log_id = LogId::package_log::<Sha256>(&body.package_id);
+    let expected_log_id = LogId::package_log::<Sha256>(&body.package_name);
     if expected_log_id != log_id {
         return Err(PackageApiError::bad_request(format!(
-            "package log identifier `{expected_log_id}` derived from `{id}` does not match provided log identifier `{log_id}`",
-            id = body.package_id
+            "package log identifier `{expected_log_id}` derived from `{name}` does not match provided log identifier `{log_id}`",
+            name = body.package_name
         )));
     }
 
@@ -204,10 +213,19 @@ async fn publish_record(
         ));
     }
 
+    // Verify the package name is unique in a case insensitive way and
+    // the namespace is defined in the operator log and not imported
+    // from another registry.
+    config
+        .core_service
+        .store()
+        .verify_can_publish_package(&LogId::operator_log::<Sha256>(), &body.package_name)
+        .await?;
+
     // Preemptively perform the policy check on the record before storing it
     // This is performed here so that we never store an unauthorized record
     if let Some(policy) = &config.record_policy {
-        policy.check(&body.package_id, &record)?;
+        policy.check(&body.package_name, &record)?;
     }
 
     // Verify the signature on the record itself before storing it
@@ -224,7 +242,7 @@ async fn publish_record(
     config
         .core_service
         .store()
-        .store_package_record(&log_id, &body.package_id, &record_id, &record, &missing)
+        .store_package_record(&log_id, &body.package_name, &record_id, &record, &missing)
         .await?;
 
     // If there's no missing content, submit the record for processing now
@@ -257,6 +275,7 @@ async fn publish_record(
 async fn get_record(
     State(config): State<Config>,
     Path((log_id, record_id)): Path<(LogId, RecordId)>,
+    RegistryHeader(_registry_header): RegistryHeader,
 ) -> Result<Json<PackageRecord>, PackageApiError> {
     let record = config
         .core_service
@@ -296,6 +315,7 @@ async fn get_record(
 async fn upload_content(
     State(config): State<Config>,
     Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
+    RegistryHeader(_registry_header): RegistryHeader,
     stream: BodyStream,
 ) -> Result<impl IntoResponse, PackageApiError> {
     match config

@@ -28,12 +28,16 @@ message OperatorEntry {
         OperatorInit init = 1;
         OperatorGrantFlat grant_flat = 2;
         OperatorRevokeFlat revoke_flat = 3;
+        OperatorDefineNamespace define_namespace = 4;
+        OperatorImportNamespace import_namespace = 5;
     }
 }
 
 enum OperatorPermission {
     OPERATOR_PERMISSION_UNSPECIFIED = 0;
     OPERATOR_PERMISSION_COMMIT = 1;
+    OPERATOR_PERMISSION_DEFINE_NAMESPACE = 2;
+    OPERATOR_PERMISSION_IMPORT_NAMESPACE = 3;
 }
 
 message OperatorInit {
@@ -55,6 +59,18 @@ message OperatorRevokeFlat {
     string key_id = 1;
     // The permission to grant the key.
     repeated OperatorPermission permissions = 2;
+}
+
+message OperatorDefineNamespace {
+    // The registry defined namespace to be used in its own package logs. 
+    string namespace = 1;
+}
+
+message OperatorImportNamespace {
+    // The registry defined namespace to be imported from another registry.
+    string namespace = 1;
+    // The registry that the namespace is imported from.
+    string registry = 2;
 }
 
 message PackageRecord {

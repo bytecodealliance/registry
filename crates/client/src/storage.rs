@@ -13,7 +13,7 @@ use warg_crypto::{
 use warg_protocol::{
     operator,
     package::{self, PackageRecord, Permission, PACKAGE_RECORD_VERSION},
-    registry::{Checkpoint, PackageId, RecordId, RegistryIndex, TimestampedCheckpoint},
+    registry::{Checkpoint, PackageName, RecordId, RegistryIndex, TimestampedCheckpoint},
     ProtoEnvelope, SerdeEnvelope, Version,
 };
 
@@ -55,7 +55,7 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package(&self, package: &PackageId) -> Result<Option<PackageInfo>>;
+    async fn load_package(&self, package: &PackageName) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
     async fn store_package(&self, info: &PackageInfo) -> Result<()>;
@@ -127,8 +127,10 @@ pub struct OperatorInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageInfo {
-    /// The id of the package to publish.
-    pub id: PackageId,
+    /// The package name to publish.
+    /// TODO: drop alias after sufficient time according to release policy.
+    #[serde(alias = "id")]
+    pub name: PackageName,
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<Checkpoint>,
@@ -144,10 +146,10 @@ pub struct PackageInfo {
 }
 
 impl PackageInfo {
-    /// Creates a new package info for the given package id.
-    pub fn new(id: impl Into<PackageId>) -> Self {
+    /// Creates a new package info for the given package name.
+    pub fn new(name: impl Into<PackageName>) -> Self {
         Self {
-            id: id.into(),
+            name: name.into(),
             checkpoint: None,
             state: package::LogState::default(),
             head_registry_index: None,
@@ -194,8 +196,10 @@ pub enum PublishEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishInfo {
-    /// The id of the package being published.
-    pub id: PackageId,
+    /// The package name being published.
+    /// TODO: drop alias after sufficient time according to release policy.
+    #[serde(alias = "id")]
+    pub name: PackageName,
     /// The last known head of the package log to use.
     ///
     /// If `None` and the package is not being initialized,

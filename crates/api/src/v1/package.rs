@@ -7,7 +7,7 @@ use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
-    registry::{LogId, PackageId, RecordId, RegistryIndex},
+    registry::{LogId, PackageName, RecordId, RegistryIndex},
     ProtoEnvelopeBody,
 };
 
@@ -41,8 +41,10 @@ pub struct MissingContent {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
-    /// The id of the package being published.
-    pub package_id: Cow<'a, PackageId>,
+    /// The package name being published.
+    /// TODO: Remove the alias for `packageId` according to compatibility release schedule.
+    #[serde(alias = "packageId")]
+    pub package_name: Cow<'a, PackageName>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
     /// The complete set of content sources for the record.
@@ -120,6 +122,18 @@ pub enum PackageError {
     /// The record is not currently sourcing content.
     #[error("the record is not currently sourcing content")]
     RecordNotSourcing,
+    /// The provided package's namespace was not found in the operator log.
+    #[error("namespace `{0}` is not defined on the registry")]
+    NamespaceNotDefined(String),
+    /// The provided package's namespace is imported from another registry.
+    #[error("namespace `{0}` is an imported namespace from another registry")]
+    NamespaceImported(String),
+    /// The provided package's namespace conflicts with an existing namespace where the name only differs by case.
+    #[error("namespace conflicts with existing namespace `{0}`; package namespaces must be unique in a case insensitive way")]
+    NamespaceConflict(String),
+    /// The provided package name conflicts with an existing package where the name only differs by case.
+    #[error("the package conflicts with existing package name `{0}`; package names must be unique in a case insensitive way")]
+    PackageNameConflict(PackageName),
     /// The operation was not authorized by the registry.
     #[error("unauthorized operation: {0}")]
     Unauthorized(String),
@@ -146,7 +160,10 @@ impl PackageError {
             // Note: this is 403 and not a 401 as the registry does not use
             // HTTP authentication.
             Self::Unauthorized { .. } => 403,
-            Self::LogNotFound(_) | Self::RecordNotFound(_) => 404,
+            Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
+            Self::NamespaceImported(_)
+            | Self::NamespaceConflict(_)
+            | Self::PackageNameConflict(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -160,6 +177,9 @@ impl PackageError {
 enum EntityType {
     Log,
     Record,
+    Namespace,
+    NamespaceImport,
+    Name,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,6 +195,12 @@ where
     },
     NotFound {
         status: Status<404>,
+        #[serde(rename = "type")]
+        ty: EntityType,
+        id: Cow<'a, T>,
+    },
+    Conflict {
+        status: Status<409>,
         #[serde(rename = "type")]
         ty: EntityType,
         id: Cow<'a, T>,
@@ -214,6 +240,30 @@ impl Serialize for PackageError {
                 status: Status::<404>,
                 ty: EntityType::Record,
                 id: Cow::Borrowed(record_id),
+            }
+            .serialize(serializer),
+            Self::NamespaceNotDefined(namespace) => RawError::NotFound {
+                status: Status::<404>,
+                ty: EntityType::Namespace,
+                id: Cow::Borrowed(namespace),
+            }
+            .serialize(serializer),
+            Self::NamespaceImported(namespace) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::NamespaceImport,
+                id: Cow::Borrowed(namespace),
+            }
+            .serialize(serializer),
+            Self::NamespaceConflict(existing) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Namespace,
+                id: Cow::Borrowed(existing),
+            }
+            .serialize(serializer),
+            Self::PackageNameConflict(existing) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Name,
+                id: Cow::Borrowed(existing),
             }
             .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
@@ -265,6 +315,22 @@ impl<'de> Deserialize<'de> for PackageError {
                             )
                         })?
                         .into(),
+                )),
+                EntityType::Namespace => Ok(Self::NamespaceNotDefined(id.into_owned())),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Enum,
+                    &"a valid entity type",
+                )),
+            },
+            RawError::Conflict { status: _, ty, id } => match ty {
+                EntityType::Namespace => Ok(Self::NamespaceConflict(id.into_owned())),
+                EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
+                EntityType::Name => Ok(Self::PackageNameConflict(
+                    PackageName::new(id.into_owned()).unwrap(),
+                )),
+                _ => Err(serde::de::Error::invalid_value(
+                    Unexpected::Enum,
+                    &"a valid entity type",
                 )),
             },
             RawError::RecordNotSourcing { status: _ } => Ok(Self::RecordNotSourcing),

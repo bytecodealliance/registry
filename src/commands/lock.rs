@@ -9,7 +9,7 @@ use warg_client::{
     storage::{ContentStorage, PackageInfo, RegistryStorage},
     FileSystemClient,
 };
-use warg_protocol::{package::ReleaseState, registry::PackageId};
+use warg_protocol::{package::ReleaseState, registry::PackageName};
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
 
@@ -91,7 +91,7 @@ impl LockListBuilder {
                 let mut name_and_version = name.split('@');
                 let identifier = name_and_version.next();
                 if let Some(pkg_name) = identifier {
-                    let id = PackageId::new(pkg_name.replace('<', ""))?;
+                    let id = PackageName::new(pkg_name.replace('<', ""))?;
                     if let Some(info) = client.registry().load_package(&id).await? {
                         let release = info.state.releases().last();
                         if let Some(r) = release {
@@ -138,7 +138,7 @@ pub struct LockCommand {
 
     /// Only show information for the specified package.
     #[clap(value_name = "PACKAGE")]
-    pub package: Option<PackageId>,
+    pub package: Option<PackageName>,
 
     /// Only show information for the specified package.
     #[clap(long = "exec", value_name = "EXEC", required = false)]
@@ -164,7 +164,7 @@ impl LockCommand {
         let maybe_find = |s: &str, c: char| s.find(c);
         let mut builder = LockListBuilder::new();
         builder.build_list(&client, info).await?;
-        builder.lock_list.insert(info.id.id.clone());
+        builder.lock_list.insert(info.name.name().to_string());
         let mut composer = CompositionGraph::new();
         let mut handled = HashMap::<String, InstanceId>::new();
         for package in builder.lock_list {
@@ -172,7 +172,7 @@ impl LockCommand {
             let name = name_and_version.next();
             let version = name_and_version.next();
             if let Some(pkg_id) = name {
-                let id = PackageId::new(pkg_id.replace('<', ""))?;
+                let id = PackageName::new(pkg_id.replace('<', ""))?;
                 let info = client.registry().load_package(&id).await?;
                 if let Some(inf) = info {
                     let release = if let Some(v) = version {
@@ -296,7 +296,7 @@ impl LockCommand {
                 }
             }
         }
-        let final_name = &info.id.id;
+        let final_name = &info.name.name().to_string();
 
         let id = handled.get(final_name);
         let options = if let Some(id) = id {

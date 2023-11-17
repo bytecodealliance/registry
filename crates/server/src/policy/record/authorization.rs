@@ -5,10 +5,9 @@ use std::collections::{HashMap, HashSet};
 use warg_crypto::signing::KeyID;
 use warg_protocol::{
     package::{PackageEntry, PackageRecord},
-    registry::PackageId,
+    registry::PackageName,
     ProtoEnvelope,
 };
-use wasmparser::names::KebabStr;
 
 /// A policy that ensures a published record is signed by an authorized key.
 #[derive(Default, Deserialize)]
@@ -19,7 +18,7 @@ pub struct AuthorizedKeyPolicy {
     #[serde(default, rename = "namespace")]
     namespaces: HashMap<String, LogPolicy>,
     #[serde(default, rename = "package")]
-    packages: HashMap<PackageId, LogPolicy>,
+    packages: HashMap<PackageName, LogPolicy>,
 }
 
 #[derive(Default, Deserialize)]
@@ -66,34 +65,37 @@ impl AuthorizedKeyPolicy {
 
     fn namespace_or_default_mut(&mut self, namespace: impl Into<String>) -> Result<&mut LogPolicy> {
         let namespace = namespace.into();
-        if KebabStr::new(&namespace).is_none() {
-            bail!("namespace `{namespace}` is not a legal kebab-case identifier");
+        if !PackageName::is_valid_namespace(&namespace) {
+            bail!("namespace `{namespace}` is not a valid kebab-cased string");
         }
 
         Ok(self.namespaces.entry(namespace).or_default())
     }
 
     /// Sets an authorized key for publishing to a particular package.
-    pub fn with_package_key(mut self, package_id: impl Into<String>, key: KeyID) -> Result<Self> {
-        self.package_or_default_mut(package_id)?.keys.insert(key);
+    pub fn with_package_key(mut self, package_name: impl Into<String>, key: KeyID) -> Result<Self> {
+        self.package_or_default_mut(package_name)?.keys.insert(key);
         Ok(self)
     }
 
     /// Enables delegation for a particular package.
-    pub fn with_package_delegation(mut self, package_id: impl Into<String>) -> Result<Self> {
-        self.package_or_default_mut(package_id)?.delegation = true;
+    pub fn with_package_delegation(mut self, package_name: impl Into<String>) -> Result<Self> {
+        self.package_or_default_mut(package_name)?.delegation = true;
         Ok(self)
     }
 
-    fn package_or_default_mut(&mut self, package_id: impl Into<String>) -> Result<&mut LogPolicy> {
-        let package_id = PackageId::new(package_id)?;
-        Ok(self.packages.entry(package_id).or_default())
+    fn package_or_default_mut(
+        &mut self,
+        package_name: impl Into<String>,
+    ) -> Result<&mut LogPolicy> {
+        let package_name = PackageName::new(package_name)?;
+        Ok(self.packages.entry(package_name).or_default())
     }
 
     pub fn key_authorized_for_entry(
         &self,
         key: &KeyID,
-        package: &PackageId,
+        package: &PackageName,
         is_init: bool,
     ) -> bool {
         if self.superuser_keys.contains(key) {
@@ -119,15 +121,15 @@ impl AuthorizedKeyPolicy {
 impl RecordPolicy for AuthorizedKeyPolicy {
     fn check(
         &self,
-        id: &PackageId,
+        name: &PackageName,
         record: &ProtoEnvelope<PackageRecord>,
     ) -> RecordPolicyResult<()> {
         let key = record.key_id();
         for entry in &record.as_ref().entries {
             let is_init = matches!(entry, PackageEntry::Init { .. });
-            if !self.key_authorized_for_entry(key, id, is_init) {
+            if !self.key_authorized_for_entry(key, name, is_init) {
                 return Err(RecordPolicyError::Unauthorized(format!(
-                    "key id `{key}` is not authorized to publish to package `{id}`",
+                    "key id `{key}` is not authorized to publish to package `{name}`",
                 )));
             }
         }
@@ -151,9 +153,9 @@ mod tests {
             .with_namespace_key("my-namespace", namespace_key.clone())?
             .with_package_key("my-namespace:my-package", package_key.clone())?;
 
-        let my_package: PackageId = "my-namespace:my-package".parse()?;
-        let my_ns_other_package: PackageId = "my-namespace:other-package".parse()?;
-        let other_namespace: PackageId = "other-namespace:any-package".parse()?;
+        let my_package: PackageName = "my-namespace:my-package".parse()?;
+        let my_ns_other_package: PackageName = "my-namespace:other-package".parse()?;
+        let other_namespace: PackageName = "other-namespace:any-package".parse()?;
 
         assert!(policy.key_authorized_for_entry(&super_key, &my_package, false));
         assert!(policy.key_authorized_for_entry(&super_key, &my_ns_other_package, false));
@@ -185,8 +187,8 @@ mod tests {
             .with_package_key("ns2:pkg", authed_key.clone())?
             .with_package_delegation("ns2:pkg")?;
 
-        let ns1_pkg: PackageId = "ns1:pkg".parse()?;
-        let ns2_pkg: PackageId = "ns2:pkg".parse()?;
+        let ns1_pkg: PackageName = "ns1:pkg".parse()?;
+        let ns2_pkg: PackageName = "ns2:pkg".parse()?;
 
         assert!(policy.key_authorized_for_entry(&authed_key, &ns1_pkg, true));
         assert!(policy.key_authorized_for_entry(&authed_key, &ns1_pkg, false));

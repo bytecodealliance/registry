@@ -13,6 +13,16 @@ pub fn fetch_checkpoint() -> &'static str {
     "v1/fetch/checkpoint"
 }
 
+/// The path of the "fetch package names" API.
+pub fn fetch_package_names() -> &'static str {
+    "v1/fetch/names"
+}
+
+/// The path of the get ledger sources.
+pub fn ledger_sources() -> &'static str {
+    "v1/ledger"
+}
+
 /// The path of the "publish package record" API.
 pub fn publish_package_record(log_id: &LogId) -> String {
     format!("v1/package/{log_id}/record")
@@ -36,4 +46,9 @@ pub fn prove_consistency() -> &'static str {
 /// The path for proving checkpoint inclusion.
 pub fn prove_inclusion() -> &'static str {
     "v1/proof/inclusion"
+}
+
+/// The path for verifying a checkpoint.
+pub fn verify_checkpoint() -> &'static str {
+    "v1/verify/checkpoint"
 }
