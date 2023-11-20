@@ -8,10 +8,8 @@ use warg_client::{
     storage::{ContentStorage, PackageInfo, RegistryStorage},
     FileSystemClient,
 };
-use warg_protocol::{package::ReleaseState, registry::PackageId, VersionReq};
-use wasmparser::{
-    Chunk, ComponentImport, ComponentImportName, ComponentImportSectionReader, Parser, Payload,
-};
+use warg_protocol::{package::ReleaseState, registry::PackageName, VersionReq};
+use wasmparser::{Chunk, ComponentImport, ComponentImportSectionReader, Parser, Payload};
 
 /// Print Dependency Tree
 #[derive(Args)]
@@ -22,7 +20,7 @@ pub struct DependenciesCommand {
 
     /// Only show information for the specified package.
     #[clap(value_name = "PACKAGE")]
-    pub package: Option<PackageId>,
+    pub package: Option<PackageName>,
 }
 
 impl DependenciesCommand {
@@ -42,15 +40,16 @@ impl DependenciesCommand {
 
     #[async_recursion]
     async fn parse_deps<'a>(
-        id: &'a PackageId,
+        id: &'a PackageName,
         version: Option<&'a str>,
         client: &FileSystemClient,
         node: &mut TreeBuilder,
         parser: &mut DepsParser,
     ) -> Result<()> {
         let vreq = if let Some(v) = version {
-            let v = v.replace(['{', '}'], "").replace([' '], ", ");
-            VersionReq::parse(&v)
+            let v = &v.replace(['{', '}'], "").replace([' '], ", ");
+            let v = &v[0..v.len() - 1];
+            VersionReq::parse(v)
         } else {
             Ok(VersionReq::STAR)
         }?;
@@ -66,7 +65,7 @@ impl DependenciesCommand {
                         let bytes = fs::read(p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
-                            let name = dep.name.0;
+                            let name = dep.name.0.replace('<', "");
                             let kindless_name = name.splitn(2, '=').last();
                             if let Some(name) = kindless_name {
                                 let mut name_and_version = name.split('@');
@@ -74,7 +73,7 @@ impl DependenciesCommand {
                                 let version = name_and_version.next();
                                 if let Some(identifier) = versionless_name {
                                     let grand_child = node.begin_child(name.to_string());
-                                    let id = PackageId::new(identifier)?;
+                                    let id = PackageName::new(identifier)?;
                                     Self::parse_deps(&id, version, client, grand_child, parser)
                                         .await?;
                                     grand_child.end_child();
@@ -90,12 +89,17 @@ impl DependenciesCommand {
 
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
         let mut parser = DepsParser::new();
-        let root_package = client.registry().load_package(&info.id).await?;
+        let root_package = client.registry().load_package(&info.name).await?;
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
-                client.download(&info.id, &VersionReq::STAR).await?;
-                let mut tree = TreeBuilder::new(format!("{0}@{1}", info.id, l.version));
+                client.download(&info.name, &VersionReq::STAR).await?;
+                let mut tree = TreeBuilder::new(format!(
+                    "{0}:{1}@{2}",
+                    info.name.namespace(),
+                    info.name.name(),
+                    l.version
+                ));
                 if let ReleaseState::Released { content } = &l.state {
                     let path = client.content().content_location(content);
                     if let Some(p) = path {
@@ -110,7 +114,7 @@ impl DependenciesCommand {
                                 let versionless_name = name_and_version.next();
                                 let version = name_and_version.next();
                                 if let Some(identifier) = versionless_name {
-                                    let id = PackageId::new(identifier)?;
+                                    let id = PackageName::new(identifier.replace('<', ""))?;
                                     Self::parse_deps(&id, version, client, child, &mut parser)
                                         .await?;
                                 }

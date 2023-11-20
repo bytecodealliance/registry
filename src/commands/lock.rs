@@ -105,6 +105,22 @@ impl LockListBuilder {
                             }
                         }
                         self.lock_list.insert(name.replace('<', "").to_string());
+                    } else {
+                        client.download(&id, &VersionReq::STAR).await?;
+                        if let Some(info) = client.registry().load_package(&id).await? {
+                            let release = info.state.releases().last();
+                            if let Some(r) = release {
+                                let state = &r.state;
+                                if let ReleaseState::Released { content } = state {
+                                    let path = client.content().content_location(content);
+                                    if let Some(p) = path {
+                                        let bytes = fs::read(p)?;
+                                        self.parse_package(client, &bytes).await?;
+                                    }
+                                }
+                            }
+                            self.lock_list.insert(name.replace('<', "").to_string());
+                        }
                     }
                 }
             }
@@ -155,6 +171,11 @@ impl LockCommand {
         if let Some(package) = self.package {
             if let Some(info) = client.registry().load_package(&package).await? {
                 Self::lock(client, &info, self.executable).await?;
+            } else {
+                client.download(&package, &VersionReq::STAR).await?;
+                if let Some(info) = client.registry().load_package(&package).await? {
+                    Self::lock(client, &info, self.executable).await?;
+                }
             }
         }
         Ok(())
@@ -164,7 +185,9 @@ impl LockCommand {
         let maybe_find = |s: &str, c: char| s.find(c);
         let mut builder = LockListBuilder::new();
         builder.build_list(&client, info).await?;
-        builder.lock_list.insert(info.name.name().to_string());
+        builder
+            .lock_list
+            .insert(format!("{}:{}", info.name.namespace(), info.name.name()));
         let mut composer = CompositionGraph::new();
         let mut handled = HashMap::<String, InstanceId>::new();
         for package in builder.lock_list {
@@ -296,7 +319,7 @@ impl LockCommand {
                 }
             }
         }
-        let final_name = &info.name.name().to_string();
+        let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
 
         let id = handled.get(final_name);
         let options = if let Some(id) = id {

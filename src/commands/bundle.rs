@@ -8,7 +8,7 @@ use warg_client::{
     },
     Client,
 };
-use warg_protocol::{package::ReleaseState, registry::PackageId};
+use warg_protocol::{package::ReleaseState, registry::PackageName};
 use wasm_encoder::{
     Component, ComponentImportSection, ComponentSectionId, ComponentTypeRef, RawSection,
 };
@@ -23,7 +23,7 @@ pub struct BundleCommand {
 
     /// Only show information for the specified package.
     #[clap(value_name = "PACKAGE")]
-    pub package: Option<PackageId>,
+    pub package: Option<PackageName>,
 }
 
 impl BundleCommand {
@@ -70,14 +70,14 @@ impl<'a> Bundler<'a> {
             let (_, imp) = import?;
             let mut full_name = imp.name.0.split('/');
             let name = full_name.next();
-            if (!imp.name.0.contains('/')) {
-                if let Some(name) = name {
+            if !imp.name.0.contains('/') {
+                if let Some(_) = name {
                     let kindless_name = imp.name.0.splitn(2, '=').last();
                     if let Some(name) = kindless_name {
                         let mut version_and_name = name.split('@');
                         let identifier = version_and_name.next();
                         if let Some(name) = identifier {
-                            let pkg_id = PackageId::new(name.replace('<', ""))?;
+                            let pkg_id = PackageName::new(name.replace('<', ""))?;
                             if let Some(info) = self.client.registry().load_package(&pkg_id).await?
                             {
                                 let release_state = &info.state.releases().last().unwrap().state;
