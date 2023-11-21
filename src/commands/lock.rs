@@ -26,7 +26,6 @@ struct Import {
 
 impl<'a> ResolutionParser<'a> {
     fn parse(&mut self) -> Result<Import> {
-        dbg!(&self.next);
         if self.eat_str("unlocked-dep=") {
             self.expect_str("<")?;
             let imp = self.pkgidset_up_to('>')?;
@@ -221,7 +220,6 @@ impl LockListBuilder {
         let clone = parser.clone();
         for import in clone.into_iter_with_offsets() {
             let (_, imp) = import?;
-            dbg!(&imp.name);
             imports.push(imp.name.0.to_string());
             // let kindless_name = imp.name.0.splitn(2, '=').last();
             // if let Some(name) = kindless_name {
@@ -289,7 +287,6 @@ impl LockListBuilder {
             // if let Some(pkg_name) = identifier {
             // let id = PackageName::new(pkg_name.replace('<', ""))?;
             let id = PackageName::new(import.name.clone())?;
-            dbg!(&id);
             if let Some(info) = client.registry().load_package(&id).await? {
                 let release = info.state.releases().last();
                 if let Some(r) = release {
@@ -306,7 +303,6 @@ impl LockListBuilder {
                 // self.lock_list.insert(import.name);
                 self.lock_list.insert(import);
             } else {
-                dbg!(&id);
                 client.download(&id, &VersionReq::STAR).await?;
                 if let Some(info) = client.registry().load_package(&id).await? {
                     let release = info.state.releases().last();
@@ -397,7 +393,6 @@ impl LockCommand {
         // builder
         //     .lock_list
         //     .insert(format!("{}:{}", info.name.namespace(), info.name.name()));
-        dbg!(&builder.lock_list);
         let mut composer = CompositionGraph::new();
         let mut handled = HashMap::<String, InstanceId>::new();
         for package in builder.lock_list {
@@ -505,7 +500,14 @@ impl LockCommand {
                                 };
                             let instance_id = composer.instantiate(component_index)?;
                             let added = composer.get_component(component_index);
-                            handled.insert(package.name, instance_id);
+                            let ver = version.clone().to_string();
+                            let (range, end) = if ver == "*" {
+                                // "@*".to_string()
+                                ("".to_string(), "".to_string())
+                            } else {
+                                (format!("@{{{}}}", ver), ">".to_string())
+                            };
+                            handled.insert(format!("{}{range}{end}", package.name), instance_id);
                             let mut args = Vec::new();
                             if let Some(added) = added {
                                 for (index, name, _) in added.imports() {
@@ -533,7 +535,6 @@ impl LockCommand {
             // }
         }
         let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
-
         let id = handled.get(final_name);
         let options = if let Some(id) = id {
             EncodeOptions {
