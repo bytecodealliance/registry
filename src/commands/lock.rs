@@ -4,6 +4,7 @@ use async_recursion::async_recursion;
 use clap::Args;
 use indexmap::IndexSet;
 use semver::{Comparator, Prerelease, Version, VersionReq};
+use sha256;
 use std::{collections::HashMap, fs};
 use warg_client::{
     storage::{ContentStorage, PackageInfo, RegistryStorage},
@@ -13,26 +14,69 @@ use warg_protocol::{package::ReleaseState, registry::PackageName};
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 use wasmparser::{names::KebabStr, Chunk, ComponentImportSectionReader, Parser, Payload};
 
-struct ResolutionParser<'a> {
-    next: &'a str,
-    offset: usize,
+/// Parser for dep solve deps
+pub struct DependencyImportParser<'a> {
+    /// string to be parsed
+    pub next: &'a str,
+    /// index of parser
+    pub offset: usize,
 }
 
+/// Import Kinds found in components
 #[derive(Debug, Eq, PartialEq, Hash)]
-struct Import {
-    name: String,
-    req: VersionReq,
+pub enum ImportKind {
+    /// Locked Version
+    Locked(Option<String>),
+    /// Unlocked Version Range
+    Unlocked,
+    /// Interface
+    Interface(Option<String>),
 }
 
-impl<'a> ResolutionParser<'a> {
-    fn parse(&mut self) -> Result<Import> {
+/// Dependency in dep solve
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct Import {
+    /// Import name
+    pub name: String,
+    /// Version Requirements
+    pub req: VersionReq,
+    /// Import kind
+    pub kind: ImportKind,
+}
+
+impl<'a> DependencyImportParser<'a> {
+    /// Parses import
+    pub fn parse(&mut self) -> Result<Import> {
         if self.eat_str("unlocked-dep=") {
             self.expect_str("<")?;
             let imp = self.pkgidset_up_to('>')?;
             self.expect_str(">")?;
             return Ok(imp);
         }
-        bail!("expected unlocked dep");
+
+        if self.eat_str("locked-dep=") {
+            self.expect_str("<")?;
+            let imp = self.pkgver()?;
+            return Ok(imp);
+        }
+
+        let name = self.eat_until('@');
+        let v = self.semver(self.next)?;
+        let comp = Comparator {
+            op: semver::Op::Exact,
+            major: v.major,
+            minor: Some(v.minor),
+            patch: Some(v.patch),
+            pre: v.pre,
+        };
+        let req = VersionReq {
+            comparators: vec![comp],
+        };
+        Ok(Import {
+            name: name.unwrap().to_string(),
+            req,
+            kind: ImportKind::Interface(Some(self.next.to_string())),
+        })
     }
 
     fn eat_str(&mut self, prefix: &str) -> bool {
@@ -102,6 +146,50 @@ impl<'a> ResolutionParser<'a> {
         }
     }
 
+    fn pkgver(&mut self) -> Result<Import> {
+        let namespace = self.take_until(':')?;
+        self.kebab(namespace)?;
+        let name = match self.eat_until('@') {
+            Some(name) => name,
+            // a:b
+            None => {
+                let name = self.take_up_to(',')?;
+                self.kebab(name)?;
+                return Ok(Import {
+                    name: format!("{namespace}:{name}"),
+                    req: VersionReq::STAR,
+                    kind: ImportKind::Locked(None),
+                });
+            }
+        };
+        let version = self.eat_until('>');
+        let req = if let Some(v) = version {
+            let v = self.semver(v)?;
+            let comp = Comparator {
+                op: semver::Op::Exact,
+                major: v.major,
+                minor: Some(v.minor),
+                patch: Some(v.patch),
+                pre: Prerelease::default(),
+            };
+            VersionReq {
+                comparators: vec![comp],
+            }
+        } else {
+            VersionReq::STAR
+        };
+        let digest = if self.eat_str(",") {
+            self.eat_until('<');
+            self.eat_until('>').map(|d| d.to_string())
+        } else {
+            None
+        };
+        Ok(Import {
+            name: format!("{namespace}:{name}"),
+            req,
+            kind: ImportKind::Locked(digest),
+        })
+    }
     fn pkgidset_up_to(&mut self, end: char) -> Result<Import> {
         let namespace = self.take_until(':')?;
         self.kebab(namespace)?;
@@ -114,16 +202,17 @@ impl<'a> ResolutionParser<'a> {
                 return Ok(Import {
                     name: format!("{namespace}:{name}"),
                     req: VersionReq::STAR,
+                    kind: ImportKind::Unlocked,
                 });
             }
         };
         self.kebab(name)?;
-
         // a:b@*
         if self.eat_str("*") {
             return Ok(Import {
                 name: format!("{namespace}:{name}"),
                 req: VersionReq::STAR,
+                kind: ImportKind::Unlocked,
             });
         }
         self.expect_str("{")?;
@@ -131,7 +220,7 @@ impl<'a> ResolutionParser<'a> {
             match self.eat_until(' ') {
                 Some(lower) => {
                     let lower = self.semver(lower)?;
-                    self.expect_str(">")?;
+                    self.expect_str("<")?;
                     let upper = self.take_until('}')?;
                     let upper = self.semver(upper)?;
                     let lc = Comparator {
@@ -148,12 +237,11 @@ impl<'a> ResolutionParser<'a> {
                         patch: Some(upper.patch),
                         pre: Prerelease::default(),
                     };
-                    let mut comparators = Vec::new();
-                    comparators.push(lc);
-                    comparators.push(uc);
+                    let comparators = vec![lc, uc];
                     return Ok(Import {
                         name: format!("{namespace}:{name}"),
                         req: VersionReq { comparators },
+                        kind: ImportKind::Unlocked,
                     });
                 }
                 // a:b@{>=1.2.3}
@@ -167,11 +255,11 @@ impl<'a> ResolutionParser<'a> {
                         patch: Some(lower.patch),
                         pre: Prerelease::default(),
                     };
-                    let mut comparators = Vec::new();
-                    comparators.push(comparator);
+                    let comparators = vec![comparator];
                     return Ok(Import {
                         name: format!("{namespace}:{name}"),
                         req: VersionReq { comparators },
+                        kind: ImportKind::Unlocked,
                     });
                 }
             }
@@ -195,6 +283,7 @@ impl<'a> ResolutionParser<'a> {
         Ok(Import {
             name: format!("{namespace}:{name}"),
             req: VersionReq { comparators },
+            kind: ImportKind::Unlocked,
         })
     }
 }
@@ -221,10 +310,6 @@ impl LockListBuilder {
         for import in clone.into_iter_with_offsets() {
             let (_, imp) = import?;
             imports.push(imp.name.0.to_string());
-            // let kindless_name = imp.name.0.splitn(2, '=').last();
-            // if let Some(name) = kindless_name {
-            //     imports.push(name.to_string());
-            // }
         }
         Ok(())
     }
@@ -273,56 +358,48 @@ impl LockListBuilder {
             }
         }
         for import in imports {
-            let mut resolver = ResolutionParser {
+            let mut resolver = DependencyImportParser {
                 next: &import,
                 offset: 0,
             };
 
             let import = resolver.parse()?;
-            // let pkg_name = import.split('/').next();
-
-            // if let Some(name) = pkg_name {
-            // let mut name_and_version = name.split('@');
-            // let identifier = name_and_version.next();
-            // if let Some(pkg_name) = identifier {
-            // let id = PackageName::new(pkg_name.replace('<', ""))?;
-            let id = PackageName::new(import.name.clone())?;
-            if let Some(info) = client.registry().load_package(&id).await? {
-                let release = info.state.releases().last();
-                if let Some(r) = release {
-                    let state = &r.state;
-                    if let ReleaseState::Released { content } = state {
-                        let path = client.content().content_location(content);
-                        if let Some(p) = path {
-                            let bytes = fs::read(p)?;
-                            self.parse_package(client, &bytes).await?;
-                        }
-                    }
-                }
-                // self.lock_list.insert(name.replace('<', "").to_string());
-                // self.lock_list.insert(import.name);
-                self.lock_list.insert(import);
-            } else {
-                client.download(&id, &VersionReq::STAR).await?;
-                if let Some(info) = client.registry().load_package(&id).await? {
-                    let release = info.state.releases().last();
-                    if let Some(r) = release {
-                        let state = &r.state;
-                        if let ReleaseState::Released { content } = state {
-                            let path = client.content().content_location(content);
-                            if let Some(p) = path {
-                                let bytes = fs::read(p)?;
-                                self.parse_package(client, &bytes).await?;
+            match import.kind {
+                ImportKind::Locked(_) | ImportKind::Unlocked => {
+                    let id = PackageName::new(import.name.clone())?;
+                    if let Some(info) = client.registry().load_package(&id).await? {
+                        let release = info.state.releases().last();
+                        if let Some(r) = release {
+                            let state = &r.state;
+                            if let ReleaseState::Released { content } = state {
+                                let path = client.content().content_location(content);
+                                if let Some(p) = path {
+                                    let bytes = fs::read(p)?;
+                                    self.parse_package(client, &bytes).await?;
+                                }
                             }
                         }
+                        self.lock_list.insert(import);
+                    } else {
+                        client.download(&id, &VersionReq::STAR).await?;
+                        if let Some(info) = client.registry().load_package(&id).await? {
+                            let release = info.state.releases().last();
+                            if let Some(r) = release {
+                                let state = &r.state;
+                                if let ReleaseState::Released { content } = state {
+                                    let path = client.content().content_location(content);
+                                    if let Some(p) = path {
+                                        let bytes = fs::read(p)?;
+                                        self.parse_package(client, &bytes).await?;
+                                    }
+                                }
+                            }
+                            self.lock_list.insert(import);
+                        }
                     }
-                    // self.lock_list.insert(name.replace('<', "").to_string());
-                    // self.lock_list.insert(import.name);
-                    self.lock_list.insert(import);
                 }
+                ImportKind::Interface(_) => {}
             }
-            // }
-            // }
         }
         Ok(())
     }
@@ -366,7 +443,6 @@ impl LockCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
         println!("registry: {url}", url = client.url());
-        println!("\npackages in client storage:");
         if let Some(package) = self.package {
             if let Some(info) = client.registry().load_package(&package).await? {
                 Self::lock(client, &info, self.executable).await?;
@@ -381,106 +457,34 @@ impl LockCommand {
     }
 
     async fn lock(client: FileSystemClient, info: &PackageInfo, should_bundle: bool) -> Result<()> {
-        let maybe_find = |s: &str, c: char| s.find(c);
         let mut builder = LockListBuilder::new();
         builder.build_list(&client, info).await?;
-        // let parser = ResolutionParser {next: info.name, }
         let top = Import {
             name: format!("{}:{}", info.name.namespace(), info.name.name()),
             req: VersionReq::STAR,
+            kind: ImportKind::Unlocked,
         };
         builder.lock_list.insert(top);
-        // builder
-        //     .lock_list
-        //     .insert(format!("{}:{}", info.name.namespace(), info.name.name()));
         let mut composer = CompositionGraph::new();
         let mut handled = HashMap::<String, InstanceId>::new();
         for package in builder.lock_list {
-            // let mut name_and_version = package.split('@');
-            // let name = name_and_version.next();
             let name = package.name.clone();
-            // let version = name_and_version.next();
             let version = package.req;
-            // if let Some(pkg_id) = name {
-            // let id = PackageName::new(pkg_id.replace('<', ""))?;
             let id = PackageName::new(name)?;
             let info = client.registry().load_package(&id).await?;
             if let Some(inf) = info {
-                // let release = if let Some(v) = version {
-                //         let mut iterable = v.chars();
-                //         let (lower, upper) = match iterable.next() {
-                //             Some('{') => {
-                //                 match iterable.next() {
-                //                     Some('>') => match iterable.next() {
-                //                         Some('=') => {
-                //                             let space = maybe_find(v, ' ');
-                //                             if let Some(sp) = space {
-                //                                 let lower_bound = &v[3..sp];
-                //                                 let lversion = lower_bound.parse::<Version>()?;
-                //                                 let close = maybe_find(v, '}');
-                //                                 if let Some(c) = close {
-                //                                     let upper_bound = &v[sp + 2..c];
-                //                                     let rversion = upper_bound.parse::<Version>()?;
-                //                                     (Some(lversion), Some(rversion))
-                //                                 } else {
-                //                                     bail!("Range specification missing closing curly brace");
-                //                                 }
-                //                             } else {
-                //                                 let close = maybe_find(v, '}');
-                //                                 if let Some(c) = close {
-                //                                     let lower_bound = &v[3..c];
-                //                                     let version = lower_bound.parse::<Version>()?;
-                //                                     (Some(version), None)
-                //                                 } else {
-                //                                     bail!("Range specification missing closing curly brace");
-                //                                 }
-                //                             }
-                //                         }
-                //                         _ => bail!("Lower version bound must be inclusive"),
-                //                     },
-                //                     Some('<') => {
-                //                         let close = maybe_find(v, '}');
-                //                         if let Some(c) = close {
-                //                             let upper_bound = &v[3..c];
-                //                             let version = upper_bound.parse::<Version>()?;
-                //                             (None, Some(version))
-                //                         } else {
-                //                             bail!("Range specification missing closing curly brace");
-                //                         }
-                //                     }
-                //                     _ => {
-                //                         bail!("Invalid version specification, curly brace usage implies a range should be specified")
-                //                     }
-                //                 }
-                //             }
-                //             _ => (None, None),
-                //         };
-                //         match (lower, upper) {
-                //             (Some(l), Some(u)) => {
-                //                 let req = VersionReq::parse(&format!(">={}, <{}", l, u))?;
-                //                 let matches = inf.state.releases().filter(|r| req.matches(&r.version));
-                //                 matches.last()
-                //             }
-                //             (None, Some(u)) => {
-                //                 let req = VersionReq::parse(&format!("<{}", u))?;
-                //                 let matches = inf.state.releases().filter(|r| req.matches(&r.version));
-                //                 matches.last()
-                //             }
-                //             (Some(l), None) => {
-                //                 let req = VersionReq::parse(&format!(">={}", l))?;
-                //                 let matches = inf.state.releases().filter(|r| req.matches(&r.version));
-                //                 matches.last()
-                //             }
-                //             (None, None) => inf.state.releases().last(),
-                //         }
-                // } else {
-                let release = inf.state.releases().last();
-                // };
-                // let release = info.state.releases().last();
+                let release = if version != VersionReq::STAR {
+                    inf.state
+                        .releases()
+                        .filter(|r| version.matches(&r.version))
+                        .last()
+                } else {
+                    inf.state.releases().last()
+                };
+
                 if let Some(r) = release {
                     let state = &r.state;
                     if let ReleaseState::Released { content } = state {
-                        // let mut locked_package = package.split('@').next().unwrap().to_string();
                         let mut locked_package = package.name.clone();
                         locked_package = format!(
                             "locked-dep=<{}@{}>,integrity=<{}>",
@@ -490,6 +494,10 @@ impl LockCommand {
                         );
                         let path = client.content().content_location(content);
                         if let Some(p) = path {
+                            let read_digest = sha256::try_digest(&p)?;
+                            if content.to_string().split(':').last().unwrap() != read_digest {
+                                bail!("Expected content digest to be `{content}`, instead found `{read_digest}`");
+                            }
                             let component =
                                 wasm_compose::graph::Component::from_file(&locked_package, p)?;
                             let component_index =
@@ -501,19 +509,18 @@ impl LockCommand {
                             let instance_id = composer.instantiate(component_index)?;
                             let added = composer.get_component(component_index);
                             let ver = version.clone().to_string();
-                            let (range, end) = if ver == "*" {
-                                // "@*".to_string()
-                                ("".to_string(), "".to_string())
+                            let range = if ver == "*" {
+                                "".to_string()
                             } else {
-                                (format!("@{{{}}}", ver), ">".to_string())
+                                format!("@{{{}}}", ver.replace(',', ""))
                             };
-                            handled.insert(format!("{}{range}{end}", package.name), instance_id);
+                            handled.insert(format!("{}{range}", package.name), instance_id);
                             let mut args = Vec::new();
                             if let Some(added) = added {
                                 for (index, name, _) in added.imports() {
                                     let kindless_name = name.splitn(2, '=').last();
                                     if let Some(name) = kindless_name {
-                                        let iid = handled.get(&name.replace('<', ""));
+                                        let iid = handled.get(&name[1..name.len() - 1]);
                                         if let Some(arg) = iid {
                                             args.push((arg, index));
                                         }
@@ -532,7 +539,6 @@ impl LockCommand {
                     }
                 }
             }
-            // }
         }
         let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
         let id = handled.get(final_name);

@@ -1,8 +1,10 @@
 use super::CommonOptions;
+use crate::commands::lock::DependencyImportParser;
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
 use ptree::{output::print_tree, TreeBuilder};
+use semver::Op;
 use std::fs;
 use warg_client::{
     storage::{ContentStorage, PackageInfo, RegistryStorage},
@@ -41,19 +43,12 @@ impl DependenciesCommand {
     #[async_recursion]
     async fn parse_deps<'a>(
         id: &'a PackageName,
-        version: Option<&'a str>,
+        version: VersionReq,
         client: &FileSystemClient,
         node: &mut TreeBuilder,
         parser: &mut DepsParser,
     ) -> Result<()> {
-        let vreq = if let Some(v) = version {
-            let v = &v.replace(['{', '}'], "").replace([' '], ", ");
-            let v = &v[0..v.len() - 1];
-            VersionReq::parse(v)
-        } else {
-            Ok(VersionReq::STAR)
-        }?;
-        client.download(id, &vreq).await?;
+        client.download(id, &version).await?;
 
         let package = client.registry().load_package(id).await?;
         if let Some(pkg) = package {
@@ -65,20 +60,33 @@ impl DependenciesCommand {
                         let bytes = fs::read(p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
-                            let name = dep.name.0.replace('<', "");
-                            let kindless_name = name.splitn(2, '=').last();
-                            if let Some(name) = kindless_name {
-                                let mut name_and_version = name.split('@');
-                                let versionless_name = name_and_version.next();
-                                let version = name_and_version.next();
-                                if let Some(identifier) = versionless_name {
-                                    let grand_child = node.begin_child(name.to_string());
-                                    let id = PackageName::new(identifier)?;
-                                    Self::parse_deps(&id, version, client, grand_child, parser)
+                            let mut dep_parser = DependencyImportParser {
+                                next: dep.name.0,
+                                offset: 0,
+                            };
+                            let dep = dep_parser.parse()?;
+                            let version = dep.req.clone();
+                            let v = if version.to_string() == "*" {
+                                "*".to_string()
+                            } else if version.comparators.len() == 1
+                                && version.comparators[0].op == Op::Exact
+                            {
+                                version.to_string()
+                            } else {
+                                format!("{{{}}}", version.to_string().replace(',', ""))
+                            };
+                            let grand_child =
+                                node.begin_child(format!("{}@{}", dep.name.to_string(), v));
+                            match dep.kind {
+                                crate::commands::ImportKind::Locked(_)
+                                | crate::commands::ImportKind::Unlocked => {
+                                    let id = PackageName::new(dep.name)?;
+                                    Self::parse_deps(&id, dep.req, client, grand_child, parser)
                                         .await?;
-                                    grand_child.end_child();
                                 }
+                                crate::commands::ImportKind::Interface(_) => {}
                             }
+                            grand_child.end_child();
                         }
                     }
                 }
@@ -95,7 +103,7 @@ impl DependenciesCommand {
             if let Some(l) = latest {
                 client.download(&info.name, &VersionReq::STAR).await?;
                 let mut tree = TreeBuilder::new(format!(
-                    "{0}:{1}@{2}",
+                    "{}:{}@{}",
                     info.name.namespace(),
                     info.name.name(),
                     l.version
@@ -106,25 +114,38 @@ impl DependenciesCommand {
                         let bytes = fs::read(&p)?;
                         let deps = parser.parse(&bytes)?;
                         for dep in deps {
-                            let name = dep.name.0;
-                            let kindless_name = name.splitn(2, '=').last();
-                            if let Some(name) = kindless_name {
-                                let child = tree.begin_child(name.to_string());
-                                let mut name_and_version = name.split('@');
-                                let versionless_name = name_and_version.next();
-                                let version = name_and_version.next();
-                                if let Some(identifier) = versionless_name {
-                                    let id = PackageName::new(identifier.replace('<', ""))?;
-                                    Self::parse_deps(&id, version, client, child, &mut parser)
-                                        .await?;
+                            let mut dep_parser = DependencyImportParser {
+                                next: dep.name.0,
+                                offset: 0,
+                            };
+                            let dep = dep_parser.parse()?;
+                            let version = dep.req.clone().to_string();
+                            let v = if version == "*" {
+                                "*".to_string()
+                            } else {
+                                format!("{{{}}}", version.replace(',', ""))
+                            };
+                            let child = tree.begin_child(format!("{}@{}", dep.name.to_string(), v));
+                            match dep.kind {
+                                crate::commands::ImportKind::Locked(_)
+                                | crate::commands::ImportKind::Unlocked => {
+                                    Self::parse_deps(
+                                        &PackageName::new(dep.name)?,
+                                        dep.req,
+                                        client,
+                                        child,
+                                        &mut parser,
+                                    )
+                                    .await?;
                                 }
-                                child.end_child();
+                                crate::commands::ImportKind::Interface(_) => {}
                             }
+                            child.end_child();
                         }
                     }
+                    let built = tree.build();
+                    print_tree(&built)?
                 }
-                let built = tree.build();
-                print_tree(&built)?
             }
         }
         Ok(())
@@ -144,7 +165,7 @@ impl DepsParser {
         deps: &mut Vec<ComponentImport<'a>>,
     ) -> Result<()> {
         for import in parser.into_iter_with_offsets() {
-            let (_, imp) = import.unwrap();
+            let (_, imp) = import?;
             deps.push(imp);
         }
         Ok(())
@@ -152,7 +173,6 @@ impl DepsParser {
 
     pub fn parse<'a>(&mut self, mut bytes: &'a [u8]) -> Result<Vec<ComponentImport<'a>>> {
         let mut parser = Parser::new(0);
-        let mut _consumed = 0;
         let mut deps = Vec::new();
         loop {
             let payload = match parser.parse(bytes, true)? {
@@ -166,11 +186,7 @@ impl DepsParser {
                 Payload::ComponentImportSection(s) => {
                     self.parse_imports(s, &mut deps)?;
                 }
-                Payload::CodeSectionStart {
-                    count: _,
-                    range: _,
-                    size: _,
-                } => {
+                Payload::CodeSectionStart { .. } => {
                     parser.skip_section();
                 }
                 Payload::ModuleSection { range, .. } => {
