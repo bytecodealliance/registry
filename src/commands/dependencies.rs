@@ -1,5 +1,4 @@
 use super::CommonOptions;
-use crate::commands::lock::DependencyImportParser;
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
@@ -7,6 +6,7 @@ use ptree::{output::print_tree, TreeBuilder};
 use semver::Op;
 use std::fs;
 use warg_client::{
+    depsolve::{DependencyImportParser, ImportKind},
     storage::{ContentStorage, PackageInfo, RegistryStorage},
     FileSystemClient,
 };
@@ -78,13 +78,12 @@ impl DependenciesCommand {
                             let grand_child =
                                 node.begin_child(format!("{}@{}", dep.name.to_string(), v));
                             match dep.kind {
-                                crate::commands::ImportKind::Locked(_)
-                                | crate::commands::ImportKind::Unlocked => {
+                                ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     let id = PackageName::new(dep.name)?;
                                     Self::parse_deps(&id, dep.req, client, grand_child, parser)
                                         .await?;
                                 }
-                                crate::commands::ImportKind::Interface(_) => {}
+                                ImportKind::Interface(_) => {}
                             }
                             grand_child.end_child();
                         }
@@ -127,8 +126,7 @@ impl DependenciesCommand {
                             };
                             let child = tree.begin_child(format!("{}@{}", dep.name.to_string(), v));
                             match dep.kind {
-                                crate::commands::ImportKind::Locked(_)
-                                | crate::commands::ImportKind::Unlocked => {
+                                ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     Self::parse_deps(
                                         &PackageName::new(dep.name)?,
                                         dep.req,
@@ -138,7 +136,7 @@ impl DependenciesCommand {
                                     )
                                     .await?;
                                 }
-                                crate::commands::ImportKind::Interface(_) => {}
+                                ImportKind::Interface(_) => {}
                             }
                             child.end_child();
                         }

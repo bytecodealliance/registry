@@ -1,17 +1,18 @@
 //! A client library for Warg component registries.
 
 #![deny(missing_docs)]
-
-use crate::storage::{PackageInfo, PublishEntry};
+use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
+use semver::{Version, VersionReq};
+use std::fs;
+use std::str::FromStr;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
     RegistryStorage,
 };
 use thiserror::Error;
-use warg_api::v1::package::ContentSource;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
     package::{
@@ -20,18 +21,21 @@ use warg_api::v1::{
     },
     proof::{ConsistencyRequest, InclusionRequest},
 };
-use warg_crypto::{
-    hash::{AnyHash, Sha256},
-    signing, Encode, Signable,
-};
+use warg_crypto::hash::Sha256;
+use warg_crypto::{hash::AnyHash, signing, Encode, Signable};
+use warg_protocol::package::ReleaseState;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageName, RecordId, TimestampedCheckpoint},
-    PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
+    PublishedProtoEnvelope, SerdeEnvelope,
 };
+use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 
 pub mod api;
 mod config;
+/// Tools for locking and bundling components
+pub mod depsolve;
+use depsolve::{Bundler, Import, ImportKind, LockListBuilder};
 pub mod lock;
 mod registry_url;
 pub mod storage;
@@ -87,6 +91,135 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .clear()
             .await
             .or(Err(ClientError::ClearContentCacheFailed))
+    }
+
+    /// Locks component
+    pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
+        let mut builder = LockListBuilder::new();
+        builder.build_list(self, info).await?;
+        let top = Import {
+            name: format!("{}:{}", info.name.namespace(), info.name.name()),
+            req: VersionReq::STAR,
+            kind: ImportKind::Unlocked,
+        };
+        builder.lock_list.insert(top);
+        let mut composer = CompositionGraph::new();
+        let mut handled = HashMap::<String, InstanceId>::new();
+        for package in builder.lock_list {
+            let name = package.name.clone();
+            let version = package.req;
+            let id = PackageName::new(name)?;
+            let info = self.registry().load_package(&id).await?;
+            if let Some(inf) = info {
+                let release = if version != VersionReq::STAR {
+                    inf.state
+                        .releases()
+                        .filter(|r| version.matches(&r.version))
+                        .last()
+                } else {
+                    inf.state.releases().last()
+                };
+
+                if let Some(r) = release {
+                    let state = &r.state;
+                    if let ReleaseState::Released { content } = state {
+                        let mut locked_package = package.name.clone();
+                        locked_package = format!(
+                            "locked-dep=<{}@{}>,integrity=<{}>",
+                            locked_package,
+                            &r.version.to_string(),
+                            content.to_string().replace(':', "-")
+                        );
+                        let path = self.content().content_location(content);
+                        if let Some(p) = path {
+                            let bytes = fs::read(&p).map_err(|_| ClientError::ContentNotFound {
+                                digest: content.clone(),
+                            })?;
+
+                            let read_digest =
+                                AnyHash::from_str(&format!("sha256:{}", sha256::digest(bytes)))
+                                    .unwrap();
+                            if content != &read_digest {
+                                return Err(ClientError::IncorrectContent {
+                                    digest: read_digest,
+                                    expected: content.clone(),
+                                });
+                            }
+                            let component =
+                                wasm_compose::graph::Component::from_file(&locked_package, p)?;
+                            let component_index =
+                                if let Some(c) = composer.get_component_by_name(&locked_package) {
+                                    c.0
+                                } else {
+                                    composer.add_component(component)?
+                                };
+                            let instance_id = composer.instantiate(component_index)?;
+                            let added = composer.get_component(component_index);
+                            let ver = version.clone().to_string();
+                            let range = if ver == "*" {
+                                "".to_string()
+                            } else {
+                                format!("@{{{}}}", ver.replace(',', ""))
+                            };
+                            handled.insert(format!("{}{range}", package.name), instance_id);
+                            let mut args = Vec::new();
+                            if let Some(added) = added {
+                                for (index, name, _) in added.imports() {
+                                    let kindless_name = name.splitn(2, '=').last();
+                                    if let Some(name) = kindless_name {
+                                        let iid = handled.get(&name[1..name.len() - 1]);
+                                        if let Some(arg) = iid {
+                                            args.push((arg, index));
+                                        }
+                                    }
+                                }
+                            }
+                            for arg in args {
+                                composer.connect(
+                                    *arg.0,
+                                    None::<ExportIndex>,
+                                    instance_id,
+                                    arg.1,
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
+        let id = handled.get(final_name);
+        let options = if let Some(id) = id {
+            EncodeOptions {
+                define_components: false,
+                export: Some(*id),
+                validate: false,
+            }
+        } else {
+            EncodeOptions {
+                define_components: false,
+                export: None,
+                validate: false,
+            }
+        };
+        let locked = composer.encode(options)?;
+        fs::write("./locked.wasm", locked.as_slice()).map_err(|e| ClientError::Other(e.into()))?;
+        Ok(locked)
+    }
+
+    /// Bundles component
+    pub async fn bundle_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
+        let mut bundler = Bundler::new(self);
+        let path = PathBuf::from("./locked.wasm");
+        let locked = if !path.is_file() {
+            self.lock_component(info).await?
+        } else {
+            fs::read("./locked.wasm").map_err(|e| ClientError::Other(e.into()))?
+        };
+        let bundled = bundler.parse(&locked).await?;
+        fs::write("./bundled.wasm", bundled.as_slice())
+            .map_err(|e| ClientError::Other(e.into()))?;
+        Ok(bundled.as_slice().to_vec())
     }
 
     /// Submits the publish information in client storage.
@@ -797,6 +930,15 @@ pub enum ClientError {
     ContentNotFound {
         /// The digest of the missing content.
         digest: AnyHash,
+    },
+
+    /// Content digest was different than expected.
+    #[error("content with digest `{digest}` was not found expected `{expected}`")]
+    IncorrectContent {
+        /// The digest of the missing content.
+        digest: AnyHash,
+        /// The expected
+        expected: AnyHash,
     },
 
     /// The package log is empty and cannot be validated.

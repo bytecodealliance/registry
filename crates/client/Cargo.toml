@@ -14,7 +14,7 @@ warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-api = { workspace = true }
 warg-transparency = { workspace = true }
-anyhow = { workspace = true }
+anyhow.workspace = true
 thiserror = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
@@ -30,11 +30,19 @@ url = { workspace = true }
 libc = { workspace = true }
 tracing = { workspace = true }
 itertools = { workspace = true }
+wasmparser = { workspace = true }
+wasm-compose = { workspace = true }
 dirs = { workspace = true }
 once_cell = { workspace = true }
 walkdir = { workspace = true }
 normpath = { workspace = true }
 pathdiff = { workspace = true }
+indexmap.workspace = true
+async-recursion = "1.0.5"
+semver.workspace = true
+wasm-encoder.workspace = true
+wasmprinter = "0.2.75"
+sha256 = "1.4.0"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.48"

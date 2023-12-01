@@ -44,6 +44,8 @@ async-recursion = "1.0.4"
 indexmap.workspace = true
 semver.workspace = true
 sha256 = "1.4.0"
+wat = "1.0.67"
+wasmprinter = "0.2.75"
 
 [dev-dependencies]
 reqwest = { workspace = true }
