@@ -601,7 +601,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(record)
     }
 
-    async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
+    /// Downloads the content for the specified digest into client storage.
+    ///
+    /// If the content already exists in client storage, the existing path
+    /// is returned.
+    pub async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
