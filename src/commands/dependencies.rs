@@ -22,7 +22,7 @@ pub struct DependenciesCommand {
 
     /// Only show information for the specified package.
     #[clap(value_name = "PACKAGE")]
-    pub package: Option<PackageName>,
+    pub package: PackageName,
 }
 
 impl DependenciesCommand {
@@ -31,10 +31,8 @@ impl DependenciesCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        if let Some(package) = self.package {
-            if let Some(info) = client.registry().load_package(&package).await? {
-                Self::print_package_info(&client, &info).await?;
-            }
+        if let Some(info) = client.registry().load_package(&self.package).await? {
+            Self::print_package_info(&client, &info).await?;
         }
 
         Ok(())

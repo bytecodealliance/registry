@@ -14,7 +14,7 @@ warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-api = { workspace = true }
 warg-transparency = { workspace = true }
-anyhow.workspace = true
+anyhow = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

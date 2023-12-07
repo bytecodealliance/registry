@@ -268,7 +268,7 @@ impl AsRef<[u8]> for LogId {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct RecordId(pub AnyHash);
+pub struct RecordId(AnyHash);
 
 impl RecordId {
     pub fn algorithm(&self) -> HashAlgorithm {

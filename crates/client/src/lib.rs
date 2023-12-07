@@ -147,30 +147,31 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             }
                             let component =
                                 wasm_compose::graph::Component::from_file(&locked_package, p)?;
-                            let component_index =
-                                if let Some(c) = composer.get_component_by_name(&locked_package) {
-                                    c.0
-                                } else {
-                                    composer.add_component(component)?
-                                };
-                            let instance_id = composer.instantiate(component_index)?;
-                            let added = composer.get_component(component_index);
+                            let component_id = if let Some((id, _)) =
+                                composer.get_component_by_name(&locked_package)
+                            {
+                                id
+                            } else {
+                                composer.add_component(component)?
+                            };
+                            let instance_id = composer.instantiate(component_id)?;
+                            let added = composer.get_component(component_id);
                             let ver = version.clone().to_string();
                             let range = if ver == "*" {
                                 "".to_string()
                             } else {
+                                // @{<verlower> <verupper>}
                                 format!("@{{{}}}", ver.replace(',', ""))
                             };
                             handled.insert(format!("{}{range}", package.name), instance_id);
                             let mut args = Vec::new();
                             if let Some(added) = added {
                                 for (index, name, _) in added.imports() {
-                                    let kindless_name = name.splitn(2, '=').last();
-                                    if let Some(name) = kindless_name {
-                                        let iid = handled.get(&name[1..name.len() - 1]);
-                                        if let Some(arg) = iid {
-                                            args.push((arg, index));
-                                        }
+                                    let kindless_name = name.splitn(2, '=').last().unwrap();
+                                    let iid =
+                                        handled.get(&kindless_name[1..kindless_name.len() - 1]);
+                                    if let Some(arg) = iid {
+                                        args.push((arg, index));
                                     }
                                 }
                             }
@@ -189,18 +190,9 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
         let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
         let id = handled.get(final_name);
-        let options = if let Some(id) = id {
-            EncodeOptions {
-                define_components: false,
-                export: Some(*id),
-                validate: false,
-            }
-        } else {
-            EncodeOptions {
-                define_components: false,
-                export: None,
-                validate: false,
-            }
+        let options = EncodeOptions {
+            export: id.copied(),
+            ..Default::default()
         };
         let locked = composer.encode(options)?;
         fs::write("./locked.wasm", locked.as_slice()).map_err(|e| ClientError::Other(e.into()))?;
