@@ -1,291 +1,19 @@
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use indexmap::IndexSet;
-use semver::{Comparator, Prerelease, Version, VersionReq};
+use semver::VersionReq;
 use std::fs;
-use warg_protocol::package::ReleaseState;
+use warg_protocol::package::{Release, ReleaseState};
 use warg_protocol::registry::PackageName;
 use wasm_encoder::{
     Component, ComponentImportSection, ComponentSectionId, ComponentTypeRef, RawSection,
 };
-use wasmparser::names::KebabStr;
 use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
 
 use super::Client;
 use crate::storage::{ContentStorage, PackageInfo, RegistryStorage};
+use crate::version_util::{DependencyImportParser, Import, ImportKind};
 /// Import Kinds found in components
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub enum ImportKind {
-    /// Locked Version
-    Locked(Option<String>),
-    /// Unlocked Version Range
-    Unlocked,
-    /// Interface
-    Interface(Option<String>),
-}
-
-/// Dependency in dep solve
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Import {
-    /// Import name
-    pub name: String,
-    /// Version Requirements
-    pub req: VersionReq,
-    /// Import kind
-    pub kind: ImportKind,
-}
-
-/// Parser for dep solve deps
-pub struct DependencyImportParser<'a> {
-    /// string to be parsed
-    pub next: &'a str,
-    /// index of parser
-    pub offset: usize,
-}
-
-impl<'a> DependencyImportParser<'a> {
-    /// Parses import
-    pub fn parse(&mut self) -> Result<Import> {
-        if self.eat_str("unlocked-dep=") {
-            self.expect_str("<")?;
-            let imp = self.pkgidset_up_to('>')?;
-            self.expect_str(">")?;
-            return Ok(imp);
-        }
-
-        if self.eat_str("locked-dep=") {
-            self.expect_str("<")?;
-            let imp = self.pkgver()?;
-            return Ok(imp);
-        }
-
-        let name = self.eat_until('@');
-        let v = self.semver(self.next)?;
-        let comp = Comparator {
-            op: semver::Op::Exact,
-            major: v.major,
-            minor: Some(v.minor),
-            patch: Some(v.patch),
-            pre: v.pre,
-        };
-        let req = VersionReq {
-            comparators: vec![comp],
-        };
-        Ok(Import {
-            name: name.unwrap().to_string(),
-            req,
-            kind: ImportKind::Interface(Some(self.next.to_string())),
-        })
-    }
-
-    fn eat_str(&mut self, prefix: &str) -> bool {
-        match self.next.strip_prefix(prefix) {
-            Some(rest) => {
-                self.next = rest;
-                true
-            }
-            None => false,
-        }
-    }
-
-    fn expect_str(&mut self, prefix: &str) -> Result<()> {
-        if self.eat_str(prefix) {
-            Ok(())
-        } else {
-            bail!(format!(
-                "expected `{prefix}` at `{}` at {}",
-                self.next, self.offset
-            ));
-        }
-    }
-
-    fn eat_up_to(&mut self, c: char) -> Option<&'a str> {
-        let i = self.next.find(c)?;
-        let (a, b) = self.next.split_at(i);
-        self.next = b;
-        Some(a)
-    }
-
-    fn eat_until(&mut self, c: char) -> Option<&'a str> {
-        let ret = self.eat_up_to(c);
-        if ret.is_some() {
-            self.next = &self.next[c.len_utf8()..];
-        }
-        ret
-    }
-
-    fn kebab(&self, s: &'a str) -> Result<&'a KebabStr> {
-        match KebabStr::new(s) {
-            Some(name) => Ok(name),
-            None => bail!(format!("`{s}` is not in kebab case at {}", self.offset)),
-        }
-    }
-
-    fn take_until(&mut self, c: char) -> Result<&'a str> {
-        match self.eat_until(c) {
-            Some(s) => Ok(s),
-            None => bail!(format!("failed to find `{c}` character at {}", self.offset)),
-        }
-    }
-
-    fn take_up_to(&mut self, c: char) -> Result<&'a str> {
-        match self.eat_up_to(c) {
-            Some(s) => Ok(s),
-            None => bail!(format!("failed to find `{c}` character at {}", self.offset)),
-        }
-    }
-
-    fn semver(&self, s: &str) -> Result<Version> {
-        match Version::parse(s) {
-            Ok(v) => Ok(v),
-            Err(e) => bail!(format!(
-                "`{s}` is not a valid semver: {e} at {}",
-                self.offset
-            )),
-        }
-    }
-
-    fn pkgver(&mut self) -> Result<Import> {
-        let namespace = self.take_until(':')?;
-        self.kebab(namespace)?;
-        let name = match self.eat_until('@') {
-            Some(name) => name,
-            // a:b
-            None => {
-                let name = self.take_up_to(',')?;
-                self.kebab(name)?;
-                return Ok(Import {
-                    name: format!("{namespace}:{name}"),
-                    req: VersionReq::STAR,
-                    kind: ImportKind::Locked(None),
-                });
-            }
-        };
-        let version = self.eat_until('>');
-        let req = if let Some(v) = version {
-            let v = self.semver(v)?;
-            let comp = Comparator {
-                op: semver::Op::Exact,
-                major: v.major,
-                minor: Some(v.minor),
-                patch: Some(v.patch),
-                pre: Prerelease::default(),
-            };
-            VersionReq {
-                comparators: vec![comp],
-            }
-        } else {
-            VersionReq::STAR
-        };
-        let digest = if self.eat_str(",") {
-            self.eat_until('<');
-            self.eat_until('>').map(|d| d.to_string())
-        } else {
-            None
-        };
-        Ok(Import {
-            name: format!("{namespace}:{name}"),
-            req,
-            kind: ImportKind::Locked(digest),
-        })
-    }
-    fn pkgidset_up_to(&mut self, end: char) -> Result<Import> {
-        let namespace = self.take_until(':')?;
-        self.kebab(namespace)?;
-        let name = match self.eat_until('@') {
-            Some(name) => name,
-            // a:b
-            None => {
-                let name = self.take_up_to(end)?;
-                self.kebab(name)?;
-                return Ok(Import {
-                    name: format!("{namespace}:{name}"),
-                    req: VersionReq::STAR,
-                    kind: ImportKind::Unlocked,
-                });
-            }
-        };
-        self.kebab(name)?;
-        // a:b@*
-        if self.eat_str("*") {
-            return Ok(Import {
-                name: format!("{namespace}:{name}"),
-                req: VersionReq::STAR,
-                kind: ImportKind::Unlocked,
-            });
-        }
-        self.expect_str("{")?;
-        if self.eat_str(">=") {
-            match self.eat_until(' ') {
-                Some(lower) => {
-                    let lower = self.semver(lower)?;
-                    self.expect_str("<")?;
-                    let upper = self.take_until('}')?;
-                    let upper = self.semver(upper)?;
-                    let lc = Comparator {
-                        op: semver::Op::GreaterEq,
-                        major: lower.major,
-                        minor: Some(lower.minor),
-                        patch: Some(lower.patch),
-                        pre: Prerelease::default(),
-                    };
-                    let uc = Comparator {
-                        op: semver::Op::Less,
-                        major: upper.major,
-                        minor: Some(upper.minor),
-                        patch: Some(upper.patch),
-                        pre: Prerelease::default(),
-                    };
-                    let comparators = vec![lc, uc];
-                    return Ok(Import {
-                        name: format!("{namespace}:{name}"),
-                        req: VersionReq { comparators },
-                        kind: ImportKind::Unlocked,
-                    });
-                }
-                // a:b@{>=1.2.3}
-                None => {
-                    let lower = self.take_until('}')?;
-                    let lower = self.semver(lower)?;
-                    let comparator = Comparator {
-                        op: semver::Op::GreaterEq,
-                        major: lower.major,
-                        minor: Some(lower.minor),
-                        patch: Some(lower.patch),
-                        pre: Prerelease::default(),
-                    };
-                    let comparators = vec![comparator];
-                    return Ok(Import {
-                        name: format!("{namespace}:{name}"),
-                        req: VersionReq { comparators },
-                        kind: ImportKind::Unlocked,
-                    });
-                }
-            }
-        }
-
-        // a:b@{<1.2.3}
-        // .. or
-        // a:b@{<1.2.3 >=1.2.3}
-        self.expect_str("<")?;
-        let upper = self.take_until('}')?;
-        let upper = self.semver(upper)?;
-        let uc = Comparator {
-            op: semver::Op::Less,
-            major: upper.major,
-            minor: Some(upper.minor),
-            patch: Some(upper.patch),
-            pre: Prerelease::default(),
-        };
-        let mut comparators: Vec<Comparator> = Vec::new();
-        comparators.push(uc);
-        Ok(Import {
-            name: format!("{namespace}:{name}"),
-            req: VersionReq { comparators },
-            kind: ImportKind::Unlocked,
-        })
-    }
-}
 
 /// Creates list of dependenies for locking components
 pub struct LockListBuilder {
@@ -293,14 +21,16 @@ pub struct LockListBuilder {
     pub lock_list: IndexSet<Import>,
 }
 
-impl LockListBuilder {
+impl Default for LockListBuilder {
     /// New LockListBuilder
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
             lock_list: IndexSet::new(),
         }
     }
+}
 
+impl LockListBuilder {
     fn parse_import(
         &mut self,
         parser: &ComponentImportSectionReader,
@@ -374,13 +104,8 @@ impl LockListBuilder {
                     if let Some(info) = client.registry().load_package(&id).await? {
                         let release = info.state.releases().last();
                         if let Some(r) = release {
-                            let state = &r.state;
-                            if let ReleaseState::Released { content } = state {
-                                let path = client.content().content_location(content);
-                                if let Some(p) = path {
-                                    let bytes = fs::read(p)?;
-                                    self.parse_package(client, &bytes).await?;
-                                }
+                            if let Some(bytes) = self.release_bytes(r, client)? {
+                                self.parse_package(client, &bytes).await?;
                             }
                         }
                         self.lock_list.insert(import);
@@ -389,13 +114,8 @@ impl LockListBuilder {
                         if let Some(info) = client.registry().load_package(&id).await? {
                             let release = info.state.releases().last();
                             if let Some(r) = release {
-                                let state = &r.state;
-                                if let ReleaseState::Released { content } = state {
-                                    let path = client.content().content_location(content);
-                                    if let Some(p) = path {
-                                        let bytes = fs::read(p)?;
-                                        self.parse_package(client, &bytes).await?;
-                                    }
+                                if let Some(bytes) = self.release_bytes(r, client)? {
+                                    self.parse_package(client, &bytes).await?;
                                 }
                             }
                             self.lock_list.insert(import);
@@ -406,6 +126,21 @@ impl LockListBuilder {
             }
         }
         Ok(())
+    }
+
+    fn release_bytes<R: RegistryStorage, C: ContentStorage>(
+        &self,
+        release: &Release,
+        client: &Client<R, C>,
+    ) -> Result<Option<Vec<u8>>> {
+        let state = &release.state;
+        if let ReleaseState::Released { content } = state {
+            let path = client.content().content_location(content);
+            if let Some(p) = path {
+                return Ok(Some(fs::read(p)?));
+            }
+        }
+        Ok(None)
     }
 
     /// List of deps for building

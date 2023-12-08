@@ -35,7 +35,10 @@ pub mod api;
 mod config;
 /// Tools for locking and bundling components
 pub mod depsolve;
-use depsolve::{Bundler, Import, ImportKind, LockListBuilder};
+use depsolve::{Bundler, LockListBuilder};
+/// Tools for semver
+pub mod version_util;
+use version_util::{kindless_name, locked_package, versioned_package, Import, ImportKind};
 pub mod lock;
 mod registry_url;
 pub mod storage;
@@ -95,7 +98,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
     /// Locks component
     pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
-        let mut builder = LockListBuilder::new();
+        let mut builder = LockListBuilder::default();
         builder.build_list(self, info).await?;
         let top = Import {
             name: format!("{}:{}", info.name.namespace(), info.name.name()),
@@ -123,13 +126,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 if let Some(r) = release {
                     let state = &r.state;
                     if let ReleaseState::Released { content } = state {
-                        let mut locked_package = package.name.clone();
-                        locked_package = format!(
-                            "locked-dep=<{}@{}>,integrity=<{}>",
-                            locked_package,
-                            &r.version.to_string(),
-                            content.to_string().replace(':', "-")
-                        );
+                        let locked_package = locked_package(&package.name, r, content);
                         let path = self.content().content_location(content);
                         if let Some(p) = path {
                             let bytes = fs::read(&p).map_err(|_| ClientError::ContentNotFound {
@@ -156,20 +153,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                             };
                             let instance_id = composer.instantiate(component_id)?;
                             let added = composer.get_component(component_id);
-                            let ver = version.clone().to_string();
-                            let range = if ver == "*" {
-                                "".to_string()
-                            } else {
-                                // @{<verlower> <verupper>}
-                                format!("@{{{}}}", ver.replace(',', ""))
-                            };
-                            handled.insert(format!("{}{range}", package.name), instance_id);
+                            handled.insert(versioned_package(&package.name, version), instance_id);
                             let mut args = Vec::new();
                             if let Some(added) = added {
                                 for (index, name, _) in added.imports() {
-                                    let kindless_name = name.splitn(2, '=').last().unwrap();
-                                    let iid =
-                                        handled.get(&kindless_name[1..kindless_name.len() - 1]);
+                                    let iid = handled.get(kindless_name(name));
                                     if let Some(arg) = iid {
                                         args.push((arg, index));
                                     }

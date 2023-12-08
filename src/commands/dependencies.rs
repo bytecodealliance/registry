@@ -3,11 +3,10 @@ use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
 use ptree::{output::print_tree, TreeBuilder};
-use semver::Op;
 use std::fs;
 use warg_client::{
-    depsolve::{DependencyImportParser, ImportKind},
     storage::{ContentStorage, PackageInfo, RegistryStorage},
+    version_util::{version_string, DependencyImportParser, ImportKind},
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageName, VersionReq};
@@ -63,16 +62,7 @@ impl DependenciesCommand {
                                 offset: 0,
                             };
                             let dep = dep_parser.parse()?;
-                            let version = dep.req.clone();
-                            let v = if version.to_string() == "*" {
-                                "*".to_string()
-                            } else if version.comparators.len() == 1
-                                && version.comparators[0].op == Op::Exact
-                            {
-                                version.to_string()
-                            } else {
-                                format!("{{{}}}", version.to_string().replace(',', ""))
-                            };
+                            let v = version_string(&dep.req);
                             let grand_child =
                                 node.begin_child(format!("{}@{}", dep.name.to_string(), v));
                             match dep.kind {
@@ -116,12 +106,7 @@ impl DependenciesCommand {
                                 offset: 0,
                             };
                             let dep = dep_parser.parse()?;
-                            let version = dep.req.clone().to_string();
-                            let v = if version == "*" {
-                                "*".to_string()
-                            } else {
-                                format!("{{{}}}", version.replace(',', ""))
-                            };
+                            let v = version_string(&dep.req);
                             let child = tree.begin_child(format!("{}@{}", dep.name.to_string(), v));
                             match dep.kind {
                                 ImportKind::Locked(_) | ImportKind::Unlocked => {
