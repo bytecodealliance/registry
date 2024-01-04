@@ -860,7 +860,7 @@ pub enum ClientError {
 
     /// The registry provided a checkpoint with a different `log_root` and
     /// `map_root` than a previously provided checkpoint.
-    #[error("registry provided a new checkpoint with the same log length `{log_length}` as previously fetched but different log roots or map roots")]
+    #[error("registry provided a new checkpoint with the same log length `{log_length}` as previously fetched but different log root or map root")]
     CheckpointChangedLogRootOrMapRoot {
         /// The checkpoint log length.
         log_length: RegistryLen,
