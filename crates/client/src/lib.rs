@@ -5,6 +5,7 @@
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
+use std::cmp::Ordering;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishInfo,
@@ -25,7 +26,7 @@ use warg_crypto::{
 };
 use warg_protocol::{
     operator, package,
-    registry::{LogId, LogLeaf, PackageName, RecordId, TimestampedCheckpoint},
+    registry::{LogId, LogLeaf, PackageName, RecordId, RegistryLen, TimestampedCheckpoint},
     PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
 };
 
@@ -539,17 +540,29 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         }
 
         if let Some(from) = self.registry.load_checkpoint().await? {
-            if from.as_ref().checkpoint.log_length < ts_checkpoint.as_ref().checkpoint.log_length {
-                self.api
-                    .prove_log_consistency(
-                        ConsistencyRequest {
-                            from: from.as_ref().checkpoint.log_length,
-                            to: ts_checkpoint.as_ref().checkpoint.log_length,
-                        },
-                        Cow::Borrowed(&from.as_ref().checkpoint.log_root),
-                        Cow::Borrowed(&ts_checkpoint.as_ref().checkpoint.log_root),
-                    )
-                    .await?;
+            let from_log_length = from.as_ref().checkpoint.log_length;
+            let to_log_length = ts_checkpoint.as_ref().checkpoint.log_length;
+
+            match from_log_length.cmp(&to_log_length) {
+                Ordering::Greater => {
+                    return Err(ClientError::CheckpointLogLengthRewind {
+                        from: from_log_length,
+                        to: to_log_length,
+                    })
+                }
+                Ordering::Less => {
+                    self.api
+                        .prove_log_consistency(
+                            ConsistencyRequest {
+                                from: from_log_length,
+                                to: to_log_length,
+                            },
+                            Cow::Borrowed(&from.as_ref().checkpoint.log_root),
+                            Cow::Borrowed(&ts_checkpoint.as_ref().checkpoint.log_root),
+                        )
+                        .await?
+                }
+                Ordering::Equal => {}
             }
         }
 
@@ -824,6 +837,16 @@ pub enum ClientError {
     /// The package is still missing content.
     #[error("the package is still missing content after all content was uploaded")]
     PackageMissingContent,
+
+    /// The registry provided a latest checkpoint with a log length less than a previously provided
+    /// checkpoint log length.
+    #[error("registry rewinded checkpoints; latest checkpoint log length `{to}` is less than previously received checkpoint log length `{from}`")]
+    CheckpointLogLengthRewind {
+        /// The previously received checkpoint log length.
+        from: RegistryLen,
+        /// The latest checkpoint log length.
+        to: RegistryLen,
+    },
 
     /// An error occurred during an API operation.
     #[error(transparent)]
