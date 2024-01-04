@@ -548,7 +548,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     return Err(ClientError::CheckpointLogLengthRewind {
                         from: from_log_length,
                         to: to_log_length,
-                    })
+                    });
                 }
                 Ordering::Less => {
                     self.api
@@ -562,7 +562,17 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                         )
                         .await?
                 }
-                Ordering::Equal => {}
+                Ordering::Equal => {
+                    if from.as_ref().checkpoint.log_root
+                        != ts_checkpoint.as_ref().checkpoint.log_root
+                        || from.as_ref().checkpoint.map_root
+                            != ts_checkpoint.as_ref().checkpoint.map_root
+                    {
+                        return Err(ClientError::CheckpointChangedLogRootOrMapRoot {
+                            log_length: from_log_length,
+                        });
+                    }
+                }
             }
         }
 
@@ -846,6 +856,14 @@ pub enum ClientError {
         from: RegistryLen,
         /// The latest checkpoint log length.
         to: RegistryLen,
+    },
+
+    /// The registry provided a checkpoint with a different `log_root` and
+    /// `map_root` than a previously provided checkpoint.
+    #[error("registry provided a new checkpoint with the same log length `{log_length}` as previously fetched but different log roots or map roots")]
+    CheckpointChangedLogRootOrMapRoot {
+        /// The checkpoint log length.
+        log_length: RegistryLen,
     },
 
     /// An error occurred during an API operation.
