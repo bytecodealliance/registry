@@ -167,7 +167,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
         &client,
         &name,
         PACKAGE_VERSION,
-        &format!("package {PACKAGE_NAME}\nworld foo {{}}"),
+        &format!("package {PACKAGE_NAME};\nworld foo {{}}"),
         true,
         &signing_key,
     )

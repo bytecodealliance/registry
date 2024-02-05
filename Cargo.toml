@@ -43,8 +43,8 @@ ptree = "0.4.0"
 async-recursion = "1.0.4"
 indexmap.workspace = true
 semver.workspace = true
-wat = "1.0.67"
-wasmprinter = "0.2.75"
+wat = "1.0.85"
+wasmprinter = "0.2.78"
 
 [dev-dependencies]
 reqwest = { workspace = true }
@@ -52,8 +52,8 @@ serde_json = { workspace = true }
 warg-server = { workspace = true }
 warg-api = { workspace = true }
 wat = "1.0.67"
-wit-component = "0.12.0"
-wit-parser = "0.9.0"
+wit-component = "0.20.1"
+wit-parser = "0.13.1"
 testresult = "0.3.0"
 
 [features]
@@ -138,8 +138,6 @@ chrono = "0.4.26"
 regex = "1"
 protox = "0.4.1"
 toml = "0.7.6"
-wasmparser = { path = "../wasm-tools/crates/wasmparser" }
-#wasmparser = "0.116.0"
-wasm-encoder = "0.36.1"
-wasm-compose = { path = "../mine/wasm-tools/crates/wasm-compose" }
-#wasm-compose = "0.4.12"
+wasmparser = "0.121.0"
+wasm-encoder = "0.41.0"
+wasm-compose = "0.5.2"
