@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use ptree::TreeBuilder;
 use semver::{Comparator, Op, Prerelease, Version, VersionReq};
 use warg_crypto::hash::AnyHash;
 use warg_protocol::package::Release;
@@ -317,4 +318,18 @@ pub fn version_string(version: &VersionReq) -> String {
     } else {
         format!("{{{}}}", version.to_string().replace(',', ""))
     }
+}
+
+/// Create TreeBuilder child node
+pub fn create_child_node<'a>(
+    node: &'a mut TreeBuilder,
+    name: &str,
+    version: &str,
+) -> &'a mut TreeBuilder {
+    node.begin_child(format!("{}@{}", name, version))
+}
+
+/// Create new TreeBuilder
+pub fn new_tree(namespace: &str, name: &str, version: &Version) -> TreeBuilder {
+    TreeBuilder::new(format!("{}:{}@{}", namespace, name, version))
 }

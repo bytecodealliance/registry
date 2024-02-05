@@ -4410,6 +4410,7 @@ dependencies = [
  "normpath",
  "once_cell",
  "pathdiff",
+ "ptree",
  "reqwest",
  "semver",
  "serde 1.0.171",

@@ -6,7 +6,9 @@ use ptree::{output::print_tree, TreeBuilder};
 use std::fs;
 use warg_client::{
     storage::{ContentStorage, PackageInfo, RegistryStorage},
-    version_util::{version_string, DependencyImportParser, ImportKind},
+    version_util::{
+        create_child_node, new_tree, version_string, DependencyImportParser, ImportKind,
+    },
     FileSystemClient,
 };
 use warg_protocol::{package::ReleaseState, registry::PackageName, VersionReq};
@@ -63,8 +65,7 @@ impl DependenciesCommand {
                             };
                             let dep = dep_parser.parse()?;
                             let v = version_string(&dep.req);
-                            let grand_child =
-                                node.begin_child(format!("{}@{}", dep.name.to_string(), v));
+                            let grand_child = create_child_node(node, &dep.name, &v);
                             match dep.kind {
                                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     let id = PackageName::new(dep.name)?;
@@ -89,12 +90,7 @@ impl DependenciesCommand {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
                 client.download(&info.name, &VersionReq::STAR).await?;
-                let mut tree = TreeBuilder::new(format!(
-                    "{}:{}@{}",
-                    info.name.namespace(),
-                    info.name.name(),
-                    l.version
-                ));
+                let mut tree = new_tree(info.name.namespace(), info.name.name(), &l.version);
                 if let ReleaseState::Released { content } = &l.state {
                     let path = client.content().content_location(content);
                     if let Some(p) = path {
@@ -107,7 +103,7 @@ impl DependenciesCommand {
                             };
                             let dep = dep_parser.parse()?;
                             let v = version_string(&dep.req);
-                            let child = tree.begin_child(format!("{}@{}", dep.name.to_string(), v));
+                            let child = create_child_node(&mut tree, &dep.name, &v);
                             match dep.kind {
                                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     Self::parse_deps(

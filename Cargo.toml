@@ -39,7 +39,7 @@ wasmtime = "10.0"
 wasmtime-wasi = "10.0"
 reqwest.workspace = true
 warg-api.workspace = true
-ptree = "0.4.0"
+ptree.workspace = true
 async-recursion = "1.0.4"
 indexmap.workspace = true
 semver.workspace = true
@@ -90,6 +90,7 @@ tokio-util = "0.7.8"
 serde_with = { version = "3.0.0", features = ["base64"] }
 indexmap = { version = "2.0.0", features = ["serde"] }
 tempfile = "3.6.0"
+ptree = "0.4.0"
 reqwest = { version = "0.11.18", features = ["json", "stream"] }
 futures-util = "0.3.28"
 async-trait = "0.1.71"

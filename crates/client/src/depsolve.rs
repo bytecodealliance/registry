@@ -233,7 +233,7 @@ where
 
     /// Parse bytes for bundling
     pub async fn parse(&mut self, mut bytes: &'a [u8]) -> Result<Component> {
-        let constant = bytes.clone();
+        let constant = bytes;
         let mut parser = Parser::new(0);
         let mut component = Component::new();
         loop {
