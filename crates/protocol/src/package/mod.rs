@@ -33,7 +33,7 @@ impl TryFrom<protobuf::PackageRecord> for model::PackageRecord {
             None => None,
         };
         let version = record.version;
-        let pbjson_timestamp = record.time.ok_or_else(|| Box::new(InvalidTimestampError))?;
+        let pbjson_timestamp = record.time.ok_or(InvalidTimestampError)?;
         let prost_timestamp = pbjson_to_prost_timestamp(pbjson_timestamp);
         let timestamp = prost_timestamp.try_into()?;
 
@@ -62,7 +62,7 @@ impl TryFrom<protobuf::PackageEntry> for model::PackageEntry {
 
     fn try_from(entry: protobuf::PackageEntry) -> Result<Self, Self::Error> {
         use protobuf::package_entry::Contents;
-        let output = match entry.contents.ok_or_else(|| Box::new(EmptyContentError))? {
+        let output = match entry.contents.ok_or(EmptyContentError)? {
             Contents::Init(init) => model::PackageEntry::Init {
                 hash_algorithm: init.hash_algorithm.parse()?,
                 key: init.key.parse()?,
@@ -106,8 +106,8 @@ impl TryFrom<i32> for model::Permission {
     type Error = Error;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
-        let proto_perm = protobuf::PackagePermission::from_i32(permission)
-            .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
+        let proto_perm = protobuf::PackagePermission::try_from(permission)
+            .map_err(|_| PermissionParseError { value: permission })?;
         match proto_perm {
             protobuf::PackagePermission::Unspecified => {
                 Err(Error::new(PermissionParseError { value: permission }))

@@ -439,7 +439,7 @@ impl LogState {
             if !self
                 .permissions
                 .get_mut(key_id)
-                .map(|set| set.remove(permission))
+                .map(|set| set.swap_remove(permission))
                 .unwrap_or(false)
             {
                 return Err(ValidationError::PermissionNotFoundToRevoke {

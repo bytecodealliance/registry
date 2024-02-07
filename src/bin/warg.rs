@@ -4,7 +4,7 @@ use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
     ClearCommand, ConfigCommand, DownloadCommand, InfoCommand, KeyCommand, PublishCommand,
-    ResetCommand, RunCommand, UpdateCommand,
+    ResetCommand, UpdateCommand,
 };
 use warg_client::ClientError;
 
@@ -31,7 +31,6 @@ enum WargCli {
     Publish(PublishCommand),
     Reset(ResetCommand),
     Clear(ClearCommand),
-    Run(RunCommand),
 }
 
 #[tokio::main]
@@ -49,7 +48,6 @@ async fn main() -> Result<()> {
         WargCli::Publish(cmd) => cmd.exec().await,
         WargCli::Reset(cmd) => cmd.exec().await,
         WargCli::Clear(cmd) => cmd.exec().await,
-        WargCli::Run(cmd) => cmd.exec().await,
     } {
         if let Some(e) = e.downcast_ref::<ClientError>() {
             describe_client_error(e);

@@ -4,5 +4,3 @@
 
 pub mod commands;
 pub mod keyring;
-// FIXME: delete
-mod demo;
