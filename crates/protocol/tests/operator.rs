@@ -47,9 +47,9 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<LogState> {
 
             Some(envelope)
         })
-        .try_fold(LogState::new(), |mut validator, record| {
-            validator.validate(&record)?;
-            Ok(validator)
+        .try_fold(LogState::new(), |state, record| {
+            let state = state.validate(&record)?;
+            Ok(state)
         })
 }
 
@@ -81,7 +81,7 @@ fn execute_test(input_path: &Path) {
     .unwrap();
 
     let output = match validate_input(input) {
-        Ok(validator) => Output::Valid(validator),
+        Ok(state) => Output::Valid(state),
         Err(e) => Output::Error(e.to_string()),
     };
 
