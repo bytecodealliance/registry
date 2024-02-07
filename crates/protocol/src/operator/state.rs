@@ -114,16 +114,16 @@ pub struct LogState {
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
     algorithm: Option<HashAlgorithm>,
-    /// The current head of the validator.
+    /// The current head of the state.
     #[serde(skip_serializing_if = "Option::is_none")]
     head: Option<Head>,
     /// The permissions of each key.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     permissions: IndexMap<signing::KeyID, IndexSet<model::Permission>>,
-    /// The keys known to the validator.
+    /// The keys known to the state.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
-    /// The namespaces known to the validator. The key is the lowercased namespace.
+    /// The namespaces known to the state. The key is the lowercased namespace.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     namespaces: IndexMap<String, NamespaceDefinition>,
 }
@@ -146,20 +146,14 @@ impl LogState {
     /// It is expected that `validate` is called in order of the
     /// records in the log.
     ///
-    /// This operation is transactional: if any entry in the record
-    /// fails to validate, the validator state will remain unchanged.
+    /// Note that on failure, the log state is consumed to prevent
+    /// invalid state from being used in future validations.
     pub fn validate(
-        &mut self,
+        mut self,
         record: &ProtoEnvelope<model::OperatorRecord>,
-    ) -> Result<(), ValidationError> {
-        let snapshot = self.snapshot();
-
-        let result = self.validate_record(record);
-        if result.is_err() {
-            self.rollback(snapshot);
-        }
-
-        result
+    ) -> Result<Self, ValidationError> {
+        self.validate_record(record)?;
+        Ok(self)
     }
 
     /// Gets the public key of the given key id.
@@ -230,7 +224,7 @@ impl LogState {
         // Validate the envelope signature
         model::OperatorRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
-        // Update the validator head
+        // Update the state head
         self.head = Some(Head {
             digest: RecordId::operator_record::<Sha256>(envelope),
             timestamp: record.timestamp,
@@ -466,57 +460,15 @@ impl LogState {
         }
         Ok(())
     }
-
-    fn snapshot(&self) -> Snapshot {
-        let Self {
-            algorithm,
-            head,
-            permissions,
-            keys,
-            namespaces,
-        } = self;
-
-        Snapshot {
-            algorithm: *algorithm,
-            head: head.clone(),
-            permissions: permissions.len(),
-            keys: keys.len(),
-            namespaces: namespaces.len(),
-        }
-    }
-
-    fn rollback(&mut self, snapshot: Snapshot) {
-        let Snapshot {
-            algorithm,
-            head,
-            permissions,
-            keys,
-            namespaces,
-        } = snapshot;
-
-        self.algorithm = algorithm;
-        self.head = head;
-        self.permissions.truncate(permissions);
-        self.keys.truncate(keys);
-        self.namespaces.truncate(namespaces);
-    }
 }
 
 impl crate::Validator for LogState {
     type Record = model::OperatorRecord;
     type Error = ValidationError;
 
-    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+    fn validate(self, record: &ProtoEnvelope<Self::Record>) -> Result<Self, Self::Error> {
         self.validate(record)
     }
-}
-
-struct Snapshot {
-    algorithm: Option<HashAlgorithm>,
-    head: Option<Head>,
-    permissions: usize,
-    keys: usize,
-    namespaces: usize,
 }
 
 #[cfg(test)]
@@ -547,11 +499,11 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = LogState::default();
-        validator.validate(&envelope).unwrap();
+        let state = LogState::default();
+        let state = state.validate(&envelope).unwrap();
 
         assert_eq!(
-            validator,
+            state,
             LogState {
                 head: Some(Head {
                     digest: RecordId::operator_record::<Sha256>(&envelope),
@@ -591,8 +543,8 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = LogState::default();
-        validator.validate(&envelope).unwrap();
+        let state = LogState::default();
+        let state = state.validate(&envelope).unwrap();
 
         let expected = LogState {
             head: Some(Head {
@@ -612,7 +564,7 @@ mod tests {
             namespaces: IndexMap::new(),
         };
 
-        assert_eq!(validator, expected);
+        assert_eq!(state, expected);
 
         let record = model::OperatorRecord {
             prev: Some(RecordId::operator_record::<Sha256>(&envelope)),
@@ -639,14 +591,11 @@ mod tests {
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
 
-        // This validation should fail and the validator state should remain unchanged
-        match validator.validate(&envelope).unwrap_err() {
+        // This validation should fail
+        match state.validate(&envelope).unwrap_err() {
             ValidationError::PermissionNotFoundToRevoke { .. } => {}
             _ => panic!("expected a different error"),
         }
-
-        // The validator should not have changed
-        assert_eq!(validator, expected);
     }
 
     #[test]
@@ -676,8 +625,8 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = LogState::default();
-        validator.validate(&envelope).unwrap();
+        let state = LogState::default();
+        let state = state.validate(&envelope).unwrap();
 
         let expected = LogState {
             head: Some(Head {
@@ -714,7 +663,7 @@ mod tests {
             ]),
         };
 
-        assert_eq!(validator, expected);
+        assert_eq!(state, expected);
 
         {
             let record = model::OperatorRecord {
@@ -737,14 +686,11 @@ mod tests {
             let envelope = ProtoEnvelope::signed_contents(&alice_priv, record)
                 .expect("failed to sign envelope");
 
-            // This validation should fail and the validator state should remain unchanged
-            match validator.validate(&envelope).unwrap_err() {
+            // This validation should fail
+            match state.clone().validate(&envelope).unwrap_err() {
                 ValidationError::NamespaceAlreadyDefined { .. } => {}
                 _ => panic!("expected a different error"),
             }
-
-            // The validator should not have changed
-            assert_eq!(validator, expected);
         }
 
         {
@@ -768,14 +714,11 @@ mod tests {
             let envelope = ProtoEnvelope::signed_contents(&alice_priv, record)
                 .expect("failed to sign envelope");
 
-            // This validation should fail and the validator state should remain unchanged
-            match validator.validate(&envelope).unwrap_err() {
+            // This validation should fail
+            match state.validate(&envelope).unwrap_err() {
                 ValidationError::NamespaceConflict { .. } => {}
                 _ => panic!("expected a different error"),
             }
-
-            // The validator should not have changed
-            assert_eq!(validator, expected);
         }
     }
 }

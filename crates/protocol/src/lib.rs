@@ -22,7 +22,7 @@ pub trait Record: Clone + Decode + Send + Sync {
     fn contents(&self) -> HashSet<&AnyHash>;
 }
 
-/// Trait implemented by the validator types.
+/// Trait implemented by the log state types.
 pub trait Validator:
     std::fmt::Debug + Serialize + DeserializeOwned + Default + Send + Sync
 {
@@ -33,7 +33,7 @@ pub trait Validator:
     type Error: Send;
 
     /// Validates the given record.
-    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error>;
+    fn validate(self, record: &ProtoEnvelope<Self::Record>) -> Result<Self, Self::Error>;
 }
 
 /// Helpers for converting to and from protobuf

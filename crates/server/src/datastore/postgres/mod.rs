@@ -224,7 +224,7 @@ where
     conn.transaction::<_, DataStoreError, _>(|conn| {
         async move {
             // Get the record content and validator
-            let (id, content, mut validator) = schema::records::table
+            let (id, content, validator) = schema::records::table
                 .inner_join(schema::logs::table)
                 .select((
                     schema::records::id,
@@ -251,12 +251,12 @@ where
             })?;
 
             // Validate the record
-            validator.validate(&record).map_err(Into::into)?;
+            let validator = validator.0.validate(&record).map_err(Into::into)?;
 
             // Store the updated validation state
             diesel::update(schema::logs::table)
                 .filter(schema::logs::id.eq(log_id))
-                .set(schema::logs::validator.eq(validator))
+                .set(schema::logs::validator.eq(Json(validator)))
                 .execute(conn)
                 .await?;
 
