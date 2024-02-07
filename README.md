@@ -154,32 +154,6 @@ keys are identified by ID (fingerprint) for revocation:
 warg publish revoke --name example:hello sha256:abc...
 ```
 
-### Running a package
-
-For demonstration purposes, the `run` command in `warg` will download and 
-run a package using [Wasmtime](https://wasmtime.dev/).
-
-The package is expected to be a Wasm module implementing a WASI command.
-
-A demo module that implements a simple "grep" tool is available in `demo/simple-grep-1.0.0.wasm`.
-
-To publish the demo module:
-
-```
-warg publish start demo:simple-grep
-warg publish init demo:simple-grep
-warg publish release --name demo:simple-grep --version 1.0.0 demo/simple-grep-1.0.0.wasm
-warg publish submit
-```
-
-To run the demo package:
-
-```
-echo 'hello world' | warg run demo:simple-grep hello
-```
-
-This should download and run the package, and print out the line `hello world` as it matches the pattern `hello`.
-
 ### Resetting and clearing local data
 
 To reset local data for the default registry:

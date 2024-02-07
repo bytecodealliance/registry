@@ -15,7 +15,6 @@ mod info;
 mod key;
 mod publish;
 mod reset;
-mod run;
 mod update;
 
 use crate::keyring::get_signing_key;
@@ -27,7 +26,6 @@ pub use self::info::*;
 pub use self::key::*;
 pub use self::publish::*;
 pub use self::reset::*;
-pub use self::run::*;
 pub use self::update::*;
 
 /// Common options for commands.

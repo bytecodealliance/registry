@@ -114,6 +114,6 @@ async fn get_ledger_records(
             axum::http::header::CONTENT_TYPE,
             LedgerSourceContentType::Packed.as_str(),
         )
-        .body(axum::body::boxed(axum::body::Full::from(body)))
+        .body(body.into())
         .unwrap())
 }

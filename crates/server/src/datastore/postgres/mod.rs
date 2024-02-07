@@ -945,6 +945,7 @@ impl DataStore for PostgresDataStore {
             .await
             .optional()?;
 
+        #[allow(clippy::get_first)] // Vec::first() conflicts with diesel's RunQueryDsl
         let key = match validator
             .as_ref()
             .and_then(|v| v.public_key(record.key_id()))

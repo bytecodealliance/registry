@@ -62,7 +62,7 @@ impl TryFrom<protobuf::OperatorEntry> for model::OperatorEntry {
 
     fn try_from(entry: protobuf::OperatorEntry) -> Result<Self, Self::Error> {
         use protobuf::operator_entry::Contents;
-        let output = match entry.contents.ok_or_else(|| Box::new(EmptyContentError))? {
+        let output = match entry.contents.ok_or(EmptyContentError)? {
             Contents::Init(init) => model::OperatorEntry::Init {
                 hash_algorithm: init.hash_algorithm.parse()?,
                 key: init.key.parse()?,
@@ -103,8 +103,8 @@ impl TryFrom<i32> for model::Permission {
     type Error = Error;
 
     fn try_from(permission: i32) -> Result<Self, Self::Error> {
-        let proto_perm = protobuf::OperatorPermission::from_i32(permission)
-            .ok_or_else(|| Box::new(PermissionParseError { value: permission }))?;
+        let proto_perm = protobuf::OperatorPermission::try_from(permission)
+            .map_err(|_| PermissionParseError { value: permission })?;
         match proto_perm {
             protobuf::OperatorPermission::Unspecified => {
                 Err(Error::new(PermissionParseError { value: permission }))

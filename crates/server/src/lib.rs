@@ -5,15 +5,8 @@ use datastore::DataStore;
 use futures::Future;
 use policy::{content::ContentPolicy, record::RecordPolicy};
 use services::CoreService;
-use std::{
-    fs,
-    net::{SocketAddr, TcpListener},
-    path::PathBuf,
-    pin::Pin,
-    sync::Arc,
-    time::Duration,
-};
-use tokio::task::JoinHandle;
+use std::{fs, net::SocketAddr, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
+use tokio::{net::TcpListener, task::JoinHandle};
 use url::Url;
 use warg_crypto::signing::PrivateKey;
 use warg_protocol::operator;
@@ -181,6 +174,7 @@ impl Server {
 
         tracing::debug!("binding server to address `{addr}`");
         let listener = TcpListener::bind(addr)
+            .await
             .with_context(|| format!("failed to bind to address `{addr}`"))?;
         let addr = listener.local_addr()?;
 
@@ -262,7 +256,7 @@ impl InitializedServer {
     pub async fn serve(self) -> Result<()> {
         let addr = self.local_addr()?;
 
-        let server = axum::Server::from_tcp(self.listener)?.serve(self.router.into_make_service());
+        let server = axum::serve::serve(self.listener, self.router.into_make_service());
 
         tracing::info!("listening on {addr}");
 
