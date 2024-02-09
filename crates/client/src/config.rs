@@ -67,6 +67,8 @@ pub struct StoragePaths {
     pub registries_dir: PathBuf,
     /// The path to the content storage directory.
     pub content_dir: PathBuf,
+    /// The path to the namespace map storage directory.
+    pub namespace_map_path: PathBuf,
 }
 
 /// Represents the Warg client configuration.
@@ -76,6 +78,15 @@ pub struct Config {
     /// The default Warg registry server URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_url: Option<String>,
+
+    /// The path to the top-level directory where everything is stored.
+    ///
+    /// This path is expected to be relative to the configuration file.
+    ///
+    /// If `None`, the default of `$CACHE_DIR/warg/registries` is used, where
+    /// `$CACHE_DIR` is the platform-specific cache directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_dir: Option<PathBuf>,
 
     /// The path to the top-level directory where per-registry information is stored.
     ///
@@ -94,6 +105,15 @@ pub struct Config {
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_dir: Option<PathBuf>,
+
+    /// The path to the directory where package content is stored.
+    ///
+    /// This path is expected to be relative to the configuration file.
+    ///
+    /// If `None`, the default of `$CACHE_DIR/warg/namespace` is used, where
+    /// `$CACHE_DIR` is the platform-specific cache directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace_map_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -114,6 +134,7 @@ impl Config {
         if let Some(parent) = path.parent() {
             config.registries_dir = config.registries_dir.map(|p| parent.join(p));
             config.content_dir = config.content_dir.map(|p| parent.join(p));
+            config.namespace_map_path = config.namespace_map_path.map(|p| parent.join(p));
         }
 
         Ok(config)
@@ -155,12 +176,18 @@ impl Config {
 
         let config = Config {
             default_url: self.default_url.clone(),
+            storage_dir: self.storage_dir.as_ref().cloned(),
             registries_dir: self.registries_dir.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
             content_dir: self.content_dir.as_ref().map(|p| {
+                let p = normalize_path(parent.join(p).as_path());
+                assert!(p.is_absolute());
+                pathdiff::diff_paths(&p, &parent).unwrap()
+            }),
+            namespace_map_path: self.namespace_map_path.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
@@ -237,6 +264,20 @@ impl Config {
             })
     }
 
+    /// Gets the path to the directory where namespace mapping is stored.
+    pub fn namespace_map_path(&self) -> Result<PathBuf> {
+        self.namespace_map_path
+            .as_ref()
+            .cloned()
+            .map(Ok)
+            .unwrap_or_else(|| {
+                CACHE_DIR
+                    .as_ref()
+                    .map(|p| p.join("warg/namespaces"))
+                    .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
+            })
+    }
+
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
@@ -249,10 +290,12 @@ impl Config {
         let label = registry_url.safe_label();
         let registries_dir = self.registries_dir()?.join(label);
         let content_dir = self.content_dir()?;
+        let namespace_map_path = self.namespace_map_path()?;
         Ok(StoragePaths {
             registry_url,
             registries_dir,
             content_dir,
+            namespace_map_path,
         })
     }
 }

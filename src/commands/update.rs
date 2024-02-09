@@ -17,7 +17,7 @@ impl UpdateCommand {
         let client = self.common.create_client(&config)?;
 
         println!("updating package logs to the latest available versions...");
-        client.update().await?;
+        client.update(None).await?;
         Ok(())
     }
 }

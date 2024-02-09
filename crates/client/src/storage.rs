@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, pin::Pin, time::SystemTime};
+use std::{collections::HashMap, path::PathBuf, pin::Pin, time::SystemTime};
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
     signing::{self, KeyID, PublicKey},
@@ -39,26 +39,40 @@ pub trait RegistryStorage: Send + Sync {
     async fn store_checkpoint(
         &self,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+        namespace_domain: Option<String>,
     ) -> Result<()>;
 
     /// Loads the operator information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_operator(&self) -> Result<Option<OperatorInfo>>;
+    async fn load_operator(&self, namespace_domain: Option<String>)
+        -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
-    async fn store_operator(&self, operator: OperatorInfo) -> Result<()>;
+    async fn store_operator(
+        &self,
+        operator: OperatorInfo,
+        namespace_domain: Option<String>,
+    ) -> Result<()>;
 
     /// Loads the package information for all packages in the storage.
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
+    async fn load_packages(&self, namespace_domain: Option<String>) -> Result<Vec<PackageInfo>>;
 
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package(&self, package: &PackageName) -> Result<Option<PackageInfo>>;
+    async fn load_package(
+        &self,
+        package: &PackageName,
+        namespace_domain: Option<String>,
+    ) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
-    async fn store_package(&self, info: &PackageInfo) -> Result<()>;
+    async fn store_package(
+        &self,
+        info: &PackageInfo,
+        namespace_domain: Option<String>,
+    ) -> Result<()>;
 
     /// Loads information about a pending publish operation.
     ///
@@ -108,6 +122,15 @@ pub trait ContentStorage: Send + Sync {
     ) -> Result<AnyHash>;
 }
 
+/// Trait for namespace map storage implementations.
+///
+/// Namespace Map storage data must be synchronized if shared between
+/// multiple threads an
+#[async_trait]
+pub trait NamespaceMapStorage: Send + Sync {
+    /// Loads namespace map
+    async fn load_namespace_map(&self) -> Result<Option<HashMap<String, String>>>;
+}
 /// Represents information about a registry operator.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -1,6 +1,8 @@
 //! A module for file system client storage.
 
-use super::{ContentStorage, OperatorInfo, PackageInfo, PublishInfo, RegistryStorage};
+use super::{
+    ContentStorage, NamespaceMapStorage, OperatorInfo, PackageInfo, PublishInfo, RegistryStorage,
+};
 use crate::lock::FileLock;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -8,6 +10,7 @@ use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
@@ -66,12 +69,27 @@ impl FileSystemRegistryStorage {
         })
     }
 
-    fn operator_path(&self) -> PathBuf {
-        self.base_dir.join("operator.log")
+    fn operator_path(&self, namespace_domain: Option<String>) -> PathBuf {
+        if let Some(nm) = namespace_domain {
+            let mut folder = self.base_dir.clone();
+            folder.pop();
+            folder.push(nm);
+            folder.join("operator.log")
+        } else {
+            self.base_dir.join("operator.log")
+        }
     }
 
-    fn package_path(&self, name: &PackageName) -> PathBuf {
-        self.base_dir.join(PACKAGE_LOGS_DIR).join(
+    fn package_path(&self, name: &PackageName, namespace_domain: Option<String>) -> PathBuf {
+        let mut folder = self.base_dir.clone();
+        let path = if let Some(d) = namespace_domain {
+            folder.pop();
+            folder.push(d);
+            folder
+        } else {
+            folder
+        };
+        path.join(PACKAGE_LOGS_DIR).join(
             LogId::package_log::<Sha256>(name)
                 .to_string()
                 .replace(':', "/"),
@@ -100,14 +118,31 @@ impl RegistryStorage for FileSystemRegistryStorage {
     async fn store_checkpoint(
         &self,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
+        namespace_domain: Option<String>,
     ) -> Result<()> {
-        store(&self.base_dir.join("checkpoint"), ts_checkpoint).await
+        let mut folder = self.base_dir.clone();
+        let path = if let Some(d) = namespace_domain {
+            folder.pop();
+            folder.push(d);
+            folder
+        } else {
+            folder
+        };
+        store(&path.join("checkpoint"), ts_checkpoint).await
     }
 
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>> {
+    async fn load_packages(&self, namespace_domain: Option<String>) -> Result<Vec<PackageInfo>> {
         let mut packages = Vec::new();
+        let mut folder = self.base_dir.clone();
+        let path = if let Some(d) = namespace_domain {
+            folder.pop();
+            folder.push(d);
+            &folder
+        } else {
+            &folder
+        };
 
-        let packages_dir = self.base_dir.join(PACKAGE_LOGS_DIR);
+        let packages_dir = path.join(PACKAGE_LOGS_DIR);
         if !packages_dir.exists() {
             return Ok(vec![]);
         }
@@ -142,20 +177,35 @@ impl RegistryStorage for FileSystemRegistryStorage {
         Ok(packages)
     }
 
-    async fn load_operator(&self) -> Result<Option<OperatorInfo>> {
-        Ok(load(&self.operator_path()).await?)
+    async fn load_operator(
+        &self,
+        namespace_domain: Option<String>,
+    ) -> Result<Option<OperatorInfo>> {
+        Ok(load(&self.operator_path(namespace_domain)).await?)
     }
 
-    async fn store_operator(&self, info: OperatorInfo) -> Result<()> {
-        store(&self.operator_path(), info).await
+    async fn store_operator(
+        &self,
+        info: OperatorInfo,
+        namespace_domain: Option<String>,
+    ) -> Result<()> {
+        store(&self.operator_path(namespace_domain), info).await
     }
 
-    async fn load_package(&self, package: &PackageName) -> Result<Option<PackageInfo>> {
-        Ok(load(&self.package_path(package)).await?)
+    async fn load_package(
+        &self,
+        package: &PackageName,
+        namespace_domain: Option<String>,
+    ) -> Result<Option<PackageInfo>> {
+        Ok(load(&self.package_path(package, namespace_domain)).await?)
     }
 
-    async fn store_package(&self, info: &PackageInfo) -> Result<()> {
-        store(&self.package_path(&info.name), info).await
+    async fn store_package(
+        &self,
+        info: &PackageInfo,
+        namespace_domain: Option<String>,
+    ) -> Result<()> {
+        store(&self.package_path(&info.name, namespace_domain), info).await
     }
 
     async fn load_publish(&self) -> Result<Option<PublishInfo>> {
@@ -325,6 +375,29 @@ impl ContentStorage for FileSystemContentStorage {
         }
 
         Ok(hash)
+    }
+}
+
+/// Represents a namespace_domain map storage using the local file system.
+pub struct FileSystemNamespaceMapStorage {
+    base_dir: PathBuf,
+}
+
+impl FileSystemNamespaceMapStorage {
+    /// Creates new namespace_domain mapping config
+    pub fn new(base_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            base_dir: base_dir.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl NamespaceMapStorage for FileSystemNamespaceMapStorage {
+    async fn load_namespace_map(&self) -> Result<Option<HashMap<String, String>>> {
+        let namespace_path = &self.base_dir;
+        let namespace_map = load(namespace_path).await?;
+        Ok(namespace_map)
     }
 }
 

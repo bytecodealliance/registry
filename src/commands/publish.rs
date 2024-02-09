@@ -135,6 +135,7 @@ impl PublishInitCommand {
                             head: None,
                             entries: vec![entry],
                         },
+                        None,
                     )
                     .await?;
 
@@ -222,6 +223,7 @@ impl PublishReleaseCommand {
                             head: None,
                             entries: vec![entry],
                         },
+                        None,
                     )
                     .await?;
 
@@ -292,6 +294,7 @@ impl PublishYankCommand {
                             head: None,
                             entries: vec![entry],
                         },
+                        None,
                     )
                     .await?;
 
@@ -371,6 +374,7 @@ impl PublishGrantCommand {
                             head: None,
                             entries: vec![entry],
                         },
+                        None,
                     )
                     .await?;
 
@@ -452,6 +456,7 @@ impl PublishRevokeCommand {
                             head: None,
                             entries: vec![entry],
                         },
+                        None,
                     )
                     .await?;
 
@@ -632,7 +637,9 @@ impl PublishSubmitCommand {
                 );
 
                 let signing_key = self.common.signing_key(client.url())?;
-                let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
+                let record_id = client
+                    .publish_with_info(&signing_key, info.clone(), None)
+                    .await?;
 
                 client.registry().store_publish(None).await?;
 

@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use reqwest::{
-    header::{HeaderMap, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue},
     Body, IntoUrl, Method, Response, StatusCode,
 };
 use serde::de::DeserializeOwned;
@@ -178,8 +178,14 @@ impl Client {
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(
         &self,
+        namespace_domain: Option<String>,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
-        let url = self.url.join(paths::fetch_checkpoint());
+        let url = if let Some(d) = namespace_domain {
+            let reg_url = RegistryUrl::new(d)?;
+            reg_url.join(paths::fetch_checkpoint())
+        } else {
+            self.url.join(paths::fetch_checkpoint())
+        };
         tracing::debug!("getting latest checkpoint at `{url}`");
         into_result::<_, FetchError>(reqwest::get(url).await?).await
     }
@@ -200,12 +206,25 @@ impl Client {
     pub async fn fetch_logs(
         &self,
         request: FetchLogsRequest<'_>,
+        namespace_domain: Option<String>,
     ) -> Result<FetchLogsResponse, ClientError> {
         let url = self.url.join(paths::fetch_logs());
         tracing::debug!("fetching logs at `{url}`");
-
-        let response = self.client.post(url).json(&request).send().await?;
-        into_result::<_, FetchError>(response).await
+        if let Some(d) = namespace_domain {
+            let registry_header = HeaderName::try_from("warg-registry").unwrap();
+            let header_val = HeaderValue::try_from(d).unwrap();
+            let response = self
+                .client
+                .post(url)
+                .header(registry_header, header_val)
+                .json(&request)
+                .send()
+                .await?;
+            into_result::<_, FetchError>(response).await
+        } else {
+            let response = self.client.post(url).json(&request).send().await?;
+            into_result::<_, FetchError>(response).await
+        }
     }
 
     /// Fetches package names from the registry.
@@ -261,9 +280,15 @@ impl Client {
     /// Gets a content sources from the registry.
     pub async fn content_sources(
         &self,
+        url: Option<String>,
         digest: &AnyHash,
     ) -> Result<ContentSourcesResponse, ClientError> {
-        let url = self.url.join(&paths::content_sources(digest));
+        let url = if let Some(url) = url {
+            let reg_url = RegistryUrl::new(url)?;
+            reg_url.join(&paths::content_sources(digest))
+        } else {
+            self.url.join(&paths::content_sources(digest))
+        };
         tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
 
         let response = reqwest::get(url).await?;
@@ -273,11 +298,12 @@ impl Client {
     /// Downloads the content associated with a given record.
     pub async fn download_content(
         &self,
+        url: Option<String>,
         digest: &AnyHash,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
         tracing::debug!("requesting content download for digest `{digest}`");
 
-        let ContentSourcesResponse { content_sources } = self.content_sources(digest).await?;
+        let ContentSourcesResponse { content_sources } = self.content_sources(url, digest).await?;
 
         let sources = content_sources
             .get(digest)
@@ -309,14 +335,29 @@ impl Client {
         request: InclusionRequest,
         checkpoint: &Checkpoint,
         leafs: &[LogLeaf],
+        namespace_domain: Option<String>,
     ) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_inclusion());
         tracing::debug!("proving checkpoint inclusion at `{url}`");
 
-        let response = into_result::<InclusionResponse, ProofError>(
-            self.client.post(url).json(&request).send().await?,
-        )
-        .await?;
+        let response = if let Some(d) = namespace_domain {
+            let registry_header = HeaderName::try_from("warg-registry").unwrap();
+            let header_val = HeaderValue::try_from(d).unwrap();
+            into_result::<InclusionResponse, ProofError>(
+                self.client
+                    .post(url)
+                    .header(registry_header, header_val)
+                    .json(&request)
+                    .send()
+                    .await?,
+            )
+            .await?
+        } else {
+            into_result::<InclusionResponse, ProofError>(
+                self.client.post(url).json(&request).send().await?,
+            )
+            .await?
+        };
 
         Self::validate_inclusion_response(response, checkpoint, leafs)
     }
