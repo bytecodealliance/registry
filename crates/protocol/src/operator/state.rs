@@ -4,6 +4,7 @@ use crate::registry::RecordId;
 use crate::ProtoEnvelope;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
+use std::hash::RandomState;
 use std::time::SystemTime;
 use thiserror::Error;
 use warg_crypto::hash::{HashAlgorithm, Sha256};
@@ -72,11 +73,21 @@ pub enum ValidationError {
 /// The namespace definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct NamespaceDefinition {
+pub struct NamespaceDefinition {
     /// Case sensitive namespace name.
     namespace: String,
     /// Namespace state.
     state: NamespaceState,
+}
+
+impl NamespaceDefinition {
+    pub fn namespace(&self) -> &String {
+        &self.namespace
+    }
+
+    pub fn state(&self) -> &NamespaceState {
+        &self.state
+    }
 }
 
 /// The namespace state for defining or importing from other registries.
@@ -163,6 +174,9 @@ impl LogState {
         self.keys.get(key_id)
     }
 
+    pub fn namespaces(&self) -> &IndexMap<String, NamespaceDefinition, RandomState> {
+        &self.namespaces
+    }
     /// Gets the namespace state.
     pub fn namespace_state(&self, namespace: &str) -> Result<Option<&NamespaceState>, &str> {
         if let Some(def) = self.namespaces.get(&namespace.to_ascii_lowercase()) {

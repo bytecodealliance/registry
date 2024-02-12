@@ -225,6 +225,7 @@ impl Server {
             files_dir,
             self.config.content_policy,
             self.config.record_policy,
+            addr,
         );
 
         Ok(InitializedServer {

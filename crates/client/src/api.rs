@@ -4,25 +4,29 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use reqwest::{
-    header::{HeaderMap, HeaderValue},
-    Body, IntoUrl, Method, Response, StatusCode,
+    header::{HeaderMap, HeaderName, HeaderValue, ACCEPT},
+    Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
 };
 use serde::de::DeserializeOwned;
 use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
-use warg_api::v1::{
-    content::{ContentError, ContentSourcesResponse},
-    fetch::{
-        FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
-        FetchPackageNamesResponse,
+use warg_api::{
+    v1::{
+        content::{ContentError, ContentSourcesResponse},
+        fetch::{
+            FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
+            FetchPackageNamesResponse,
+        },
+        ledger::{LedgerError, LedgerSourcesResponse},
+        monitor::{CheckpointVerificationResponse, MonitorError},
+        package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
+        paths,
+        proof::{
+            ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse,
+            ProofError,
+        },
     },
-    ledger::{LedgerError, LedgerSourcesResponse},
-    monitor::{CheckpointVerificationResponse, MonitorError},
-    package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
-    paths,
-    proof::{
-        ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
-    },
+    well_known::{DomainOption, WellKnown, WellKnownError},
 };
 use warg_crypto::hash::{AnyHash, HashError, Sha256};
 use warg_protocol::{
@@ -96,6 +100,9 @@ pub enum ClientError {
     /// All sources for the given content digest returned an error response.
     #[error("all sources for content digest `{0}` returned an error response")]
     AllSourcesFailed(AnyHash),
+    /// Error fetching well known registries
+    #[error("unable to fetch well known registries: {0}")]
+    WellKnown(#[from] WellKnownError),
     /// Invalid upload HTTP method.
     #[error("server returned an invalid HTTP method `{0}`")]
     InvalidHttpMethod(String),
@@ -156,32 +163,64 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 /// Represents a Warg API client for communicating with
 /// a Warg registry server.
 pub struct Client {
-    url: RegistryUrl,
+    home_url: RegistryUrl,
+    well_known: Option<WellKnown>,
+    namespace_registry: Option<String>,
     client: reqwest::Client,
 }
 
 impl Client {
     /// Creates a new API client with the given URL.
-    pub fn new(url: impl IntoUrl) -> Result<Self> {
-        let url = RegistryUrl::new(url)?;
+    pub fn new(home_url: impl IntoUrl) -> Result<Self> {
+        let home_url = RegistryUrl::new(home_url)?;
         Ok(Self {
-            url,
+            home_url,
+            well_known: None,
+            namespace_registry: None,
             client: reqwest::Client::new(),
         })
     }
 
+    /// Gets the home URL of the API client.
+    pub fn home_url(&self) -> &RegistryUrl {
+        &self.home_url
+    }
+
     /// Gets the URL of the API client.
-    pub fn url(&self) -> &RegistryUrl {
-        &self.url
+    pub fn well_known(&self) -> &Option<WellKnown> {
+        &self.well_known
+    }
+
+    /// Gets the URL of the API client.
+    pub fn set_well_known(&mut self, url: WellKnown) {
+        self.well_known = Some(url);
+    }
+
+    /// Get namespace registry
+    pub fn namespace_registry(&self) -> &Option<String> {
+        &self.namespace_registry
     }
 
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(
         &self,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
-        let url = self.url.join(paths::fetch_checkpoint());
+        let url = self.req_url()?.join(paths::fetch_checkpoint());
         tracing::debug!("getting latest checkpoint at `{url}`");
-        into_result::<_, FetchError>(reqwest::get(url).await?).await
+        if let Some(nm) = &self.namespace_registry {
+            let registry_header = HeaderName::try_from("warg-registry").unwrap();
+            let header_val = HeaderValue::try_from(nm).unwrap();
+            into_result::<_, FetchError>(
+                self.client
+                    .get(url)
+                    .header(registry_header, header_val)
+                    .send()
+                    .await?,
+            )
+            .await
+        } else {
+            into_result::<_, FetchError>(reqwest::get(url).await?).await
+        }
     }
 
     /// Verify checkpoint of the registry.
@@ -189,22 +228,39 @@ impl Client {
         &self,
         request: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<CheckpointVerificationResponse, ClientError> {
-        let url = self.url.join(paths::verify_checkpoint());
+        let url = self.home_url.join(paths::verify_checkpoint());
         tracing::debug!("verifying checkpoint at `{url}`");
 
         let response = self.client.post(url).json(&request).send().await?;
         into_result::<_, MonitorError>(response).await
     }
 
+    /// Add warg header to request
+    pub fn warg_header(
+        &self,
+        namespace_registry: &Option<String>,
+        req: RequestBuilder,
+    ) -> RequestBuilder {
+        if let Some(nm) = namespace_registry {
+            let registry_header = HeaderName::try_from("warg-registry").unwrap();
+            let header_val = HeaderValue::try_from(nm).unwrap();
+            req.header(registry_header, header_val)
+        } else {
+            req
+        }
+    }
     /// Fetches package log entries from the registry.
     pub async fn fetch_logs(
         &self,
         request: FetchLogsRequest<'_>,
     ) -> Result<FetchLogsResponse, ClientError> {
-        let url = self.url.join(paths::fetch_logs());
+        let url = self.req_url()?.join(paths::fetch_logs());
         tracing::debug!("fetching logs at `{url}`");
-
-        let response = self.client.post(url).json(&request).send().await?;
+        let response = self
+            .warg_header(self.namespace_registry(), self.client.post(url))
+            .json(&request)
+            .send()
+            .await?;
         into_result::<_, FetchError>(response).await
     }
 
@@ -213,7 +269,7 @@ impl Client {
         &self,
         request: FetchPackageNamesRequest<'_>,
     ) -> Result<FetchPackageNamesResponse, ClientError> {
-        let url = self.url.join(paths::fetch_package_names());
+        let url = self.home_url.join(paths::fetch_package_names());
         tracing::debug!("fetching package names at `{url}`");
 
         let response = self.client.post(url).json(&request).send().await?;
@@ -222,7 +278,7 @@ impl Client {
 
     /// Gets ledger sources from the registry.
     pub async fn ledger_sources(&self) -> Result<LedgerSourcesResponse, ClientError> {
-        let url = self.url.join(paths::ledger_sources());
+        let url = self.home_url.join(paths::ledger_sources());
         tracing::debug!("getting ledger sources at `{url}`");
 
         let response = reqwest::get(url).await?;
@@ -235,7 +291,7 @@ impl Client {
         log_id: &LogId,
         request: PublishRecordRequest<'_>,
     ) -> Result<PackageRecord, ClientError> {
-        let url = self.url.join(&paths::publish_package_record(log_id));
+        let url = self.req_url()?.join(&paths::publish_package_record(log_id));
         tracing::debug!(
             "appending record to package `{name}` at `{url}`",
             name = request.package_name
@@ -251,11 +307,27 @@ impl Client {
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<PackageRecord, ClientError> {
-        let url = self.url.join(&paths::package_record(log_id, record_id));
+        let url = self
+            .home_url
+            .join(&paths::package_record(log_id, record_id));
         tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
 
         let response = reqwest::get(url).await?;
         into_result::<_, PackageError>(response).await
+    }
+
+    /// Gets well known url if different from home url, otherwise home url
+    pub fn req_url(&self) -> Result<RegistryUrl> {
+        let well_known = self.well_known();
+        if let Some(wk) = well_known {
+            if let Some(warg) = wk.warg.clone() {
+                match warg.domain_option {
+                    DomainOption::Domain(domain) => return RegistryUrl::new(domain),
+                    DomainOption::NamespaceAsSubdomainOf(suf) => todo!(),
+                }
+            }
+        }
+        Ok(self.home_url().clone())
     }
 
     /// Gets a content sources from the registry.
@@ -263,10 +335,20 @@ impl Client {
         &self,
         digest: &AnyHash,
     ) -> Result<ContentSourcesResponse, ClientError> {
-        let url = self.url.join(&paths::content_sources(digest));
+        let url = self.req_url()?.join(&paths::content_sources(digest));
         tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
+        let response = if let Some(nr) = self.namespace_registry.clone() {
+            let registry_header = HeaderName::try_from("warg-registry").unwrap();
+            let header_val = HeaderValue::try_from(nr).unwrap();
+            self.client
+                .get(url)
+                .header(registry_header, header_val)
+                .send()
+                .await?
+        } else {
+            reqwest::get(url).await?
+        };
 
-        let response = reqwest::get(url).await?;
         into_result::<_, ContentError>(response).await
     }
 
@@ -303,6 +385,26 @@ impl Client {
         Err(ClientError::AllSourcesFailed(digest.clone()))
     }
 
+    /// Gets well-known registry list
+    pub async fn fetch_well_known(&mut self) -> Result<Option<WellKnown>, ClientError> {
+        let url = self.home_url.join(paths::well_known());
+        let well_known = into_result::<WellKnown, WellKnownError>(
+            self.client
+                .get(url)
+                .header(ACCEPT, "application/json")
+                .send()
+                .await?,
+        )
+        .await?;
+        self.set_well_known(well_known.clone());
+        Ok(Some(well_known))
+    }
+
+    /// Map namespace
+    pub fn map_namespace(&mut self, registry: String) {
+        self.namespace_registry = Some(registry);
+    }
+
     /// Proves the inclusion of the given package log heads in the registry.
     pub async fn prove_inclusion(
         &self,
@@ -310,11 +412,14 @@ impl Client {
         checkpoint: &Checkpoint,
         leafs: &[LogLeaf],
     ) -> Result<(), ClientError> {
-        let url = self.url.join(paths::prove_inclusion());
+        let url = self.req_url()?.join(paths::prove_inclusion());
         tracing::debug!("proving checkpoint inclusion at `{url}`");
 
         let response = into_result::<InclusionResponse, ProofError>(
-            self.client.post(url).json(&request).send().await?,
+            self.warg_header(self.namespace_registry(), self.client.post(url))
+                .json(&request)
+                .send()
+                .await?,
         )
         .await?;
 
@@ -328,9 +433,12 @@ impl Client {
         from_log_root: Cow<'_, AnyHash>,
         to_log_root: Cow<'_, AnyHash>,
     ) -> Result<(), ClientError> {
-        let url = self.url.join(paths::prove_consistency());
+        let url = self.req_url()?.join(paths::prove_consistency());
         let response = into_result::<ConsistencyResponse, ProofError>(
-            self.client.post(url).json(&request).send().await?,
+            self.warg_header(self.namespace_registry(), self.client.post(url))
+                .json(&request)
+                .send()
+                .await?,
         )
         .await?;
 
@@ -380,7 +488,7 @@ impl Client {
         content: impl Into<Body>,
     ) -> Result<(), ClientError> {
         // Upload URLs may be relative to the registry URL.
-        let url = self.url.join(url);
+        let url = self.home_url.join(url);
 
         let method = match method {
             "POST" => Method::POST,

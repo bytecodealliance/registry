@@ -21,23 +21,28 @@ impl InfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let mut client = self.common.create_client(&config)?;
 
         println!("registry: {url}", url = client.url());
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
-                if let Some(info) = client.registry().load_package(&package).await? {
+                client.fetch_well_known().await?;
+                if let Some(info) = client
+                    .registry()
+                    .load_package(client.namespace_registry(), client.well_known(), &package)
+                    .await?
+                {
                     Self::print_package_info(&info);
                 }
             }
             None => {
                 client
                     .registry()
-                    .load_packages()
+                    .load_all_packages()
                     .await?
                     .iter()
-                    .for_each(Self::print_package_info);
+                    .for_each(|(_, packages)| packages.iter().for_each(Self::print_package_info));
             }
         }
 

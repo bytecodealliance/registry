@@ -52,3 +52,8 @@ pub fn prove_inclusion() -> &'static str {
 pub fn verify_checkpoint() -> &'static str {
     "v1/verify/checkpoint"
 }
+
+/// The path for finding well known registries.
+pub fn well_known() -> &'static str {
+    ".well-known/warg/registry.json"
+}

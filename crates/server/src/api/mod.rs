@@ -3,7 +3,7 @@ use crate::{
     services::CoreService,
 };
 use axum::{body::Body, http::Request, Router};
-use std::{path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -18,6 +18,7 @@ pub mod v1;
 
 #[cfg(feature = "debug")]
 pub mod debug;
+pub mod well_known;
 
 /// Creates the router for the API.
 pub fn create_router(
@@ -27,11 +28,16 @@ pub fn create_router(
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    addr: SocketAddr,
 ) -> Router {
     let router = Router::new();
     #[cfg(feature = "debug")]
     let router = router.nest("/debug", debug::Config::new(core.clone()).into_router());
     router
+        .nest(
+            "/.well-known/warg/registry.json",
+            well_known::Config::new(addr).into_router(),
+        )
         .nest(
             "/v1",
             v1::create_router(
@@ -41,6 +47,7 @@ pub fn create_router(
                 files_dir.clone(),
                 content_policy,
                 record_policy,
+                addr,
             ),
         )
         .nest_service("/content", ServeDir::new(files_dir))

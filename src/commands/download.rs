@@ -22,8 +22,9 @@ impl DownloadCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
-
+        let mut client = self.common.create_client(&config)?;
+        client.fetch_well_known().await?;
+        client.map_namespace(self.name.namespace()).await;
         println!("downloading package `{name}`...", name = self.name);
 
         let res = client

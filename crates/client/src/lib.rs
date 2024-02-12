@@ -4,7 +4,7 @@
 
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
-use reqwest::{Body, IntoUrl};
+use reqwest::{Body, IntoUrl, RequestBuilder};
 use std::cmp::Ordering;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
@@ -20,6 +20,7 @@ use warg_api::v1::{
     },
     proof::{ConsistencyRequest, InclusionRequest},
 };
+use warg_api::well_known::WellKnown;
 use warg_crypto::{
     hash::{AnyHash, Sha256},
     signing, Encode, Signable,
@@ -39,7 +40,11 @@ pub use self::config::*;
 pub use self::registry_url::RegistryUrl;
 
 /// A client for a Warg registry.
-pub struct Client<R, C> {
+pub struct Client<R, C>
+where
+    R: RegistryStorage,
+    C: ContentStorage,
+{
     registry: R,
     content: C,
     api: api::Client,
@@ -58,7 +63,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
     /// Gets the URL of the client.
     pub fn url(&self) -> &RegistryUrl {
-        self.api.url()
+        self.api.home_url()
     }
 
     /// Gets the registry storage used by the client.
@@ -87,6 +92,87 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             .clear()
             .await
             .or(Err(ClientError::ClearContentCacheFailed))
+    }
+
+    /// Fetch well known registry information
+    pub async fn fetch_well_known(&mut self) -> Result<Option<WellKnown>, api::ClientError> {
+        self.api.fetch_well_known().await
+    }
+
+    /// Gets well-known registry list
+    pub fn well_known(&self) -> &Option<WellKnown> {
+        self.api.well_known()
+    }
+
+    /// Check operator log for namespace mapping
+    pub async fn map_namespace(&mut self, namespace: &str) {
+        if let Some(wk) = self.well_known().clone() {
+            if let Some(explicit) = wk.namespaces.get(namespace) {
+                if let Some(warg) = &explicit.warg {
+                    let domain = match &warg.domain_option {
+                        warg_api::well_known::DomainOption::Domain(domain) => {
+                            RegistryUrl::new(domain).unwrap()
+                        }
+                        warg_api::well_known::DomainOption::NamespaceAsSubdomainOf(suf) => {
+                            RegistryUrl::new(format!("{namespace}.{suf}")).unwrap()
+                        }
+                    };
+                    self.api.map_namespace(domain.safe_label());
+                }
+            } else {
+                self.update_checkpoint(&self.api.latest_checkpoint().await.unwrap(), vec![])
+                    .await
+                    .unwrap();
+                let operator = self
+                    .registry()
+                    .load_operator(&None, self.well_known())
+                    .await
+                    .unwrap();
+                if let Some(op) = operator {
+                    for (name, namespace_def) in op.state.namespaces().clone() {
+                        if name == namespace {
+                            match namespace_def.state().clone() {
+                                warg_protocol::operator::NamespaceState::Defined => {}
+                                warg_protocol::operator::NamespaceState::Imported { registry } => {
+                                    self.api.map_namespace(registry);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(wildcard) = wk.namespaces.get("*") {
+                        if let Some(warg) = wildcard.warg.clone() {
+                            let domain = match warg.domain_option {
+                                warg_api::well_known::DomainOption::Domain(domain) => {
+                                    RegistryUrl::new(domain).unwrap()
+                                }
+                                warg_api::well_known::DomainOption::NamespaceAsSubdomainOf(suf) => {
+                                    RegistryUrl::new(format!("{namespace}.{suf}")).unwrap()
+                                }
+                            };
+                            self.api.map_namespace(domain.safe_label());
+                        }
+                    }
+                } else if let Some(wildcard) = wk.namespaces.get("*") {
+                    if let Some(warg) = wildcard.warg.clone() {
+                        let domain = match warg.domain_option {
+                            warg_api::well_known::DomainOption::Domain(domain) => {
+                                RegistryUrl::new(domain).unwrap()
+                            }
+                            warg_api::well_known::DomainOption::NamespaceAsSubdomainOf(suf) => {
+                                RegistryUrl::new(format!("{namespace}.{suf}")).unwrap()
+                            }
+                        };
+                        self.api.map_namespace(domain.safe_label());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get namespace registry
+    pub fn namespace_registry(&self) -> &Option<String> {
+        self.api.namespace_registry()
     }
 
     /// Submits the publish information in client storage.
@@ -137,7 +223,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
 
         let mut package = self
             .registry
-            .load_package(&info.name)
+            .load_package(self.namespace_registry(), self.well_known(), &info.name)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.name.clone()));
 
@@ -260,10 +346,13 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     }
 
     /// Updates every package log in client storage to the latest registry checkpoint.
-    pub async fn update(&self) -> ClientResult<()> {
+    pub async fn update(&mut self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
-
-        let mut updating = self.registry.load_packages().await?;
+        let mut updating = self
+            .registry
+            // .load_packages(self.namespace_registry(), self.well_known())
+            .load_packages()
+            .await?;
         self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
             .await?;
 
@@ -284,7 +373,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         for package in packages {
             updating.push(
                 self.registry
-                    .load_package(package)
+                    .load_package(self.namespace_registry(), self.well_known(), package)
                     .await?
                     .unwrap_or_else(|| PackageInfo::new(package.clone())),
             );
@@ -310,7 +399,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
     /// Returns the path within client storage of the package contents for
     /// the resolved version.
     pub async fn download(
-        &self,
+        &mut self,
         name: &PackageName,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
@@ -384,7 +473,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             checkpoint.log_length
         );
 
-        let mut operator = self.registry.load_operator().await?.unwrap_or_default();
+        let mut operator = self
+            .registry
+            .load_operator(self.namespace_registry(), self.well_known())
+            .await?
+            .unwrap_or_default();
 
         // Map package names to package logs that need to be updated
         let mut packages = packages
@@ -540,7 +633,11 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 .await?;
         }
 
-        if let Some(from) = self.registry.load_checkpoint().await? {
+        if let Some(from) = self
+            .registry
+            .load_checkpoint(self.namespace_registry(), self.well_known())
+            .await?
+        {
             let from_log_length = from.as_ref().checkpoint.log_length;
             let to_log_length = ts_checkpoint.as_ref().checkpoint.log_length;
 
@@ -577,20 +674,30 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
             }
         }
 
-        self.registry.store_operator(operator).await?;
+        self.registry
+            .store_operator(self.namespace_registry(), self.well_known(), operator)
+            .await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            self.registry.store_package(package).await?;
+            self.registry
+                .store_package(self.namespace_registry(), self.well_known(), package)
+                .await?;
         }
 
-        self.registry.store_checkpoint(ts_checkpoint).await?;
+        self.registry
+            .store_checkpoint(self.namespace_registry(), self.well_known(), ts_checkpoint)
+            .await?;
 
         Ok(())
     }
 
     async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
-        match self.registry.load_package(name).await? {
+        match self
+            .registry
+            .load_package(self.namespace_registry(), self.well_known(), name)
+            .await?
+        {
             Some(info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
@@ -627,6 +734,13 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
         Ok(record)
     }
 
+    /// Uses well known url if different from home url
+    pub async fn with_well_known(&self, req: RequestBuilder) -> RequestBuilder {
+        if self.well_known().is_some() {
+            return req;
+        }
+        req
+    }
     /// Downloads the content for the specified digest into client storage.
     ///
     /// If the content already exists in client storage, the existing path

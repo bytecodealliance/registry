@@ -71,7 +71,8 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let mut client = create_client(config)?;
+    client.fetch_well_known().await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
@@ -120,7 +121,8 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
 
     // Publish release
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let mut client = create_client(config)?;
+    client.fetch_well_known().await?;
     let signing_key = test_signing_key();
     publish(
         &client,
@@ -161,7 +163,8 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let mut client = create_client(config)?;
+    client.fetch_well_known().await?;
     let signing_key = test_signing_key();
     let digest = publish_wit(
         &client,
@@ -426,7 +429,8 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let mut client = create_client(config)?;
+    client.fetch_well_known().await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
@@ -441,7 +445,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     client.upsert([&name]).await?;
     let package = client
         .registry()
-        .load_package(&name)
+        .load_package(client.namespace_registry(), client.well_known(), &name)
         .await?
         .expect("expected the package to exist");
     package

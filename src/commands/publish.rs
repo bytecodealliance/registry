@@ -118,7 +118,9 @@ impl PublishInitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let mut client = self.common.create_client(&config)?;
+        client.fetch_well_known().await?;
+        client.map_namespace(self.name.namespace()).await;
 
         match enqueue(&client, &self.name, |_| {
             std::future::ready(Ok(PublishEntry::Init))

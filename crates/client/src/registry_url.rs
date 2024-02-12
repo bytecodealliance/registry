@@ -4,7 +4,7 @@ use url::{Host, Url};
 
 /// The base URL of a registry server.
 // Note: The inner Url always has a scheme and host.
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RegistryUrl(Url);
 
 impl RegistryUrl {

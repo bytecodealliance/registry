@@ -1,0 +1,12 @@
+{
+  "warg": {
+    "domain": "dannyjaf.preview.wa.dev"
+  },
+  "namespaces": {
+    "*": {
+      "warg": {
+        "namespaceAsSubdomainOf": "preview.wa.dev"
+      }
+    }
+  }
+}

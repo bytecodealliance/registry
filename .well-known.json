@@ -1,0 +1,12 @@
+{
+  "warg": {
+    "domain": "127.0.0.1"
+  },
+  "namespaces": {
+    "*": {
+      "warg": {
+        "namespaceAsSubdomainOf": "preview.wa.dev"
+      }
+    }
+  }
+}

@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, pin::Pin, time::SystemTime};
+use std::{collections::HashMap, path::PathBuf, pin::Pin, time::SystemTime};
+use warg_api::well_known::WellKnown;
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
     signing::{self, KeyID, PublicKey},
@@ -20,6 +21,8 @@ use warg_protocol::{
 mod fs;
 pub use fs::*;
 
+use crate::RegistryUrl;
+
 /// Trait for registry storage implementations.
 ///
 /// Stores information such as package/operator logs and checkpoints
@@ -33,32 +36,64 @@ pub trait RegistryStorage: Send + Sync {
     async fn reset(&self, all_registries: bool) -> Result<()>;
 
     /// Loads most recent checkpoint
-    async fn load_checkpoint(&self) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
+    async fn load_checkpoint(
+        &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
+    ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
     /// Stores most recent checkpoint
     async fn store_checkpoint(
         &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()>;
 
     /// Loads the operator information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_operator(&self) -> Result<Option<OperatorInfo>>;
+    async fn load_operator(
+        &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
+    ) -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
-    async fn store_operator(&self, operator: OperatorInfo) -> Result<()>;
+    async fn store_operator(
+        &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
+        operator: OperatorInfo,
+    ) -> Result<()>;
 
-    /// Loads the package information for all packages in the storage.
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
+    /// Loads the package information for all packages in all registry storages
+    async fn load_all_packages(&self) -> Result<HashMap<String, Vec<PackageInfo>>>;
+
+    /// Loads the package information for all packages in the registry storage.
+    async fn load_packages(
+        &self,
+        // namespace_registry: &Option<String>,
+        // well_known: &Option<WellKnown>,
+    ) -> Result<Vec<PackageInfo>>;
 
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
-    async fn load_package(&self, package: &PackageName) -> Result<Option<PackageInfo>>;
+    async fn load_package(
+        &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
+        package: &PackageName,
+    ) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
-    async fn store_package(&self, info: &PackageInfo) -> Result<()>;
+    async fn store_package(
+        &self,
+        namespace_registry: &Option<String>,
+        well_known: &Option<WellKnown>,
+        info: &PackageInfo,
+    ) -> Result<()>;
 
     /// Loads information about a pending publish operation.
     ///

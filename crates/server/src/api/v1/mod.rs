@@ -14,7 +14,7 @@ use axum::{
     Router,
 };
 use serde::{Serialize, Serializer};
-use std::{path::PathBuf, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
 use url::Url;
 use warg_api::v1::REGISTRY_HEADER_NAME;
 
@@ -96,7 +96,7 @@ pub async fn not_found() -> impl IntoResponse {
 
 /// An extractor for the `Warg-Registry` header. Currently, this server implementation
 /// does not support this header and returns a `501` error.
-pub struct RegistryHeader(Option<String>);
+pub struct RegistryHeader(pub Option<String>);
 
 #[async_trait]
 impl<S> FromRequestParts<S> for RegistryHeader
@@ -131,6 +131,7 @@ pub fn create_router(
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    _addr: SocketAddr,
 ) -> Router {
     let proof_config = proof::Config::new(core.clone());
     let package_config = package::Config::new(

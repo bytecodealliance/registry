@@ -23,7 +23,8 @@ async fn client_incrementally_fetches() -> Result<()> {
 
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
-    let client = create_client(&config)?;
+    let mut client = create_client(&config)?;
+    client.fetch_well_known().await?;
     let signing_key = support::test_signing_key();
 
     // Store a single component that will be used for every release
@@ -78,7 +79,7 @@ async fn client_incrementally_fetches() -> Result<()> {
         .context("failed to remove registries directory")?;
 
     // Recreate the client with the same config
-    let client = create_client(&config)?;
+    let mut client = create_client(&config)?;
 
     // Regression test: update on empty registry storage
     client.update().await?;
@@ -93,7 +94,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
-        .load_package(&name)
+        .load_package(client.namespace_registry(), client.well_known(), &name)
         .await?
         .context("package does not exist in client storage")?;
 

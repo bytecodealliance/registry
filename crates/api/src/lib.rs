@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 
 pub mod v1;
+pub mod well_known;
 
 use serde::{de::Unexpected, Deserialize, Serialize};
 

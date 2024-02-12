@@ -42,6 +42,6 @@ serde_json = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["serde_json"]
 debug = []
 postgres = ["diesel", "diesel-async", "diesel_json", "diesel_migrations", "diesel-derive-enum", "serde_json", "chrono"]
