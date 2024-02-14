@@ -143,7 +143,7 @@ pub struct LogState {
     /// This is `None` until the first (i.e. init) record is validated.
     #[serde(skip_serializing_if = "Option::is_none")]
     algorithm: Option<HashAlgorithm>,
-    /// The current head of the validator.
+    /// The current head of the state.
     #[serde(skip_serializing_if = "Option::is_none")]
     head: Option<Head>,
     /// The permissions of each key.
@@ -152,18 +152,18 @@ pub struct LogState {
     /// The releases in the package log.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     releases: IndexMap<Version, Release>,
-    /// The keys known to the validator.
+    /// The keys known to the state.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
 }
 
 impl LogState {
-    /// Create a new package log validator.
+    /// Create a new package log state.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Gets the current head of the validator.
+    /// Gets the current head of the state.
     ///
     /// Returns `None` if no records have been validated yet.
     pub fn head(&self) -> &Option<Head> {
@@ -175,23 +175,17 @@ impl LogState {
     /// It is expected that `validate` is called in order of the
     /// records in the log.
     ///
-    /// This operation is transactional: if any entry in the record
-    /// fails to validate, the validator state will remain unchanged.
+    /// Note that on failure, the log state is consumed to prevent
+    /// invalid state from being used in future validations.
     pub fn validate(
-        &mut self,
+        mut self,
         record: &ProtoEnvelope<model::PackageRecord>,
-    ) -> Result<(), ValidationError> {
-        let snapshot = self.snapshot();
-
-        let result = self.validate_record(record);
-        if result.is_err() {
-            self.rollback(snapshot);
-        }
-
-        result
+    ) -> Result<Self, ValidationError> {
+        self.validate_record(record)?;
+        Ok(self)
     }
 
-    /// Gets the releases known to the validator.
+    /// Gets the releases known to the state.
     ///
     /// The releases are returned in package log order.
     ///
@@ -268,7 +262,7 @@ impl LogState {
         // Validate the envelope signature
         model::PackageRecord::verify(key, envelope.content_bytes(), envelope.signature())?;
 
-        // Update the validator head
+        // Update the state head
         self.head = Some(Head {
             digest: record_id,
             timestamp: record.timestamp,
@@ -439,7 +433,7 @@ impl LogState {
             if !self
                 .permissions
                 .get_mut(key_id)
-                .map(|set| set.remove(permission))
+                .map(|set| set.swap_remove(permission))
                 .unwrap_or(false)
             {
                 return Err(ValidationError::PermissionNotFoundToRevoke {
@@ -527,57 +521,15 @@ impl LogState {
         }
         Ok(())
     }
-
-    fn snapshot(&self) -> Snapshot {
-        let Self {
-            algorithm,
-            head,
-            releases,
-            permissions,
-            keys,
-        } = self;
-
-        Snapshot {
-            algorithm: *algorithm,
-            head: head.clone(),
-            releases: releases.len(),
-            permissions: permissions.len(),
-            keys: keys.len(),
-        }
-    }
-
-    fn rollback(&mut self, snapshot: Snapshot) {
-        let Snapshot {
-            algorithm,
-            head,
-            releases,
-            permissions,
-            keys,
-        } = snapshot;
-
-        self.algorithm = algorithm;
-        self.head = head;
-        self.releases.truncate(releases);
-        self.permissions.truncate(permissions);
-        self.keys.truncate(keys);
-    }
 }
 
 impl crate::Validator for LogState {
     type Record = model::PackageRecord;
     type Error = ValidationError;
 
-    fn validate(&mut self, record: &ProtoEnvelope<Self::Record>) -> Result<(), Self::Error> {
+    fn validate(self, record: &ProtoEnvelope<Self::Record>) -> Result<Self, Self::Error> {
         self.validate(record)
     }
-}
-
-struct Snapshot {
-    algorithm: Option<HashAlgorithm>,
-    head: Option<Head>,
-    releases: usize,
-    permissions: usize,
-    keys: usize,
 }
 
 #[cfg(test)]
@@ -605,11 +557,11 @@ mod tests {
         };
 
         let envelope = ProtoEnvelope::signed_contents(&alice_priv, record).unwrap();
-        let mut validator = LogState::default();
-        validator.validate(&envelope).unwrap();
+        let state = LogState::default();
+        let state = state.validate(&envelope).unwrap();
 
         assert_eq!(
-            validator,
+            state,
             LogState {
                 head: Some(Head {
                     digest: RecordId::package_record::<Sha256>(&envelope),
@@ -634,7 +586,7 @@ mod tests {
         let bob_id = bob_pub.fingerprint();
 
         let hash_algo = HashAlgorithm::Sha256;
-        let mut validator = LogState::default();
+        let state = LogState::default();
 
         // In envelope 0: alice inits and grants bob release
         let timestamp0 = SystemTime::now();
@@ -654,7 +606,7 @@ mod tests {
             ],
         };
         let envelope0 = ProtoEnvelope::signed_contents(&alice_priv, record0).unwrap();
-        validator.validate(&envelope0).unwrap();
+        let state = state.validate(&envelope0).unwrap();
 
         // In envelope 1: bob releases 1.1.0
         let timestamp1 = timestamp0 + Duration::from_secs(1);
@@ -671,11 +623,11 @@ mod tests {
 
         let envelope1 = ProtoEnvelope::signed_contents(&bob_priv, record1).unwrap();
         let record_id1 = RecordId::package_record::<Sha256>(&envelope1);
-        validator.validate(&envelope1).unwrap();
+        let state = state.validate(&envelope1).unwrap();
 
-        // At this point, the validator should consider 1.1.0 released
+        // At this point, the state should consider 1.1.0 released
         assert_eq!(
-            validator.find_latest_release(&"~1".parse().unwrap()),
+            state.find_latest_release(&"~1".parse().unwrap()),
             Some(&Release {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
@@ -686,11 +638,11 @@ mod tests {
                 }
             })
         );
-        assert!(validator
+        assert!(state
             .find_latest_release(&"~1.2".parse().unwrap())
             .is_none());
         assert_eq!(
-            validator.releases().collect::<Vec<_>>(),
+            state.releases().collect::<Vec<_>>(),
             vec![&Release {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
@@ -717,14 +669,12 @@ mod tests {
             ],
         };
         let envelope2 = ProtoEnvelope::signed_contents(&alice_priv, record2).unwrap();
-        validator.validate(&envelope2).unwrap();
+        let state = state.validate(&envelope2).unwrap();
 
-        // At this point, the validator should consider 1.1.0 yanked
-        assert!(validator
-            .find_latest_release(&"~1".parse().unwrap())
-            .is_none());
+        // At this point, the state should consider 1.1.0 yanked
+        assert!(state.find_latest_release(&"~1".parse().unwrap()).is_none());
         assert_eq!(
-            validator.releases().collect::<Vec<_>>(),
+            state.releases().collect::<Vec<_>>(),
             vec![&Release {
                 record_id: record_id1.clone(),
                 version: Version::new(1, 1, 0),
@@ -738,7 +688,7 @@ mod tests {
         );
 
         assert_eq!(
-            validator,
+            state,
             LogState {
                 algorithm: Some(HashAlgorithm::Sha256),
                 head: Some(Head {
@@ -789,8 +739,8 @@ mod tests {
 
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
-        let mut validator = LogState::default();
-        validator.validate(&envelope).unwrap();
+        let state = LogState::default();
+        let state = state.validate(&envelope).unwrap();
 
         let expected = LogState {
             head: Some(Head {
@@ -806,7 +756,7 @@ mod tests {
             keys: IndexMap::from([(alice_id, alice_pub)]),
         };
 
-        assert_eq!(validator, expected);
+        assert_eq!(state, expected);
 
         let record = model::PackageRecord {
             prev: Some(RecordId::package_record::<Sha256>(&envelope)),
@@ -829,13 +779,10 @@ mod tests {
         let envelope =
             ProtoEnvelope::signed_contents(&alice_priv, record).expect("failed to sign envelope");
 
-        // This validation should fail and the validator state should remain unchanged
-        match validator.validate(&envelope).unwrap_err() {
+        // This validation should fail
+        match state.validate(&envelope).unwrap_err() {
             ValidationError::PermissionNotFoundToRevoke { .. } => {}
             _ => panic!("expected a different error"),
         }
-
-        // The validator should not have changed
-        assert_eq!(validator, expected);
     }
 }

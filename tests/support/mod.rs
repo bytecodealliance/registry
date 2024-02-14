@@ -245,7 +245,7 @@ pub async fn publish_wit(
         client,
         name,
         version,
-        wit_component::encode(None, &resolve, pkg)?,
+        wit_component::encode(Some(true), &resolve, pkg)?,
         init,
         signing_key,
     )

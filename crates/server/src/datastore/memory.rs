@@ -22,18 +22,18 @@ struct Entry<R> {
     record_content: ProtoEnvelope<R>,
 }
 
-struct Log<V, R> {
-    validator: V,
+struct Log<S, R> {
+    state: S,
     entries: Vec<Entry<R>>,
 }
 
-impl<V, R> Default for Log<V, R>
+impl<S, R> Default for Log<S, R>
 where
-    V: Default,
+    S: Default,
 {
     fn default() -> Self {
         Self {
-            validator: V::default(),
+            state: S::default(),
             entries: Vec::new(),
         }
     }
@@ -253,11 +253,13 @@ impl DataStore for MemoryDataStore {
                 let record = record.take().unwrap();
                 let log = operators.entry(log_id.clone()).or_default();
                 match log
-                    .validator
+                    .state
+                    .clone()
                     .validate(&record)
                     .map_err(DataStoreError::from)
                 {
-                    Ok(_) => {
+                    Ok(s) => {
+                        log.state = s;
                         let index = log.entries.len();
                         log.entries.push(Entry {
                             registry_index,
@@ -378,11 +380,13 @@ impl DataStore for MemoryDataStore {
                 let record = record.take().unwrap();
                 let log = packages.entry(log_id.clone()).or_default();
                 match log
-                    .validator
+                    .state
+                    .clone()
                     .validate(&record)
                     .map_err(DataStoreError::from)
                 {
-                    Ok(_) => {
+                    Ok(state) => {
+                        log.state = state;
                         let index = log.entries.len();
                         log.entries.push(Entry {
                             registry_index,
@@ -705,7 +709,7 @@ impl DataStore for MemoryDataStore {
         let key = match state
             .packages
             .get(log_id)
-            .and_then(|log| log.validator.public_key(record.key_id()))
+            .and_then(|log| log.state.public_key(record.key_id()))
         {
             Some(key) => Some(key),
             None => match record.as_ref().entries.first() {
@@ -731,7 +735,7 @@ impl DataStore for MemoryDataStore {
             .operators
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
-            .validator
+            .state
             .namespace_state(package_name.namespace())
         {
             Ok(Some(state)) => match state {
@@ -777,14 +781,14 @@ impl DataStore for MemoryDataStore {
     ) -> Result<(), DataStoreError> {
         let state = self.0.read().await;
 
-        let validator = &state
+        let state = &state
             .operators
             .get(operator_log_id)
             .ok_or_else(|| DataStoreError::LogNotFound(operator_log_id.clone()))?
-            .validator;
+            .state;
 
         TimestampedCheckpoint::verify(
-            validator
+            state
                 .public_key(ts_checkpoint.key_id())
                 .ok_or(DataStoreError::UnknownKey(ts_checkpoint.key_id().clone()))?,
             &ts_checkpoint.as_ref().encode(),
@@ -794,7 +798,7 @@ impl DataStore for MemoryDataStore {
             ts_checkpoint.signature().clone(),
         )))?;
 
-        if !validator.key_has_permission_to_sign_checkpoints(ts_checkpoint.key_id()) {
+        if !state.key_has_permission_to_sign_checkpoints(ts_checkpoint.key_id()) {
             return Err(DataStoreError::KeyUnauthorized(
                 ts_checkpoint.key_id().clone(),
             ));

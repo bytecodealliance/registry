@@ -548,7 +548,7 @@ async fn test_get_ledger(config: &Config) -> Result<()> {
         url,
         content_type,
         ..
-    } = ledger_sources.sources.get(0).unwrap();
+    } = ledger_sources.sources.first().unwrap();
 
     assert_eq!(
         content_type,

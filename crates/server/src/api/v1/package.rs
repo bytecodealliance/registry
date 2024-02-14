@@ -8,8 +8,9 @@ use crate::{
     services::CoreService,
 };
 use axum::{
+    body::{Body, BodyDataStream},
     debug_handler,
-    extract::{BodyStream, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -316,7 +317,7 @@ async fn upload_content(
     State(config): State<Config>,
     Path((log_id, record_id, digest)): Path<(LogId, RecordId, AnyHash)>,
     RegistryHeader(_registry_header): RegistryHeader,
-    stream: BodyStream,
+    body: Body,
 ) -> Result<impl IntoResponse, PackageApiError> {
     match config
         .core_service
@@ -345,7 +346,13 @@ async fn upload_content(
         path = tmp_path.display()
     );
 
-    let res = process_content(&tmp_path, &digest, stream, config.content_policy.as_deref()).await;
+    let res = process_content(
+        &tmp_path,
+        &digest,
+        body.into_data_stream(),
+        config.content_policy.as_deref(),
+    )
+    .await;
 
     // If the error was a rejection, transition the record itself to rejected
     if let Err(PackageApiError(PackageError::Rejection(reason))) = &res {
@@ -386,7 +393,7 @@ async fn upload_content(
 async fn process_content(
     path: &std::path::Path,
     digest: &AnyHash,
-    mut stream: BodyStream,
+    mut stream: BodyDataStream,
     policy: Option<&dyn ContentPolicy>,
 ) -> Result<(), PackageApiError> {
     let mut tmp_file = tokio::fs::File::create(&path)

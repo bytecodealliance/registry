@@ -547,7 +547,7 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                 if operator.head_registry_index.is_none()
                     || proto_envelope.registry_index > operator.head_registry_index.unwrap()
                 {
-                    operator
+                    operator.state = operator
                         .state
                         .validate(&proto_envelope.envelope)
                         .map_err(|inner| ClientError::OperatorValidationFailed { inner })?;
@@ -569,12 +569,13 @@ impl<R: RegistryStorage, C: ContentStorage> Client<R, C> {
                     if package.head_registry_index.is_none()
                         || proto_envelope.registry_index > package.head_registry_index.unwrap()
                     {
-                        package
-                            .state
-                            .validate(&proto_envelope.envelope)
-                            .map_err(|inner| ClientError::PackageValidationFailed {
-                                name: package.name.clone(),
-                                inner,
+                        let state = std::mem::take(&mut package.state);
+                        package.state =
+                            state.validate(&proto_envelope.envelope).map_err(|inner| {
+                                ClientError::PackageValidationFailed {
+                                    name: package.name.clone(),
+                                    inner,
+                                }
                             })?;
                         package.head_registry_index = Some(proto_envelope.registry_index);
                         package.head_fetch_token = Some(record.fetch_token);
