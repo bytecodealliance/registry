@@ -10,6 +10,9 @@ homepage = { workspace = true }
 repository = { workspace = true}
 
 [dependencies]
+wasm-encoder = { workspace = true }
+wasmparser = { workspace = true }
+wasm-compose = { workspace = true }
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
@@ -26,6 +29,17 @@ bytes = { workspace = true }
 p256 = { workspace = true }
 rand_core = { workspace = true }
 url = { workspace = true }
+# TODO: remove these demo-related dependencies
+wasmtime = "10.0"
+wasmtime-wasi = "10.0"
+reqwest.workspace = true
+warg-api.workspace = true
+ptree.workspace = true
+async-recursion = "1.0.4"
+indexmap.workspace = true
+semver.workspace = true
+wat = "1.0.85"
+wasmprinter = "0.2.78"
 keyring = "2.3.0"
 dialoguer = "0.11.0"
 rpassword = "7.3.1"
@@ -36,7 +50,7 @@ reqwest = { workspace = true }
 serde_json = { workspace = true }
 warg-server = { workspace = true }
 warg-api = { workspace = true }
-wat = "1.0.85"
+wat = "1.0.67"
 wit-component = "0.20.1"
 wit-parser = "0.13.1"
 testresult = "0.3.0"
@@ -58,6 +72,7 @@ homepage = "https://warg.io/"
 repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
+ptree = "0.4.0"
 warg-api = { path = "crates/api", version = "0.4.0-dev" }
 warg-client = { path = "crates/client", version = "0.4.0-dev" }
 warg-crypto = { path = "crates/crypto", version = "0.4.0-dev" }
@@ -121,6 +136,8 @@ diesel_migrations = "2.1.0"
 diesel-derive-enum = "2.1.0"
 chrono = "0.4.33"
 regex = "1"
+wasm-encoder = "0.41.0"
+wasm-compose = "0.5.2"
 wasmparser = "0.121.0"
 protox = "0.5.1"
 toml = "0.8.2"
