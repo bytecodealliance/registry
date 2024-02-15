@@ -1,8 +1,31 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 use warg_client::{Config, RegistryUrl};
 
+#[derive(Clone)]
+struct Namespace {
+    namespace: String,
+    domain: String,
+}
+
+impl FromStr for Namespace {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+        let mut split = s.split('=');
+        let namespace = split.next();
+        let domain = split.next();
+        if let (Some(namespace), Some(domain)) = (namespace, domain) {
+            Ok(Namespace {
+                namespace: namespace.to_owned(),
+                domain: domain.to_owned(),
+            })
+        } else {
+            bail!("expected namesape argument to be of form <namespace>=<domain>");
+        }
+    }
+}
 /// Creates a new warg configuration file.
 #[derive(Args)]
 pub struct ConfigCommand {
@@ -27,6 +50,14 @@ pub struct ConfigCommand {
     /// If not specified, the default of `$CONFIG_DIR/warg/config.json` is used.
     #[clap(value_name = "PATH")]
     pub path: Option<PathBuf>,
+
+    /// The namespace and domain to map
+    #[clap(long, long, value_name = "NAMESPACE")]
+    namespace: Option<Namespace>,
+
+    /// The path to the namespace map
+    #[clap(long, value_name = "NAMESPACE_PATH")]
+    pub namespace_path: Option<PathBuf>,
 }
 
 impl ConfigCommand {
@@ -37,7 +68,7 @@ impl ConfigCommand {
             .map(Ok)
             .unwrap_or_else(Config::default_config_path)?;
 
-        if !self.overwrite && path.is_file() {
+        if !self.overwrite && path.is_file() && self.namespace.is_none() {
             bail!(
                 "configuration file `{path}` already exists; use `--overwrite` to overwrite it",
                 path = path.display()
@@ -60,6 +91,7 @@ impl ConfigCommand {
             default_url,
             registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
+            namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
         };
 
         config.write_to_file(&path)?;

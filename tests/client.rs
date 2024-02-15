@@ -93,7 +93,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     // Ensure the package log exists and has releases with all with the same digest
     let package = client
         .registry()
-        .load_package(&name)
+        .load_package(client.namespace_registry(), &name)
         .await?
         .context("package does not exist in client storage")?;
 

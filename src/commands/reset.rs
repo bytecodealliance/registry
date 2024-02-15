@@ -23,7 +23,10 @@ impl ResetCommand {
             println!("resetting local data for all registries...");
             client.reset_registry(true).await?;
         } else {
-            println!("resetting local data for registry `{}`...", client.url());
+            println!(
+                "resetting local data for registry `{}`...",
+                client.home_url()
+            );
             client.reset_registry(false).await?;
         }
 
