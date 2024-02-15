@@ -1,11 +1,13 @@
 //! A client library for Warg component registries.
 
 #![deny(missing_docs)]
-
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Body, IntoUrl};
+use semver::{Version, VersionReq};
 use std::cmp::Ordering;
+use std::fs;
+use std::str::FromStr;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemNamespaceMapStorage,
@@ -20,18 +22,24 @@ use warg_api::v1::{
     },
     proof::{ConsistencyRequest, InclusionRequest},
 };
-use warg_crypto::{
-    hash::{AnyHash, Sha256},
-    signing, Encode, Signable,
-};
+use warg_crypto::hash::Sha256;
+use warg_crypto::{hash::AnyHash, signing, Encode, Signable};
+use warg_protocol::package::ReleaseState;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageName, RecordId, RegistryLen, TimestampedCheckpoint},
-    PublishedProtoEnvelope, SerdeEnvelope, Version, VersionReq,
+    PublishedProtoEnvelope, SerdeEnvelope,
 };
+use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 
 pub mod api;
 mod config;
+/// Tools for locking and bundling components
+pub mod depsolve;
+use depsolve::{Bundler, LockListBuilder};
+/// Tools for semver
+pub mod version_util;
+use version_util::{kindless_name, locked_package, versioned_package, Import, ImportKind};
 pub mod lock;
 mod registry_url;
 pub mod storage;
@@ -101,8 +109,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .or(Err(ClientError::ClearContentCacheFailed))
     }
 
-    /// Check operator log for namespace mapping
-    pub async fn fetch_namespace(&mut self, namespace: &str) -> ClientResult<()> {
+       /// Check operator log for namespace mapping
+       pub async fn fetch_namespace(&mut self, namespace: &str) -> ClientResult<()> {
         self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
             .await?;
         let operator = self.registry().load_operator(&None).await.unwrap();
@@ -132,6 +140,112 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Get namespace registry
     pub fn namespace_registry(&self) -> &Option<String> {
         self.api.namespace_registry()
+    }
+                            
+    /// Locks component
+    pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
+      let mut builder = LockListBuilder::default();
+      builder.build_list(self, info).await?;
+      let top = Import {
+          name: format!("{}:{}", info.name.namespace(), info.name.name()),
+          req: VersionReq::STAR,
+          kind: ImportKind::Unlocked,
+      };
+      builder.lock_list.insert(top);
+      let mut composer = CompositionGraph::new();
+      let mut handled = HashMap::<String, InstanceId>::new();
+      for package in builder.lock_list {
+          let name = package.name.clone();
+          let version = package.req;
+          let id = PackageName::new(name)?;
+          let info = self.registry().load_package(self.namespace_registry(), &id).await?;
+          if let Some(inf) = info {
+              let release = if version != VersionReq::STAR {
+                  inf.state
+                      .releases()
+                      .filter(|r| version.matches(&r.version))
+                      .last()
+              } else {
+                  inf.state.releases().last()
+              };
+
+              if let Some(r) = release {
+                  let state = &r.state;
+                  if let ReleaseState::Released { content } = state {
+                      let locked_package = locked_package(&package.name, r, content);
+                      let path = self.content().content_location(content);
+                      if let Some(p) = path {
+                          let bytes = fs::read(&p).map_err(|_| ClientError::ContentNotFound {
+                              digest: content.clone(),
+                          })?;
+
+                          let read_digest =
+                              AnyHash::from_str(&format!("sha256:{}", sha256::digest(bytes)))
+                                  .unwrap();
+                          if content != &read_digest {
+                              return Err(ClientError::IncorrectContent {
+                                  digest: read_digest,
+                                  expected: content.clone(),
+                              });
+                          }
+                          let component =
+                              wasm_compose::graph::Component::from_file(&locked_package, p)?;
+                          let component_id = if let Some((id, _)) =
+                              composer.get_component_by_name(&locked_package)
+                          {
+                              id
+                          } else {
+                              composer.add_component(component)?
+                          };
+                          let instance_id = composer.instantiate(component_id)?;
+                          let added = composer.get_component(component_id);
+                          handled.insert(versioned_package(&package.name, version), instance_id);
+                          let mut args = Vec::new();
+                          if let Some(added) = added {
+                              for (index, name, _) in added.imports() {
+                                  let iid = handled.get(kindless_name(name));
+                                  if let Some(arg) = iid {
+                                      args.push((arg, index));
+                                  }
+                              }
+                          }
+                          for arg in args {
+                              composer.connect(
+                                  *arg.0,
+                                  None::<ExportIndex>,
+                                  instance_id,
+                                  arg.1,
+                              )?;
+                          }
+                      }
+                  }
+              }
+          }
+      }
+      let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
+      let id = handled.get(final_name);
+      let options = EncodeOptions {
+          export: id.copied(),
+          ..Default::default()
+      };
+      let locked = composer.encode(options)?;
+      fs::write("./locked.wasm", locked.as_slice()).map_err(|e| ClientError::Other(e.into()))?;
+      Ok(locked)
+  }
+
+    /// Bundles component
+    pub async fn bundle_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
+        let mut bundler = Bundler::new(self);
+        let path = PathBuf::from("./locked.wasm");
+        let locked = if !path.is_file() {
+            self.lock_component(info).await?
+        } else {
+            fs::read("./locked.wasm").map_err(|e| ClientError::Other(e.into()))?
+        };
+        let bundled = bundler.parse(&locked).await?;
+        fs::write("./bundled.wasm", bundled.as_slice())
+            .map_err(|e| ClientError::Other(e.into()))?;
+        Ok(bundled.as_slice().to_vec())
     }
 
     /// Submits the publish information in client storage.
@@ -426,6 +540,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         })
     }
 
+    /// Update checkpoint for list of packages
     async fn update_checkpoint<'a>(
         &self,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
@@ -927,6 +1042,15 @@ pub enum ClientError {
     ContentNotFound {
         /// The digest of the missing content.
         digest: AnyHash,
+    },
+
+    /// Content digest was different than expected.
+    #[error("content with digest `{digest}` was not found expected `{expected}`")]
+    IncorrectContent {
+        /// The digest of the missing content.
+        digest: AnyHash,
+        /// The expected
+        expected: AnyHash,
     },
 
     /// The package log is empty and cannot be validated.

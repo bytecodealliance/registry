@@ -383,7 +383,7 @@ async fn upload_content(
     {
         config
             .core_service
-            .submit_package_record(log_id, record_id)
+            .submit_package_record(log_id, record_id.clone())
             .await;
     }
 
