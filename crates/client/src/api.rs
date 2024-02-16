@@ -215,7 +215,7 @@ impl Client {
 
     /// Gets the latest checkpoints from registries.
     pub async fn latest_checkpoints(
-        &mut self,
+        &self,
         registries: impl Iterator<Item = &String>,
     ) -> Result<HashMap<String, SerdeEnvelope<TimestampedCheckpoint>>> {
         let mut timestamps = HashMap::new();
@@ -434,7 +434,7 @@ impl Client {
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(&self.get_warg_header())
+                .warg_header(self.get_warg_header())
                 .send()
                 .await?,
         )

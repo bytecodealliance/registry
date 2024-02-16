@@ -75,7 +75,7 @@ pub struct StoragePaths {
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
-    /// The default Warg registry server URL.
+    /// The home Warg registry server URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home_url: Option<String>,
 
@@ -273,7 +273,7 @@ impl Config {
     ) -> Result<StoragePaths, ClientError> {
         let registry_url = RegistryUrl::new(
             url.or(self.home_url.as_deref())
-                .ok_or(ClientError::NoDefaultUrl)?,
+                .ok_or(ClientError::NoHomeRegistryUrl)?,
         )?;
 
         let label = registry_url.safe_label();

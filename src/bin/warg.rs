@@ -68,8 +68,8 @@ async fn main() -> Result<()> {
 
 fn describe_client_error(e: &ClientError) {
     match e {
-        ClientError::NoDefaultUrl => {
-            eprintln!("error: {e}; use the `config` subcommand to set a default URL");
+        ClientError::NoHomeRegistryUrl => {
+            eprintln!("error: {e}; use the `config` subcommand to set a home registry URL");
         }
         ClientError::PackageValidationFailed { name, inner } => {
             eprintln!("error: the log for package `{name}` is invalid: {inner}")

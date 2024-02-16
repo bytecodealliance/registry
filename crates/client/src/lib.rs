@@ -100,11 +100,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(())
     }
 
-    // /// Gets the namespace map mutably
-    // pub fn namespace_map_mut(&mut self) -> &mut N {
-    //     &mut self.namespace_map
-    // }
-
     /// Gets the namespace map
     pub async fn reset_namespaces(&self) -> Result<()> {
         self.namespace_map.reset_namespaces().await?;
@@ -134,19 +129,25 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
             .await?;
         let operator = self.registry().load_operator(&None).await.unwrap();
-        if let Some(op) = operator {
+        let operator_log_maps_namespace = if let Some(op) = operator {
             let namespace_state = op.state.namespace_state(namespace);
             if let Ok(Some(nm)) = namespace_state {
                 match nm {
-                    warg_protocol::operator::NamespaceState::Defined => {}
+                    warg_protocol::operator::NamespaceState::Defined => true,
                     warg_protocol::operator::NamespaceState::Imported { registry } => {
                         self.api
                             .map_warg_header(Some(HeaderValue::from_str(registry).unwrap()));
+
+                        true
                     }
                 }
+            } else {
+                false
             }
-        }
-        if self.api.get_warg_header().is_none() {
+        } else {
+            false
+        };
+        if !operator_log_maps_namespace {
             let map = self.namespace_map().load_namespace_map().await?;
             if let Some(map) = map {
                 let namespace = map.get(namespace);
@@ -282,7 +283,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the identifier of the record that was published.
     ///
     /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
-    pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
+    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
         let info = self
             .registry
             .load_publish()
@@ -452,6 +453,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         self.update_checkpoints(checkpoints, packages).await?;
         Ok(())
     }
+
     /// Updates every package log in client storage to the latest registry checkpoint.
     pub async fn update(&self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
@@ -538,7 +540,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the path within client storage of the package contents for
     /// the specified version.
     pub async fn download_exact(
-        &mut self,
+        &self,
         package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
@@ -957,7 +959,7 @@ pub enum StorageLockResult<T> {
 impl FileSystemClient {
     /// Attempts to create a client for the given registry URL.
     ///
-    /// If the URL is `None`, the default URL is used; if there is no default
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
     /// URL, an error is returned.
     ///
     /// If a lock cannot be acquired for a storage directory, then
@@ -994,7 +996,7 @@ impl FileSystemClient {
 
     /// Creates a client for the given registry URL.
     ///
-    /// If the URL is `None`, the default URL is used; if there is no default
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
@@ -1028,9 +1030,9 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
-    /// No default registry server URL is configured.
-    #[error("no default registry server URL is configured")]
-    NoDefaultUrl,
+    /// No home registry registry server URL is configured.
+    #[error("no home registry registry server URL is configured")]
+    NoHomeRegistryUrl,
 
     /// Reset registry local state.
     #[error("reset registry state failed")]
