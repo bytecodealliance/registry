@@ -77,7 +77,7 @@ pub struct StoragePaths {
 pub struct Config {
     /// The default Warg registry server URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_url: Option<String>,
+    pub home_url: Option<String>,
 
     /// The path to the top-level directory where per-registry information is stored.
     ///
@@ -101,7 +101,7 @@ pub struct Config {
     ///
     /// This path is expected to be relative to the configuration file.
     ///
-    /// If `None`, the default of `$CACHE_DIR/warg/namespace` is used, where
+    /// If `None`, the default of `$CACHE_DIR/warg/namespaces` is used, where
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace_map_path: Option<PathBuf>,
@@ -165,7 +165,7 @@ impl Config {
         assert!(parent.is_absolute());
 
         let config = Config {
-            default_url: self.default_url.clone(),
+            home_url: self.home_url.clone(),
             registries_dir: self.registries_dir.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
@@ -272,7 +272,7 @@ impl Config {
         url: Option<&str>,
     ) -> Result<StoragePaths, ClientError> {
         let registry_url = RegistryUrl::new(
-            url.or(self.default_url.as_deref())
+            url.or(self.home_url.as_deref())
                 .ok_or(ClientError::NoDefaultUrl)?,
         )?;
 

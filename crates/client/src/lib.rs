@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
+use reqwest::header::HeaderValue;
 use reqwest::{Body, IntoUrl};
 use semver::{Version, VersionReq};
 use std::cmp::Ordering;
@@ -72,8 +73,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Gets the URL of the client.
-    pub fn home_url(&self) -> &RegistryUrl {
-        self.api.home_url()
+    pub fn url(&self) -> &RegistryUrl {
+        self.api.url()
     }
 
     /// Gets the registry storage used by the client.
@@ -89,6 +90,25 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Gets the namespace map
     pub fn namespace_map(&self) -> &N {
         &self.namespace_map
+    }
+
+    /// Stores namespace mapping in local storage
+    pub async fn store_namespace(&self, namespace: String, registry_domain: String) -> Result<()> {
+        self.namespace_map
+            .store_namespace(namespace, registry_domain)
+            .await?;
+        Ok(())
+    }
+
+    // /// Gets the namespace map mutably
+    // pub fn namespace_map_mut(&mut self) -> &mut N {
+    //     &mut self.namespace_map
+    // }
+
+    /// Gets the namespace map
+    pub async fn reset_namespaces(&self) -> Result<()> {
+        self.namespace_map.reset_namespaces().await?;
+        Ok(())
     }
 
     /// Reset client storage for the registry.
@@ -109,129 +129,136 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .or(Err(ClientError::ClearContentCacheFailed))
     }
 
-       /// Check operator log for namespace mapping
-       pub async fn fetch_namespace(&mut self, namespace: &str) -> ClientResult<()> {
+    /// Check operator log for namespace mapping
+    pub async fn fetch_namespace(&mut self, namespace: &str) -> ClientResult<()> {
         self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
             .await?;
         let operator = self.registry().load_operator(&None).await.unwrap();
         if let Some(op) = operator {
-            for (name, namespace_def) in op.state.namespaces().clone() {
-                if name == namespace {
-                    match namespace_def.state().clone() {
-                        warg_protocol::operator::NamespaceState::Defined => {}
-                        warg_protocol::operator::NamespaceState::Imported { registry } => {
-                            self.api.map_namespace(Some(registry));
-                            break;
-                        }
+            let namespace_state = op.state.namespace_state(namespace);
+            if let Ok(Some(nm)) = namespace_state {
+                match nm {
+                    warg_protocol::operator::NamespaceState::Defined => {}
+                    warg_protocol::operator::NamespaceState::Imported { registry } => {
+                        self.api
+                            .map_warg_header(Some(HeaderValue::from_str(registry).unwrap()));
                     }
                 }
             }
         }
-        if self.api.namespace_registry().is_none() {
+        if self.api.get_warg_header().is_none() {
             let map = self.namespace_map().load_namespace_map().await?;
             if let Some(map) = map {
                 let namespace = map.get(namespace);
-                self.api.map_namespace(namespace.cloned());
+                if let Some(nm) = namespace {
+                    self.api
+                        .map_warg_header(Some(HeaderValue::from_str(nm).unwrap()));
+                } else {
+                    self.api.map_warg_header(None);
+                }
             }
         }
         Ok(())
     }
 
     /// Get namespace registry
-    pub fn namespace_registry(&self) -> &Option<String> {
-        self.api.namespace_registry()
+    pub fn get_warg_header(&self) -> &Option<HeaderValue> {
+        self.api.get_warg_header()
     }
-                            
+
     /// Locks component
     pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
-      let mut builder = LockListBuilder::default();
-      builder.build_list(self, info).await?;
-      let top = Import {
-          name: format!("{}:{}", info.name.namespace(), info.name.name()),
-          req: VersionReq::STAR,
-          kind: ImportKind::Unlocked,
-      };
-      builder.lock_list.insert(top);
-      let mut composer = CompositionGraph::new();
-      let mut handled = HashMap::<String, InstanceId>::new();
-      for package in builder.lock_list {
-          let name = package.name.clone();
-          let version = package.req;
-          let id = PackageName::new(name)?;
-          let info = self.registry().load_package(self.namespace_registry(), &id).await?;
-          if let Some(inf) = info {
-              let release = if version != VersionReq::STAR {
-                  inf.state
-                      .releases()
-                      .filter(|r| version.matches(&r.version))
-                      .last()
-              } else {
-                  inf.state.releases().last()
-              };
+        let mut builder = LockListBuilder::default();
+        builder.build_list(self, info).await?;
+        let top = Import {
+            name: format!("{}:{}", info.name.namespace(), info.name.name()),
+            req: VersionReq::STAR,
+            kind: ImportKind::Unlocked,
+        };
+        builder.lock_list.insert(top);
+        let mut composer = CompositionGraph::new();
+        let mut handled = HashMap::<String, InstanceId>::new();
+        for package in builder.lock_list {
+            let name = package.name.clone();
+            let version = package.req;
+            let id = PackageName::new(name)?;
+            let info = self
+                .registry()
+                .load_package(self.get_warg_header(), &id)
+                .await?;
+            if let Some(inf) = info {
+                let release = if version != VersionReq::STAR {
+                    inf.state
+                        .releases()
+                        .filter(|r| version.matches(&r.version))
+                        .last()
+                } else {
+                    inf.state.releases().last()
+                };
 
-              if let Some(r) = release {
-                  let state = &r.state;
-                  if let ReleaseState::Released { content } = state {
-                      let locked_package = locked_package(&package.name, r, content);
-                      let path = self.content().content_location(content);
-                      if let Some(p) = path {
-                          let bytes = fs::read(&p).map_err(|_| ClientError::ContentNotFound {
-                              digest: content.clone(),
-                          })?;
+                if let Some(r) = release {
+                    let state = &r.state;
+                    if let ReleaseState::Released { content } = state {
+                        let locked_package = locked_package(&package.name, r, content);
+                        let path = self.content().content_location(content);
+                        if let Some(p) = path {
+                            let bytes = fs::read(&p).map_err(|_| ClientError::ContentNotFound {
+                                digest: content.clone(),
+                            })?;
 
-                          let read_digest =
-                              AnyHash::from_str(&format!("sha256:{}", sha256::digest(bytes)))
-                                  .unwrap();
-                          if content != &read_digest {
-                              return Err(ClientError::IncorrectContent {
-                                  digest: read_digest,
-                                  expected: content.clone(),
-                              });
-                          }
-                          let component =
-                              wasm_compose::graph::Component::from_file(&locked_package, p)?;
-                          let component_id = if let Some((id, _)) =
-                              composer.get_component_by_name(&locked_package)
-                          {
-                              id
-                          } else {
-                              composer.add_component(component)?
-                          };
-                          let instance_id = composer.instantiate(component_id)?;
-                          let added = composer.get_component(component_id);
-                          handled.insert(versioned_package(&package.name, version), instance_id);
-                          let mut args = Vec::new();
-                          if let Some(added) = added {
-                              for (index, name, _) in added.imports() {
-                                  let iid = handled.get(kindless_name(name));
-                                  if let Some(arg) = iid {
-                                      args.push((arg, index));
-                                  }
-                              }
-                          }
-                          for arg in args {
-                              composer.connect(
-                                  *arg.0,
-                                  None::<ExportIndex>,
-                                  instance_id,
-                                  arg.1,
-                              )?;
-                          }
-                      }
-                  }
-              }
-          }
-      }
-      let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
-      let id = handled.get(final_name);
-      let options = EncodeOptions {
-          export: id.copied(),
-          ..Default::default()
-      };
-      let locked = composer.encode(options)?;
-      fs::write("./locked.wasm", locked.as_slice()).map_err(|e| ClientError::Other(e.into()))?;
-      Ok(locked)
-  }
+                            let read_digest =
+                                AnyHash::from_str(&format!("sha256:{}", sha256::digest(bytes)))
+                                    .unwrap();
+                            if content != &read_digest {
+                                return Err(ClientError::IncorrectContent {
+                                    digest: read_digest,
+                                    expected: content.clone(),
+                                });
+                            }
+                            let component =
+                                wasm_compose::graph::Component::from_file(&locked_package, p)?;
+                            let component_id = if let Some((id, _)) =
+                                composer.get_component_by_name(&locked_package)
+                            {
+                                id
+                            } else {
+                                composer.add_component(component)?
+                            };
+                            let instance_id = composer.instantiate(component_id)?;
+                            let added = composer.get_component(component_id);
+                            handled.insert(versioned_package(&package.name, version), instance_id);
+                            let mut args = Vec::new();
+                            if let Some(added) = added {
+                                for (index, name, _) in added.imports() {
+                                    let iid = handled.get(kindless_name(name));
+                                    if let Some(arg) = iid {
+                                        args.push((arg, index));
+                                    }
+                                }
+                            }
+                            for arg in args {
+                                composer.connect(
+                                    *arg.0,
+                                    None::<ExportIndex>,
+                                    instance_id,
+                                    arg.1,
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let final_name = &format!("{}:{}", info.name.namespace(), &info.name.name());
+        let id = handled.get(final_name);
+        let options = EncodeOptions {
+            export: id.copied(),
+            ..Default::default()
+        };
+        let locked = composer.encode(options)?;
+        fs::write("./locked.wasm", locked.as_slice()).map_err(|e| ClientError::Other(e.into()))?;
+        Ok(locked)
+    }
 
     /// Bundles component
     pub async fn bundle_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
@@ -255,7 +282,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the identifier of the record that was published.
     ///
     /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
-    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
+    pub async fn publish(&mut self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
         let info = self
             .registry
             .load_publish()
@@ -296,7 +323,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         let mut package = self
             .registry
-            .load_package(self.namespace_registry(), &info.name)
+            .load_package(self.get_warg_header(), &info.name)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.name.clone()));
 
@@ -451,7 +478,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         for package in packages {
             updating.push(
                 self.registry
-                    .load_package(self.namespace_registry(), package)
+                    .load_package(self.get_warg_header(), package)
                     .await?
                     .unwrap_or_else(|| PackageInfo::new(package.clone())),
             );
@@ -511,7 +538,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the path within client storage of the package contents for
     /// the specified version.
     pub async fn download_exact(
-        &self,
+        &mut self,
         package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
@@ -554,7 +581,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         let mut operator = self
             .registry
-            .load_operator(self.namespace_registry())
+            .load_operator(self.get_warg_header())
             .await?
             .unwrap_or_default();
 
@@ -578,7 +605,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .collect::<HashMap<_, _>>();
 
         loop {
-            let response: FetchLogsResponse = self
+            let response: FetchLogsResponse = match self
                 .api
                 .fetch_logs(FetchLogsRequest {
                     log_length: checkpoint.log_length,
@@ -590,11 +617,59 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     packages: Cow::Borrowed(&last_known),
                 })
                 .await
-                .map_err(|e| {
-                    ClientError::translate_log_not_found(e, |id| {
+            {
+                Ok(res) => res,
+                Err(api::ClientError::LogNotFoundWithHint(log_id, header)) => {
+                    let hint_reg = header.to_str().unwrap();
+                    let mut terms = hint_reg.split('=');
+                    let namespace = terms.next();
+                    let registry = terms.next();
+                    let resp = if let (Some(namespace), Some(registry)) = (namespace, registry) {
+                        print!(
+                                      "One of the packages you're requesting does not exist in the registry you're using.
+                      However, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
+                                  );
+                        std::io::Write::flush(&mut std::io::stdout()).expect("flush failed!");
+                        let mut buf = String::new();
+                        std::io::stdin().read_line(&mut buf).unwrap();
+                        let lowered = buf.to_lowercase();
+                        if lowered == "y" || lowered == "yes" {
+                            self.store_namespace(namespace.to_string(), registry.to_string())
+                                .await?;
+                            Some(
+                                self.api
+                                    .fetch_logs(FetchLogsRequest {
+                                        log_length: checkpoint.log_length,
+                                        operator: operator
+                                            .head_fetch_token
+                                            .as_ref()
+                                            .map(|t| Cow::Borrowed(t.as_str())),
+                                        limit: None,
+                                        packages: Cow::Borrowed(&last_known),
+                                    })
+                                    .await?,
+                            )
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(resp) = resp {
+                        resp
+                    } else {
+                        return Err(ClientError::translate_log_not_found(
+                            api::ClientError::Fetch(FetchError::LogNotFound(log_id)),
+                            |id| packages.get(id).map(|p| p.name.clone()),
+                        ));
+                    }
+                }
+                Err(e) => {
+                    return Err(ClientError::translate_log_not_found(e, |id| {
                         packages.get(id).map(|p| p.name.clone())
-                    })
-                })?;
+                    }))
+                }
+            };
 
             for record in response.operator {
                 let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
@@ -714,7 +789,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         if let Some(from) = self
             .registry
-            .load_checkpoint(self.namespace_registry())
+            .load_checkpoint(self.get_warg_header())
             .await?
         {
             let from_log_length = from.as_ref().checkpoint.log_length;
@@ -754,26 +829,26 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         }
 
         self.registry
-            .store_operator(self.namespace_registry(), operator)
+            .store_operator(self.get_warg_header(), operator)
             .await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
             self.registry
-                .store_package(self.namespace_registry(), package)
+                .store_package(self.get_warg_header(), package)
                 .await?;
         }
 
         self.registry
-            .store_checkpoint(self.namespace_registry(), ts_checkpoint)
+            .store_checkpoint(self.get_warg_header(), ts_checkpoint)
             .await?;
 
         Ok(())
     }
 
     /// Update client namespace
-    pub fn map_namespace(&mut self, namespace: &Option<String>) {
-        self.api.map_namespace(namespace.clone());
+    pub fn map_warg_header(&mut self, namespace: &Option<HeaderValue>) {
+        self.api.map_warg_header(namespace.clone());
     }
 
     async fn update_checkpoints<'a>(
@@ -782,10 +857,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         mut packages: HashMap<String, Vec<PackageInfo>>,
     ) -> Result<(), ClientError> {
         for (name, ts_checkpoint) in ts_checkpoints {
-            if self.home_url().safe_label() != name {
-                self.map_namespace(&Some(name.clone()));
+            if self.url().safe_label() != name {
+                self.map_warg_header(&Some(HeaderValue::from_str(&name).unwrap()));
             } else {
-                self.map_namespace(&None)
+                self.map_warg_header(&None)
             }
             let mut packages = packages.get_mut(&name.clone());
             if let Some(pkgs) = &mut packages {
@@ -800,7 +875,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
         match self
             .registry
-            .load_package(self.namespace_registry(), name)
+            .load_package(self.get_warg_header(), name)
             .await?
         {
             Some(info) => {

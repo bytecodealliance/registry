@@ -121,10 +121,10 @@ impl PublishInitCommand {
         let mut client = self.common.create_client(&config)?;
         client.fetch_namespace(self.name.namespace()).await?;
 
-        let signing_key = if let Some(nm) = client.namespace_registry() {
-            self.common.signing_key(&RegistryUrl::new(nm)?)?
+        let signing_key = if let Some(nm) = client.get_warg_header() {
+            self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
-            self.common.signing_key(client.home_url())?
+            self.common.signing_key(client.url())?
         };
         match enqueue(&client, &self.name, |_| {
             std::future::ready(Ok(PublishEntry::Init))
@@ -195,10 +195,10 @@ impl PublishReleaseCommand {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
         client.fetch_namespace(self.name.namespace()).await?;
-        let signing_key = if let Some(nm) = client.namespace_registry() {
-            self.common.signing_key(&RegistryUrl::new(nm)?)?
+        let signing_key = if let Some(nm) = client.get_warg_header() {
+            self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
-            self.common.signing_key(client.home_url())?
+            self.common.signing_key(client.url())?
         };
 
         let path = self.path.clone();
@@ -286,10 +286,10 @@ impl PublishYankCommand {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
         client.fetch_namespace(self.name.namespace()).await?;
-        let signing_key = if let Some(nm) = client.namespace_registry() {
-            self.common.signing_key(&RegistryUrl::new(nm)?)?
+        let signing_key = if let Some(nm) = client.get_warg_header() {
+            self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
-            self.common.signing_key(client.home_url())?
+            self.common.signing_key(client.url())?
         };
 
         let version = self.version.clone();
@@ -368,10 +368,10 @@ impl PublishGrantCommand {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
         client.fetch_namespace(self.name.namespace()).await?;
-        let signing_key = if let Some(nm) = client.namespace_registry() {
-            self.common.signing_key(&RegistryUrl::new(nm)?)?
+        let signing_key = if let Some(nm) = client.get_warg_header() {
+            self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
-            self.common.signing_key(client.home_url())?
+            self.common.signing_key(client.url())?
         };
 
         match enqueue(&client, &self.name, |_| async {
@@ -454,10 +454,10 @@ impl PublishRevokeCommand {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
         client.fetch_namespace(self.name.namespace()).await?;
-        let signing_key = if let Some(nm) = client.namespace_registry() {
-            self.common.signing_key(&RegistryUrl::new(nm)?)?
+        let signing_key = if let Some(nm) = client.get_warg_header() {
+            self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
-            self.common.signing_key(client.home_url())?
+            self.common.signing_key(client.url())?
         };
 
         match enqueue(&client, &self.name, |_| async {
@@ -657,7 +657,7 @@ impl PublishSubmitCommand {
                     name = info.name
                 );
 
-                let signing_key = self.common.signing_key(client.home_url())?;
+                let signing_key = self.common.signing_key(client.url())?;
                 let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
 
                 client.registry().store_publish(None).await?;

@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
+use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, pin::Pin, time::SystemTime};
 use warg_crypto::{
@@ -37,13 +38,13 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads most recent checkpoint
     async fn load_checkpoint(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
     ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
     /// Stores most recent checkpoint
     async fn store_checkpoint(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()>;
 
@@ -52,13 +53,13 @@ pub trait RegistryStorage: Send + Sync {
     /// Returns `Ok(None)` if the information is not present.
     async fn load_operator(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
     ) -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
     async fn store_operator(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         operator: OperatorInfo,
     ) -> Result<()>;
 
@@ -73,14 +74,14 @@ pub trait RegistryStorage: Send + Sync {
     /// Returns `Ok(None)` if the information is not present.
     async fn load_package(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         package: &PackageName,
     ) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
     async fn store_package(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         info: &PackageInfo,
     ) -> Result<()>;
 
@@ -140,6 +141,10 @@ pub trait ContentStorage: Send + Sync {
 pub trait NamespaceMapStorage: Send + Sync {
     /// Loads namespace map
     async fn load_namespace_map(&self) -> Result<Option<HashMap<String, String>>>;
+    /// Reset namespace mappings
+    async fn reset_namespaces(&self) -> Result<()>;
+    /// Store namespace mapping
+    async fn store_namespace(&self, namespace: String, registry_domain: String) -> Result<()>;
 }
 
 /// Represents information about a registry operator.

@@ -160,7 +160,7 @@ pub async fn spawn_server(
     };
 
     let config = warg_client::Config {
-        default_url: Some(format!("http://{addr}")),
+        home_url: Some(format!("http://{addr}")),
         registries_dir: Some(root.join("registries")),
         content_dir: Some(root.join("content")),
         namespace_map_path: Some(root.join("namespaces")),

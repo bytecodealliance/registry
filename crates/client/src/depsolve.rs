@@ -11,7 +11,7 @@ use wasm_encoder::{
 use wasmparser::{Chunk, ComponentImportSectionReader, Parser, Payload};
 
 use super::Client;
-use crate::storage::{ContentStorage, PackageInfo, RegistryStorage};
+use crate::storage::{ContentStorage, NamespaceMapStorage, PackageInfo, RegistryStorage};
 use crate::version_util::{DependencyImportParser, Import, ImportKind};
 /// Import Kinds found in components
 
@@ -32,7 +32,7 @@ impl Default for LockListBuilder {
 
 impl LockListBuilder {
     fn parse_import(
-        &mut self,
+        &self,
         parser: &ComponentImportSectionReader,
         imports: &mut Vec<String>,
     ) -> Result<()> {
@@ -45,9 +45,9 @@ impl LockListBuilder {
     }
 
     #[async_recursion]
-    async fn parse_package<R: RegistryStorage, C: ContentStorage>(
+    async fn parse_package<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
         &mut self,
-        client: &Client<R, C>,
+        client: &Client<R, C, N>,
         mut bytes: &[u8],
     ) -> Result<()> {
         let mut parser = Parser::new(0);
@@ -101,7 +101,11 @@ impl LockListBuilder {
             match import.kind {
                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                     let id = PackageName::new(import.name.clone())?;
-                    if let Some(info) = client.registry().load_package(&id).await? {
+                    if let Some(info) = client
+                        .registry()
+                        .load_package(client.get_warg_header(), &id)
+                        .await?
+                    {
                         let release = info.state.releases().last();
                         if let Some(r) = release {
                             if let Some(bytes) = self.release_bytes(r, client)? {
@@ -111,7 +115,11 @@ impl LockListBuilder {
                         self.lock_list.insert(import);
                     } else {
                         client.download(&id, &VersionReq::STAR).await?;
-                        if let Some(info) = client.registry().load_package(&id).await? {
+                        if let Some(info) = client
+                            .registry()
+                            .load_package(client.get_warg_header(), &id)
+                            .await?
+                        {
                             let release = info.state.releases().last();
                             if let Some(r) = release {
                                 if let Some(bytes) = self.release_bytes(r, client)? {
@@ -128,10 +136,10 @@ impl LockListBuilder {
         Ok(())
     }
 
-    fn release_bytes<R: RegistryStorage, C: ContentStorage>(
+    fn release_bytes<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
         &self,
         release: &Release,
-        client: &Client<R, C>,
+        client: &Client<R, C, N>,
     ) -> Result<Option<Vec<u8>>> {
         let state = &release.state;
         if let ReleaseState::Released { content } = state {
@@ -145,9 +153,9 @@ impl LockListBuilder {
 
     /// List of deps for building
     #[async_recursion]
-    pub async fn build_list<R: RegistryStorage, C: ContentStorage>(
+    pub async fn build_list<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
         &mut self,
-        client: &Client<R, C>,
+        client: &Client<R, C, N>,
         info: &PackageInfo,
     ) -> Result<()> {
         let release = info.state.releases().last();
@@ -166,22 +174,24 @@ impl LockListBuilder {
 }
 
 /// Bundles Dependencies
-pub struct Bundler<'a, R, C>
+pub struct Bundler<'a, R, C, N>
 where
     R: RegistryStorage,
     C: ContentStorage,
+    N: NamespaceMapStorage,
 {
     /// Warg client used for bundling
-    client: &'a Client<R, C>,
+    client: &'a Client<R, C, N>,
 }
 
-impl<'a, R, C> Bundler<'a, R, C>
+impl<'a, R, C, N> Bundler<'a, R, C, N>
 where
     R: RegistryStorage,
     C: ContentStorage,
+    N: NamespaceMapStorage,
 {
     /// New Bundler
-    pub fn new(client: &'a Client<R, C>) -> Self {
+    pub fn new(client: &'a Client<R, C, N>) -> Self {
         Self { client }
     }
 
@@ -200,7 +210,12 @@ where
             let parsed_imp = dep_parser.parse()?;
             if !parsed_imp.name.contains('/') {
                 let pkg_id = PackageName::new(parsed_imp.name)?;
-                if let Some(info) = self.client.registry().load_package(&pkg_id).await? {
+                if let Some(info) = self
+                    .client
+                    .registry()
+                    .load_package(&self.client.get_warg_header(), &pkg_id)
+                    .await?
+                {
                     let release = if parsed_imp.req != VersionReq::STAR {
                         info.state
                             .releases()

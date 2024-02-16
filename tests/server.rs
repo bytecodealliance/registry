@@ -39,7 +39,7 @@ mod memory;
 mod postgres;
 
 async fn test_initial_checkpoint(config: &Config) -> Result<()> {
-    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
 
     let ts_checkpoint = client.latest_checkpoint().await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
@@ -371,7 +371,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
     // Use a reqwest client directly here as we're going to be sending an invalid signature
     let name = PackageName::new(PACKAGE_NAME)?;
     let log_id = LogId::package_log::<Sha256>(&name);
-    let url = Url::parse(config.default_url.as_ref().unwrap())?
+    let url = Url::parse(config.home_url.as_ref().unwrap())?
         .join(&paths::publish_package_record(&log_id))
         .unwrap();
 
@@ -441,7 +441,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     client.upsert([&name]).await?;
     let package = client
         .registry()
-        .load_package(client.namespace_registry(), &name)
+        .load_package(client.get_warg_header(), &name)
         .await?
         .expect("expected the package to exist");
     package
@@ -450,7 +450,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
         .expect("expected the package version to exist");
 
     // Look up the content URL for the record
-    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
     let ContentSourcesResponse { content_sources } = client.content_sources(&digest).await?;
     assert_eq!(content_sources.len(), 1);
     let sources = content_sources
@@ -476,7 +476,7 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
     let name_1 = PackageName::new("test:component")?;
     let log_id_1 = LogId::package_log::<Sha256>(&name_1);
 
-    let url = Url::parse(config.default_url.as_ref().unwrap())?
+    let url = Url::parse(config.home_url.as_ref().unwrap())?
         .join(paths::fetch_package_names())
         .unwrap();
 
@@ -511,12 +511,12 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
 }
 
 async fn test_get_ledger(config: &Config) -> Result<()> {
-    let client = api::Client::new(config.default_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
 
     let ts_checkpoint = client.latest_checkpoint().await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
-    let url = Url::parse(config.default_url.as_ref().unwrap())?
+    let url = Url::parse(config.home_url.as_ref().unwrap())?
         .join(paths::ledger_sources())
         .unwrap();
 
@@ -565,7 +565,7 @@ async fn test_get_ledger(config: &Config) -> Result<()> {
         "unexpected ledger source last registry index: {last_registry_index}",
     );
 
-    let url = Url::parse(config.default_url.as_ref().unwrap())?
+    let url = Url::parse(config.home_url.as_ref().unwrap())?
         .join(url)
         .unwrap();
 

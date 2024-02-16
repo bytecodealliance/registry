@@ -30,14 +30,14 @@ impl InfoCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        println!("registry: {url}", url = client.home_url());
+        println!("registry: {url}", url = client.url());
         println!("\npackages in client storage:");
         if !self.namespaces {
             match self.package {
                 Some(package) => {
                     if let Some(info) = client
                         .registry()
-                        .load_package(client.namespace_registry(), &package)
+                        .load_package(client.get_warg_header(), &package)
                         .await?
                     {
                         Self::print_package_info(&info);

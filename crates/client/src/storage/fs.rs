@@ -8,6 +8,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
+use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -76,20 +77,31 @@ impl FileSystemRegistryStorage {
         })
     }
 
-    fn operator_path(&self, namespace_registry: &Option<String>) -> PathBuf {
+    fn operator_path(&self, namespace_registry: &Option<HeaderValue>) -> PathBuf {
         if let Some(nm) = namespace_registry {
-            return self.registries_dir.join(nm).join("operator.log");
+            return self
+                .registries_dir
+                .join(nm.to_str().unwrap())
+                .join("operator.log");
         }
         self.base_dir.join("operator.log")
     }
 
-    fn package_path(&self, namespace_registry: &Option<String>, name: &PackageName) -> PathBuf {
+    fn package_path(
+        &self,
+        namespace_registry: &Option<HeaderValue>,
+        name: &PackageName,
+    ) -> PathBuf {
         if let Some(nm) = namespace_registry {
-            return self.registries_dir.join(nm).join(PACKAGE_LOGS_DIR).join(
-                LogId::package_log::<Sha256>(name)
-                    .to_string()
-                    .replace(':', "/"),
-            );
+            return self
+                .registries_dir
+                .join(nm.to_str().unwrap())
+                .join(PACKAGE_LOGS_DIR)
+                .join(
+                    LogId::package_log::<Sha256>(name)
+                        .to_string()
+                        .replace(':', "/"),
+                );
         }
         self.base_dir.join(PACKAGE_LOGS_DIR).join(
             LogId::package_log::<Sha256>(name)
@@ -115,22 +127,31 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_checkpoint(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
     ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>> {
         if let Some(nm) = namespace_registry {
-            return load(&self.registries_dir.join(nm).join("checkpoint")).await;
+            return load(
+                &self
+                    .registries_dir
+                    .join(nm.to_str().unwrap())
+                    .join("checkpoint"),
+            )
+            .await;
         }
         load(&self.base_dir.join("checkpoint")).await
     }
 
     async fn store_checkpoint(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()> {
         if let Some(nm) = namespace_registry {
             return store(
-                &self.registries_dir.join(nm).join("checkpoint"),
+                &self
+                    .registries_dir
+                    .join(nm.to_str().unwrap())
+                    .join("checkpoint"),
                 ts_checkpoint,
             )
             .await;
@@ -215,14 +236,14 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_operator(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
     ) -> Result<Option<OperatorInfo>> {
         Ok(load(&self.operator_path(namespace_registry)).await?)
     }
 
     async fn store_operator(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         info: OperatorInfo,
     ) -> Result<()> {
         store(&self.operator_path(namespace_registry), info).await
@@ -230,7 +251,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_package(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         package: &PackageName,
     ) -> Result<Option<PackageInfo>> {
         Ok(load(&self.package_path(namespace_registry, package)).await?)
@@ -238,7 +259,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn store_package(
         &self,
-        namespace_registry: &Option<String>,
+        namespace_registry: &Option<HeaderValue>,
         info: &PackageInfo,
     ) -> Result<()> {
         store(&self.package_path(namespace_registry, &info.name), info).await
@@ -434,6 +455,26 @@ impl NamespaceMapStorage for FileSystemNamespaceMapStorage {
         let namespace_path = &self.base_dir;
         let namespace_map = load(namespace_path).await?;
         Ok(namespace_map)
+    }
+
+    async fn reset_namespaces(&self) -> Result<()> {
+        remove(&self.base_dir).await?;
+        Ok(())
+    }
+
+    async fn store_namespace(&self, namespace: String, registry_domain: String) -> Result<()> {
+        let mapping = self.load_namespace_map().await?;
+        if let Some(mut mapping) = mapping {
+            mapping.insert(namespace, registry_domain);
+            let json = serde_json::to_string(&mapping)?;
+            fs::write(&self.base_dir, json)?;
+        } else {
+            let mut mapping = HashMap::new();
+            mapping.insert(namespace, registry_domain);
+            let json = serde_json::to_string(&mapping)?;
+            fs::write(&self.base_dir, json)?;
+        }
+        Ok(())
     }
 }
 

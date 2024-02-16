@@ -11,6 +11,9 @@ pub struct ResetCommand {
     /// Whether to reset all registries.
     #[clap(long)]
     pub all: bool,
+    /// Whether to reset namespace mappings
+    #[clap(long)]
+    pub namespaces: bool,
 }
 
 impl ResetCommand {
@@ -23,11 +26,12 @@ impl ResetCommand {
             println!("resetting local data for all registries...");
             client.reset_registry(true).await?;
         } else {
-            println!(
-                "resetting local data for registry `{}`...",
-                client.home_url()
-            );
+            println!("resetting local data for registry `{}`...", client.url());
             client.reset_registry(false).await?;
+        }
+
+        if self.namespaces {
+            client.reset_namespaces().await?;
         }
 
         Ok(())
