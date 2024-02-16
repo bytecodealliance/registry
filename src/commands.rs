@@ -16,10 +16,12 @@ mod download;
 mod info;
 mod key;
 mod lock;
+mod login;
 mod publish;
 mod reset;
 mod update;
 
+use crate::keyring::get_auth_token;
 use crate::keyring::get_signing_key;
 
 pub use self::bundle::*;
@@ -30,6 +32,7 @@ pub use self::download::*;
 pub use self::info::*;
 pub use self::key::*;
 pub use self::lock::*;
+pub use self::login::*;
 pub use self::publish::*;
 pub use self::reset::*;
 pub use self::update::*;
@@ -40,6 +43,12 @@ pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
+    /// The name to use for the signing key.
+    #[clap(long, short, value_name = "TOKEN_NAME", default_value = "default")]
+    pub token_name: String,
+    /// The path to the signing key file.
+    #[clap(long, value_name = "TOKEN_FILE", env = "WARG_AUTH_TOKEN_FILE")]
+    pub token_file: Option<PathBuf>,
     /// The name to use for the signing key.
     #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
     pub key_name: String,
@@ -95,6 +104,21 @@ impl CommonOptions {
                 .with_context(|| format!("failed to parse key from {file:?}"))
         } else {
             get_signing_key(registry_url, &self.key_name)
+        }
+    }
+    /// Gets the auth token for the given registry URL.
+    pub fn auth_token(&self) -> Result<Option<String>> {
+        if let Some(file) = &self.token_file {
+            Ok(Some(
+                std::fs::read_to_string(file)
+                    .with_context(|| format!("failed to read key from {file:?}"))?
+                    .trim_end()
+                    .to_string(),
+            ))
+        } else if let Some(reg) = &self.registry {
+            get_auth_token(&RegistryUrl::new(reg)?, &self.token_name).map(|tok| Some(tok))
+        } else {
+            Ok(None)
         }
     }
 }

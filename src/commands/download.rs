@@ -23,12 +23,16 @@ impl DownloadCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        let auth_token = self.common.auth_token()?;
+        client
+            .fetch_namespace(&auth_token, self.name.namespace())
+            .await?;
 
         println!("downloading package `{name}`...", name = self.name);
 
         let res = client
             .download(
+                &auth_token,
                 &self.name,
                 self.version.as_ref().unwrap_or(&VersionReq::STAR),
             )

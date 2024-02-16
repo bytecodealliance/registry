@@ -47,6 +47,7 @@ impl LockListBuilder {
     #[async_recursion]
     async fn parse_package<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
         &mut self,
+        auth_token: &Option<String>,
         client: &Client<R, C, N>,
         mut bytes: &[u8],
     ) -> Result<()> {
@@ -109,12 +110,12 @@ impl LockListBuilder {
                         let release = info.state.releases().last();
                         if let Some(r) = release {
                             if let Some(bytes) = self.release_bytes(r, client)? {
-                                self.parse_package(client, &bytes).await?;
+                                self.parse_package(auth_token, client, &bytes).await?;
                             }
                         }
                         self.lock_list.insert(import);
                     } else {
-                        client.download(&id, &VersionReq::STAR).await?;
+                        client.download(auth_token, &id, &VersionReq::STAR).await?;
                         if let Some(info) = client
                             .registry()
                             .load_package(client.get_warg_header(), &id)
@@ -123,7 +124,7 @@ impl LockListBuilder {
                             let release = info.state.releases().last();
                             if let Some(r) = release {
                                 if let Some(bytes) = self.release_bytes(r, client)? {
-                                    self.parse_package(client, &bytes).await?;
+                                    self.parse_package(auth_token, client, &bytes).await?;
                                 }
                             }
                             self.lock_list.insert(import);
@@ -155,6 +156,7 @@ impl LockListBuilder {
     #[async_recursion]
     pub async fn build_list<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
         &mut self,
+        auth_token: &Option<String>,
         client: &Client<R, C, N>,
         info: &PackageInfo,
     ) -> Result<()> {
@@ -165,7 +167,7 @@ impl LockListBuilder {
                 let path = client.content().content_location(content);
                 if let Some(p) = path {
                     let bytes = fs::read(p)?;
-                    self.parse_package(client, &bytes).await?;
+                    self.parse_package(auth_token, client, &bytes).await?;
                 }
             }
         }

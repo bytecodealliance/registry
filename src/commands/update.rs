@@ -19,12 +19,13 @@ impl UpdateCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
+        let auth_token = self.common.auth_token()?;
 
         println!("updating package logs to the latest available versions...");
         if self.all {
-            client.update_all().await?;
+            client.update_all(&auth_token).await?;
         } else {
-            client.update().await?;
+            client.update(&auth_token).await?;
         }
 
         Ok(())

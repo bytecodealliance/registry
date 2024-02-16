@@ -25,29 +25,38 @@ impl LockCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.package.namespace()).await?;
+        let auth_token = self.common.auth_token()?;
+        client
+            .fetch_namespace(&auth_token, self.package.namespace())
+            .await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client
             .registry()
             .load_package(client.get_warg_header(), &self.package)
             .await?
         {
-            Self::lock(client, &info).await?;
+            Self::lock(&auth_token, client, &info).await?;
         } else {
-            client.download(&self.package, &VersionReq::STAR).await?;
+            client
+                .download(&auth_token, &self.package, &VersionReq::STAR)
+                .await?;
             if let Some(info) = client
                 .registry()
                 .load_package(client.get_warg_header(), &self.package)
                 .await?
             {
-                Self::lock(client, &info).await?;
+                Self::lock(&auth_token, client, &info).await?;
             }
         }
         Ok(())
     }
 
-    async fn lock(client: FileSystemClient, info: &PackageInfo) -> Result<()> {
-        client.lock_component(info).await?;
+    async fn lock(
+        auth_token: &Option<String>,
+        client: FileSystemClient,
+        info: &PackageInfo,
+    ) -> Result<()> {
+        client.lock_component(&auth_token, info).await?;
         Ok(())
     }
 }
