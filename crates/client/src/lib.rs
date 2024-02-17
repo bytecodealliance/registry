@@ -100,11 +100,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(())
     }
 
-    // /// Gets the namespace map mutably
-    // pub fn namespace_map_mut(&mut self) -> &mut N {
-    //     &mut self.namespace_map
-    // }
-
     /// Gets the namespace map
     pub async fn reset_namespaces(&self) -> Result<()> {
         self.namespace_map.reset_namespaces().await?;
@@ -130,27 +125,33 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Check operator log for namespace mapping
-    pub async fn fetch_namespace(
+    pub async fn refresh_namespace(
         &mut self,
         auth_token: &Option<String>,
         namespace: &str,
     ) -> ClientResult<()> {
         self.update_checkpoint(auth_token, &self.api.latest_checkpoint().await?, vec![])
             .await?;
-        let operator = self.registry().load_operator(&None).await.unwrap();
-        if let Some(op) = operator {
+        let operator = self.registry().load_operator(&None).await?;
+        let operator_log_maps_namespace = if let Some(op) = operator {
             let namespace_state = op.state.namespace_state(namespace);
             if let Ok(Some(nm)) = namespace_state {
                 match nm {
-                    warg_protocol::operator::NamespaceState::Defined => {}
+                    warg_protocol::operator::NamespaceState::Defined => true,
                     warg_protocol::operator::NamespaceState::Imported { registry } => {
                         self.api
                             .map_warg_header(Some(HeaderValue::from_str(registry).unwrap()));
+
+                        true
                     }
                 }
+            } else {
+                false
             }
-        }
-        if self.api.get_warg_header().is_none() {
+        } else {
+            false
+        };
+        if !operator_log_maps_namespace {
             let map = self.namespace_map().load_namespace_map().await?;
             if let Some(map) = map {
                 let namespace = map.get(namespace);
@@ -295,7 +296,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     ///
     /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
     pub async fn publish(
-        &mut self,
+        &self,
         auth_token: &Option<String>,
         signing_key: &signing::PrivateKey,
     ) -> ClientResult<RecordId> {
@@ -474,6 +475,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .await?;
         Ok(())
     }
+
     /// Updates every package log in client storage to the latest registry checkpoint.
     pub async fn update(&self, auth_token: &Option<String>) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
@@ -573,7 +575,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the path within client storage of the package contents for
     /// the specified version.
     pub async fn download_exact(
-        &mut self,
+        &self,
         auth_token: &Option<String>,
         package: &PackageName,
         version: &Version,
@@ -642,7 +644,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .collect::<HashMap<_, _>>();
 
         loop {
-            let response: FetchLogsResponse = match self
+            // let response: FetchLogsResponse = match self
+            let response: FetchLogsResponse = self
                 .api
                 .fetch_logs(
                     FetchLogsRequest {
@@ -657,62 +660,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     auth_token,
                 )
                 .await
-            {
-                Ok(res) => res,
-                Err(api::ClientError::LogNotFoundWithHint(log_id, header)) => {
-                    let hint_reg = header.to_str().unwrap();
-                    let mut terms = hint_reg.split('=');
-                    let namespace = terms.next();
-                    let registry = terms.next();
-                    let resp = if let (Some(namespace), Some(registry)) = (namespace, registry) {
-                        print!(
-                                      "One of the packages you're requesting does not exist in the registry you're using.
-                      However, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
-                                  );
-                        std::io::Write::flush(&mut std::io::stdout()).expect("flush failed!");
-                        let mut buf = String::new();
-                        std::io::stdin().read_line(&mut buf).unwrap();
-                        let lowered = buf.to_lowercase();
-                        if lowered == "y" || lowered == "yes" {
-                            self.store_namespace(namespace.to_string(), registry.to_string())
-                                .await?;
-                            Some(
-                                self.api
-                                    .fetch_logs(
-                                        FetchLogsRequest {
-                                            log_length: checkpoint.log_length,
-                                            operator: operator
-                                                .head_fetch_token
-                                                .as_ref()
-                                                .map(|t| Cow::Borrowed(t.as_str())),
-                                            limit: None,
-                                            packages: Cow::Borrowed(&last_known),
-                                        },
-                                        auth_token,
-                                    )
-                                    .await?,
-                            )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    if let Some(resp) = resp {
-                        resp
-                    } else {
-                        return Err(ClientError::translate_log_not_found(
-                            api::ClientError::Fetch(FetchError::LogNotFound(log_id)),
-                            |id| packages.get(id).map(|p| p.name.clone()),
-                        ));
-                    }
-                }
-                Err(e) => {
-                    return Err(ClientError::translate_log_not_found(e, |id| {
+                .map_err(|e| {
+                    ClientError::translate_log_not_found(e, |id| {
                         packages.get(id).map(|p| p.name.clone())
-                    }))
-                }
-            };
+                    })
+                })?;
 
             for record in response.operator {
                 let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
@@ -1015,7 +967,7 @@ pub enum StorageLockResult<T> {
 impl FileSystemClient {
     /// Attempts to create a client for the given registry URL.
     ///
-    /// If the URL is `None`, the default URL is used; if there is no default
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
     /// URL, an error is returned.
     ///
     /// If a lock cannot be acquired for a storage directory, then
@@ -1052,7 +1004,7 @@ impl FileSystemClient {
 
     /// Creates a client for the given registry URL.
     ///
-    /// If the URL is `None`, the default URL is used; if there is no default
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
@@ -1086,9 +1038,9 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
-    /// No default registry server URL is configured.
-    #[error("no default registry server URL is configured")]
-    NoDefaultUrl,
+    /// No home registry registry server URL is configured.
+    #[error("no home registry registry server URL is configured")]
+    NoHomeRegistryUrl,
 
     /// Reset registry local state.
     #[error("reset registry state failed")]
@@ -1150,6 +1102,15 @@ pub enum ClientError {
     PackageDoesNotExist {
         /// The missing package.
         name: PackageName,
+    },
+
+    /// The package does not exist with hint.
+    #[error("package `{name}` does not exist")]
+    PackageDoesNotExistWithHint {
+        /// The missing package.
+        name: PackageName,
+        /// The registry hint
+        hint: HeaderValue,
     },
 
     /// The package version does not exist.
@@ -1245,6 +1206,14 @@ impl ClientError {
             | api::ClientError::Package(PackageError::LogNotFound(id)) => {
                 if let Some(name) = lookup(id) {
                     return Self::PackageDoesNotExist { name };
+                }
+            }
+            api::ClientError::LogNotFoundWithHint(log_id, hint) => {
+                if let Some(name) = lookup(log_id) {
+                    return Self::PackageDoesNotExistWithHint {
+                        name,
+                        hint: hint.clone(),
+                    };
                 }
             }
             _ => {}

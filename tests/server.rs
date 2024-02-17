@@ -84,9 +84,9 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     .await?;
 
     // Assert that the package can be downloaded
-    client.upsert([&name]).await?;
+    client.upsert(&None, [&name]).await?;
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(&None, &name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -109,7 +109,10 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client
+        .download(&None, &name, &"0.2.0".parse()?)
+        .await?
+        .is_none());
 
     Ok(())
 }
@@ -135,6 +138,7 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
     // Yank release
     let record_id = client
         .publish_with_info(
+            &None,
             &signing_key,
             PublishInfo {
                 name: name.clone(),
@@ -150,8 +154,10 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
         .await?;
 
     // Assert that the package is yanked
-    client.upsert([&name]).await?;
-    let opt = client.download(&name, &PACKAGE_VERSION.parse()?).await?;
+    client.upsert(&None, [&name]).await?;
+    let opt = client
+        .download(&None, &name, &PACKAGE_VERSION.parse()?)
+        .await?;
     assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
 }
@@ -174,9 +180,9 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     .await?;
 
     // Assert that the package can be downloaded
-    client.upsert([&name]).await?;
+    client.upsert(&None, [&name]).await?;
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(&None, &name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -199,7 +205,10 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client
+        .download(&None, &name, &"0.2.0".parse()?)
+        .await?
+        .is_none());
 
     Ok(())
 }
@@ -438,7 +447,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     )
     .await?;
 
-    client.upsert([&name]).await?;
+    client.upsert(&None, [&name]).await?;
     let package = client
         .registry()
         .load_package(client.get_warg_header(), &name)

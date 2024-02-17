@@ -6,7 +6,7 @@ use warg_client::{Config, RegistryUrl};
 /// Creates a new warg configuration file.
 #[derive(Args)]
 pub struct ConfigCommand {
-    /// The default registry URL to use.
+    /// The home registry URL to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
 

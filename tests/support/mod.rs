@@ -196,6 +196,7 @@ pub async fn publish(
 
     let record_id = client
         .publish_with_info(
+            &None,
             signing_key,
             PublishInfo {
                 name: name.clone(),

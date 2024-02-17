@@ -215,7 +215,7 @@ where
                 if let Some(info) = self
                     .client
                     .registry()
-                    .load_package(&self.client.get_warg_header(), &pkg_id)
+                    .load_package(self.client.get_warg_header(), &pkg_id)
                     .await?
                 {
                     let release = if parsed_imp.req != VersionReq::STAR {

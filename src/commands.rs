@@ -4,6 +4,10 @@ use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
+use warg_client::storage::ContentStorage;
+use warg_client::storage::NamespaceMapStorage;
+use warg_client::storage::RegistryStorage;
+use warg_client::Client;
 use warg_client::RegistryUrl;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::signing::PrivateKey;
@@ -120,5 +124,32 @@ impl CommonOptions {
         } else {
             Ok(None)
         }
+    }
+}
+
+/// Namespace mapping to store when retrying a command after receiving a hint header
+pub struct Retry {
+    namespace: String,
+    registry: String,
+}
+
+impl Retry {
+    /// New Retry
+    pub fn new(namespace: String, registry: String) -> Self {
+        Self {
+            namespace,
+            registry,
+        }
+    }
+
+    /// Map namespace using Retry information
+    pub async fn store_namespace<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+        &self,
+        client: &Client<R, C, N>,
+    ) -> Result<()> {
+        client
+            .store_namespace(self.namespace.clone(), self.registry.clone())
+            .await?;
+        Ok(())
     }
 }

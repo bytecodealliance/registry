@@ -165,8 +165,7 @@ impl WithWargHeader for RequestBuilder {
     type Client = Client;
     fn warg_header(self, registry_header: &Option<HeaderValue>) -> reqwest::RequestBuilder {
         if let Some(reg) = registry_header {
-            let registry_header = HeaderName::try_from(REGISTRY_HEADER_NAME).unwrap();
-            self.header(registry_header, reg)
+            self.header(REGISTRY_HEADER_NAME, reg)
         } else {
             self
         }
@@ -231,7 +230,7 @@ impl Client {
 
     /// Gets the latest checkpoints from registries.
     pub async fn latest_checkpoints(
-        &mut self,
+        &self,
         registries: impl Iterator<Item = &String>,
     ) -> Result<HashMap<String, SerdeEnvelope<TimestampedCheckpoint>>> {
         let mut timestamps = HashMap::new();
@@ -457,7 +456,7 @@ impl Client {
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(&self.get_warg_header())
+                .warg_header(self.get_warg_header())
                 .auth(auth_token)
                 .send()
                 .await?,

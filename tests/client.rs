@@ -42,6 +42,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     let name = PackageName::new(PACKAGE_NAME)?;
     let mut head = client
         .publish_with_info(
+            &None,
             &signing_key,
             PublishInfo {
                 name: name.clone(),
@@ -54,6 +55,7 @@ async fn client_incrementally_fetches() -> Result<()> {
     for i in 1..=RELEASE_COUNT {
         head = client
             .publish_with_info(
+                &None,
                 &signing_key,
                 PublishInfo {
                     name: name.clone(),
@@ -81,10 +83,10 @@ async fn client_incrementally_fetches() -> Result<()> {
     let client = create_client(&config)?;
 
     // Regression test: update on empty registry storage
-    client.update().await?;
+    client.update(&None).await?;
 
     // Fetch the package log
-    client.upsert([&name]).await?;
+    client.upsert(&None, [&name]).await?;
 
     // Ensure that the package is in the packages list
     let packages = client.registry().load_packages().await?;

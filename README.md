@@ -82,7 +82,7 @@ warg config --registry http://127.0.0.1:8090
 ```
 
 This creates a [`$CONFIG_DIR/warg/config.json`][config_dir] configuration file; 
-the configuration file will specify the default registry URL to use so that the
+the configuration file will specify the home registry URL to use so that the
 `--registry` option does not need to be specified for every command.
 
 Data downloaded by the client is stored in [`$CACHE_DIR/warg`][cache_dir] by 
@@ -156,7 +156,7 @@ warg publish revoke --name example:hello sha256:abc...
 
 ### Resetting and clearing local data
 
-To reset local data for the default registry:
+To reset local data for the home registry:
 ```
 warg reset
 ```
