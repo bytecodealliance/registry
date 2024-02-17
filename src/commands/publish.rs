@@ -1,4 +1,4 @@
-use super::CommonOptions;
+use super::{CommonOptions, Retry};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
@@ -83,13 +83,13 @@ pub enum PublishCommand {
 
 impl PublishCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         match self {
-            Self::Init(cmd) => cmd.exec().await,
-            Self::Release(cmd) => cmd.exec().await,
-            Self::Yank(cmd) => cmd.exec().await,
-            Self::Grant(cmd) => cmd.exec().await,
-            Self::Revoke(cmd) => cmd.exec().await,
+            Self::Init(cmd) => cmd.exec(retry).await,
+            Self::Release(cmd) => cmd.exec(retry).await,
+            Self::Yank(cmd) => cmd.exec(retry).await,
+            Self::Grant(cmd) => cmd.exec(retry).await,
+            Self::Revoke(cmd) => cmd.exec(retry).await,
             Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
@@ -116,10 +116,13 @@ pub struct PublishInitCommand {
 
 impl PublishInitCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.name.namespace()).await?;
 
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
@@ -191,10 +194,13 @@ pub struct PublishReleaseCommand {
 
 impl PublishReleaseCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -282,10 +288,13 @@ pub struct PublishYankCommand {
 
 impl PublishYankCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -364,10 +373,13 @@ pub struct PublishGrantCommand {
 
 impl PublishGrantCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -450,10 +462,13 @@ pub struct PublishRevokeCommand {
 
 impl PublishRevokeCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -526,7 +541,7 @@ impl PublishStartCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        client.refresh_namespace(self.name.namespace()).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
@@ -727,7 +742,7 @@ impl PublishWaitCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.name.namespace()).await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let record_id = RecordId::from(self.record_id);
 
         println!(

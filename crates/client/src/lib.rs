@@ -125,10 +125,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Check operator log for namespace mapping
-    pub async fn fetch_namespace(&mut self, namespace: &str) -> ClientResult<()> {
+    pub async fn refresh_namespace(&mut self, namespace: &str) -> ClientResult<()> {
         self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
             .await?;
-        let operator = self.registry().load_operator(&None).await.unwrap();
+        let operator = self.registry().load_operator(&None).await?;
         let operator_log_maps_namespace = if let Some(op) = operator {
             let namespace_state = op.state.namespace_state(namespace);
             if let Ok(Some(nm)) = namespace_state {
@@ -607,7 +607,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .collect::<HashMap<_, _>>();
 
         loop {
-            let response: FetchLogsResponse = match self
+            // let response: FetchLogsResponse = match self
+            let response: FetchLogsResponse = self
                 .api
                 .fetch_logs(FetchLogsRequest {
                     log_length: checkpoint.log_length,
@@ -619,59 +620,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     packages: Cow::Borrowed(&last_known),
                 })
                 .await
-            {
-                Ok(res) => res,
-                Err(api::ClientError::LogNotFoundWithHint(log_id, header)) => {
-                    let hint_reg = header.to_str().unwrap();
-                    let mut terms = hint_reg.split('=');
-                    let namespace = terms.next();
-                    let registry = terms.next();
-                    let resp = if let (Some(namespace), Some(registry)) = (namespace, registry) {
-                        print!(
-                                      "One of the packages you're requesting does not exist in the registry you're using.
-                      However, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
-                                  );
-                        std::io::Write::flush(&mut std::io::stdout()).expect("flush failed!");
-                        let mut buf = String::new();
-                        std::io::stdin().read_line(&mut buf).unwrap();
-                        let lowered = buf.to_lowercase();
-                        if lowered == "y" || lowered == "yes" {
-                            self.store_namespace(namespace.to_string(), registry.to_string())
-                                .await?;
-                            Some(
-                                self.api
-                                    .fetch_logs(FetchLogsRequest {
-                                        log_length: checkpoint.log_length,
-                                        operator: operator
-                                            .head_fetch_token
-                                            .as_ref()
-                                            .map(|t| Cow::Borrowed(t.as_str())),
-                                        limit: None,
-                                        packages: Cow::Borrowed(&last_known),
-                                    })
-                                    .await?,
-                            )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    if let Some(resp) = resp {
-                        resp
-                    } else {
-                        return Err(ClientError::translate_log_not_found(
-                            api::ClientError::Fetch(FetchError::LogNotFound(log_id)),
-                            |id| packages.get(id).map(|p| p.name.clone()),
-                        ));
-                    }
-                }
-                Err(e) => {
-                    return Err(ClientError::translate_log_not_found(e, |id| {
+                .map_err(|e| {
+                    ClientError::translate_log_not_found(e, |id| {
                         packages.get(id).map(|p| p.name.clone())
-                    }))
-                }
-            };
+                    })
+                })?;
 
             for record in response.operator {
                 let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
@@ -1096,6 +1049,15 @@ pub enum ClientError {
         name: PackageName,
     },
 
+    /// The package does not exist with hint.
+    #[error("package `{name}` does not exist")]
+    PackageDoesNotExistWithHint {
+        /// The missing package.
+        name: PackageName,
+        /// The registry hint
+        hint: HeaderValue,
+    },
+
     /// The package version does not exist.
     #[error("version `{version}` of package `{name}` does not exist")]
     PackageVersionDoesNotExist {
@@ -1189,6 +1151,14 @@ impl ClientError {
             | api::ClientError::Package(PackageError::LogNotFound(id)) => {
                 if let Some(name) = lookup(id) {
                     return Self::PackageDoesNotExist { name };
+                }
+            }
+            api::ClientError::LogNotFoundWithHint(log_id, hint) => {
+                if let Some(name) = lookup(log_id) {
+                    return Self::PackageDoesNotExistWithHint {
+                        name,
+                        hint: hint.clone(),
+                    };
                 }
             }
             _ => {}

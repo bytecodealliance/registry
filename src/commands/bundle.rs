@@ -1,4 +1,4 @@
-use super::CommonOptions;
+use super::{CommonOptions, Retry};
 use anyhow::{bail, Result};
 use clap::Args;
 use semver::VersionReq;
@@ -18,10 +18,13 @@ pub struct BundleCommand {
 
 impl BundleCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        client.fetch_namespace(self.package.namespace()).await?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?
+        }
+        client.refresh_namespace(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client
             .registry()

@@ -165,8 +165,7 @@ impl WithWargHeader for RequestBuilder {
     type Client = Client;
     fn warg_header(self, registry_header: &Option<HeaderValue>) -> reqwest::RequestBuilder {
         if let Some(reg) = registry_header {
-            let registry_header = HeaderName::try_from(REGISTRY_HEADER_NAME).unwrap();
-            self.header(registry_header, reg)
+            self.header(REGISTRY_HEADER_NAME, reg)
         } else {
             self
         }
