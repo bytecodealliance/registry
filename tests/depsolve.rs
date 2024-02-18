@@ -77,17 +77,14 @@ async fn depsolve() -> Result<()> {
         )
         .await?;
 
-    client.update(&None).await?;
+    client.update().await?;
     client
-        .upsert(
-            &None,
-            [
-                &PackageName::new("test:add")?,
-                &PackageName::new("test:inc")?,
-                &PackageName::new("test:five")?,
-                &PackageName::new("test:meet")?,
-            ],
-        )
+        .upsert([
+            &PackageName::new("test:add")?,
+            &PackageName::new("test:inc")?,
+            &PackageName::new("test:five")?,
+            &PackageName::new("test:meet")?,
+        ])
         .await?;
 
     let info = client
@@ -96,13 +93,13 @@ async fn depsolve() -> Result<()> {
         .await?
         .context("package does not exist in client storage")?;
 
-    let locked_bytes = client.lock_component(&None, &info).await?;
+    let locked_bytes = client.lock_component(&info).await?;
     let expected_locked = wat::parse_file("tests/components/meet_locked.wat")?;
     assert_eq!(
         wasmprinter::print_bytes(&locked_bytes)?,
         wasmprinter::print_bytes(expected_locked)?
     );
-    let bundled_bytes = client.bundle_component(&None, &info).await?;
+    let bundled_bytes = client.bundle_component(&info).await?;
     let expected_bundled = wat::parse_file("tests/components/meet_bundled.wat")?;
     assert_eq!(
         wasmprinter::print_bytes(bundled_bytes)?,
@@ -132,7 +129,6 @@ async fn publish_package(
         .await?;
     let mut head = client
         .publish_with_info(
-            &None,
             signing_key,
             PublishInfo {
                 name: name.clone(),
@@ -146,7 +142,6 @@ async fn publish_package(
         .await?;
     head = client
         .publish_with_info(
-            &None,
             signing_key,
             PublishInfo {
                 name: name.clone(),

@@ -43,7 +43,7 @@ pub fn test_signing_key() -> PrivateKey {
 }
 
 pub fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
-    match FileSystemClient::try_new_with_config(None, config)? {
+    match FileSystemClient::try_new_with_config(None, config, None)? {
         StorageLockResult::Acquired(client) => Ok(client),
         _ => bail!("failed to acquire storage lock"),
     }
@@ -196,7 +196,6 @@ pub async fn publish(
 
     let record_id = client
         .publish_with_info(
-            &None,
             signing_key,
             PublishInfo {
                 name: name.clone(),

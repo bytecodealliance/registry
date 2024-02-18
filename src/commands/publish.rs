@@ -119,13 +119,10 @@ impl PublishInitCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
 
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
@@ -140,7 +137,6 @@ impl PublishInitCommand {
             Some(entry) => {
                 let record_id = client
                     .publish_with_info(
-                        &auth_token,
                         &signing_key,
                         PublishInfo {
                             name: self.name.clone(),
@@ -201,13 +197,10 @@ impl PublishReleaseCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -239,7 +232,6 @@ impl PublishReleaseCommand {
             Some(entry) => {
                 let record_id = client
                     .publish_with_info(
-                        &auth_token,
                         &signing_key,
                         PublishInfo {
                             name: self.name.clone(),
@@ -299,13 +291,10 @@ impl PublishYankCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -321,7 +310,6 @@ impl PublishYankCommand {
             Some(entry) => {
                 let record_id = client
                     .publish_with_info(
-                        &auth_token,
                         &signing_key,
                         PublishInfo {
                             name: self.name.clone(),
@@ -388,13 +376,10 @@ impl PublishGrantCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -412,7 +397,6 @@ impl PublishGrantCommand {
             Some(entry) => {
                 let record_id = client
                     .publish_with_info(
-                        &auth_token,
                         &signing_key,
                         PublishInfo {
                             name: self.name.clone(),
@@ -481,13 +465,10 @@ impl PublishRevokeCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let signing_key = if let Some(nm) = client.get_warg_header() {
             self.common.signing_key(&RegistryUrl::new(nm.to_str()?)?)?
         } else {
@@ -505,7 +486,6 @@ impl PublishRevokeCommand {
             Some(entry) => {
                 let record_id = client
                     .publish_with_info(
-                        &auth_token,
                         &signing_key,
                         PublishInfo {
                             name: self.name.clone(),
@@ -561,10 +541,7 @@ impl PublishStartCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
@@ -687,7 +664,6 @@ impl PublishSubmitCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -697,9 +673,7 @@ impl PublishSubmitCommand {
                 );
 
                 let signing_key = self.common.signing_key(client.url())?;
-                let record_id = client
-                    .publish_with_info(&auth_token, &signing_key, info.clone())
-                    .await?;
+                let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
 
                 client.registry().store_publish(None).await?;
 
@@ -768,10 +742,7 @@ impl PublishWaitCommand {
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
-        client
-            .refresh_namespace(&auth_token, self.name.namespace())
-            .await?;
+        client.refresh_namespace(self.name.namespace()).await?;
         let record_id = RecordId::from(self.record_id);
 
         println!(

@@ -44,6 +44,7 @@ wasm-encoder.workspace = true
 wasmprinter = "0.2.75"
 sha256 = "1.4.0"
 ptree = { workspace = true }
+secrecy= { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52"

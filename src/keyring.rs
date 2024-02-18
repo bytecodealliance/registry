@@ -2,6 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use keyring::Entry;
+use secrecy::{self, Secret};
 use warg_client::RegistryUrl;
 use warg_crypto::signing::PrivateKey;
 
@@ -12,10 +13,10 @@ pub fn get_auth_token_entry(registry_url: &RegistryUrl, token_name: &str) -> Res
 }
 
 /// Gets the auth token
-pub fn get_auth_token(registry_url: &RegistryUrl, token_name: &str) -> Result<String> {
-    let entry = get_signing_key_entry(registry_url, token_name)?;
+pub fn get_auth_token(registry_url: &RegistryUrl, token_name: &str) -> Result<Secret<String>> {
+    let entry = get_auth_token_entry(registry_url, token_name)?;
     match entry.get_password() {
-        Ok(secret) => Ok(secret),
+        Ok(secret) => Ok(Secret::from(secret)),
         Err(keyring::Error::NoEntry) => {
             bail!("no signing key found with name `{token_name}` of registry `{registry_url}`");
         }

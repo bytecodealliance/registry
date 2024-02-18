@@ -25,41 +25,32 @@ impl LockCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.package.namespace())
-            .await?;
+        client.refresh_namespace(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client
             .registry()
             .load_package(client.get_warg_header(), &self.package)
             .await?
         {
-            Self::lock(&auth_token, client, &info).await?;
+            Self::lock(client, &info).await?;
         } else {
-            client
-                .download(&auth_token, &self.package, &VersionReq::STAR)
-                .await?;
+            client.download(&self.package, &VersionReq::STAR).await?;
             if let Some(info) = client
                 .registry()
                 .load_package(client.get_warg_header(), &self.package)
                 .await?
             {
-                Self::lock(&auth_token, client, &info).await?;
+                Self::lock(client, &info).await?;
             }
         }
         Ok(())
     }
 
-    async fn lock(
-        auth_token: &Option<String>,
-        client: FileSystemClient,
-        info: &PackageInfo,
-    ) -> Result<()> {
-        client.lock_component(&auth_token, info).await?;
+    async fn lock(client: FileSystemClient, info: &PackageInfo) -> Result<()> {
+        client.lock_component(info).await?;
         Ok(())
     }
 }

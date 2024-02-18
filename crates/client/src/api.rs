@@ -7,6 +7,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
 };
+use secrecy::{ExposeSecret, Secret};
 use serde::de::DeserializeOwned;
 use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
@@ -157,12 +158,10 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 }
 
 trait WithWargHeader {
-    type Client;
     fn warg_header(self, registry_header: &Option<HeaderValue>) -> RequestBuilder;
 }
 
 impl WithWargHeader for RequestBuilder {
-    type Client = Client;
     fn warg_header(self, registry_header: &Option<HeaderValue>) -> reqwest::RequestBuilder {
         if let Some(reg) = registry_header {
             self.header(REGISTRY_HEADER_NAME, reg)
@@ -173,15 +172,13 @@ impl WithWargHeader for RequestBuilder {
 }
 
 trait WithAuth {
-    type Client;
-    fn auth(self, auth_token: &Option<String>) -> RequestBuilder;
+    fn auth(self, auth_token: &Option<Secret<String>>) -> RequestBuilder;
 }
 
 impl WithAuth for RequestBuilder {
-    type Client = Client;
-    fn auth(self, auth_token: &Option<String>) -> reqwest::RequestBuilder {
+    fn auth(self, auth_token: &Option<Secret<String>>) -> reqwest::RequestBuilder {
         if let Some(tok) = auth_token {
-            self.bearer_auth(tok)
+            self.bearer_auth(tok.expose_secret())
         } else {
             self
         }
@@ -194,17 +191,24 @@ pub struct Client {
     url: RegistryUrl,
     client: reqwest::Client,
     warg_header: Option<HeaderValue>,
+    auth_token: Option<Secret<String>>,
 }
 
 impl Client {
     /// Creates a new API client with the given URL.
-    pub fn new(url: impl IntoUrl) -> Result<Self> {
+    pub fn new(url: impl IntoUrl, auth_token: Option<Secret<String>>) -> Result<Self> {
         let url = RegistryUrl::new(url)?;
         Ok(Self {
             url,
             client: reqwest::Client::new(),
             warg_header: None,
+            auth_token,
         })
+    }
+
+    /// Gets auth token
+    pub fn auth_token(&self) -> &Option<Secret<String>> {
+        &self.auth_token
     }
 
     /// Gets the URL of the API client.
@@ -222,6 +226,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_header())
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -264,6 +269,7 @@ impl Client {
             .post(url)
             .json(&request)
             .warg_header(self.get_warg_header())
+            .auth(self.auth_token())
             .send()
             .await?;
         into_result::<_, MonitorError>(response).await
@@ -273,7 +279,6 @@ impl Client {
     pub async fn fetch_logs(
         &self,
         request: FetchLogsRequest<'_>,
-        auth_token: &Option<String>,
     ) -> Result<FetchLogsResponse, ClientError> {
         let url = self.url.join(paths::fetch_logs());
         tracing::debug!("fetching logs at `{url}`");
@@ -282,7 +287,7 @@ impl Client {
             .post(&url)
             .json(&request)
             .warg_header(self.get_warg_header())
-            .auth(auth_token)
+            .auth(self.auth_token())
             .send()
             .await?;
 
@@ -300,7 +305,6 @@ impl Client {
     /// Fetches package names from the registry.
     pub async fn fetch_package_names(
         &self,
-        auth_token: &Option<String>,
         request: FetchPackageNamesRequest<'_>,
     ) -> Result<FetchPackageNamesResponse, ClientError> {
         let url = self.url.join(paths::fetch_package_names());
@@ -310,7 +314,7 @@ impl Client {
             .client
             .post(url)
             .warg_header(self.get_warg_header())
-            .auth(auth_token)
+            .auth(self.auth_token())
             .json(&request)
             .send()
             .await?;
@@ -326,6 +330,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_header())
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -349,6 +354,7 @@ impl Client {
             .post(url)
             .json(&request)
             .warg_header(self.get_warg_header())
+            .auth(self.auth_token())
             .send()
             .await?;
         into_result::<_, PackageError>(response).await
@@ -367,6 +373,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_header())
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -385,6 +392,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_header())
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -394,7 +402,6 @@ impl Client {
     /// Downloads the content associated with a given record.
     pub async fn download_content(
         &self,
-        auth_token: &Option<String>,
         digest: &AnyHash,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
         tracing::debug!("requesting content download for digest `{digest}`");
@@ -414,7 +421,7 @@ impl Client {
                 .client
                 .get(url)
                 .warg_header(self.get_warg_header())
-                .auth(auth_token)
+                .auth(self.auth_token())
                 .send()
                 .await?;
             if !response.status().is_success() {
@@ -444,7 +451,6 @@ impl Client {
     /// Proves the inclusion of the given package log heads in the registry.
     pub async fn prove_inclusion(
         &self,
-        auth_token: &Option<String>,
         request: InclusionRequest,
         checkpoint: &Checkpoint,
         leafs: &[LogLeaf],
@@ -457,7 +463,7 @@ impl Client {
                 .post(url)
                 .json(&request)
                 .warg_header(self.get_warg_header())
-                .auth(auth_token)
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -469,7 +475,6 @@ impl Client {
     /// Proves consistency between two log roots.
     pub async fn prove_log_consistency(
         &self,
-        auth_token: &Option<String>,
         request: ConsistencyRequest,
         from_log_root: Cow<'_, AnyHash>,
         to_log_root: Cow<'_, AnyHash>,
@@ -480,7 +485,7 @@ impl Client {
                 .post(url)
                 .json(&request)
                 .warg_header(self.get_warg_header())
-                .auth(auth_token)
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )

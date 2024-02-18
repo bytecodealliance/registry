@@ -10,7 +10,7 @@ use warg_protocol::registry::PackageName;
 pub mod support;
 
 fn create_client(config: &Config) -> Result<FileSystemClient> {
-    match FileSystemClient::try_new_with_config(None, config)? {
+    match FileSystemClient::try_new_with_config(None, config, None)? {
         StorageLockResult::Acquired(client) => Ok(client),
         _ => bail!("failed to acquire storage lock"),
     }
@@ -42,7 +42,6 @@ async fn client_incrementally_fetches() -> Result<()> {
     let name = PackageName::new(PACKAGE_NAME)?;
     let mut head = client
         .publish_with_info(
-            &None,
             &signing_key,
             PublishInfo {
                 name: name.clone(),
@@ -55,7 +54,6 @@ async fn client_incrementally_fetches() -> Result<()> {
     for i in 1..=RELEASE_COUNT {
         head = client
             .publish_with_info(
-                &None,
                 &signing_key,
                 PublishInfo {
                     name: name.clone(),
@@ -83,10 +81,10 @@ async fn client_incrementally_fetches() -> Result<()> {
     let client = create_client(&config)?;
 
     // Regression test: update on empty registry storage
-    client.update(&None).await?;
+    client.update().await?;
 
     // Fetch the package log
-    client.upsert(&None, [&name]).await?;
+    client.upsert([&name]).await?;
 
     // Ensure that the package is in the packages list
     let packages = client.registry().load_packages().await?;

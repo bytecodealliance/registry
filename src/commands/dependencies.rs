@@ -31,20 +31,17 @@ impl DependenciesCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
-        client
-            .refresh_namespace(&auth_token, self.package.namespace())
-            .await?;
+        client.refresh_namespace(self.package.namespace()).await?;
 
         if let Some(info) = client
             .registry()
             .load_package(client.get_warg_header(), &self.package)
             .await?
         {
-            Self::print_package_info(&auth_token, &client, &info).await?;
+            Self::print_package_info(&client, &info).await?;
         }
 
         Ok(())
@@ -52,14 +49,13 @@ impl DependenciesCommand {
 
     #[async_recursion]
     async fn parse_deps<'a>(
-        auth_token: &Option<String>,
         id: &'a PackageName,
         version: VersionReq,
         client: &FileSystemClient,
         node: &mut TreeBuilder,
         parser: &mut DepsParser,
     ) -> Result<()> {
-        client.download(auth_token, id, &version).await?;
+        client.download(id, &version).await?;
 
         let package = client
             .registry()
@@ -84,15 +80,8 @@ impl DependenciesCommand {
                             match dep.kind {
                                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     let id = PackageName::new(dep.name)?;
-                                    Self::parse_deps(
-                                        auth_token,
-                                        &id,
-                                        dep.req,
-                                        client,
-                                        grand_child,
-                                        parser,
-                                    )
-                                    .await?;
+                                    Self::parse_deps(&id, dep.req, client, grand_child, parser)
+                                        .await?;
                                 }
                                 ImportKind::Interface(_) => {}
                             }
@@ -105,11 +94,7 @@ impl DependenciesCommand {
         Ok(())
     }
 
-    async fn print_package_info(
-        auth_token: &Option<String>,
-        client: &FileSystemClient,
-        info: &PackageInfo,
-    ) -> Result<()> {
+    async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
         let mut parser = DepsParser::new();
         let root_package = client
             .registry()
@@ -118,9 +103,7 @@ impl DependenciesCommand {
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
-                client
-                    .download(auth_token, &info.name, &VersionReq::STAR)
-                    .await?;
+                client.download(&info.name, &VersionReq::STAR).await?;
                 let mut tree = new_tree(info.name.namespace(), info.name.name(), &l.version);
                 if let ReleaseState::Released { content } = &l.state {
                     let path = client.content().content_location(content);
@@ -138,7 +121,6 @@ impl DependenciesCommand {
                             match dep.kind {
                                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                                     Self::parse_deps(
-                                        auth_token,
                                         &PackageName::new(dep.name)?,
                                         dep.req,
                                         client,

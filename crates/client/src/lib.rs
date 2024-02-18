@@ -5,6 +5,7 @@ use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use reqwest::header::HeaderValue;
 use reqwest::{Body, IntoUrl};
+use secrecy::Secret;
 use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::fs;
@@ -63,13 +64,25 @@ where
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
     /// Creates a new client for the given URL, registry storage, and
     /// content storage.
-    pub fn new(url: impl IntoUrl, registry: R, content: C, namespace_map: N) -> ClientResult<Self> {
+    pub fn new(
+        url: impl IntoUrl,
+        registry: R,
+        content: C,
+        namespace_map: N,
+        auth_token: Option<Secret<String>>,
+    ) -> ClientResult<Self> {
+        let api = api::Client::new(url, auth_token)?;
         Ok(Self {
             registry,
             content,
             namespace_map,
-            api: api::Client::new(url)?,
+            api,
         })
+    }
+
+    /// Gets auth token
+    pub fn auth_token(&self) -> &Option<Secret<String>> {
+        self.api.auth_token()
     }
 
     /// Gets the URL of the client.
@@ -125,12 +138,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Check operator log for namespace mapping
-    pub async fn refresh_namespace(
-        &mut self,
-        auth_token: &Option<String>,
-        namespace: &str,
-    ) -> ClientResult<()> {
-        self.update_checkpoint(auth_token, &self.api.latest_checkpoint().await?, vec![])
+    pub async fn refresh_namespace(&mut self, namespace: &str) -> ClientResult<()> {
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
             .await?;
         let operator = self.registry().load_operator(&None).await?;
         let operator_log_maps_namespace = if let Some(op) = operator {
@@ -172,13 +181,9 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Locks component
-    pub async fn lock_component(
-        &self,
-        auth_token: &Option<String>,
-        info: &PackageInfo,
-    ) -> ClientResult<Vec<u8>> {
+    pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
         let mut builder = LockListBuilder::default();
-        builder.build_list(auth_token, self, info).await?;
+        builder.build_list(self, info).await?;
         let top = Import {
             name: format!("{}:{}", info.name.namespace(), info.name.name()),
             req: VersionReq::STAR,
@@ -270,15 +275,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Bundles component
-    pub async fn bundle_component(
-        &self,
-        auth_token: &Option<String>,
-        info: &PackageInfo,
-    ) -> ClientResult<Vec<u8>> {
+    pub async fn bundle_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
         let mut bundler = Bundler::new(self);
         let path = PathBuf::from("./locked.wasm");
         let locked = if !path.is_file() {
-            self.lock_component(auth_token, info).await?
+            self.lock_component(info).await?
         } else {
             fs::read("./locked.wasm").map_err(|e| ClientError::Other(e.into()))?
         };
@@ -295,18 +296,14 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Returns the identifier of the record that was published.
     ///
     /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
-    pub async fn publish(
-        &self,
-        auth_token: &Option<String>,
-        signing_key: &signing::PrivateKey,
-    ) -> ClientResult<RecordId> {
+    pub async fn publish(&self, signing_key: &signing::PrivateKey) -> ClientResult<RecordId> {
         let info = self
             .registry
             .load_publish()
             .await?
             .ok_or(ClientError::NotPublishing)?;
 
-        let res = self.publish_with_info(auth_token, signing_key, info).await;
+        let res = self.publish_with_info(signing_key, info).await;
         self.registry.store_publish(None).await?;
         res
     }
@@ -320,7 +317,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
     pub async fn publish_with_info(
         &self,
-        auth_token: &Option<String>,
         signing_key: &signing::PrivateKey,
         mut info: PublishInfo,
     ) -> ClientResult<RecordId> {
@@ -348,12 +344,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         // If we're not initializing the package and a head was not explicitly specified,
         // updated to the latest checkpoint to get the latest known head.
         if !initializing && info.head.is_none() {
-            self.update_checkpoint(
-                auth_token,
-                &self.api.latest_checkpoint().await?,
-                [&mut package],
-            )
-            .await?;
+            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
+                .await?;
 
             info.head = package.state.head().as_ref().map(|h| h.digest.clone());
         }
@@ -468,37 +460,28 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Updates every package log in every client registry storage to the latest registry checkpoint.
-    pub async fn update_all(&mut self, auth_token: &Option<String>) -> ClientResult<()> {
+    pub async fn update_all(&mut self) -> ClientResult<()> {
         let packages = self.registry.load_all_packages().await?;
         let checkpoints = self.api.latest_checkpoints(packages.keys()).await?;
-        self.update_checkpoints(auth_token, checkpoints, packages)
-            .await?;
+        self.update_checkpoints(checkpoints, packages).await?;
         Ok(())
     }
 
     /// Updates every package log in client storage to the latest registry checkpoint.
-    pub async fn update(&self, auth_token: &Option<String>) -> ClientResult<()> {
+    pub async fn update(&self) -> ClientResult<()> {
         tracing::info!("updating all packages to latest checkpoint");
 
         let mut updating = self.registry.load_packages().await?;
 
-        self.update_checkpoint(
-            auth_token,
-            &self.api.latest_checkpoint().await?,
-            &mut updating,
-        )
-        .await?;
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
 
     /// Inserts or updates the logs of the specified packages in client storage to
     /// the latest registry checkpoint.
-    pub async fn upsert<'a, I>(
-        &self,
-        auth_token: &Option<String>,
-        packages: I,
-    ) -> Result<(), ClientError>
+    pub async fn upsert<'a, I>(&self, packages: I) -> Result<(), ClientError>
     where
         I: IntoIterator<Item = &'a PackageName>,
         I::IntoIter: ExactSizeIterator,
@@ -516,12 +499,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             );
         }
 
-        self.update_checkpoint(
-            auth_token,
-            &self.api.latest_checkpoint().await?,
-            &mut updating,
-        )
-        .await?;
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
+            .await?;
 
         Ok(())
     }
@@ -541,12 +520,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// the resolved version.
     pub async fn download(
         &self,
-        auth_token: &Option<String>,
         name: &PackageName,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
         tracing::info!("downloading package `{name}` with requirement `{requirement}`");
-        let info = self.fetch_package(auth_token, name).await?;
+        let info = self.fetch_package(name).await?;
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -554,7 +532,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     .content()
                     .context("invalid state: not yanked but missing content")?
                     .clone();
-                let path = self.download_content(auth_token, &digest).await?;
+                let path = self.download_content(&digest).await?;
                 Ok(Some(PackageDownload {
                     version: release.version.clone(),
                     digest,
@@ -576,12 +554,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// the specified version.
     pub async fn download_exact(
         &self,
-        auth_token: &Option<String>,
         package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
         tracing::info!("downloading version {version} of package `{package}`");
-        let info = self.fetch_package(auth_token, package).await?;
+        let info = self.fetch_package(package).await?;
 
         let release =
             info.state
@@ -601,14 +578,13 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(PackageDownload {
             version: version.clone(),
             digest: digest.clone(),
-            path: self.download_content(auth_token, digest).await?,
+            path: self.download_content(digest).await?,
         })
     }
 
     /// Update checkpoint for list of packages
     async fn update_checkpoint<'a>(
         &self,
-        auth_token: &Option<String>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
@@ -644,21 +620,17 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .collect::<HashMap<_, _>>();
 
         loop {
-            // let response: FetchLogsResponse = match self
             let response: FetchLogsResponse = self
                 .api
-                .fetch_logs(
-                    FetchLogsRequest {
-                        log_length: checkpoint.log_length,
-                        operator: operator
-                            .head_fetch_token
-                            .as_ref()
-                            .map(|t| Cow::Borrowed(t.as_str())),
-                        limit: None,
-                        packages: Cow::Borrowed(&last_known),
-                    },
-                    auth_token,
-                )
+                .fetch_logs(FetchLogsRequest {
+                    log_length: checkpoint.log_length,
+                    operator: operator
+                        .head_fetch_token
+                        .as_ref()
+                        .map(|t| Cow::Borrowed(t.as_str())),
+                    limit: None,
+                    packages: Cow::Borrowed(&last_known),
+                })
                 .await
                 .map_err(|e| {
                     ClientError::translate_log_not_found(e, |id| {
@@ -772,7 +744,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(
-                    auth_token,
                     InclusionRequest {
                         log_length: checkpoint.log_length,
                         leafs: leaf_indices,
@@ -801,7 +772,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 Ordering::Less => {
                     self.api
                         .prove_log_consistency(
-                            auth_token,
                             ConsistencyRequest {
                                 from: from_log_length,
                                 to: to_log_length,
@@ -850,7 +820,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
     async fn update_checkpoints<'a>(
         &mut self,
-        auth_token: &Option<String>,
         ts_checkpoints: HashMap<std::string::String, SerdeEnvelope<TimestampedCheckpoint>>,
         mut packages: HashMap<String, Vec<PackageInfo>>,
     ) -> Result<(), ClientError> {
@@ -862,7 +831,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             }
             let mut packages = packages.get_mut(&name.clone());
             if let Some(pkgs) = &mut packages {
-                self.update_checkpoint(auth_token, &ts_checkpoint, pkgs.as_mut_slice())
+                self.update_checkpoint(&ts_checkpoint, pkgs.as_mut_slice())
                     .await?;
             }
         }
@@ -870,11 +839,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(())
     }
 
-    async fn fetch_package(
-        &self,
-        auth_token: &Option<String>,
-        name: &PackageName,
-    ) -> Result<PackageInfo, ClientError> {
+    async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
         match self
             .registry
             .load_package(self.get_warg_header(), name)
@@ -886,12 +851,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             }
             None => {
                 let mut info = PackageInfo::new(name.clone());
-                self.update_checkpoint(
-                    auth_token,
-                    &self.api.latest_checkpoint().await?,
-                    [&mut info],
-                )
-                .await?;
+                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
+                    .await?;
 
                 Ok(info)
             }
@@ -924,11 +885,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     ///
     /// If the content already exists in client storage, the existing path
     /// is returned.
-    pub async fn download_content(
-        &self,
-        auth_token: &Option<String>,
-        digest: &AnyHash,
-    ) -> Result<PathBuf, ClientError> {
+    pub async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
@@ -937,7 +894,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             None => {
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(auth_token, digest).await?),
+                        Box::pin(self.api.download_content(digest).await?),
                         Some(digest),
                     )
                     .await?;
@@ -976,6 +933,7 @@ impl FileSystemClient {
     pub fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
+        auth_token: Option<Secret<String>>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
             registry_url: url,
@@ -999,6 +957,7 @@ impl FileSystemClient {
             packages,
             content,
             namespace_map,
+            auth_token,
         )?))
     }
 
@@ -1008,7 +967,11 @@ impl FileSystemClient {
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
-    pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
+    pub fn new_with_config(
+        url: Option<&str>,
+        config: &Config,
+        auth_token: Option<Secret<String>>,
+    ) -> Result<Self, ClientError> {
         let StoragePaths {
             registry_url,
             registries_dir,
@@ -1020,6 +983,7 @@ impl FileSystemClient {
             FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
+            auth_token,
         )
     }
 }

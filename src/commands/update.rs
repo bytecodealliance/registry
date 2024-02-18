@@ -19,16 +19,15 @@ impl UpdateCommand {
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
         let mut client = self.common.create_client(&config)?;
-        let auth_token = self.common.auth_token()?;
         if let Some(retry) = retry {
             retry.store_namespace(&client).await?
         }
 
         println!("updating package logs to the latest available versions...");
         if self.all {
-            client.update_all(&auth_token).await?;
+            client.update_all().await?;
         } else {
-            client.update(&auth_token).await?;
+            client.update().await?;
         }
 
         Ok(())
