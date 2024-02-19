@@ -18,10 +18,7 @@ impl UpdateCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config)?;
-        if let Some(retry) = retry {
-            retry.store_namespace(&client).await?
-        }
+        let mut client = self.common.create_client(&config, retry).await?;
 
         println!("updating package logs to the latest available versions...");
         if self.all {
