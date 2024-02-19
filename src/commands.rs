@@ -107,7 +107,7 @@ impl CommonOptions {
     }
 
     /// Gets the signing key for the given registry URL.
-    pub fn signing_key(&self, registry_url: &RegistryUrl) -> Result<PrivateKey> {
+    pub fn signing_key(&self, registry_url: &RegistryUrl, config: &Config) -> Result<PrivateKey> {
         if let Some(file) = &self.key_file {
             let key_str = std::fs::read_to_string(file)
                 .with_context(|| format!("failed to read key from {file:?}"))?
@@ -116,7 +116,7 @@ impl CommonOptions {
             PrivateKey::decode(key_str)
                 .with_context(|| format!("failed to parse key from {file:?}"))
         } else {
-            get_signing_key(registry_url, &self.key_name)
+            get_signing_key(&Some(registry_url.clone()), &self.key_name, config)
         }
     }
     /// Gets the auth token for the given registry URL.

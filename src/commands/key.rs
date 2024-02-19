@@ -5,8 +5,10 @@ use dialoguer::{theme::ColorfulTheme, Confirm};
 use keyring::{Entry, Error as KeyringError};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::RegistryUrl;
+use warg_client::{Config, RegistryUrl};
 use warg_crypto::signing::PrivateKey;
+
+use super::CommonOptions;
 
 /// Manage signing keys for interacting with a registry.
 #[derive(Args)]
@@ -48,35 +50,34 @@ struct KeyringEntryArgs {
     pub name: String,
     /// The URL of the registry to create a signing key for.
     #[clap(value_name = "URL")]
-    pub url: RegistryUrl,
+    pub url: Option<RegistryUrl>,
 }
 
 impl KeyringEntryArgs {
-    fn get_entry(&self) -> Result<Entry> {
-        get_signing_key_entry(&self.url, &self.name)
+    fn get_entry(&self, config: &Config) -> Result<Entry> {
+        get_signing_key_entry(&self.url, &self.name, config)
     }
 
-    fn get_key(&self) -> Result<PrivateKey> {
-        get_signing_key(&self.url, &self.name)
+    fn get_key(&self, config: &Config) -> Result<PrivateKey> {
+        get_signing_key(&self.url, &self.name, config)
     }
 
-    fn set_entry(&self, key: &PrivateKey) -> Result<()> {
-        set_signing_key(&self.url, &self.name, key)
+    fn set_entry(&self, key: &PrivateKey, config: &mut Config) -> Result<()> {
+        set_signing_key(&self.url, &self.name, key, config)
     }
 
-    fn delete_entry(&self) -> Result<()> {
-        delete_signing_key(&self.url, &self.name)
+    fn delete_entry(&self, config: &Config) -> Result<()> {
+        delete_signing_key(&self.url, &self.name, config)
     }
 }
 
 impl std::fmt::Display for KeyringEntryArgs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "`{name}` for registry `{url}`",
-            name = self.name,
-            url = self.url
-        )
+        if let Some(url) = &self.url {
+            write!(f, "`{name}` for registry `{url}`", name = self.name,)
+        } else {
+            write!(f, "{name}", name = self.name)
+        }
     }
 }
 
@@ -85,23 +86,34 @@ impl std::fmt::Display for KeyringEntryArgs {
 pub struct KeyNewCommand {
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
 }
 
 impl KeyNewCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let entry = self.keyring_entry.get_entry()?;
+        let config = &mut self.common.read_config()?;
+
+        let entry = self.keyring_entry.get_entry(config)?;
 
         match entry.get_password() {
             Err(KeyringError::NoEntry) => {
                 // no entry exists, so we can continue
             }
             Ok(_) | Err(KeyringError::Ambiguous(_)) => {
-                bail!(
-                    "a signing key `{name}` already exists for registry `{url}`",
-                    name = self.keyring_entry.name,
-                    url = self.keyring_entry.url
-                );
+                if let Some(url) = self.keyring_entry.url {
+                    bail!(
+                        "a signing key `{name}` already exists for registry `{url}`",
+                        name = self.keyring_entry.name,
+                    );
+                } else {
+                    bail!(
+                        "a signing key `{name}` already exists",
+                        name = self.keyring_entry.name,
+                    );
+                }
             }
             Err(e) => {
                 bail!(
@@ -112,7 +124,7 @@ impl KeyNewCommand {
         }
 
         let key = SigningKey::random(&mut OsRng).into();
-        self.keyring_entry.set_entry(&key)?;
+        self.keyring_entry.set_entry(&key, config)?;
 
         Ok(())
     }
@@ -123,12 +135,16 @@ impl KeyNewCommand {
 pub struct KeyInfoCommand {
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
 }
 
 impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let private_key = self.keyring_entry.get_key()?;
+        let config = &self.common.read_config()?;
+        let private_key = self.keyring_entry.get_key(config)?;
         let public_key = private_key.public_key();
         println!("Key ID: {}", public_key.fingerprint());
         println!("Public Key: {public_key}");
@@ -141,18 +157,22 @@ impl KeyInfoCommand {
 pub struct KeySetCommand {
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
 }
 
 impl KeySetCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
+        let config = &mut self.common.read_config()?;
         let key_str =
             rpassword::prompt_password("input signing key (expected format is `<alg>:<base64>`): ")
                 .context("failed to read signing key")?;
         let key =
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
 
-        self.keyring_entry.set_entry(&key)?;
+        self.keyring_entry.set_entry(&key, config)?;
 
         println!(
             "signing key {keyring} was set successfully",
@@ -168,11 +188,15 @@ impl KeySetCommand {
 pub struct KeyDeleteCommand {
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
 }
 
 impl KeyDeleteCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
+        let config = &self.common.read_config()?;
         let prompt = format!(
             "are you sure you want to delete the signing key {entry}? ",
             entry = self.keyring_entry
@@ -182,16 +206,18 @@ impl KeyDeleteCommand {
             .with_prompt(prompt)
             .interact()?
         {
-            self.keyring_entry.delete_entry()?;
+            self.keyring_entry.delete_entry(&config)?;
             println!(
                 "signing key {entry} was deleted successfully",
                 entry = self.keyring_entry
             );
-        } else {
+        } else if let Some(url) = self.keyring_entry.url {
             println!(
                 "skipping deletion of signing key for registry `{url}`",
-                url = self.keyring_entry.url,
+                url = url
             );
+        } else {
+            println!("skipping deletion of signing key");
         }
 
         Ok(())

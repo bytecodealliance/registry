@@ -1,3 +1,4 @@
+use super::CommonOptions;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use std::path::PathBuf;
@@ -6,10 +7,13 @@ use warg_client::{Config, RegistryUrl};
 /// Creates a new warg configuration file.
 #[derive(Args)]
 pub struct ConfigCommand {
+    /// The common command options.
+    #[clap(flatten)]
+    pub common: CommonOptions,
+
     /// The home registry URL to use.
     #[clap(long, value_name = "URL")]
-    pub registry: Option<String>,
-
+    pub registry_url: Option<String>,
     /// The path to the registries directory to use.
     #[clap(long, value_name = "REGISTRIES")]
     pub registries_dir: Option<PathBuf>,
@@ -48,8 +52,10 @@ impl ConfigCommand {
             );
         }
 
-        let home_url = self
+        let home_url = &self
+            .common
             .registry
+            .clone()
             .map(RegistryUrl::new)
             .transpose()?
             .map(|u| u.to_string());
@@ -61,10 +67,11 @@ impl ConfigCommand {
         // the configuration file's directory.
         let cwd = std::env::current_dir().context("failed to determine current directory")?;
         let config = Config {
-            home_url,
+            home_url: home_url.clone(),
             registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
             namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
+            creds: self.common.read_config()?.creds,
         };
 
         config.write_to_file(&path)?;
