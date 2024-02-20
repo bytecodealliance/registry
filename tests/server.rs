@@ -441,7 +441,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     client.upsert([&name]).await?;
     let package = client
         .registry()
-        .load_package(client.get_warg_header(), &name)
+        .load_package(client.get_warg_registry(), &name)
         .await?
         .expect("expected the package to exist");
     package

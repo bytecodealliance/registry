@@ -103,7 +103,7 @@ impl LockListBuilder {
                     let id = PackageName::new(import.name.clone())?;
                     if let Some(info) = client
                         .registry()
-                        .load_package(client.get_warg_header(), &id)
+                        .load_package(client.api.get_warg_registry(), &id)
                         .await?
                     {
                         let release = info.state.releases().last();
@@ -117,7 +117,7 @@ impl LockListBuilder {
                         client.download(&id, &VersionReq::STAR).await?;
                         if let Some(info) = client
                             .registry()
-                            .load_package(client.get_warg_header(), &id)
+                            .load_package(client.api.get_warg_registry(), &id)
                             .await?
                         {
                             let release = info.state.releases().last();
@@ -213,7 +213,7 @@ where
                 if let Some(info) = self
                     .client
                     .registry()
-                    .load_package(self.client.get_warg_header(), &pkg_id)
+                    .load_package(self.client.api.get_warg_registry(), &pkg_id)
                     .await?
                 {
                     let release = if parsed_imp.req != VersionReq::STAR {
