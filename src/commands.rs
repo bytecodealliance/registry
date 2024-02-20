@@ -24,6 +24,7 @@ mod info;
 mod key;
 mod lock;
 mod login;
+mod logout;
 mod publish;
 mod reset;
 mod update;
@@ -40,6 +41,7 @@ pub use self::info::*;
 pub use self::key::*;
 pub use self::lock::*;
 pub use self::login::*;
+pub use self::logout::*;
 pub use self::publish::*;
 pub use self::reset::*;
 pub use self::update::*;
@@ -50,9 +52,6 @@ pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
-    /// The name to use for the auth token.
-    #[clap(long, short, value_name = "TOKEN_NAME", default_value = "default")]
-    pub token_name: String,
     /// The path to the auth token file.
     #[clap(long, value_name = "TOKEN_FILE", env = "WARG_AUTH_TOKEN_FILE")]
     pub token_file: Option<PathBuf>,
@@ -142,17 +141,14 @@ impl CommonOptions {
         if let Some(file) = &self.token_file {
             Ok(Some(Secret::from(
                 std::fs::read_to_string(file)
-                    .with_context(|| format!("failed to read key from {file:?}"))?
+                    .with_context(|| format!("failed to read auth token from {file:?}"))?
                     .trim_end()
                     .to_string(),
             )))
         } else {
-            let tok = get_auth_token(
-                &RegistryUrl::new(config.home_url.as_ref().unwrap())?,
-                &self.token_name,
-            )
-            .map(Some)?;
-            Ok(tok)
+            Ok(get_auth_token(&RegistryUrl::new(
+                config.home_url.as_ref().unwrap(),
+            )?)?)
         }
     }
 }

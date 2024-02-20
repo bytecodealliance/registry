@@ -80,11 +80,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         })
     }
 
-    /// Gets auth token
-    pub fn auth_token(&self) -> &Option<Secret<String>> {
-        self.api.auth_token()
-    }
-
     /// Gets the URL of the client.
     pub fn url(&self) -> &RegistryUrl {
         self.api.url()
