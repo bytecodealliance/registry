@@ -4,6 +4,12 @@ use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
+use std::str::FromStr;
+use warg_client::storage::ContentStorage;
+use warg_client::storage::NamespaceMapStorage;
+use warg_client::storage::RegistryDomain;
+use warg_client::storage::RegistryStorage;
+use warg_client::Client;
 use warg_client::RegistryUrl;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::signing::PrivateKey;
@@ -70,8 +76,13 @@ impl CommonOptions {
     }
 
     /// Creates the warg client to use.
-    pub fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
-        match FileSystemClient::try_new_with_config(self.registry.as_deref(), config)? {
+    pub async fn create_client(
+        &self,
+        config: &Config,
+        retry: Option<Retry>,
+    ) -> Result<FileSystemClient, ClientError> {
+        let client = match FileSystemClient::try_new_with_config(self.registry.as_deref(), config)?
+        {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {
                 println!(
@@ -81,11 +92,23 @@ impl CommonOptions {
 
                 FileSystemClient::new_with_config(self.registry.as_deref(), config)
             }
+        }?;
+        if let Some(retry) = retry {
+            retry.store_namespace(&client).await?;
         }
+        Ok(client)
     }
 
     /// Gets the signing key for the given registry URL.
-    pub fn signing_key(&self, registry_url: &RegistryUrl) -> Result<PrivateKey> {
+    pub fn signing_key<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+        &self,
+        client: &Client<R, C, N>,
+    ) -> Result<PrivateKey> {
+        let registry_url = if let Some(nm) = &client.get_warg_registry() {
+            RegistryUrl::new(nm.to_string())?
+        } else {
+            client.url().clone()
+        };
         if let Some(file) = &self.key_file {
             let key_str = std::fs::read_to_string(file)
                 .with_context(|| format!("failed to read key from {file:?}"))?
@@ -94,7 +117,37 @@ impl CommonOptions {
             PrivateKey::decode(key_str)
                 .with_context(|| format!("failed to parse key from {file:?}"))
         } else {
-            get_signing_key(registry_url, &self.key_name)
+            get_signing_key(&registry_url, &self.key_name)
         }
+    }
+}
+
+/// Namespace mapping to store when retrying a command after receiving a hint header
+pub struct Retry {
+    namespace: String,
+    registry: String,
+}
+
+impl Retry {
+    /// New Retry
+    pub fn new(namespace: String, registry: String) -> Self {
+        Self {
+            namespace,
+            registry,
+        }
+    }
+
+    /// Map namespace using Retry information
+    pub async fn store_namespace<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+        &self,
+        client: &Client<R, C, N>,
+    ) -> Result<()> {
+        client
+            .store_namespace(
+                self.namespace.clone(),
+                RegistryDomain::from_str(&self.registry)?,
+            )
+            .await?;
+        Ok(())
     }
 }

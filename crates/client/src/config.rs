@@ -67,15 +67,17 @@ pub struct StoragePaths {
     pub registries_dir: PathBuf,
     /// The path to the content storage directory.
     pub content_dir: PathBuf,
+    /// The path to the namespace map storage directory.
+    pub namespace_map_path: PathBuf,
 }
 
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
-    /// The default Warg registry server URL.
+    /// The home Warg registry server URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_url: Option<String>,
+    pub home_url: Option<String>,
 
     /// The path to the top-level directory where per-registry information is stored.
     ///
@@ -94,6 +96,15 @@ pub struct Config {
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_dir: Option<PathBuf>,
+
+    /// The path to the directory where namespace map is stored.
+    ///
+    /// This path is expected to be relative to the configuration file.
+    ///
+    /// If `None`, the default of `$CACHE_DIR/warg/namespaces` is used, where
+    /// `$CACHE_DIR` is the platform-specific cache directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace_map_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -154,13 +165,18 @@ impl Config {
         assert!(parent.is_absolute());
 
         let config = Config {
-            default_url: self.default_url.clone(),
+            home_url: self.home_url.clone(),
             registries_dir: self.registries_dir.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
             content_dir: self.content_dir.as_ref().map(|p| {
+                let p = normalize_path(parent.join(p).as_path());
+                assert!(p.is_absolute());
+                pathdiff::diff_paths(&p, &parent).unwrap()
+            }),
+            namespace_map_path: self.namespace_map_path.as_ref().map(|p| {
                 let p = normalize_path(parent.join(p).as_path());
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
@@ -237,22 +253,38 @@ impl Config {
             })
     }
 
+    /// Gets the path to the directory where namespace mapping is stored.
+    pub fn namespace_map_path(&self) -> Result<PathBuf> {
+        self.namespace_map_path
+            .as_ref()
+            .cloned()
+            .map(Ok)
+            .unwrap_or_else(|| {
+                CACHE_DIR
+                    .as_ref()
+                    .map(|p| p.join("warg/namespaces"))
+                    .ok_or_else(|| anyhow!("failed to determine operating system cache directory"))
+            })
+    }
+
     pub(crate) fn storage_paths_for_url(
         &self,
         url: Option<&str>,
     ) -> Result<StoragePaths, ClientError> {
         let registry_url = RegistryUrl::new(
-            url.or(self.default_url.as_deref())
-                .ok_or(ClientError::NoDefaultUrl)?,
+            url.or(self.home_url.as_deref())
+                .ok_or(ClientError::NoHomeRegistryUrl)?,
         )?;
 
         let label = registry_url.safe_label();
         let registries_dir = self.registries_dir()?.join(label);
         let content_dir = self.content_dir()?;
+        let namespace_map_path = self.namespace_map_path()?;
         Ok(StoragePaths {
             registry_url,
             registries_dir,
             content_dir,
+            namespace_map_path,
         })
     }
 }

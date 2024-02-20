@@ -1,4 +1,4 @@
-use super::CommonOptions;
+use super::{CommonOptions, Retry};
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
@@ -28,11 +28,16 @@ pub struct DependenciesCommand {
 
 impl DependenciesCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let mut client = self.common.create_client(&config, retry).await?;
+        client.refresh_namespace(self.package.namespace()).await?;
 
-        if let Some(info) = client.registry().load_package(&self.package).await? {
+        if let Some(info) = client
+            .registry()
+            .load_package(client.get_warg_registry(), &self.package)
+            .await?
+        {
             Self::print_package_info(&client, &info).await?;
         }
 
@@ -49,7 +54,10 @@ impl DependenciesCommand {
     ) -> Result<()> {
         client.download(id, &version).await?;
 
-        let package = client.registry().load_package(id).await?;
+        let package = client
+            .registry()
+            .load_package(client.get_warg_registry(), id)
+            .await?;
         if let Some(pkg) = package {
             let latest = pkg.state.releases().last();
             if let Some(l) = latest {
@@ -85,7 +93,10 @@ impl DependenciesCommand {
 
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
         let mut parser = DepsParser::new();
-        let root_package = client.registry().load_package(&info.name).await?;
+        let root_package = client
+            .registry()
+            .load_package(client.get_warg_registry(), &info.name)
+            .await?;
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {

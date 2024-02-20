@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 /// subject of the request. This header is only expected to be used if referring to a different
 /// registry than the host registry.
 pub const REGISTRY_HEADER_NAME: &str = "warg-registry";
+/// The HTTP response header name that specifies that the client should
+/// try another registry
+pub const REGISTRY_HINT_HEADER_NAME: &str = "warg-registry-hint";
 
 /// Represents the supported kinds of content sources.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

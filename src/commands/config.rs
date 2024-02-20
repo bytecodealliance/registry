@@ -6,7 +6,7 @@ use warg_client::{Config, RegistryUrl};
 /// Creates a new warg configuration file.
 #[derive(Args)]
 pub struct ConfigCommand {
-    /// The default registry URL to use.
+    /// The home registry URL to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
 
@@ -27,6 +27,10 @@ pub struct ConfigCommand {
     /// If not specified, the default of `$CONFIG_DIR/warg/config.json` is used.
     #[clap(value_name = "PATH")]
     pub path: Option<PathBuf>,
+
+    /// The path to the namespace map
+    #[clap(long, value_name = "NAMESPACE_PATH")]
+    pub namespace_path: Option<PathBuf>,
 }
 
 impl ConfigCommand {
@@ -44,7 +48,7 @@ impl ConfigCommand {
             );
         }
 
-        let default_url = self
+        let home_url = self
             .registry
             .map(RegistryUrl::new)
             .transpose()?
@@ -57,9 +61,10 @@ impl ConfigCommand {
         // the configuration file's directory.
         let cwd = std::env::current_dir().context("failed to determine current directory")?;
         let config = Config {
-            default_url,
+            home_url,
             registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
+            namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
         };
 
         config.write_to_file(&path)?;

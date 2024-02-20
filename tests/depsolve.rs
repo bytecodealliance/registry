@@ -3,8 +3,8 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use warg_client::{
     storage::{
-        ContentStorage, FileSystemContentStorage, FileSystemRegistryStorage, PublishEntry,
-        PublishInfo, RegistryStorage,
+        ContentStorage, FileSystemContentStorage, FileSystemNamespaceMapStorage,
+        FileSystemRegistryStorage, PublishEntry, PublishInfo, RegistryStorage,
     },
     Client,
 };
@@ -89,7 +89,7 @@ async fn depsolve() -> Result<()> {
 
     let info = client
         .registry()
-        .load_package(&PackageName::new("test:meet")?)
+        .load_package(client.get_warg_registry(), &PackageName::new("test:meet")?)
         .await?
         .context("package does not exist in client storage")?;
 
@@ -109,7 +109,11 @@ async fn depsolve() -> Result<()> {
 }
 
 async fn publish_package(
-    client: &Client<FileSystemRegistryStorage, FileSystemContentStorage>,
+    client: &Client<
+        FileSystemRegistryStorage,
+        FileSystemContentStorage,
+        FileSystemNamespaceMapStorage,
+    >,
     signing_key: &PrivateKey,
     name: &str,
     path: &str,

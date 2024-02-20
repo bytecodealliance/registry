@@ -7,3 +7,6 @@
 .cargo
 vendor/
 publish
+# Test generated files
+bundled.wasm
+locked.wasm
