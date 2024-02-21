@@ -9,6 +9,10 @@ license = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true}
 
+[features]
+default = []
+native-tls-vendored = ["reqwest/native-tls-vendored"]
+
 [dependencies]
 warg-crypto = { workspace = true }
 warg-protocol = { workspace = true }
