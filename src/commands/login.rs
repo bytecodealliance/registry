@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
+use dialoguer::{theme::ColorfulTheme, Password};
 use warg_client::RegistryUrl;
 
 use crate::keyring::set_auth_token;
@@ -40,8 +41,10 @@ impl KeyringEntryArgs {
 impl LoginCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let token = rpassword::prompt_password("Enter auth token:\n")
-            .context("failed to read auth token")?;
+        let token = Password::with_theme(&ColorfulTheme::default())
+            .with_prompt("Enter auth token")
+            .interact()
+            .context("failed to read token")?;
         self.keyring_entry
             .set_entry(self.common.read_config()?.home_url, &token)?;
         println!("auth token was set successfully",);

@@ -93,7 +93,7 @@ impl CommonOptions {
         let client = match FileSystemClient::try_new_with_config(
             self.registry.as_deref(),
             config,
-            self.auth_token(config)?.map(Secret::from),
+            self.auth_token(config)?,
         )? {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {
