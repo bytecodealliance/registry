@@ -1,19 +1,17 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::Args;
-use dialoguer::{theme::ColorfulTheme, Password};
 use warg_client::RegistryUrl;
 
-use crate::keyring::set_auth_token;
+use crate::keyring::delete_auth_token;
 
 use super::CommonOptions;
 
 /// Manage auth tokens for interacting with a registry.
 #[derive(Args)]
-pub struct LoginCommand {
+pub struct LogoutCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-
     /// The subcommand to execute.
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
@@ -21,33 +19,29 @@ pub struct LoginCommand {
 
 #[derive(Args)]
 struct KeyringEntryArgs {
-    /// The URL of the registry to store an auth token for.
+    /// The URL of the registry to delete an auth token for.
     #[clap(value_name = "URL")]
     pub url: Option<RegistryUrl>,
 }
 
 impl KeyringEntryArgs {
-    fn set_entry(&self, home_url: Option<String>, token: &str) -> Result<()> {
+    fn delete_entry(&self, home_url: Option<String>) -> Result<()> {
         if let Some(url) = &self.url {
-            set_auth_token(url, token)
+            delete_auth_token(url)
         } else if let Some(url) = &home_url {
-            set_auth_token(&RegistryUrl::new(url)?, token)
+            delete_auth_token(&RegistryUrl::new(url)?)
         } else {
             bail!("Please configure your home registry: warg config --registry <registry-url>")
         }
     }
 }
 
-impl LoginCommand {
+impl LogoutCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let token = Password::with_theme(&ColorfulTheme::default())
-            .with_prompt("Enter auth token")
-            .interact()
-            .context("failed to read token")?;
         self.keyring_entry
-            .set_entry(self.common.read_config()?.home_url, &token)?;
-        println!("auth token was set successfully",);
+            .delete_entry(self.common.read_config()?.home_url)?;
+        println!("auth token was deleted successfully",);
         Ok(())
     }
 }

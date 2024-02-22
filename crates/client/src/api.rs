@@ -36,7 +36,7 @@ use warg_transparency::{
     map::MapProofBundle,
 };
 
-use crate::registry_url::RegistryUrl;
+use crate::{registry_url::RegistryUrl, storage::RegistryDomain};
 /// Represents an error that occurred while communicating with the registry.
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -158,15 +158,15 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 }
 
 trait WithWargHeader {
-    fn warg_header(self, registry_header: &Option<HeaderValue>) -> RequestBuilder;
+    fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder>;
 }
 
 impl WithWargHeader for RequestBuilder {
-    fn warg_header(self, registry_header: &Option<HeaderValue>) -> reqwest::RequestBuilder {
+    fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder> {
         if let Some(reg) = registry_header {
-            self.header(REGISTRY_HEADER_NAME, reg)
+            Ok(self.header(REGISTRY_HEADER_NAME, HeaderValue::try_from(reg.clone())?))
         } else {
-            self
+            Ok(self)
         }
     }
 }
@@ -190,7 +190,7 @@ impl WithAuth for RequestBuilder {
 pub struct Client {
     url: RegistryUrl,
     client: reqwest::Client,
-    warg_header: Option<HeaderValue>,
+    warg_registry_header: Option<RegistryDomain>,
     auth_token: Option<Secret<String>>,
 }
 
@@ -201,7 +201,7 @@ impl Client {
         Ok(Self {
             url,
             client: reqwest::Client::new(),
-            warg_header: None,
+            warg_registry_header: None,
             auth_token,
         })
     }
@@ -225,7 +225,7 @@ impl Client {
         into_result::<_, FetchError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -247,6 +247,7 @@ impl Client {
                 self.client
                     .get(url)
                     .header(registry_header, header_val)
+                    .auth(self.auth_token())
                     .send()
                     .await?,
             )
@@ -268,7 +269,7 @@ impl Client {
             .client
             .post(url)
             .json(&request)
-            .warg_header(self.get_warg_header())
+            .warg_header(self.get_warg_registry())?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -286,7 +287,7 @@ impl Client {
             .client
             .post(&url)
             .json(&request)
-            .warg_header(self.get_warg_header())
+            .warg_header(self.get_warg_registry())?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -313,7 +314,7 @@ impl Client {
         let response = self
             .client
             .post(url)
-            .warg_header(self.get_warg_header())
+            .warg_header(self.get_warg_registry())?
             .auth(self.auth_token())
             .json(&request)
             .send()
@@ -329,7 +330,7 @@ impl Client {
         into_result::<_, LedgerError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -353,7 +354,7 @@ impl Client {
             .client
             .post(url)
             .json(&request)
-            .warg_header(self.get_warg_header())
+            .warg_header(self.get_warg_registry())?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -372,7 +373,7 @@ impl Client {
         into_result::<_, PackageError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -391,7 +392,7 @@ impl Client {
         into_result::<_, ContentError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -438,14 +439,14 @@ impl Client {
         Err(ClientError::AllSourcesFailed(digest.clone()))
     }
 
-    /// Map namespace
-    pub fn map_warg_header(&mut self, registry: Option<HeaderValue>) {
-        self.warg_header = registry;
+    /// Set warg-registry header value
+    pub fn set_warg_registry(&mut self, registry: Option<RegistryDomain>) {
+        self.warg_registry_header = registry;
     }
 
-    /// Get namespace registry
-    pub fn get_warg_header(&self) -> &Option<HeaderValue> {
-        &self.warg_header
+    /// Get warg-registry header value
+    pub fn get_warg_registry(&self) -> &Option<RegistryDomain> {
+        &self.warg_registry_header
     }
 
     /// Proves the inclusion of the given package log heads in the registry.
@@ -462,7 +463,7 @@ impl Client {
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -484,7 +485,7 @@ impl Client {
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(self.get_warg_header())
+                .warg_header(self.get_warg_registry())?
                 .auth(self.auth_token())
                 .send()
                 .await?,

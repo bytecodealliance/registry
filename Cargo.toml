@@ -42,7 +42,6 @@ wat = "1.0.85"
 wasmprinter = "0.2.78"
 keyring = "2.3.0"
 dialoguer = "0.11.0"
-rpassword = "7.3.1"
 itertools = "0.12.1"
 secrecy= { workspace = true }
 

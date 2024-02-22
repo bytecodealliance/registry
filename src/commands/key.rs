@@ -1,7 +1,7 @@
 use crate::keyring::{delete_signing_key, get_signing_key, get_signing_key_entry, set_signing_key};
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
-use dialoguer::{theme::ColorfulTheme, Confirm};
+use dialoguer::{theme::ColorfulTheme, Confirm, Password};
 use keyring::{Entry, Error as KeyringError};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
@@ -165,10 +165,10 @@ pub struct KeySetCommand {
 impl KeySetCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let config = &mut self.common.read_config()?;
-        let key_str =
-            rpassword::prompt_password("input signing key (expected format is `<alg>:<base64>`): ")
-                .context("failed to read signing key")?;
+        let key_str = Password::with_theme(&ColorfulTheme::default())
+            .with_prompt("input signing key (expected format is `<alg>:<base64>`): ")
+            .interact()
+            .context("failed to read signing key")?;
         let key =
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
 

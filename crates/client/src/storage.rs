@@ -1,12 +1,12 @@
 //! A module for client storage implementations.
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, pin::Pin, time::SystemTime};
+use std::{collections::HashMap, path::PathBuf, pin::Pin, str::FromStr, time::SystemTime};
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
     signing::{self, KeyID, PublicKey},
@@ -21,6 +21,53 @@ use warg_protocol::{
 mod fs;
 pub use fs::*;
 
+/// Registry domain used for warg header values
+#[derive(Clone)]
+pub struct RegistryDomain(String);
+
+// impl From<String> for RegistryDomain {
+//     fn from(value: String) -> Self {
+//         RegistryDomain(value)
+//     }
+// }
+
+impl FromStr for RegistryDomain {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+        Ok(RegistryDomain(s.to_string()))
+    }
+}
+
+impl ToString for RegistryDomain {
+    fn to_string(&self) -> String {
+        self.0.clone()
+    }
+}
+
+// impl TryFrom<HeaderValue> for RegistryName ...
+
+// impl From<RegistryDomain> for HeaderValue {
+// fn from(value: RegistryDomain) -> Self {
+//     HeaderValue::to_str(&value.to_string())
+// }
+// }
+impl TryFrom<RegistryDomain> for HeaderValue {
+    type Error = Error;
+
+    fn try_from(value: RegistryDomain) -> std::prelude::v1::Result<Self, Self::Error> {
+        Ok(HeaderValue::from_str(&value.to_string())?)
+    }
+}
+
+// impl TryInto<RegistryDomain> for HeaderValue {
+//     type Error = Error;
+
+//     fn try_into(self) -> std::result::Result<RegistryDomain, anyhow::Error> {
+//         // Ok(HeaderValue::from_str(&value.to_string())?)
+
+//     }
+// }
 /// Trait for registry storage implementations.
 ///
 /// Stores information such as package/operator logs and checkpoints
@@ -38,13 +85,13 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads most recent checkpoint
     async fn load_checkpoint(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
     ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
     /// Stores most recent checkpoint
     async fn store_checkpoint(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()>;
 
@@ -53,13 +100,13 @@ pub trait RegistryStorage: Send + Sync {
     /// Returns `Ok(None)` if the information is not present.
     async fn load_operator(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
     ) -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
     async fn store_operator(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
         operator: OperatorInfo,
     ) -> Result<()>;
 
@@ -74,14 +121,14 @@ pub trait RegistryStorage: Send + Sync {
     /// Returns `Ok(None)` if the information is not present.
     async fn load_package(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
         package: &PackageName,
     ) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
     async fn store_package(
         &self,
-        namespace_registry: &Option<HeaderValue>,
+        namespace_registry: &Option<RegistryDomain>,
         info: &PackageInfo,
     ) -> Result<()>;
 
@@ -144,7 +191,11 @@ pub trait NamespaceMapStorage: Send + Sync {
     /// Reset namespace mappings
     async fn reset_namespaces(&self) -> Result<()>;
     /// Store namespace mapping
-    async fn store_namespace(&self, namespace: String, registry_domain: String) -> Result<()>;
+    async fn store_namespace(
+        &self,
+        namespace: String,
+        registry_domain: RegistryDomain,
+    ) -> Result<()>;
 }
 
 /// Represents information about a registry operator.

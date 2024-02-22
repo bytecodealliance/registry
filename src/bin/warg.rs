@@ -5,7 +5,8 @@ use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
     BundleCommand, ClearCommand, ConfigCommand, DependenciesCommand, DownloadCommand, InfoCommand,
-    KeyCommand, LockCommand, LoginCommand, PublishCommand, ResetCommand, Retry, UpdateCommand,
+    KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand, Retry,
+    UpdateCommand,
 };
 use warg_client::ClientError;
 
@@ -36,6 +37,7 @@ enum WargCli {
     Reset(ResetCommand),
     Clear(ClearCommand),
     Login(LoginCommand),
+    Logout(LogoutCommand),
 }
 
 #[tokio::main]
@@ -57,6 +59,7 @@ async fn main() -> Result<()> {
         WargCli::Reset(cmd) => cmd.exec().await,
         WargCli::Clear(cmd) => cmd.exec().await,
         WargCli::Login(cmd) => cmd.exec().await,
+        WargCli::Logout(cmd) => cmd.exec().await,
     } {
         if let Some(e) = e.downcast_ref::<ClientError>() {
             describe_client_error_or_retry(e).await?;
@@ -145,6 +148,7 @@ async fn describe_client_error_or_retry(e: &ClientError) -> Result<()> {
                         WargCli::Reset(cmd) => cmd.exec().await,
                         WargCli::Clear(cmd) => cmd.exec().await,
                         WargCli::Login(cmd) => cmd.exec().await,
+                        WargCli::Logout(cmd) => cmd.exec().await,
                     } {
                         if let Some(e) = e.downcast_ref::<ClientError>() {
                             describe_client_error(e).await?;

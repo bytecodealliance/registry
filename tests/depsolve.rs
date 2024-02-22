@@ -89,7 +89,7 @@ async fn depsolve() -> Result<()> {
 
     let info = client
         .registry()
-        .load_package(client.get_warg_header(), &PackageName::new("test:meet")?)
+        .load_package(client.get_warg_registry(), &PackageName::new("test:meet")?)
         .await?
         .context("package does not exist in client storage")?;
 

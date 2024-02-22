@@ -30,15 +30,12 @@ impl DependenciesCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config)?;
-        if let Some(retry) = retry {
-            retry.store_namespace(&client).await?
-        }
+        let mut client = self.common.create_client(&config, retry).await?;
         client.refresh_namespace(self.package.namespace()).await?;
 
         if let Some(info) = client
             .registry()
-            .load_package(client.get_warg_header(), &self.package)
+            .load_package(client.get_warg_registry(), &self.package)
             .await?
         {
             Self::print_package_info(&client, &info).await?;
@@ -59,7 +56,7 @@ impl DependenciesCommand {
 
         let package = client
             .registry()
-            .load_package(client.get_warg_header(), id)
+            .load_package(client.get_warg_registry(), id)
             .await?;
         if let Some(pkg) = package {
             let latest = pkg.state.releases().last();
@@ -98,7 +95,7 @@ impl DependenciesCommand {
         let mut parser = DepsParser::new();
         let root_package = client
             .registry()
-            .load_package(client.get_warg_header(), &info.name)
+            .load_package(client.get_warg_registry(), &info.name)
             .await?;
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
