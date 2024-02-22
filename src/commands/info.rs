@@ -52,6 +52,7 @@ impl InfoCommand {
                     .for_each(Self::print_package_info);
             }
         }
+        Self::print_namespace_map(&client).await?;
 
         if self.namespaces {
             Self::print_namespace_map(&client).await?;

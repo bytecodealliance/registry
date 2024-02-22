@@ -39,7 +39,7 @@ mod memory;
 mod postgres;
 
 async fn test_initial_checkpoint(config: &Config) -> Result<()> {
-    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
     let ts_checkpoint = client.latest_checkpoint().await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
@@ -450,7 +450,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
         .expect("expected the package version to exist");
 
     // Look up the content URL for the record
-    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
     let ContentSourcesResponse { content_sources } = client.content_sources(&digest).await?;
     assert_eq!(content_sources.len(), 1);
     let sources = content_sources
@@ -511,7 +511,7 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
 }
 
 async fn test_get_ledger(config: &Config) -> Result<()> {
-    let client = api::Client::new(config.home_url.as_ref().unwrap())?;
+    let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
     let ts_checkpoint = client.latest_checkpoint().await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;

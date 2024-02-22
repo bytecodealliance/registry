@@ -5,6 +5,7 @@ use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use reqwest::header::HeaderValue;
 use reqwest::{Body, IntoUrl};
+use secrecy::Secret;
 use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::fs;
@@ -63,12 +64,19 @@ where
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
     /// Creates a new client for the given URL, registry storage, and
     /// content storage.
-    pub fn new(url: impl IntoUrl, registry: R, content: C, namespace_map: N) -> ClientResult<Self> {
+    pub fn new(
+        url: impl IntoUrl,
+        registry: R,
+        content: C,
+        namespace_map: N,
+        auth_token: Option<Secret<String>>,
+    ) -> ClientResult<Self> {
+        let api = api::Client::new(url, auth_token)?;
         Ok(Self {
             registry,
             content,
             namespace_map,
-            api: api::Client::new(url)?,
+            api,
         })
     }
 
@@ -138,7 +146,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             if let Ok(Some(nm)) = namespace_state {
                 if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
                     self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
+                        .set_warg_registry(Some(RegistryDomain::from_str(&registry)?));
                 }
                 true
             } else {
@@ -917,6 +925,7 @@ impl FileSystemClient {
     pub fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
+        auth_token: Option<Secret<String>>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
             registry_url: url,
@@ -940,6 +949,7 @@ impl FileSystemClient {
             packages,
             content,
             namespace_map,
+            auth_token,
         )?))
     }
 
@@ -949,7 +959,11 @@ impl FileSystemClient {
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
-    pub fn new_with_config(url: Option<&str>, config: &Config) -> Result<Self, ClientError> {
+    pub fn new_with_config(
+        url: Option<&str>,
+        config: &Config,
+        auth_token: Option<Secret<String>>,
+    ) -> Result<Self, ClientError> {
         let StoragePaths {
             registry_url,
             registries_dir,
@@ -961,6 +975,7 @@ impl FileSystemClient {
             FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
+            auth_token,
         )
     }
 }

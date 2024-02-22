@@ -7,6 +7,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
 };
+use secrecy::{ExposeSecret, Secret};
 use serde::de::DeserializeOwned;
 use std::{borrow::Cow, collections::HashMap};
 use thiserror::Error;
@@ -157,17 +158,29 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 }
 
 trait WithWargHeader {
-    type Client;
     fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder>;
 }
 
 impl WithWargHeader for RequestBuilder {
-    type Client = Client;
     fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder> {
         if let Some(reg) = registry_header {
             Ok(self.header(REGISTRY_HEADER_NAME, HeaderValue::try_from(reg.clone())?))
         } else {
             Ok(self)
+        }
+    }
+}
+
+trait WithAuth {
+    fn auth(self, auth_token: &Option<Secret<String>>) -> RequestBuilder;
+}
+
+impl WithAuth for RequestBuilder {
+    fn auth(self, auth_token: &Option<Secret<String>>) -> reqwest::RequestBuilder {
+        if let Some(tok) = auth_token {
+            self.bearer_auth(tok.expose_secret())
+        } else {
+            self
         }
     }
 }
@@ -178,17 +191,24 @@ pub struct Client {
     url: RegistryUrl,
     client: reqwest::Client,
     warg_registry_header: Option<RegistryDomain>,
+    auth_token: Option<Secret<String>>,
 }
 
 impl Client {
     /// Creates a new API client with the given URL.
-    pub fn new(url: impl IntoUrl) -> Result<Self> {
+    pub fn new(url: impl IntoUrl, auth_token: Option<Secret<String>>) -> Result<Self> {
         let url = RegistryUrl::new(url)?;
         Ok(Self {
             url,
             client: reqwest::Client::new(),
             warg_registry_header: None,
+            auth_token,
         })
+    }
+
+    /// Gets auth token
+    pub fn auth_token(&self) -> &Option<Secret<String>> {
+        &self.auth_token
     }
 
     /// Gets the URL of the API client.
@@ -206,6 +226,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -226,6 +247,7 @@ impl Client {
                 self.client
                     .get(url)
                     .header(registry_header, header_val)
+                    .auth(self.auth_token())
                     .send()
                     .await?,
             )
@@ -248,6 +270,7 @@ impl Client {
             .post(url)
             .json(&request)
             .warg_header(self.get_warg_registry())?
+            .auth(self.auth_token())
             .send()
             .await?;
         into_result::<_, MonitorError>(response).await
@@ -265,6 +288,7 @@ impl Client {
             .post(&url)
             .json(&request)
             .warg_header(self.get_warg_registry())?
+            .auth(self.auth_token())
             .send()
             .await?;
 
@@ -291,6 +315,7 @@ impl Client {
             .client
             .post(url)
             .warg_header(self.get_warg_registry())?
+            .auth(self.auth_token())
             .json(&request)
             .send()
             .await?;
@@ -306,6 +331,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -329,6 +355,7 @@ impl Client {
             .post(url)
             .json(&request)
             .warg_header(self.get_warg_registry())?
+            .auth(self.auth_token())
             .send()
             .await?;
         into_result::<_, PackageError>(response).await
@@ -347,6 +374,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -365,6 +393,7 @@ impl Client {
             self.client
                 .get(url)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -389,12 +418,7 @@ impl Client {
 
             tracing::debug!("downloading content `{digest}` from `{url}`");
 
-            let response = self
-                .client
-                .get(url)
-                .warg_header(self.get_warg_registry())?
-                .send()
-                .await?;
+            let response = self.client.get(url).send().await?;
             if !response.status().is_success() {
                 tracing::debug!(
                     "failed to download content `{digest}` from `{url}`: {status}",
@@ -434,6 +458,7 @@ impl Client {
                 .post(url)
                 .json(&request)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )
@@ -455,6 +480,7 @@ impl Client {
                 .post(url)
                 .json(&request)
                 .warg_header(self.get_warg_registry())?
+                .auth(self.auth_token())
                 .send()
                 .await?,
         )

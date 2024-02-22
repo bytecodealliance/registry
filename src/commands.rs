@@ -3,6 +3,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
+use secrecy::Secret;
 use std::path::PathBuf;
 use std::str::FromStr;
 use warg_client::storage::ContentStorage;
@@ -22,10 +23,13 @@ mod download;
 mod info;
 mod key;
 mod lock;
+mod login;
+mod logout;
 mod publish;
 mod reset;
 mod update;
 
+use crate::keyring::get_auth_token;
 use crate::keyring::get_signing_key;
 
 pub use self::bundle::*;
@@ -36,6 +40,8 @@ pub use self::download::*;
 pub use self::info::*;
 pub use self::key::*;
 pub use self::lock::*;
+pub use self::login::*;
+pub use self::logout::*;
 pub use self::publish::*;
 pub use self::reset::*;
 pub use self::update::*;
@@ -46,6 +52,9 @@ pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
+    /// The path to the auth token file.
+    #[clap(long, value_name = "TOKEN_FILE", env = "WARG_AUTH_TOKEN_FILE")]
+    pub token_file: Option<PathBuf>,
     /// The name to use for the signing key.
     #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
     pub key_name: String,
@@ -81,8 +90,11 @@ impl CommonOptions {
         config: &Config,
         retry: Option<Retry>,
     ) -> Result<FileSystemClient, ClientError> {
-        let client = match FileSystemClient::try_new_with_config(self.registry.as_deref(), config)?
-        {
+        let client = match FileSystemClient::try_new_with_config(
+            self.registry.as_deref(),
+            config,
+            self.auth_token(config)?,
+        )? {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {
                 println!(
@@ -90,7 +102,11 @@ impl CommonOptions {
                     path = path.display()
                 );
 
-                FileSystemClient::new_with_config(self.registry.as_deref(), config)
+                FileSystemClient::new_with_config(
+                    self.registry.as_deref(),
+                    config,
+                    self.auth_token(config)?.map(Secret::from),
+                )
             }
         }?;
         if let Some(retry) = retry {
@@ -118,6 +134,21 @@ impl CommonOptions {
                 .with_context(|| format!("failed to parse key from {file:?}"))
         } else {
             get_signing_key(&registry_url, &self.key_name)
+        }
+    }
+    /// Gets the auth token for the given registry URL.
+    pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
+        if let Some(file) = &self.token_file {
+            Ok(Some(Secret::from(
+                std::fs::read_to_string(file)
+                    .with_context(|| format!("failed to read auth token from {file:?}"))?
+                    .trim_end()
+                    .to_string(),
+            )))
+        } else {
+            Ok(get_auth_token(&RegistryUrl::new(
+                config.home_url.as_ref().unwrap(),
+            )?)?)
         }
     }
 }
