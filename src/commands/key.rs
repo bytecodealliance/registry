@@ -1,11 +1,11 @@
-use crate::keyring::{delete_signing_key, get_signing_key, get_signing_key_entry, set_signing_key};
+use crate::keyring::{delete_signing_key, get_signing_key, set_signing_key};
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
-use keyring::{Entry, Error as KeyringError};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::{Config, RegistryUrl};
+use std::collections::HashSet;
+use warg_client::Config;
 use warg_crypto::signing::PrivateKey;
 
 use super::CommonOptions;
@@ -43,49 +43,9 @@ pub enum KeySubcommand {
     Delete(KeyDeleteCommand),
 }
 
-#[derive(Args)]
-struct KeyringEntryArgs {
-    /// The name to use for the signing key.
-    #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
-    pub name: String,
-    /// The URL of the registry to create a signing key for.
-    #[clap(value_name = "URL")]
-    pub url: Option<RegistryUrl>,
-}
-
-impl KeyringEntryArgs {
-    fn get_entry(&self, config: &Config) -> Result<Entry> {
-        get_signing_key_entry(&self.url, &self.name, config)
-    }
-
-    fn get_key(&self, config: &Config) -> Result<PrivateKey> {
-        get_signing_key(&self.url, &self.name, config)
-    }
-
-    fn set_entry(&self, key: &PrivateKey, config: &mut Config) -> Result<()> {
-        set_signing_key(&self.url, &self.name, key, config)
-    }
-
-    fn delete_entry(&self, config: &Config) -> Result<()> {
-        delete_signing_key(&self.url, &self.name, config)
-    }
-}
-
-impl std::fmt::Display for KeyringEntryArgs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(url) = &self.url {
-            write!(f, "`{name}` for registry `{url}`", name = self.name,)
-        } else {
-            write!(f, "{name}", name = self.name)
-        }
-    }
-}
-
 /// Creates a new signing key for a registry in the local keyring.
 #[derive(Args)]
 pub struct KeyNewCommand {
-    #[clap(flatten)]
-    keyring_entry: KeyringEntryArgs,
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
@@ -95,37 +55,25 @@ impl KeyNewCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = &mut self.common.read_config()?;
-
-        let entry = self.keyring_entry.get_entry(config)?;
-
-        match entry.get_password() {
-            Err(KeyringError::NoEntry) => {
-                // no entry exists, so we can continue
-            }
-            Ok(_) | Err(KeyringError::Ambiguous(_)) => {
-                if let Some(url) = self.keyring_entry.url {
-                    bail!(
-                        "a signing key `{name}` already exists for registry `{url}`",
-                        name = self.keyring_entry.name,
-                    );
-                } else {
-                    bail!(
-                        "a signing key `{name}` already exists",
-                        name = self.keyring_entry.name,
-                    );
-                }
-            }
-            Err(e) => {
-                bail!(
-                    "failed to get signing key {entry}: {e}",
-                    entry = self.keyring_entry
-                );
-            }
-        }
-
         let key = SigningKey::random(&mut OsRng).into();
-        self.keyring_entry.set_entry(&key, config)?;
-
+        if config.keys.is_some() {
+            if let Some(ref reg) = self.common.registry {
+                config.keys.as_mut().unwrap().insert(reg.to_string());
+            } else {
+                config.keys.as_mut().unwrap().insert("default".to_string());
+            }
+        } else {
+            let mut keys = HashSet::new();
+            keys.insert("default".to_string());
+            config.keys = Some(keys);
+        };
+        set_signing_key(
+            &self.common.registry.clone(),
+            &key,
+            config.keys.as_mut().unwrap(),
+            config.home_url.clone(),
+        )?;
+        config.write_to_file(&Config::default_config_path()?)?;
         Ok(())
     }
 }
@@ -133,8 +81,6 @@ impl KeyNewCommand {
 /// Shows information about the signing key for a registry in the local keyring.
 #[derive(Args)]
 pub struct KeyInfoCommand {
-    #[clap(flatten)]
-    keyring_entry: KeyringEntryArgs,
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
@@ -144,19 +90,22 @@ impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = &self.common.read_config()?;
-        let private_key = self.keyring_entry.get_key(config)?;
-        let public_key = private_key.public_key();
-        println!("Key ID: {}", public_key.fingerprint());
-        println!("Public Key: {public_key}");
-        Ok(())
+        if let Some(keys) = &config.keys {
+            let private_key =
+                get_signing_key(&self.common.registry, keys.clone(), config.home_url.clone())?;
+            let public_key = private_key.public_key();
+            println!("Key ID: {}", public_key.fingerprint());
+            println!("Public Key: {public_key}");
+            Ok(())
+        } else {
+            bail!("error: Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new`")
+        }
     }
 }
 
 /// Sets the signing key for a registry in the local keyring.
 #[derive(Args)]
 pub struct KeySetCommand {
-    #[clap(flatten)]
-    keyring_entry: KeyringEntryArgs,
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
@@ -171,13 +120,20 @@ impl KeySetCommand {
             .context("failed to read signing key")?;
         let key =
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
+        let config = &mut self.common.read_config()?;
 
-        self.keyring_entry.set_entry(&key, config)?;
+        if config.keys.is_none() {
+            config.keys = Some(HashSet::new());
+        }
+        set_signing_key(
+            &self.common.registry.clone(),
+            &key,
+            config.keys.as_mut().unwrap(),
+            config.home_url.clone(),
+        )?;
+        config.write_to_file(&Config::default_config_path()?)?;
 
-        println!(
-            "signing key {keyring} was set successfully",
-            keyring = self.keyring_entry
-        );
+        println!("signing key was set successfully");
 
         Ok(())
     }
@@ -186,8 +142,6 @@ impl KeySetCommand {
 /// Deletes the signing key for a registry from the local keyring.
 #[derive(Args)]
 pub struct KeyDeleteCommand {
-    #[clap(flatten)]
-    keyring_entry: KeyringEntryArgs,
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
@@ -196,22 +150,25 @@ pub struct KeyDeleteCommand {
 impl KeyDeleteCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let config = &self.common.read_config()?;
-        let prompt = format!(
-            "are you sure you want to delete the signing key {entry}? ",
-            entry = self.keyring_entry
-        );
+        let config = &mut self.common.read_config()?;
 
         if Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt(prompt)
+            .with_prompt("are you sure you want to delete your signing key")
             .interact()?
         {
-            self.keyring_entry.delete_entry(&config)?;
-            println!(
-                "signing key {entry} was deleted successfully",
-                entry = self.keyring_entry
-            );
-        } else if let Some(url) = self.keyring_entry.url {
+            // delete_signing_key(&self.common.registry, config)?;
+            delete_signing_key(&self.common.registry, config.keys.clone().expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"), config.home_url.clone())?;
+            let keys = &mut config.keys;
+            if let Some(keys) = keys {
+                if let Some(registry_url) = self.common.registry {
+                    keys.remove(&registry_url);
+                } else {
+                    keys.remove("default");
+                }
+            }
+            config.write_to_file(&Config::default_config_path()?)?;
+            println!("signing key was deleted successfully",);
+        } else if let Some(url) = self.common.registry {
             println!(
                 "skipping deletion of signing key for registry `{url}`",
                 url = url

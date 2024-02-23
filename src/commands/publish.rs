@@ -8,7 +8,7 @@ use tokio::io::BufReader;
 use tokio_util::io::ReaderStream;
 use warg_client::{
     storage::{ContentStorage as _, PublishEntry, PublishInfo, RegistryStorage as _},
-    FileSystemClient, RegistryUrl,
+    FileSystemClient,
 };
 use warg_crypto::{
     hash::AnyHash,

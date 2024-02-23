@@ -9,7 +9,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,

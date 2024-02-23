@@ -164,6 +164,7 @@ pub async fn spawn_server(
         registries_dir: Some(root.join("registries")),
         content_dir: Some(root.join("content")),
         namespace_map_path: Some(root.join("namespaces")),
+        keys: None,
     };
 
     Ok((instance, config))

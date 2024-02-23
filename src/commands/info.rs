@@ -43,10 +43,18 @@ impl InfoCommand {
                     Self::print_package_info(&info);
                 }
             }
+            None => {
+                client
+                    .registry()
+                    .load_packages()
+                    .await?
+                    .iter()
+                    .for_each(Self::print_package_info);
+            }
         }
-        Self::print_namespace_map(&client).await?;
 
         if self.namespaces {
+            println!("\nnamespace mappings in client storage");
             Self::print_namespace_map(&client).await?;
             return Ok(());
         }

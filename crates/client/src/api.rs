@@ -418,13 +418,7 @@ impl Client {
 
             tracing::debug!("downloading content `{digest}` from `{url}`");
 
-            let response = self
-                .client
-                .get(url)
-                .warg_header(self.get_warg_header())
-                .auth(self.auth_token())
-                .send()
-                .await?;
+            let response = self.client.get(url).send().await?;
             if !response.status().is_success() {
                 tracing::debug!(
                     "failed to download content `{digest}` from `{url}`: {status}",

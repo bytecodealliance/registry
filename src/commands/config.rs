@@ -11,9 +11,6 @@ pub struct ConfigCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
-    /// The home registry URL to use.
-    #[clap(long, value_name = "URL")]
-    pub registry_url: Option<String>,
     /// The path to the registries directory to use.
     #[clap(long, value_name = "REGISTRIES")]
     pub registries_dir: Option<PathBuf>,
@@ -71,7 +68,7 @@ impl ConfigCommand {
             registries_dir: self.registries_dir.map(|p| cwd.join(p)),
             content_dir: self.content_dir.map(|p| cwd.join(p)),
             namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
-            creds: self.common.read_config()?.creds,
+            keys: self.common.read_config()?.keys,
         };
 
         config.write_to_file(&path)?;

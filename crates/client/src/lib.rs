@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemNamespaceMapStorage,
-    FileSystemRegistryStorage, NamespaceMapStorage, PublishInfo, RegistryStorage,
+    FileSystemRegistryStorage, NamespaceMapStorage, PublishInfo, RegistryDomain, RegistryStorage,
 };
 use thiserror::Error;
 use warg_api::v1::{
@@ -78,11 +78,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             namespace_map,
             api,
         })
-    }
-
-    /// Gets auth token
-    pub fn auth_token(&self) -> &Option<Secret<String>> {
-        self.api.auth_token()
     }
 
     /// Gets the URL of the client.

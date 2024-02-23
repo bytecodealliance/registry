@@ -1,6 +1,6 @@
 //! Utilities for interacting with keyring and performing signing operations.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use anyhow::{bail, Context, Result};
 use keyring::Entry;
@@ -65,153 +65,96 @@ pub fn set_auth_token(registry_url: &RegistryUrl, token: &str) -> Result<()> {
 
 /// Gets the signing key entry for the given registry and key name.
 pub fn get_signing_key_entry(
-    registry_url: RegistryUrl,
-    key_name: &str,
-    config: &Config,
+    registry_url: &Option<String>,
+    keys: HashSet<String>,
+    home_url: Option<String>,
 ) -> Result<Entry> {
-    dbg!(&registry_url, key_name);
-    if let Some(creds) = config.creds {
-        if let Some(reg_keys) = creds.keys.get(&registry_url.safe_label()) {
-            if let Some(key_name) = reg_keys.get(key_name) {
-                Entry::new(
-                    &format!("warg-signing-key:{}", registry_url.safe_label()),
-                    key_name,
-                )
-                .context("failed to get keyring entry")
-            } else {
-                Entry::new(
-                    &format!("warg-signing-key:{}", registry_url.safe_label()),
-                    "default",
-                )
-                .context("failed to get keyring entry")
-            }
-        } else if let Some(default_keys) = creds.keys.get(&registry_url.safe_label()) {
-            if let Some(key_name) = default_keys.get(key_name) {
-                Entry::new(
-                    &format!("warg-signing-key:{}", registry_url.safe_label()),
-                    key_name,
-                )
-                .context("failed to get keyring entry")
-            } else {
-                Entry::new(
-                    &format!("warg-signing-key:{}", registry_url.safe_label()),
-                    "default",
-                )
-                .context("failed to get keyring entry")
-            }
+    if let Some(registry_url) = registry_url {
+        if keys.contains(&registry_url.clone()) {
+            Entry::new("warg-signing-key", registry_url).context("failed to get keyring entry")
         } else {
-            Entry::new("warg-signing-key:default", key_name).context("failed to get keyring entry")
+            Entry::new("warg-signing-key", "default").context("failed to get keyring entry")
         }
     } else {
-        Entry::new("warg-signing-key:default", key_name).context("failed to get keyring entry")
+        if let Some(url) = &home_url {
+            return Entry::new("warg-signing-key", &RegistryUrl::new(url)?.safe_label())
+                .context("failed to get keyring entry");
+        }
+        if keys.contains("default") {
+            Entry::new("warg-signing-key", "default").context("failed to get keyring entry")
+        } else {
+            bail!(
+                        "error: Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new`"
+                    )
+        }
     }
 }
 
 /// Gets the signing key for the given registry registry_label and key name.
 pub fn get_signing_key(
-    registry_url: RegistryUrl,
-    key_name: &str,
-    config: &Config,
+    // If being called by a cli key command, this will always be a cli flag
+    // If being called by a client publish command, this could also be supplied by namespace map config
+    registry_url: &Option<String>,
+    keys: HashSet<String>,
+    home_url: Option<String>,
 ) -> Result<PrivateKey> {
-    let entry = get_signing_key_entry(registry_url, key_name, config)?;
+    let entry = get_signing_key_entry(registry_url, keys, home_url)?;
 
     match entry.get_password() {
         Ok(secret) => PrivateKey::decode(secret).context("failed to parse signing key"),
         Err(keyring::Error::NoEntry) => {
-            bail!("no signing key found with name `{key_name}` of registry `{registry_url}`");
+            if let Some(registry_url) = registry_url {
+                bail!("no signing key found for registry `{registry_url}`");
+            } else {
+                bail!("no signing key found");
+            }
         }
         Err(keyring::Error::Ambiguous(_)) => {
-            bail!("more than one signing key found with name `{key_name}` of registry `{registry_url}`");
+            if let Some(registry_url) = registry_url {
+                bail!("more than one signing key found for registry `{registry_url}`");
+            } else {
+                bail!("more than one signing key found");
+            }
         }
         Err(e) => {
-            bail!("failed to get signing key with name `{key_name}` of registry `{registry_url}`: {e}");
+            if let Some(registry_url) = registry_url {
+                bail!("failed to get signing key for registry `{registry_url}`: {e}");
+            } else {
+                bail!("failed to get signing key`");
+            }
         }
     }
 }
 
 /// Sets the signing key for the given registry host and key name.
 pub fn set_signing_key(
-    registry_url: &Option<RegistryUrl>,
-    key_name: &str,
+    registry_url: &Option<String>,
     key: &PrivateKey,
-    config: &mut Config,
+    keys: &mut HashSet<String>,
+    home_url: Option<String>,
 ) -> Result<()> {
-    match (registry_url, &mut config.creds) {
-        (None, None) => {
-            let mut registries = HashMap::new();
-            let mut keys = HashMap::new();
-
-            keys.insert("default".to_string(), key_name.to_string());
-            registries.insert("default".to_string(), keys);
-            config.creds = Some(CredList {
-                keys: registries,
-                tokens: vec![],
-            });
-            config.write_to_file(&Config::default_config_path()?)?;
-        }
-        (None, Some(creds)) => {
-            if let Some(default_keys) = creds.clone().keys.get_mut("default") {
-                default_keys.insert(key_name.to_string(), key_name.to_string());
-                creds
-                    .keys
-                    .insert("default".to_string(), default_keys.clone());
-            } else {
-                let mut default_keys = HashMap::new();
-                default_keys.insert(key_name.to_string(), key_name.to_string());
-                creds
-                    .keys
-                    .insert("default".to_string(), default_keys.clone());
-            };
-            config.write_to_file(&Config::default_config_path()?)?;
-        }
-        (Some(reg), None) => {
-            let mut registries = HashMap::new();
-            let mut keys = HashMap::new();
-
-            keys.insert(reg.safe_label().to_string(), key_name.to_string());
-            registries.insert(reg.safe_label().to_string(), keys);
-            config.creds = Some(CredList {
-                keys: registries,
-                tokens: vec![],
-            });
-            config.write_to_file(&Config::default_config_path()?)?;
-        }
-        (Some(reg), Some(creds)) => {
-            if let Some(reg_keys) = creds.clone().keys.get_mut(&reg.safe_label()) {
-                reg_keys.insert(key_name.to_string(), key_name.to_string());
-                creds
-                    .keys
-                    .insert(reg.safe_label().to_string(), reg_keys.clone());
-            } else {
-                let mut reg_keys = HashMap::new();
-                reg_keys.insert(key_name.to_string(), key_name.to_string());
-                creds.keys.insert(reg.safe_label().to_string(), reg_keys);
-            };
-            config.write_to_file(&Config::default_config_path()?)?;
-        }
-    }
-    let entry = get_signing_key_entry(registry_url, key_name, config)?;
+    let entry = get_signing_key_entry(registry_url, keys.clone(), home_url.clone())?;
     match entry.set_password(&key.encode()) {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => {
-            if let Some(reg) = registry_url {
-                bail!("no signing key found with name `{key_name}` of registry `{reg}`");
+            if let Some(registry_url) = registry_url {
+                bail!("no signing key found for registry `{registry_url}`");
             } else {
-                bail!("no signing key found with name `{key_name}`");
+                bail!("no signing key found`");
             }
         }
         Err(keyring::Error::Ambiguous(_)) => {
-            if let Some(reg) = registry_url {
-                bail!("more than one signing key found with name `{key_name}` of registry `{reg}`");
+            if let Some(registry_url) = registry_url {
+                bail!("more than one signing key found for registry `{registry_url}`");
             } else {
-                bail!("more than one signing key found with name `{key_name}`");
+                bail!("more than one signing key found");
             }
         }
         Err(e) => {
-            if let Some(reg) = registry_url {
-                bail!("failed to get signing key with name `{key_name}` of registry `{reg}`: {e}");
+            if let Some(registry_url) = registry_url {
+                bail!("failed to get signing key for registry `{registry_url}`: {e}");
             } else {
-                bail!("failed to get signing key with name `{key_name}`: {e}");
+                bail!("failed to get signing: {e}");
             }
         }
     }
@@ -219,29 +162,34 @@ pub fn set_signing_key(
 
 /// Deletes the signing key for the given registry host and key name.
 pub fn delete_signing_key(
-    registry_url: &Option<RegistryUrl>,
-    key_name: &str,
-    config: &Config,
+    registry_url: &Option<String>,
+    keys: HashSet<String>,
+    home_url: Option<String>,
 ) -> Result<()> {
-    let entry = get_signing_key_entry(registry_url, key_name, config)?;
+    let entry = get_signing_key_entry(registry_url, keys, home_url.clone())?;
+
     match entry.delete_password() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => {
-            if let Some(reg) = registry_url {
-                bail!("no signing key found with name `{key_name}` of registry `{reg}`");
+            if let Some(registry_url) = registry_url {
+                bail!("no signing key found for registry `{registry_url}`");
             } else {
-                bail!("no signing key found with name `{key_name}`");
+                bail!("no signing key found");
             }
         }
         Err(keyring::Error::Ambiguous(_)) => {
-            if let Some(reg) = registry_url {
-                bail!("more than one signing key found with name `{key_name}` of registry `{reg}`");
+            if let Some(registry_url) = registry_url {
+                bail!("more than one signing key found for registry `{registry_url}`");
             } else {
-                bail!("more than one signing key found with name `{key_name}`");
+                bail!("more than one signing key found`");
             }
         }
         Err(e) => {
-            bail!("failed to delete signing key with name `{key_name}` of registry `{registry_url}`: {e}");
+            if let Some(registry_url) = registry_url {
+                bail!("failed to delete signing key for registry `{registry_url}`: {e}");
+            } else {
+                bail!("failed to delete signing key");
+            }
         }
     }
 }

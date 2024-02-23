@@ -6,7 +6,7 @@ use normpath::PathExt;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::HashSet,
     env::current_dir,
     fs::{self, File},
     path::{Component, Path, PathBuf},
@@ -72,15 +72,6 @@ pub struct StoragePaths {
     pub namespace_map_path: PathBuf,
 }
 
-/// List of creds available in keyring
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct CredList {
-    /// Keys
-    pub keys: HashMap<String, HashMap<String, String>>,
-    /// Access tokens
-    pub tokens: Vec<String>,
-}
-
 /// Represents the Warg client configuration.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,7 +109,7 @@ pub struct Config {
 
     /// List of creds availabe in keyring
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub creds: Option<CredList>,
+    pub keys: Option<HashSet<String>>,
 }
 
 impl Config {
@@ -195,7 +186,7 @@ impl Config {
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
-            creds: self.creds.clone(),
+            keys: self.keys.clone(),
         };
 
         serde_json::to_writer_pretty(
