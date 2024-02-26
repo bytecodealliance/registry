@@ -1,6 +1,5 @@
 //! Commands for the `warg` tool.
 
-use anyhow::Context;
 use anyhow::Result;
 use clap::Args;
 use secrecy::Secret;
@@ -52,15 +51,6 @@ pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
     pub registry: Option<String>,
-    /// The path to the auth token file.
-    #[clap(long, value_name = "TOKEN_FILE", env = "WARG_AUTH_TOKEN_FILE")]
-    pub token_file: Option<PathBuf>,
-    /// The name to use for the signing key.
-    #[clap(long, short, value_name = "KEY_NAME", default_value = "default")]
-    pub key_name: String,
-    /// The path to the signing key file.
-    #[clap(long, value_name = "KEY_FILE", env = "WARG_SIGNING_KEY_FILE")]
-    pub key_file: Option<PathBuf>,
     /// The path to the client configuration file to use.
     ///
     /// If not specified, the following locations are searched in order: `./warg-config.json`, `<system-config-dir>/warg/config.json`.
@@ -121,34 +111,25 @@ impl CommonOptions {
         client: &Client<R, C, N>,
     ) -> Result<PrivateKey> {
         let registry_url = if let Some(nm) = &client.get_warg_registry() {
-            RegistryUrl::new(nm.to_string())?
+            Some(RegistryUrl::new(nm.to_string())?)
         } else {
-            client.url().clone()
+            None
         };
-        if let Some(file) = &self.key_file {
-            let key_str = std::fs::read_to_string(file)
-                .with_context(|| format!("failed to read key from {file:?}"))?
-                .trim_end()
-                .to_string();
-            PrivateKey::decode(key_str)
-                .with_context(|| format!("failed to parse key from {file:?}"))
-        } else {
-            get_signing_key(&registry_url, &self.key_name)
-        }
+        let config = self.read_config()?;
+        get_signing_key(
+            &registry_url.map(|reg| reg.safe_label()),
+            config.keys.expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"),
+            config.home_url,
+        )
     }
     /// Gets the auth token for the given registry URL.
     pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
-        if let Some(file) = &self.token_file {
-            Ok(Some(Secret::from(
-                std::fs::read_to_string(file)
-                    .with_context(|| format!("failed to read auth token from {file:?}"))?
-                    .trim_end()
-                    .to_string(),
-            )))
+        if let Some(reg_url) = &self.registry {
+            Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
+        } else if let Some(url) = config.home_url.as_ref() {
+            Ok(get_auth_token(&RegistryUrl::new(url)?)?)
         } else {
-            Ok(get_auth_token(&RegistryUrl::new(
-                config.home_url.as_ref().unwrap(),
-            )?)?)
+            Ok(None)
         }
     }
 }

@@ -6,6 +6,7 @@ use normpath::PathExt;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     env::current_dir,
     fs::{self, File},
     path::{Component, Path, PathBuf},
@@ -105,6 +106,10 @@ pub struct Config {
     /// `$CACHE_DIR` is the platform-specific cache directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace_map_path: Option<PathBuf>,
+
+    /// List of creds availabe in keyring
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<HashSet<String>>,
 }
 
 impl Config {
@@ -181,6 +186,7 @@ impl Config {
                 assert!(p.is_absolute());
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
+            keys: self.keys.clone(),
         };
 
         serde_json::to_writer_pretty(
