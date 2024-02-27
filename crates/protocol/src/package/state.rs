@@ -218,6 +218,13 @@ impl LogState {
         self.keys.get(key_id)
     }
 
+    /// Gets the key permissions.
+    ///
+    /// Returns `None` if the key id is not recognized.
+    pub fn key_permissions(&self, key_id: &signing::KeyID) -> Option<&IndexSet<model::Permission>> {
+        self.permissions.get(key_id)
+    }
+
     fn initialized(&self) -> bool {
         // The package log is initialized if the hash algorithm is set
         self.algorithm.is_some()
