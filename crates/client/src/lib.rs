@@ -146,7 +146,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             if let Ok(Some(nm)) = namespace_state {
                 if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
                     self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(&registry)?));
+                        .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
                 }
                 true
             } else {
