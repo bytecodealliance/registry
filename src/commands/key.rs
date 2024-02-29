@@ -2,9 +2,9 @@ use crate::keyring::{delete_signing_key, get_signing_key, set_signing_key};
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
+use indexmap::IndexSet;
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use std::collections::HashSet;
 use warg_client::Config;
 use warg_crypto::signing::PrivateKey;
 
@@ -63,7 +63,7 @@ impl KeyNewCommand {
                 config.keys.as_mut().unwrap().insert("default".to_string());
             }
         } else {
-            let mut keys = HashSet::new();
+            let mut keys = IndexSet::new();
             keys.insert("default".to_string());
             config.keys = Some(keys);
         };
@@ -123,7 +123,7 @@ impl KeySetCommand {
         let config = &mut self.common.read_config()?;
 
         if config.keys.is_none() {
-            config.keys = Some(HashSet::new());
+            config.keys = Some(IndexSet::new());
         }
         set_signing_key(
             &self.common.registry.clone(),
@@ -161,9 +161,9 @@ impl KeyDeleteCommand {
             let keys = &mut config.keys;
             if let Some(keys) = keys {
                 if let Some(registry_url) = self.common.registry {
-                    keys.remove(&registry_url);
+                    keys.swap_remove(&registry_url);
                 } else {
-                    keys.remove("default");
+                    keys.swap_remove("default");
                 }
             }
             config.write_to_file(&Config::default_config_path()?)?;

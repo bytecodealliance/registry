@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
+use indexmap::IndexMap;
 use reqwest::header::HeaderValue;
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
@@ -10,7 +11,7 @@ use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::fs;
 use std::str::FromStr;
-use std::{borrow::Cow, collections::HashMap, path::PathBuf, time::Duration};
+use std::{borrow::Cow, path::PathBuf, time::Duration};
 use storage::{
     ContentStorage, FileSystemContentStorage, FileSystemNamespaceMapStorage,
     FileSystemRegistryStorage, NamespaceMapStorage, PublishInfo, RegistryDomain, RegistryStorage,
@@ -186,7 +187,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         };
         builder.lock_list.insert(top);
         let mut composer = CompositionGraph::new();
-        let mut handled = HashMap::<String, InstanceId>::new();
+        let mut handled = IndexMap::<String, InstanceId>::new();
         for package in builder.lock_list {
             let name = package.name.clone();
             let version = package.req;
@@ -604,7 +605,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 _ => Some((LogId::package_log::<Sha256>(&p.name), p)),
             })
             .inspect(|(_, p)| tracing::info!("package `{name}` will be updated", name = p.name))
-            .collect::<HashMap<_, _>>();
+            .collect::<IndexMap<_, _>>();
         if packages.is_empty() {
             return Ok(());
         }
@@ -612,7 +613,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         let mut last_known = packages
             .iter()
             .map(|(id, p)| (id.clone(), p.head_fetch_token.clone()))
-            .collect::<HashMap<_, _>>();
+            .collect::<IndexMap<_, _>>();
 
         loop {
             // let response: FetchLogsResponse = match self
@@ -811,8 +812,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
     async fn update_checkpoints<'a>(
         &mut self,
-        ts_checkpoints: HashMap<std::string::String, SerdeEnvelope<TimestampedCheckpoint>>,
-        mut packages: HashMap<String, Vec<PackageInfo>>,
+        ts_checkpoints: IndexMap<std::string::String, SerdeEnvelope<TimestampedCheckpoint>>,
+        mut packages: IndexMap<String, Vec<PackageInfo>>,
     ) -> Result<(), ClientError> {
         for (name, ts_checkpoint) in ts_checkpoints {
             if self.url().safe_label() != name {

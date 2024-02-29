@@ -17,8 +17,9 @@ use axum::{
     Router,
 };
 use futures::StreamExt;
+use indexmap::IndexMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use warg_api::v1::package::{
@@ -86,7 +87,7 @@ impl Config {
         log_id: &LogId,
         record_id: &RecordId,
         missing_digests: impl IntoIterator<Item = &'a AnyHash>,
-    ) -> HashMap<AnyHash, MissingContent> {
+    ) -> IndexMap<AnyHash, MissingContent> {
         missing_digests
             .into_iter()
             .map(|digest| {
@@ -97,7 +98,7 @@ impl Config {
                         upload: vec![UploadEndpoint::Http {
                             method: "POST".to_string(),
                             url,
-                            headers: HashMap::new(),
+                            headers: IndexMap::new(),
                         }],
                     },
                 )

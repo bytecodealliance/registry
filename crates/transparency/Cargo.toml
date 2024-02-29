@@ -15,6 +15,7 @@ warg-protobuf = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 prost = { workspace = true }
+indexmap = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

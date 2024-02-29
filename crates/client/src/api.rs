@@ -3,13 +3,14 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
+use indexmap::IndexMap;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
 };
 use secrecy::{ExposeSecret, Secret};
 use serde::de::DeserializeOwned;
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 use thiserror::Error;
 use warg_api::v1::{
     content::{ContentError, ContentSourcesResponse},
@@ -237,8 +238,8 @@ impl Client {
     pub async fn latest_checkpoints(
         &self,
         registries: impl Iterator<Item = &String>,
-    ) -> Result<HashMap<String, SerdeEnvelope<TimestampedCheckpoint>>> {
-        let mut timestamps = HashMap::new();
+    ) -> Result<IndexMap<String, SerdeEnvelope<TimestampedCheckpoint>>> {
+        let mut timestamps = IndexMap::new();
         for reg in registries.into_iter() {
             let url = self.url.join(paths::fetch_checkpoint());
             let registry_header = HeaderName::try_from(REGISTRY_HEADER_NAME).unwrap();
@@ -528,7 +529,7 @@ impl Client {
         &self,
         method: &str,
         url: &str,
-        headers: &HashMap<String, String>,
+        headers: &IndexMap<String, String>,
         content: impl Into<Body>,
     ) -> Result<(), ClientError> {
         // Upload URLs may be relative to the registry URL.

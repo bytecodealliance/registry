@@ -2,11 +2,11 @@
 
 use crate::{ClientError, RegistryUrl};
 use anyhow::{anyhow, Context, Result};
+use indexmap::IndexSet;
 use normpath::PathExt;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     env::current_dir,
     fs::{self, File},
     path::{Component, Path, PathBuf},
@@ -109,7 +109,7 @@ pub struct Config {
 
     /// List of creds availabe in keyring
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub keys: Option<HashSet<String>>,
+    pub keys: Option<IndexSet<String>>,
 }
 
 impl Config {

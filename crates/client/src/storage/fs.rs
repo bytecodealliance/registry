@@ -9,9 +9,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
@@ -192,8 +192,8 @@ impl RegistryStorage for FileSystemRegistryStorage {
         Ok(packages)
     }
 
-    async fn load_all_packages(&self) -> Result<HashMap<String, Vec<PackageInfo>>> {
-        let mut all_packages = HashMap::new();
+    async fn load_all_packages(&self) -> Result<IndexMap<String, Vec<PackageInfo>>> {
+        let mut all_packages = IndexMap::new();
         let regs = fs::read_dir(self.registries_dir.clone())?;
         for reg in regs {
             let folder = reg?;
@@ -446,7 +446,7 @@ impl FileSystemNamespaceMapStorage {
 
 #[async_trait]
 impl NamespaceMapStorage for FileSystemNamespaceMapStorage {
-    async fn load_namespace_map(&self) -> Result<Option<HashMap<String, String>>> {
+    async fn load_namespace_map(&self) -> Result<Option<IndexMap<String, String>>> {
         let namespace_path = &self.base_dir;
         let namespace_map = load(namespace_path).await?;
         Ok(namespace_map)

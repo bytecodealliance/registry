@@ -1,11 +1,7 @@
 use super::{DataStore, DataStoreError};
 use futures::Stream;
-use indexmap::IndexMap;
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-    sync::Arc,
-};
+use indexmap::{IndexMap, IndexSet};
+use std::{pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
 use warg_crypto::{hash::AnyHash, Encode, Signable};
 use warg_protocol::{
@@ -52,7 +48,7 @@ enum PendingRecord {
     },
     Package {
         record: Option<ProtoEnvelope<package::PackageRecord>>,
-        missing: HashSet<AnyHash>,
+        missing: IndexSet<AnyHash>,
     },
 }
 
@@ -75,13 +71,13 @@ enum RecordStatus {
 
 #[derive(Default)]
 struct State {
-    operators: HashMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
-    packages: HashMap<LogId, Log<package::LogState, package::PackageRecord>>,
-    package_names: HashMap<LogId, Option<PackageName>>,
-    package_names_lowercase: HashMap<String, PackageName>,
+    operators: IndexMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
+    packages: IndexMap<LogId, Log<package::LogState, package::PackageRecord>>,
+    package_names: IndexMap<LogId, Option<PackageName>>,
+    package_names_lowercase: IndexMap<String, PackageName>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
-    records: HashMap<LogId, HashMap<RecordId, RecordStatus>>,
-    log_leafs: HashMap<RegistryIndex, LogLeaf>,
+    records: IndexMap<LogId, IndexMap<RecordId, RecordStatus>>,
+    log_leafs: IndexMap<RegistryIndex, LogLeaf>,
 }
 
 /// Represents an in-memory data store.
@@ -166,7 +162,7 @@ impl DataStore for MemoryDataStore {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError> {
+    ) -> Result<IndexMap<LogId, Option<PackageName>>, DataStoreError> {
         let state = self.0.read().await;
 
         log_ids
@@ -178,7 +174,7 @@ impl DataStore for MemoryDataStore {
                     Err(DataStoreError::LogNotFound(log_id.clone()))
                 }
             })
-            .collect::<Result<HashMap<LogId, Option<PackageName>>, _>>()
+            .collect::<Result<IndexMap<LogId, Option<PackageName>>, _>>()
     }
 
     async fn store_operator_record(
@@ -297,7 +293,7 @@ impl DataStore for MemoryDataStore {
         package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &IndexSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         // Ensure the set of missing hashes is a subset of the record contents.
         debug_assert!({
@@ -473,7 +469,7 @@ impl DataStore for MemoryDataStore {
                 }
 
                 // Return true if this was the last missing content
-                missing.remove(digest);
+                missing.swap_remove(digest);
                 Ok(missing.is_empty())
             }
             _ => return Err(DataStoreError::RecordNotPending(record_id.clone())),

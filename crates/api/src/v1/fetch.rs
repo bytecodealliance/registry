@@ -1,8 +1,9 @@
 //! Types relating to the fetch API.
 
 use crate::Status;
+use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
@@ -34,8 +35,8 @@ pub struct FetchLogsRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator: Option<Cow<'a, str>>,
     /// The map of package identifiers to last known fetch token.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: Cow<'a, HashMap<LogId, Option<String>>>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub packages: Cow<'a, IndexMap<LogId, Option<String>>>,
 }
 
 /// Represents a fetch logs response.
@@ -49,8 +50,8 @@ pub struct FetchLogsResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operator: Vec<PublishedRecord>,
     /// The package records appended since last known package record ids.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub packages: HashMap<LogId, Vec<PublishedRecord>>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub packages: IndexMap<LogId, Vec<PublishedRecord>>,
 }
 
 /// Represents a fetch package names request.
@@ -68,7 +69,7 @@ pub struct FetchPackageNamesRequest<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct FetchPackageNamesResponse {
     /// The log ID hash mapping to a package name. If `None`, the package name cannot be provided.
-    pub packages: HashMap<LogId, Option<PackageName>>,
+    pub packages: IndexMap<LogId, Option<PackageName>>,
 }
 
 /// Represents a fetch API error.

@@ -1,8 +1,8 @@
 use crate::registry::RecordId;
 use core::fmt;
+use indexmap::IndexSet;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::{str::FromStr, time::SystemTime};
 use warg_crypto::hash::{AnyHash, HashAlgorithm};
 use warg_crypto::signing;
@@ -21,7 +21,7 @@ pub struct PackageRecord {
 }
 
 impl crate::Record for PackageRecord {
-    fn contents(&self) -> HashSet<&AnyHash> {
+    fn contents(&self) -> IndexSet<&AnyHash> {
         self.entries
             .iter()
             .filter_map(PackageEntry::content)
