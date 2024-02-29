@@ -1,10 +1,10 @@
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
 use futures::{pin_mut, StreamExt};
+use indexmap::IndexMap;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, RwLock},
@@ -200,7 +200,7 @@ impl<Digest: SupportedDigest> Inner<Digest> {
 
         // Reconstruct internal state from previously-stored data
         let mut checkpoints = self.store.get_all_checkpoints().await?;
-        let mut checkpoints_by_len: HashMap<RegistryLen, Checkpoint> = Default::default();
+        let mut checkpoints_by_len: IndexMap<RegistryLen, Checkpoint> = Default::default();
         while let Some(checkpoint) = checkpoints.next().await {
             let checkpoint = checkpoint?.checkpoint;
             checkpoints_by_len.insert(checkpoint.log_length, checkpoint);
@@ -385,7 +385,7 @@ struct State<Digest: SupportedDigest> {
     // The verifiable map of package logs' latest entries (log_id -> record_id)
     map: VerifiableMap<Digest>,
     // Index verifiable map snapshots by log length (at checkpoints only)
-    map_index: HashMap<RegistryLen, (Hash<Digest>, VerifiableMap<Digest>)>,
+    map_index: IndexMap<RegistryLen, (Hash<Digest>, VerifiableMap<Digest>)>,
 }
 
 impl<Digest: SupportedDigest> State<Digest> {

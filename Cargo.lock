@@ -1769,7 +1769,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.11",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "slab",
  "tokio",
  "tokio-util",
@@ -1788,7 +1788,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 1.0.0",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "slab",
  "tokio",
  "tokio-util",
@@ -2104,9 +2104,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.2.3"
+version = "2.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233cf39063f058ea2caae4091bf4a3ef70a653afbc026f5c4a4135d114e3c177"
+checksum = "967d6dd42f16dbf0eb8040cb9e477933562684d3918f7d253f2ff9087fb3e7a3"
 dependencies = [
  "equivalent",
  "hashbrown 0.14.3",
@@ -2939,7 +2939,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1d3afd2628e69da2be385eb6f2fd57c8ac7977ceeff6dc166ff1657b0e386a9"
 dependencies = [
  "fixedbitset",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
 ]
 
 [[package]]
@@ -3795,7 +3795,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 1.9.3",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "serde 1.0.196",
  "serde_derive",
  "serde_json",
@@ -3821,7 +3821,7 @@ version = "0.9.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adf8a49373e98a4c5f0ceb5d05aa7c648d75f63774981ed95b7c7443bbd50c6e"
 dependencies = [
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "itoa",
  "ryu",
  "serde 1.0.196",
@@ -4350,7 +4350,7 @@ version = "0.19.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
 dependencies = [
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "serde 1.0.196",
  "serde_spanned",
  "toml_datetime",
@@ -4363,7 +4363,7 @@ version = "0.22.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99e68c159e8f5ba8a28c4eb7b0c0c190d77bb479047ca713270048145a9ad28a"
 dependencies = [
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "serde 1.0.196",
  "serde_spanned",
  "toml_datetime",
@@ -4626,6 +4626,7 @@ dependencies = [
 name = "warg-api"
 version = "0.4.0-dev"
 dependencies = [
+ "indexmap 2.2.4",
  "itertools 0.12.1",
  "serde 1.0.196",
  "serde_with",
@@ -4645,7 +4646,7 @@ dependencies = [
  "clap",
  "dialoguer",
  "futures",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "itertools 0.12.1",
  "keyring",
  "p256",
@@ -4689,7 +4690,7 @@ dependencies = [
  "clap",
  "dirs 5.0.1",
  "futures-util",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "itertools 0.12.1",
  "libc",
  "normpath",
@@ -4764,7 +4765,7 @@ dependencies = [
  "anyhow",
  "base64",
  "hex",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "pbjson-types",
  "pretty_assertions",
  "prost",
@@ -4795,7 +4796,7 @@ dependencies = [
  "diesel_json",
  "diesel_migrations",
  "futures",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "secrecy",
  "serde 1.0.196",
  "serde_json",
@@ -4822,6 +4823,7 @@ version = "0.4.0-dev"
 dependencies = [
  "anyhow",
  "criterion",
+ "indexmap 2.2.4",
  "prost",
  "rand",
  "sha2",
@@ -4955,7 +4957,7 @@ dependencies = [
  "anyhow",
  "heck",
  "im-rc",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "log",
  "petgraph",
  "serde 1.0.196",
@@ -4993,7 +4995,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18ebaa7bd0f9e7a5e5dd29b9a998acf21c4abed74265524dd7e85934597bfb10"
 dependencies = [
  "anyhow",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "serde 1.0.196",
  "serde_derive",
  "serde_json",
@@ -5032,7 +5034,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dbe55c8f9d0dbd25d9447a5a889ff90c0cc3feaa7395310d3d826b2c703eaab"
 dependencies = [
  "bitflags 2.4.2",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "semver",
 ]
 
@@ -5700,7 +5702,7 @@ checksum = "a4436190e87b4e539807bcdcf5b817e79d2e29e16bc5ddb6445413fe3d1f5716"
 dependencies = [
  "anyhow",
  "bitflags 2.4.2",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "log",
  "serde 1.0.196",
  "serde_derive",
@@ -5735,7 +5737,7 @@ checksum = "316b36a9f0005f5aa4b03c39bc3728d045df136f8c13a73b7db4510dec725e08"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.2.3",
+ "indexmap 2.2.4",
  "log",
  "semver",
  "serde 1.0.196",

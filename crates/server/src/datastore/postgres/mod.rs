@@ -16,11 +16,9 @@ use diesel_migrations::{
     embed_migrations, EmbeddedMigrations, HarnessWithOutput, MigrationHarness,
 };
 use futures::{Stream, StreamExt};
+use indexmap::{IndexMap, IndexSet};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-};
+use std::pin::Pin;
 use warg_crypto::{hash::AnyHash, Decode, Encode, Signable};
 use warg_protocol::{
     operator,
@@ -105,7 +103,7 @@ async fn insert_record<V>(
     name: Option<&str>,
     record_id: &RecordId,
     record: &ProtoEnvelope<V::Record>,
-    missing: &HashSet<&AnyHash>,
+    missing: &IndexSet<&AnyHash>,
 ) -> Result<(), DataStoreError>
 where
     V: Validator + 'static,
@@ -514,13 +512,13 @@ impl DataStore for PostgresDataStore {
                     },
                 )
             })
-            .collect::<HashMap<RegistryIndex, LogLeaf>>();
+            .collect::<IndexMap<RegistryIndex, LogLeaf>>();
 
         Ok(entries
             .iter()
             .map(|registry_index| {
                 leafs_map
-                    .remove(registry_index)
+                    .swap_remove(registry_index)
                     .ok_or(DataStoreError::LogLeafNotFound(*registry_index))
             })
             .collect::<Result<Vec<_>, _>>()?)
@@ -529,7 +527,7 @@ impl DataStore for PostgresDataStore {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError> {
+    ) -> Result<IndexMap<LogId, Option<PackageName>>, DataStoreError> {
         let mut conn = self.pool.get().await?;
 
         let map = schema::logs::table
@@ -547,7 +545,7 @@ impl DataStore for PostgresDataStore {
                     opt_package_name.map(|name| PackageName::new(name).unwrap()),
                 )
             })
-            .collect::<HashMap<LogId, Option<PackageName>>>();
+            .collect::<IndexMap<LogId, Option<PackageName>>>();
 
         // check if any log IDs were not found
         for log_id in log_ids {
@@ -627,7 +625,7 @@ impl DataStore for PostgresDataStore {
         package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &IndexSet<&AnyHash>,
     ) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().await?;
         insert_record::<package::LogState>(

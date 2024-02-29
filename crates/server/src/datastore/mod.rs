@@ -1,8 +1,6 @@
 use futures::Stream;
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-};
+use indexmap::{IndexMap, IndexSet};
+use std::pin::Pin;
 use thiserror::Error;
 use warg_crypto::{
     hash::AnyHash,
@@ -190,7 +188,7 @@ pub trait DataStore: Send + Sync {
         package_name: &PackageName,
         record_id: &RecordId,
         record: &ProtoEnvelope<package::PackageRecord>,
-        missing: &HashSet<&AnyHash>,
+        missing: &IndexSet<&AnyHash>,
     ) -> Result<(), DataStoreError>;
 
     /// Rejects the given package record.
@@ -262,7 +260,7 @@ pub trait DataStore: Send + Sync {
     async fn get_package_names(
         &self,
         log_ids: &[LogId],
-    ) -> Result<HashMap<LogId, Option<PackageName>>, DataStoreError>;
+    ) -> Result<IndexMap<LogId, Option<PackageName>>, DataStoreError>;
 
     /// Gets a batch of log leafs starting with a registry log index.  
     async fn get_log_leafs_starting_with_registry_index(

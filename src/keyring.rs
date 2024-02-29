@@ -1,8 +1,7 @@
 //! Utilities for interacting with keyring and performing signing operations.
 
-use std::collections::HashSet;
-
 use anyhow::{bail, Context, Result};
+use indexmap::IndexSet;
 use keyring::Entry;
 use secrecy::{self, Secret};
 use warg_client::RegistryUrl;
@@ -66,7 +65,7 @@ pub fn set_auth_token(registry_url: &RegistryUrl, token: &str) -> Result<()> {
 /// Gets the signing key entry for the given registry and key name.
 pub fn get_signing_key_entry(
     registry_url: &Option<String>,
-    keys: HashSet<String>,
+    keys: IndexSet<String>,
     home_url: Option<String>,
 ) -> Result<Entry> {
     if let Some(registry_url) = registry_url {
@@ -95,7 +94,7 @@ pub fn get_signing_key(
     // If being called by a cli key command, this will always be a cli flag
     // If being called by a client publish command, this could also be supplied by namespace map config
     registry_url: &Option<String>,
-    keys: HashSet<String>,
+    keys: IndexSet<String>,
     home_url: Option<String>,
 ) -> Result<PrivateKey> {
     let entry = get_signing_key_entry(registry_url, keys, home_url)?;
@@ -130,7 +129,7 @@ pub fn get_signing_key(
 pub fn set_signing_key(
     registry_url: &Option<String>,
     key: &PrivateKey,
-    keys: &mut HashSet<String>,
+    keys: &mut IndexSet<String>,
     home_url: Option<String>,
 ) -> Result<()> {
     let entry = get_signing_key_entry(registry_url, keys.clone(), home_url.clone())?;
@@ -163,7 +162,7 @@ pub fn set_signing_key(
 /// Deletes the signing key for the given registry host and key name.
 pub fn delete_signing_key(
     registry_url: &Option<String>,
-    keys: HashSet<String>,
+    keys: IndexSet<String>,
     home_url: Option<String>,
 ) -> Result<()> {
     let entry = get_signing_key_entry(registry_url, keys, home_url.clone())?;

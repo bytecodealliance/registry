@@ -2,8 +2,9 @@
 
 pub use super::ContentSource;
 use crate::Status;
+use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
@@ -25,8 +26,8 @@ pub enum UploadEndpoint {
         url: String,
         /// Optional header names and values for the upload request.
         /// Only `authorization` and `content-type` headers are valid; any other header should be rejected.
-        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-        headers: HashMap<String, String>,
+        #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+        headers: IndexMap<String, String>,
     },
 }
 
@@ -50,8 +51,8 @@ pub struct PublishRecordRequest<'a> {
     /// The complete set of content sources for the record.
     ///
     /// A registry may not support specifying content sources directly.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub content_sources: IndexMap<AnyHash, Vec<ContentSource>>,
 }
 
 /// Represents a package record API entity in a registry.
@@ -90,7 +91,7 @@ pub enum PackageRecordState {
     #[serde(rename_all = "camelCase")]
     Sourcing {
         /// The digests of the missing content.
-        missing_content: HashMap<AnyHash, MissingContent>,
+        missing_content: IndexMap<AnyHash, MissingContent>,
     },
     /// The package record is processing.
     #[serde(rename_all = "camelCase")]

@@ -4,9 +4,10 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
+use indexmap::IndexMap;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, pin::Pin, str::FromStr, time::SystemTime};
+use std::{path::PathBuf, pin::Pin, str::FromStr, time::SystemTime};
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
     signing::{self, KeyID, PublicKey},
@@ -114,7 +115,7 @@ pub trait RegistryStorage: Send + Sync {
     async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
 
     /// Loads the package information for all packages in all registry storages.
-    async fn load_all_packages(&self) -> Result<HashMap<String, Vec<PackageInfo>>>;
+    async fn load_all_packages(&self) -> Result<IndexMap<String, Vec<PackageInfo>>>;
 
     /// Loads the package information from the storage.
     ///
@@ -187,7 +188,7 @@ pub trait ContentStorage: Send + Sync {
 #[async_trait]
 pub trait NamespaceMapStorage: Send + Sync {
     /// Loads namespace map
-    async fn load_namespace_map(&self) -> Result<Option<HashMap<String, String>>>;
+    async fn load_namespace_map(&self) -> Result<Option<IndexMap<String, String>>>;
     /// Reset namespace mappings
     async fn reset_namespaces(&self) -> Result<()>;
     /// Store namespace mapping

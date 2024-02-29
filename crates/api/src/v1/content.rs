@@ -2,8 +2,9 @@
 
 pub use super::ContentSource;
 use crate::Status;
+use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 
@@ -13,7 +14,7 @@ use warg_crypto::hash::AnyHash;
 pub struct ContentSourcesResponse {
     /// The content sources for the requested content digest, as well as additional
     /// content digests imported by the requested content digest.
-    pub content_sources: HashMap<AnyHash, Vec<ContentSource>>,
+    pub content_sources: IndexMap<AnyHash, Vec<ContentSource>>,
 }
 
 /// Represents a content API error.

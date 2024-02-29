@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use warg_api::v1::fetch::{
     FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
     FetchPackageNamesResponse, PublishedRecord,
@@ -125,7 +125,7 @@ async fn fetch_logs(
 
     let mut more = operator.len() == limit as usize;
 
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     let packages = body.packages.into_owned();
     for (id, fetch_token) in packages {
         let since: Option<RecordId> = match fetch_token {

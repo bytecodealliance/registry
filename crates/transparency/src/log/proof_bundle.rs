@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
 use anyhow::Error;
+use indexmap::IndexSet;
 use prost::Message;
-use std::{collections::HashSet, marker::PhantomData};
+use std::marker::PhantomData;
 use warg_crypto::{
     hash::{Hash, SupportedDigest},
     VisitBytes,
@@ -43,7 +44,7 @@ where
         data: &impl LogData<D, V>,
     ) -> Result<Self, Error> {
         let mut log_length = None;
-        let mut nodes_needed = HashSet::new();
+        let mut nodes_needed = IndexSet::new();
 
         let mut consistent_lengths = Vec::new();
         for proof in consistency_proofs.iter() {

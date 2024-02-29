@@ -1,5 +1,5 @@
+use indexmap::IndexSet;
 use serde::{de::DeserializeOwned, Serialize};
-use std::collections::HashSet;
 use warg_crypto::{hash::AnyHash, Decode};
 
 pub mod operator;
@@ -19,7 +19,7 @@ pub trait Record: Clone + Decode + Send + Sync {
     /// Gets the set of content hashes associated with the record.
     ///
     /// An empty set indicates that the record has no associated content.
-    fn contents(&self) -> HashSet<&AnyHash>;
+    fn contents(&self) -> IndexSet<&AnyHash>;
 }
 
 /// Trait implemented by the log state types.

@@ -2,7 +2,8 @@ use super::{Json, Path, RegistryHeader};
 use axum::{
     debug_handler, extract::State, http::StatusCode, response::IntoResponse, routing::get, Router,
 };
-use std::{collections::HashMap, path::PathBuf};
+use indexmap::IndexMap;
+use std::path::PathBuf;
 use url::Url;
 use warg_api::v1::content::{ContentError, ContentSource, ContentSourcesResponse};
 use warg_crypto::hash::AnyHash;
@@ -67,7 +68,7 @@ async fn get_content(
         return Err(ContentApiError(ContentError::ContentDigestNotFound(digest)));
     }
 
-    let mut content_sources = HashMap::with_capacity(1);
+    let mut content_sources = IndexMap::with_capacity(1);
     let url = config.content_url(&digest);
     content_sources.insert(
         digest,

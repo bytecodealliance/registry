@@ -1,7 +1,7 @@
 use super::{RecordPolicy, RecordPolicyError, RecordPolicyResult};
 use anyhow::{bail, Result};
+use indexmap::{IndexMap, IndexSet};
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
 use warg_crypto::signing::KeyID;
 use warg_protocol::{
     package::{PackageEntry, PackageRecord},
@@ -14,18 +14,18 @@ use warg_protocol::{
 #[serde(deny_unknown_fields)]
 pub struct AuthorizedKeyPolicy {
     #[serde(skip)]
-    superuser_keys: HashSet<KeyID>,
+    superuser_keys: IndexSet<KeyID>,
     #[serde(default, rename = "namespace")]
-    namespaces: HashMap<String, LogPolicy>,
+    namespaces: IndexMap<String, LogPolicy>,
     #[serde(default, rename = "package")]
-    packages: HashMap<PackageName, LogPolicy>,
+    packages: IndexMap<PackageName, LogPolicy>,
 }
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LogPolicy {
     // Authorized key IDs
-    keys: HashSet<KeyID>,
+    keys: IndexSet<KeyID>,
     // If true, permission grants are permitted.
     #[serde(default)]
     delegation: bool,
