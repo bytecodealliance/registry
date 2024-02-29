@@ -28,13 +28,7 @@ pub enum ContentSource {
         /// The URL of the content.
         url: String,
         /// Optional, server accepts for HTTP Range header.
-        /// TODO remove rename, see issue: https://github.com/bytecodealliance/registry/issues/221
-        #[serde(
-            default,
-            skip_serializing_if = "is_false",
-            rename = "accept_ranges",
-            alias = "acceptRanges"
-        )]
+        #[serde(default, skip_serializing_if = "is_false")]
         accept_ranges: bool,
         /// Optional, provides content size in bytes.
         #[serde(skip_serializing_if = "Option::is_none")]

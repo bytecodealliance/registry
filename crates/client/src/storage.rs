@@ -219,8 +219,6 @@ pub struct OperatorInfo {
 #[serde(rename_all = "camelCase")]
 pub struct PackageInfo {
     /// The package name to publish.
-    /// TODO: drop alias after sufficient time according to release policy.
-    #[serde(alias = "id")]
     pub name: PackageName,
     /// The last known checkpoint of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -288,8 +286,6 @@ pub enum PublishEntry {
 #[serde(rename_all = "camelCase")]
 pub struct PublishInfo {
     /// The package name being published.
-    /// TODO: drop alias after sufficient time according to release policy.
-    #[serde(alias = "id")]
     pub name: PackageName,
     /// The last known head of the package log to use.
     ///
