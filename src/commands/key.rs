@@ -74,6 +74,9 @@ impl KeyNewCommand {
             config.home_url.clone(),
         )?;
         config.write_to_file(&Config::default_config_path()?)?;
+        let public_key = key.public_key();
+        println!("Key ID: {}", public_key.fingerprint());
+        println!("Public Key: {public_key}");
         Ok(())
     }
 }
