@@ -1,9 +1,12 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Password};
-use warg_client::RegistryUrl;
+use indexmap::IndexSet;
+use p256::ecdsa::SigningKey;
+use rand_core::OsRng;
+use warg_client::{Config, RegistryUrl};
 
-use crate::keyring::set_auth_token;
+use crate::keyring::{set_auth_token, set_signing_key};
 
 use super::CommonOptions;
 
@@ -41,6 +44,43 @@ impl KeyringEntryArgs {
 impl LoginCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
+        let home_url = &self
+            .common
+            .registry
+            .clone()
+            .map(RegistryUrl::new)
+            .transpose()?
+            .map(|u| u.to_string());
+        let mut config = self.common.read_config()?;
+        if home_url.is_some() {
+            config.home_url = home_url.clone();
+            config.write_to_file(&Config::default_config_path()?)?;
+        }
+        if config.keys.is_none() {
+            let mut keys = IndexSet::new();
+            keys.insert("default".to_string());
+            config.keys = Some(keys);
+            let key = SigningKey::random(&mut OsRng).into();
+            set_signing_key(
+                &None,
+                &key,
+                config.keys.as_mut().unwrap(),
+                config.home_url.clone(),
+            )?;
+            let public_key = key.public_key();
+            let token = Password::with_theme(&ColorfulTheme::default())
+                .with_prompt("Enter auth token")
+                .interact()
+                .context("failed to read token")?;
+            self.keyring_entry
+                .set_entry(self.common.read_config()?.home_url, &token)?;
+            config.write_to_file(&Config::default_config_path()?)?;
+            println!("auth token was set successfully, and generated default key",);
+            println!("Public Key: {public_key}");
+            return Ok(());
+        }
+        config.write_to_file(&Config::default_config_path()?)?;
+
         let token = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter auth token")
             .interact()
