@@ -76,8 +76,10 @@ pub fn get_signing_key_entry(
         }
     } else {
         if let Some(url) = &home_url {
-            return Entry::new("warg-signing-key", &RegistryUrl::new(url)?.safe_label())
-                .context("failed to get keyring entry");
+            if keys.contains(url) {
+                return Entry::new("warg-signing-key", &RegistryUrl::new(url)?.safe_label())
+                    .context("failed to get keyring entry");
+            }
         }
         if keys.contains("default") {
             Entry::new("warg-signing-key", "default").context("failed to get keyring entry")
