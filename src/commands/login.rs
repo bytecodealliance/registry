@@ -6,7 +6,7 @@ use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
 use warg_client::{Config, RegistryUrl};
 
-use crate::keyring::{set_auth_token, set_signing_key};
+use warg_credentials::keyring::{set_auth_token, set_signing_key};
 
 use super::CommonOptions;
 
@@ -62,10 +62,10 @@ impl LoginCommand {
             config.keys = Some(keys);
             let key = SigningKey::random(&mut OsRng).into();
             set_signing_key(
-                &None,
+                None,
                 &key,
                 config.keys.as_mut().unwrap(),
-                config.home_url.clone(),
+                config.home_url.as_deref(),
             )?;
             let public_key = key.public_key();
             let token = Password::with_theme(&ColorfulTheme::default())

@@ -3,4 +3,3 @@
 #![deny(missing_docs)]
 
 pub mod commands;
-pub mod keyring;

@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::Args;
 use warg_client::RegistryUrl;
 
-use crate::keyring::delete_auth_token;
+use warg_credentials::keyring::delete_auth_token;
 
 use super::CommonOptions;
 

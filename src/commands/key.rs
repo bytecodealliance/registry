@@ -1,4 +1,3 @@
-use crate::keyring::{delete_signing_key, get_signing_key, set_signing_key};
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
@@ -6,6 +5,7 @@ use indexmap::IndexSet;
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
 use warg_client::Config;
+use warg_credentials::keyring::{delete_signing_key, get_signing_key, set_signing_key};
 use warg_crypto::signing::PrivateKey;
 
 use super::CommonOptions;
@@ -68,10 +68,10 @@ impl KeyNewCommand {
             config.keys = Some(keys);
         };
         set_signing_key(
-            &self.common.registry.clone(),
+            self.common.registry.as_deref(),
             &key,
             config.keys.as_mut().unwrap(),
-            config.home_url.clone(),
+            config.home_url.as_deref(),
         )?;
         config.write_to_file(&Config::default_config_path()?)?;
         let public_key = key.public_key();
@@ -94,8 +94,11 @@ impl KeyInfoCommand {
     pub async fn exec(self) -> Result<()> {
         let config = &self.common.read_config()?;
         if let Some(keys) = &config.keys {
-            let private_key =
-                get_signing_key(&self.common.registry, keys.clone(), config.home_url.clone())?;
+            let private_key = get_signing_key(
+                self.common.registry.as_deref(),
+                keys,
+                config.home_url.as_deref(),
+            )?;
             let public_key = private_key.public_key();
             println!("Key ID: {}", public_key.fingerprint());
             println!("Public Key: {public_key}");
@@ -129,10 +132,10 @@ impl KeySetCommand {
             config.keys = Some(IndexSet::new());
         }
         set_signing_key(
-            &self.common.registry.clone(),
+            self.common.registry.as_deref(),
             &key,
             config.keys.as_mut().unwrap(),
-            config.home_url.clone(),
+            config.home_url.as_deref(),
         )?;
         config.write_to_file(&Config::default_config_path()?)?;
 
@@ -159,8 +162,7 @@ impl KeyDeleteCommand {
             .with_prompt("are you sure you want to delete your signing key")
             .interact()?
         {
-            // delete_signing_key(&self.common.registry, config)?;
-            delete_signing_key(&self.common.registry, config.keys.clone().expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"), config.home_url.clone())?;
+            delete_signing_key(self.common.registry.as_deref(), config.keys.as_ref().expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"), config.home_url.as_deref())?;
             let keys = &mut config.keys;
             if let Some(keys) = keys {
                 if let Some(registry_url) = self.common.registry {
