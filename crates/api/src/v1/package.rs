@@ -43,8 +43,6 @@ pub struct MissingContent {
 #[serde(rename_all = "camelCase")]
 pub struct PublishRecordRequest<'a> {
     /// The package name being published.
-    /// TODO: Remove the alias for `packageId` according to compatibility release schedule.
-    #[serde(alias = "packageId")]
     pub package_name: Cow<'a, PackageName>,
     /// The publish record to add to the package log.
     pub record: Cow<'a, ProtoEnvelopeBody>,
