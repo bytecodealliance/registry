@@ -4,7 +4,7 @@
 //! * `./publish verify` - verify crates can be published to crates.io
 //! * `./publish publish` - actually publish crates to crates.io
 
-use indexmap::{IndexMap};
+use indexmap::IndexMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ const CRATES_TO_PUBLISH: &[&str] = &[
     "warg-protocol",
     "warg-api",
     "warg-client",
+    "warg-credentials",
     "warg-server",
     "warg-cli",
 ];
@@ -35,6 +36,7 @@ const PUBLIC_CRATES: &[&str] = &[
     "warg-protocol",
     "warg-api",
     "warg-client",
+    "warg-credentials",
     "warg-server",
     "warg-cli",
 ];
@@ -161,7 +163,10 @@ fn read_crate(ws: Option<&Workspace>, manifest: &Path) -> Crate {
             );
         }
         if let Some(ws) = ws {
-            if version.is_none() && (line.starts_with("version.workspace = true") || line.starts_with("version = { workspace = true }")) {
+            if version.is_none()
+                && (line.starts_with("version.workspace = true")
+                    || line.starts_with("version = { workspace = true }"))
+            {
                 version = Some(ws.version.clone());
             }
         }

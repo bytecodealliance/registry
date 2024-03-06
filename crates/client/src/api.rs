@@ -216,7 +216,6 @@ impl Client {
     pub fn url(&self) -> &RegistryUrl {
         &self.url
     }
-
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(
         &self,

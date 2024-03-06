@@ -14,6 +14,7 @@ wasm-encoder = { workspace = true }
 wasmparser = { workspace = true }
 wasm-compose = { workspace = true }
 warg-crypto = { workspace = true }
+warg-credentials = { workspace = true }
 warg-protocol = { workspace = true }
 warg-client = { workspace = true }
 clap = { workspace = true }
@@ -40,7 +41,6 @@ indexmap.workspace = true
 semver.workspace = true
 wat = "1.0.85"
 wasmprinter = "0.2.78"
-keyring = "2.3.0"
 dialoguer = "0.11.0"
 itertools = "0.12.1"
 secrecy= { workspace = true }
@@ -74,6 +74,7 @@ repository = "https://github.com/bytecodealliance/registry"
 [workspace.dependencies]
 ptree = "0.4.0"
 warg-api = { path = "crates/api", version = "0.4.0-dev" }
+warg-credentials = { path = "crates/credentials", version = "0.4.0-dev" }
 warg-client = { path = "crates/client", version = "0.4.0-dev" }
 warg-crypto = { path = "crates/crypto", version = "0.4.0-dev" }
 warg-protobuf = { path = "proto", version = "0.4.0-dev" }
@@ -82,6 +83,7 @@ warg-transparency = { path = "crates/transparency", version = "0.4.0-dev" }
 warg-server = { path = "crates/server", version = "0.4.0-dev" }
 clap = { version = "4.3.24", features = ["derive", "env"] }
 thiserror = "1.0.56"
+keyring = "2.3.0"
 anyhow = "1.0.79"
 serde = { version = "1.0.196", features = ["derive", "rc"] }
 serde_json = "1.0.113"

@@ -64,18 +64,18 @@ pub fn set_auth_token(registry_url: &RegistryUrl, token: &str) -> Result<()> {
 
 /// Gets the signing key entry for the given registry and key name.
 pub fn get_signing_key_entry(
-    registry_url: &Option<String>,
-    keys: IndexSet<String>,
-    home_url: Option<String>,
+    registry_url: Option<&str>,
+    keys: &IndexSet<String>,
+    home_url: Option<&str>,
 ) -> Result<Entry> {
     if let Some(registry_url) = registry_url {
-        if keys.contains(&registry_url.clone()) {
+        if keys.contains(registry_url) {
             Entry::new("warg-signing-key", registry_url).context("failed to get keyring entry")
         } else {
             Entry::new("warg-signing-key", "default").context("failed to get keyring entry")
         }
     } else {
-        if let Some(url) = &home_url {
+        if let Some(url) = home_url {
             if keys.contains(url) {
                 return Entry::new("warg-signing-key", &RegistryUrl::new(url)?.safe_label())
                     .context("failed to get keyring entry");
@@ -95,9 +95,9 @@ pub fn get_signing_key_entry(
 pub fn get_signing_key(
     // If being called by a cli key command, this will always be a cli flag
     // If being called by a client publish command, this could also be supplied by namespace map config
-    registry_url: &Option<String>,
-    keys: IndexSet<String>,
-    home_url: Option<String>,
+    registry_url: Option<&str>,
+    keys: &IndexSet<String>,
+    home_url: Option<&str>,
 ) -> Result<PrivateKey> {
     let entry = get_signing_key_entry(registry_url, keys, home_url)?;
 
@@ -129,12 +129,12 @@ pub fn get_signing_key(
 
 /// Sets the signing key for the given registry host and key name.
 pub fn set_signing_key(
-    registry_url: &Option<String>,
+    registry_url: Option<&str>,
     key: &PrivateKey,
     keys: &mut IndexSet<String>,
-    home_url: Option<String>,
+    home_url: Option<&str>,
 ) -> Result<()> {
-    let entry = get_signing_key_entry(registry_url, keys.clone(), home_url.clone())?;
+    let entry = get_signing_key_entry(registry_url, keys, home_url)?;
     match entry.set_password(&key.encode()) {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => {
@@ -163,11 +163,11 @@ pub fn set_signing_key(
 
 /// Deletes the signing key for the given registry host and key name.
 pub fn delete_signing_key(
-    registry_url: &Option<String>,
-    keys: IndexSet<String>,
-    home_url: Option<String>,
+    registry_url: Option<&str>,
+    keys: &IndexSet<String>,
+    home_url: Option<&str>,
 ) -> Result<()> {
-    let entry = get_signing_key_entry(registry_url, keys, home_url.clone())?;
+    let entry = get_signing_key_entry(registry_url, keys, home_url)?;
 
     match entry.delete_password() {
         Ok(()) => Ok(()),

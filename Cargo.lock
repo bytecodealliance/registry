@@ -4648,7 +4648,6 @@ dependencies = [
  "futures",
  "indexmap 2.2.4",
  "itertools 0.12.1",
- "keyring",
  "p256",
  "ptree",
  "rand_core",
@@ -4665,6 +4664,7 @@ dependencies = [
  "url",
  "warg-api",
  "warg-client",
+ "warg-credentials",
  "warg-crypto",
  "warg-protocol",
  "warg-server",
@@ -4719,6 +4719,18 @@ dependencies = [
  "wasmparser 0.121.2",
  "wasmprinter",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "warg-credentials"
+version = "0.4.0-dev"
+dependencies = [
+ "anyhow",
+ "indexmap 2.2.4",
+ "keyring",
+ "secrecy",
+ "warg-client",
+ "warg-crypto",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ use warg_client::storage::RegistryStorage;
 use warg_client::Client;
 use warg_client::RegistryUrl;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
+use warg_credentials::keyring::{get_auth_token, get_signing_key};
 use warg_crypto::signing::PrivateKey;
 
 mod bundle;
@@ -27,9 +28,6 @@ mod logout;
 mod publish;
 mod reset;
 mod update;
-
-use crate::keyring::get_auth_token;
-use crate::keyring::get_signing_key;
 
 pub use self::bundle::*;
 pub use self::clear::*;
@@ -117,20 +115,23 @@ impl CommonOptions {
         };
         let config = self.read_config()?;
         get_signing_key(
-            &registry_url.map(|reg| reg.safe_label()),
-            config.keys.expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"),
-            config.home_url,
+            registry_url.map(|reg| reg.safe_label()).as_deref(),
+            &config.keys,
+            config.home_url.as_deref(),
         )
     }
     /// Gets the auth token for the given registry URL.
     pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
-        if let Some(reg_url) = &self.registry {
-            Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
-        } else if let Some(url) = config.home_url.as_ref() {
-            Ok(get_auth_token(&RegistryUrl::new(url)?)?)
-        } else {
-            Ok(None)
+        if config.keyring_auth {
+            return if let Some(reg_url) = &self.registry {
+                Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
+            } else if let Some(url) = config.home_url.as_ref() {
+                Ok(get_auth_token(&RegistryUrl::new(url)?)?)
+            } else {
+                Ok(None)
+            };
         }
+        Ok(None)
     }
 }
 
