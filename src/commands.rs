@@ -122,13 +122,16 @@ impl CommonOptions {
     }
     /// Gets the auth token for the given registry URL.
     pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
-        if let Some(reg_url) = &self.registry {
-            Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
-        } else if let Some(url) = config.home_url.as_ref() {
-            Ok(get_auth_token(&RegistryUrl::new(url)?)?)
-        } else {
-            Ok(None)
+        if config.auth {
+            return if let Some(reg_url) = &self.registry {
+                Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
+            } else if let Some(url) = config.home_url.as_ref() {
+                Ok(get_auth_token(&RegistryUrl::new(url)?)?)
+            } else {
+                Ok(None)
+            };
         }
+        Ok(None)
     }
 }
 

@@ -41,6 +41,8 @@ impl LogoutCommand {
     pub async fn exec(self) -> Result<()> {
         self.keyring_entry
             .delete_entry(self.common.read_config()?.home_url)?;
+        let mut config = self.common.read_config()?;
+        config.auth = false;
         println!("auth token was deleted successfully",);
         Ok(())
     }

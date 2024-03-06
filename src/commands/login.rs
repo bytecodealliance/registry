@@ -79,6 +79,7 @@ impl LoginCommand {
             println!("Public Key: {public_key}");
             return Ok(());
         }
+        config.auth = true;
         config.write_to_file(&Config::default_config_path()?)?;
 
         let token = Password::with_theme(&ColorfulTheme::default())

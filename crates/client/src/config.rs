@@ -110,6 +110,10 @@ pub struct Config {
     /// List of creds availabe in keyring
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keys: Option<IndexSet<String>>,
+
+    /// Whether or not an auth key should be retreived from keyring
+    #[serde(default)]
+    pub auth: bool,
 }
 
 impl Config {
@@ -187,6 +191,7 @@ impl Config {
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
             keys: self.keys.clone(),
+            auth: false,
         };
 
         serde_json::to_writer_pretty(
