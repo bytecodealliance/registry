@@ -191,7 +191,7 @@ impl Config {
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
             keys: self.keys.clone(),
-            keyring_auth: false,
+            keyring_auth: self.keyring_auth,
         };
 
         serde_json::to_writer_pretty(

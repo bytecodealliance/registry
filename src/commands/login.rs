@@ -66,13 +66,12 @@ impl LoginCommand {
                 .context("failed to read token")?;
             self.keyring_entry
                 .set_entry(self.common.read_config()?.home_url, &token)?;
+            config.keyring_auth = true;
             config.write_to_file(&Config::default_config_path()?)?;
             println!("auth token was set successfully, and generated default key",);
             println!("Public Key: {public_key}");
             return Ok(());
         }
-        config.keyring_auth = true;
-        config.write_to_file(&Config::default_config_path()?)?;
 
         let token = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter auth token")
@@ -80,6 +79,8 @@ impl LoginCommand {
             .context("failed to read token")?;
         self.keyring_entry
             .set_entry(self.common.read_config()?.home_url, &token)?;
+        config.keyring_auth = true;
+        config.write_to_file(&Config::default_config_path()?)?;
         println!("auth token was set successfully",);
         Ok(())
     }
