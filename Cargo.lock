@@ -4648,7 +4648,6 @@ dependencies = [
  "futures",
  "indexmap 2.2.4",
  "itertools 0.12.1",
- "keyring",
  "p256",
  "ptree",
  "rand_core",

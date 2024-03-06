@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::Args;
-use warg_client::RegistryUrl;
+use warg_client::{Config, RegistryUrl};
 
 use warg_credentials::keyring::delete_auth_token;
 
@@ -42,7 +42,8 @@ impl LogoutCommand {
         self.keyring_entry
             .delete_entry(self.common.read_config()?.home_url)?;
         let mut config = self.common.read_config()?;
-        config.auth = false;
+        config.keyring_auth = false;
+        config.write_to_file(&Config::default_config_path()?)?;
         println!("auth token was deleted successfully",);
         Ok(())
     }

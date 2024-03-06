@@ -1,7 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
-use indexmap::IndexSet;
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
 use warg_client::Config;
@@ -56,21 +55,15 @@ impl KeyNewCommand {
     pub async fn exec(self) -> Result<()> {
         let config = &mut self.common.read_config()?;
         let key = SigningKey::random(&mut OsRng).into();
-        if config.keys.is_some() {
-            if let Some(ref reg) = self.common.registry {
-                config.keys.as_mut().unwrap().insert(reg.to_string());
-            } else {
-                config.keys.as_mut().unwrap().insert("default".to_string());
-            }
+        if let Some(ref reg) = self.common.registry {
+            config.keys.insert(reg.to_string());
         } else {
-            let mut keys = IndexSet::new();
-            keys.insert("default".to_string());
-            config.keys = Some(keys);
-        };
+            config.keys.insert("default".to_string());
+        }
         set_signing_key(
             self.common.registry.as_deref(),
             &key,
-            config.keys.as_mut().unwrap(),
+            &mut config.keys,
             config.home_url.as_deref(),
         )?;
         config.write_to_file(&Config::default_config_path()?)?;
@@ -93,19 +86,15 @@ impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = &self.common.read_config()?;
-        if let Some(keys) = &config.keys {
-            let private_key = get_signing_key(
-                self.common.registry.as_deref(),
-                keys,
-                config.home_url.as_deref(),
-            )?;
-            let public_key = private_key.public_key();
-            println!("Key ID: {}", public_key.fingerprint());
-            println!("Public Key: {public_key}");
-            Ok(())
-        } else {
-            bail!("error: Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new`")
-        }
+        let private_key = get_signing_key(
+            self.common.registry.as_deref(),
+            &config.keys,
+            config.home_url.as_deref(),
+        )?;
+        let public_key = private_key.public_key();
+        println!("Key ID: {}", public_key.fingerprint());
+        println!("Public Key: {public_key}");
+        Ok(())
     }
 }
 
@@ -128,13 +117,10 @@ impl KeySetCommand {
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
         let config = &mut self.common.read_config()?;
 
-        if config.keys.is_none() {
-            config.keys = Some(IndexSet::new());
-        }
         set_signing_key(
             self.common.registry.as_deref(),
             &key,
-            config.keys.as_mut().unwrap(),
+            &mut config.keys,
             config.home_url.as_deref(),
         )?;
         config.write_to_file(&Config::default_config_path()?)?;
@@ -162,14 +148,16 @@ impl KeyDeleteCommand {
             .with_prompt("are you sure you want to delete your signing key")
             .interact()?
         {
-            delete_signing_key(self.common.registry.as_deref(), config.keys.as_ref().expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"), config.home_url.as_deref())?;
+            delete_signing_key(
+                self.common.registry.as_deref(),
+                &config.keys,
+                config.home_url.as_deref(),
+            )?;
             let keys = &mut config.keys;
-            if let Some(keys) = keys {
-                if let Some(registry_url) = self.common.registry {
-                    keys.swap_remove(&registry_url);
-                } else {
-                    keys.swap_remove("default");
-                }
+            if let Some(registry_url) = self.common.registry {
+                keys.swap_remove(&registry_url);
+            } else {
+                keys.swap_remove("default");
             }
             config.write_to_file(&Config::default_config_path()?)?;
             println!("signing key was deleted successfully",);

@@ -116,13 +116,13 @@ impl CommonOptions {
         let config = self.read_config()?;
         get_signing_key(
             registry_url.map(|reg| reg.safe_label()).as_deref(),
-            &config.keys.expect("Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new"),
+            &config.keys,
             config.home_url.as_deref(),
         )
     }
     /// Gets the auth token for the given registry URL.
     pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
-        if config.auth {
+        if config.keyring_auth {
             return if let Some(reg_url) = &self.registry {
                 Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
             } else if let Some(url) = config.home_url.as_ref() {

@@ -108,12 +108,12 @@ pub struct Config {
     pub namespace_map_path: Option<PathBuf>,
 
     /// List of creds availabe in keyring
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub keys: Option<IndexSet<String>>,
+    #[serde(default, skip_serializing_if = "IndexSet::is_empty")]
+    pub keys: IndexSet<String>,
 
     /// Whether or not an auth key should be retreived from keyring
     #[serde(default)]
-    pub auth: bool,
+    pub keyring_auth: bool,
 }
 
 impl Config {
@@ -191,7 +191,7 @@ impl Config {
                 pathdiff::diff_paths(&p, &parent).unwrap()
             }),
             keys: self.keys.clone(),
-            auth: false,
+            keyring_auth: false,
         };
 
         serde_json::to_writer_pretty(

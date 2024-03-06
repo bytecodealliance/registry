@@ -1,7 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Password};
-use indexmap::IndexSet;
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
 use warg_client::{Config, RegistryUrl};
@@ -56,17 +55,10 @@ impl LoginCommand {
             config.home_url = home_url.clone();
             config.write_to_file(&Config::default_config_path()?)?;
         }
-        if config.keys.is_none() {
-            let mut keys = IndexSet::new();
-            keys.insert("default".to_string());
-            config.keys = Some(keys);
+        if config.keys.is_empty() {
+            config.keys.insert("default".to_string());
             let key = SigningKey::random(&mut OsRng).into();
-            set_signing_key(
-                None,
-                &key,
-                config.keys.as_mut().unwrap(),
-                config.home_url.as_deref(),
-            )?;
+            set_signing_key(None, &key, &mut config.keys, config.home_url.as_deref())?;
             let public_key = key.public_key();
             let token = Password::with_theme(&ColorfulTheme::default())
                 .with_prompt("Enter auth token")
@@ -79,7 +71,7 @@ impl LoginCommand {
             println!("Public Key: {public_key}");
             return Ok(());
         }
-        config.auth = true;
+        config.keyring_auth = true;
         config.write_to_file(&Config::default_config_path()?)?;
 
         let token = Password::with_theme(&ColorfulTheme::default())

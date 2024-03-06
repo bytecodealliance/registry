@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use indexmap::IndexSet;
 use std::{
     env,
     path::{Path, PathBuf},
@@ -164,8 +165,8 @@ pub async fn spawn_server(
         registries_dir: Some(root.join("registries")),
         content_dir: Some(root.join("content")),
         namespace_map_path: Some(root.join("namespaces")),
-        keys: None,
-        auth: false,
+        keys: IndexSet::new(),
+        keyring_auth: false,
     };
 
     Ok((instance, config))

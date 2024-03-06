@@ -69,7 +69,7 @@ impl ConfigCommand {
             content_dir: self.content_dir.map(|p| cwd.join(p)),
             namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
             keys: self.common.read_config()?.keys,
-            auth: false,
+            keyring_auth: false,
         };
 
         config.write_to_file(&path)?;
