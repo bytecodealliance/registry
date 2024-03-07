@@ -4,7 +4,7 @@
 //! * `./publish verify` - verify crates can be published to crates.io
 //! * `./publish publish` - actually publish crates to crates.io
 
-use indexmap::IndexMap;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -66,7 +66,7 @@ fn main() {
         .iter()
         .enumerate()
         .map(|(i, c)| (*c, i))
-        .collect::<IndexMap<_, _>>();
+        .collect::<HashMap<_, _>>();
     crates.sort_by_key(|krate| pos.get(&krate.name[..]));
 
     match &env::args().nth(1).expect("must have one argument")[..] {
