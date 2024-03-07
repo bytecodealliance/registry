@@ -163,10 +163,7 @@ fn read_crate(ws: Option<&Workspace>, manifest: &Path) -> Crate {
             );
         }
         if let Some(ws) = ws {
-            let l: String = line.split_whitespace().collect();
-            if version.is_none()
-                && (l == "version.workspace=true" || l == "version={workspace=true}")
-            {
+            if version.is_none() && (line.starts_with("version.workspace = true") || line.starts_with("version = { workspace = true }")) {
                 version = Some(ws.version.clone());
             }
         }
