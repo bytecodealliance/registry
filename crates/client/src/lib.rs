@@ -631,7 +631,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 .await
                 .inspect(|res| {
                     for warning in res.warnings.iter() {
-                        tracing::warn!("WARNING: {}", warning.message);
+                        tracing::warn!("Fetch warning from registry: {}", warning.message);
                     }
                 })
                 .map_err(|e| {
