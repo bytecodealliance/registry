@@ -52,6 +52,9 @@ pub struct FetchLogsResponse {
     /// The package records appended since last known package record ids.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub packages: IndexMap<LogId, Vec<PublishedRecord>>,
+    /// An optional list of warnings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<FetchWarning>,
 }
 
 /// Represents a fetch package names request.
@@ -70,6 +73,13 @@ pub struct FetchPackageNamesRequest<'a> {
 pub struct FetchPackageNamesResponse {
     /// The log ID hash mapping to a package name. If `None`, the package name cannot be provided.
     pub packages: IndexMap<LogId, Option<PackageName>>,
+}
+
+/// A warning message.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FetchWarning {
+    /// The warning message itself
+    pub message: String,
 }
 
 /// Represents a fetch API error.
