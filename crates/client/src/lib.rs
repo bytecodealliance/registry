@@ -629,6 +629,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     packages: Cow::Borrowed(&last_known),
                 })
                 .await
+                .inspect(|res| {
+                    for warning in res.warnings.iter() {
+                        tracing::warn!("WARNING: {}", warning.message);
+                    }
+                })
                 .map_err(|e| {
                     ClientError::translate_log_not_found(e, |id| {
                         packages.get(id).map(|p| p.name.clone())

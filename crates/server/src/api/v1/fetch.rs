@@ -160,6 +160,7 @@ async fn fetch_logs(
         more,
         operator,
         packages: map,
+        warnings: Vec::default(),
     }))
 }
 
