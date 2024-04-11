@@ -9,7 +9,7 @@ use warg_crypto::hash::AnyHash;
 use warg_protocol::{registry::PackageName, Version};
 
 /// Display client storage information.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct InfoCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -28,16 +28,21 @@ impl InfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config, None).await?;
 
         println!("registry: {url}", url = client.url());
         println!("\npackages in client storage:");
         match self.package {
             Some(package) => {
-                client.refresh_namespace(package.namespace()).await?;
                 if let Some(info) = client
                     .registry()
-                    .load_package(client.get_warg_registry(), &package)
+                    .load_package(
+                        client
+                            .get_warg_registry(package.namespace())
+                            .await?
+                            .as_ref(),
+                        &package,
+                    )
                     .await?
                 {
                     Self::print_package_info(&info);

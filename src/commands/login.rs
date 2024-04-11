@@ -10,7 +10,7 @@ use warg_credentials::keyring::{set_auth_token, set_signing_key};
 use super::CommonOptions;
 
 /// Manage auth tokens for interacting with a registry.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct LoginCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -21,7 +21,7 @@ pub struct LoginCommand {
     keyring_entry: KeyringEntryArgs,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct KeyringEntryArgs {
     /// The URL of the registry to store an auth token for.
     #[clap(value_name = "URL")]

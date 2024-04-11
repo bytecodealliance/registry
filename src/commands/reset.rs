@@ -3,7 +3,7 @@ use anyhow::Result;
 use clap::Args;
 
 /// Reset local data for registry.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct ResetCommand {
     /// The common command options.
     #[clap(flatten)]

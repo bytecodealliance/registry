@@ -10,6 +10,7 @@ use secrecy::Secret;
 use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::fs;
+use std::future::Future;
 use std::str::FromStr;
 use std::{borrow::Cow, path::PathBuf, time::Duration};
 use storage::{
@@ -65,7 +66,7 @@ where
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
     /// Creates a new client for the given URL, registry storage, and
     /// content storage.
-    pub fn new(
+    pub async fn new(
         url: impl IntoUrl,
         registry: R,
         content: C,
@@ -99,6 +100,36 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// Gets the namespace map
     pub fn namespace_map(&self) -> &N {
         &self.namespace_map
+    }
+
+    /// Get
+    pub async fn get_warg_registry(&self, namespace: &str) -> Result<Option<RegistryDomain>> {
+        self.update_checkpoint(None, &self.api.latest_checkpoint(None).await?, vec![])
+            .await?;
+        let operator = self
+            .registry()
+            .load_operator(Some(&RegistryDomain::from_str(namespace)?))
+            .await?;
+        if let Some(op) = operator {
+            let namespace_state = op.state.namespace_state(namespace);
+            if let Ok(Some(warg_protocol::operator::NamespaceState::Imported { registry })) =
+                namespace_state
+            {
+                return Ok(Some(RegistryDomain::from_str(registry)?));
+            } else if let Ok(Some(warg_protocol::operator::NamespaceState::Defined)) =
+                namespace_state
+            {
+                return Ok(None);
+            };
+        };
+        let nm_map = self.namespace_map.load_namespace_map().await?;
+        Ok(if let Some(nm_map) = &nm_map {
+            nm_map
+                .get(namespace)
+                .map(|domain| RegistryDomain::from_str(domain).unwrap())
+        } else {
+            None
+        })
     }
 
     /// Stores namespace mapping in local storage
@@ -137,45 +168,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .or(Err(ClientError::ClearContentCacheFailed))
     }
 
-    /// Check operator log for namespace mapping
-    pub async fn refresh_namespace(&mut self, namespace: &str) -> ClientResult<()> {
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
-            .await?;
-        let operator = self.registry().load_operator(&None).await?;
-        let operator_log_maps_namespace = if let Some(op) = operator {
-            let namespace_state = op.state.namespace_state(namespace);
-            if let Ok(Some(nm)) = namespace_state {
-                if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
-                    self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
-                }
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        if !operator_log_maps_namespace {
-            let map = self.namespace_map().load_namespace_map().await?;
-            if let Some(map) = map {
-                let namespace = map.get(namespace);
-                if let Some(nm) = namespace {
-                    self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(nm)?));
-                } else {
-                    self.api.set_warg_registry(None);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Get warg-registry header value
-    pub fn get_warg_registry(&self) -> &Option<RegistryDomain> {
-        self.api.get_warg_registry()
-    }
-
     /// Locks component
     pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
         let mut builder = LockListBuilder::default();
@@ -194,7 +186,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             let id = PackageName::new(name)?;
             let info = self
                 .registry()
-                .load_package(self.api.get_warg_registry(), &id)
+                .load_package(self.get_warg_registry(id.namespace()).await?.as_ref(), &id)
                 .await?;
             if let Some(inf) = info {
                 let release = if version != VersionReq::STAR {
@@ -316,6 +308,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         signing_key: &signing::PrivateKey,
         mut info: PublishInfo,
     ) -> ClientResult<RecordId> {
+        let registry_domain = self.get_warg_registry(info.name.namespace()).await?;
         if info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
                 name: info.name.clone(),
@@ -333,15 +326,19 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         let mut package = self
             .registry
-            .load_package(self.api.get_warg_registry(), &info.name)
+            .load_package(registry_domain.as_ref(), &info.name)
             .await?
             .unwrap_or_else(|| PackageInfo::new(info.name.clone()));
 
         // If we're not initializing the package and a head was not explicitly specified,
         // updated to the latest checkpoint to get the latest known head.
         if !initializing && info.head.is_none() {
-            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
-                .await?;
+            self.update_checkpoint(
+                registry_domain.as_ref(),
+                &self.api.latest_checkpoint(registry_domain.as_ref()).await?,
+                [&mut package],
+            )
+            .await?;
 
             info.head = package.state.head().as_ref().map(|h| h.digest.clone());
         }
@@ -361,6 +358,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         let record = self
             .api
             .publish_package_record(
+                registry_domain.as_ref(),
                 &log_id,
                 PublishRecordRequest {
                     package_name: Cow::Borrowed(&package.name),
@@ -429,8 +427,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         record_id: &RecordId,
         interval: Duration,
     ) -> ClientResult<()> {
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
         let log_id = LogId::package_log::<Sha256>(package);
-        let mut current = self.get_package_record(package, &log_id, record_id).await?;
+        let mut current = self
+            .get_package_record(registry_domain.as_ref(), package, &log_id, record_id)
+            .await?;
 
         loop {
             match current.state {
@@ -449,7 +450,9 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 }
                 PackageRecordState::Processing => {
                     tokio::time::sleep(interval).await;
-                    current = self.get_package_record(package, &log_id, record_id).await?;
+                    current = self
+                        .get_package_record(registry_domain.as_ref(), package, &log_id, record_id)
+                        .await?;
                 }
             }
         }
@@ -468,9 +471,13 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         tracing::info!("updating all packages to latest checkpoint");
 
         let mut updating = self.registry.load_packages().await?;
-
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+        let url = self.url().safe_label();
+        self.update_checkpoint(
+            Some(RegistryDomain::from_str(&url).unwrap()).as_ref(),
+            &self.api.latest_checkpoint(None).await?,
+            &mut updating,
+        )
+        .await?;
 
         Ok(())
     }
@@ -485,18 +492,64 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         tracing::info!("updating specific packages to latest checkpoint");
 
         let packages = packages.into_iter();
-        let mut updating = Vec::with_capacity(packages.len());
+        let mut namespaced: IndexMap<&str, Vec<&PackageName>> = IndexMap::new();
         for package in packages {
-            updating.push(
-                self.registry
-                    .load_package(self.api.get_warg_registry(), package)
-                    .await?
-                    .unwrap_or_else(|| PackageInfo::new(package.clone())),
-            );
+            let namespace = package.namespace();
+            let namespace_packages = namespaced.get_mut(namespace);
+            if let Some(nm_pkgs) = namespace_packages {
+                nm_pkgs.push(package);
+            } else {
+                namespaced.insert(namespace, vec![package]);
+            }
         }
+        let namespace_map = self.namespace_map.load_namespace_map().await?;
+        if let Some(nm_map) = namespace_map {
+            for (nm, pkg_names) in namespaced {
+                let mut updating = Vec::with_capacity(pkg_names.len());
+                let reg_domain = nm_map.get(nm);
+                if reg_domain.is_some() {
+                    for package in pkg_names {
+                        updating.push(
+                            self.registry
+                                .load_package(self.get_warg_registry(nm).await?.as_ref(), package)
+                                .await?
+                                .unwrap_or_else(|| PackageInfo::new(package.clone())),
+                        );
+                    }
+                }
 
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
+                self.update_checkpoint(
+                    reg_domain
+                        .map(|url| RegistryDomain::from_str(url).unwrap())
+                        .as_ref(),
+                    &self
+                        .api
+                        .latest_checkpoint(self.get_warg_registry(nm).await?.as_ref())
+                        .await?,
+                    &mut updating,
+                )
+                .await?;
+            }
+        } else {
+            for (_, pkg_names) in namespaced {
+                let mut updating = Vec::with_capacity(pkg_names.len());
+                for package in pkg_names {
+                    updating.push(
+                        self.registry
+                            .load_package(None, package)
+                            .await?
+                            .unwrap_or_else(|| PackageInfo::new(package.clone())),
+                    );
+                }
+
+                self.update_checkpoint(
+                    None,
+                    &self.api.latest_checkpoint(None).await?,
+                    &mut updating,
+                )
+                .await?;
+            }
+        }
 
         Ok(())
     }
@@ -516,11 +569,12 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// the resolved version.
     pub async fn download(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         name: &PackageName,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
         tracing::info!("downloading package `{name}` with requirement `{requirement}`");
-        let info = self.fetch_package(name).await?;
+        let info = self.fetch_package(registry_domain, name).await?;
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -528,7 +582,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     .content()
                     .context("invalid state: not yanked but missing content")?
                     .clone();
-                let path = self.download_content(&digest).await?;
+                let path = self.download_content(registry_domain, &digest).await?;
                 Ok(Some(PackageDownload {
                     version: release.version.clone(),
                     digest,
@@ -553,8 +607,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
         tracing::info!("downloading version {version} of package `{package}`");
-        let info = self.fetch_package(package).await?;
+        let info = self
+            .fetch_package(registry_domain.as_ref(), package)
+            .await?;
 
         let release =
             info.state
@@ -574,13 +631,16 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(PackageDownload {
             version: version.clone(),
             digest: digest.clone(),
-            path: self.download_content(digest).await?,
+            path: self
+                .download_content(registry_domain.as_ref(), digest)
+                .await?,
         })
     }
 
     /// Update checkpoint for list of packages
     async fn update_checkpoint<'a>(
         &self,
+        reg_domain: Option<&RegistryDomain>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
         packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
@@ -592,7 +652,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         let mut operator = self
             .registry
-            .load_operator(self.api.get_warg_registry())
+            .load_operator(reg_domain)
             .await?
             .unwrap_or_default();
 
@@ -616,18 +676,20 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .collect::<IndexMap<_, _>>();
 
         loop {
-            // let response: FetchLogsResponse = match self
             let response: FetchLogsResponse = self
                 .api
-                .fetch_logs(FetchLogsRequest {
-                    log_length: checkpoint.log_length,
-                    operator: operator
-                        .head_fetch_token
-                        .as_ref()
-                        .map(|t| Cow::Borrowed(t.as_str())),
-                    limit: None,
-                    packages: Cow::Borrowed(&last_known),
-                })
+                .fetch_logs(
+                    reg_domain,
+                    FetchLogsRequest {
+                        log_length: checkpoint.log_length,
+                        operator: operator
+                            .head_fetch_token
+                            .as_ref()
+                            .map(|t| Cow::Borrowed(t.as_str())),
+                        limit: None,
+                        packages: Cow::Borrowed(&last_known),
+                    },
+                )
                 .await
                 .map_err(|e| {
                     ClientError::translate_log_not_found(e, |id| {
@@ -741,6 +803,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(
+                    reg_domain,
                     InclusionRequest {
                         log_length: checkpoint.log_length,
                         leafs: leaf_indices,
@@ -751,11 +814,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 .await?;
         }
 
-        if let Some(from) = self
-            .registry
-            .load_checkpoint(self.api.get_warg_registry())
-            .await?
-        {
+        if let Some(from) = self.registry.load_checkpoint(reg_domain).await? {
             let from_log_length = from.as_ref().checkpoint.log_length;
             let to_log_length = ts_checkpoint.as_ref().checkpoint.log_length;
 
@@ -769,6 +828,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 Ordering::Less => {
                     self.api
                         .prove_log_consistency(
+                            reg_domain,
                             ConsistencyRequest {
                                 from: from_log_length,
                                 to: to_log_length,
@@ -792,19 +852,15 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             }
         }
 
-        self.registry
-            .store_operator(self.api.get_warg_registry(), operator)
-            .await?;
+        self.registry.store_operator(reg_domain, operator).await?;
 
         for package in packages.values_mut() {
             package.checkpoint = Some(checkpoint.clone());
-            self.registry
-                .store_package(self.api.get_warg_registry(), package)
-                .await?;
+            self.registry.store_package(reg_domain, package).await?;
         }
 
         self.registry
-            .store_checkpoint(self.api.get_warg_registry(), ts_checkpoint)
+            .store_checkpoint(reg_domain, ts_checkpoint)
             .await?;
 
         Ok(())
@@ -816,36 +872,39 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         mut packages: IndexMap<String, Vec<PackageInfo>>,
     ) -> Result<(), ClientError> {
         for (name, ts_checkpoint) in ts_checkpoints {
-            if self.url().safe_label() != name {
-                self.api
-                    .set_warg_registry(Some(RegistryDomain::from_str(&name)?));
-            } else {
-                self.api.set_warg_registry(None)
-            }
+            let registry_domain = self.get_warg_registry(&name).await?;
             let mut packages = packages.get_mut(&name.clone());
             if let Some(pkgs) = &mut packages {
-                self.update_checkpoint(&ts_checkpoint, pkgs.as_mut_slice())
-                    .await?;
+                self.update_checkpoint(
+                    registry_domain.as_ref(),
+                    &ts_checkpoint,
+                    pkgs.as_mut_slice(),
+                )
+                .await?;
             }
         }
 
         Ok(())
     }
 
-    async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
-        match self
-            .registry
-            .load_package(self.api.get_warg_registry(), name)
-            .await?
-        {
+    async fn fetch_package(
+        &self,
+        registry_domain: Option<&RegistryDomain>,
+        name: &PackageName,
+    ) -> Result<PackageInfo, ClientError> {
+        match self.registry.load_package(registry_domain, name).await? {
             Some(info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
                 Ok(info)
             }
             None => {
                 let mut info = PackageInfo::new(name.clone());
-                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
-                    .await?;
+                self.update_checkpoint(
+                    registry_domain,
+                    &self.api.latest_checkpoint(registry_domain).await?,
+                    [&mut info],
+                )
+                .await?;
 
                 Ok(info)
             }
@@ -854,13 +913,14 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
     async fn get_package_record(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         package: &PackageName,
         log_id: &LogId,
         record_id: &RecordId,
     ) -> ClientResult<PackageRecord> {
         let record = self
             .api
-            .get_package_record(log_id, record_id)
+            .get_package_record(registry_domain, log_id, record_id)
             .await
             .map_err(|e| {
                 ClientError::translate_log_not_found(e, |id| {
@@ -878,7 +938,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     ///
     /// If the content already exists in client storage, the existing path
     /// is returned.
-    pub async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
+    pub async fn download_content(
+        &self,
+        registry_domain: Option<&RegistryDomain>,
+        digest: &AnyHash,
+    ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
@@ -887,7 +951,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             None => {
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(digest).await?),
+                        Box::pin(self.api.download_content(registry_domain, digest).await?),
                         Some(digest),
                     )
                     .await?;
@@ -923,7 +987,7 @@ impl FileSystemClient {
     /// If a lock cannot be acquired for a storage directory, then
     /// `NewClientResult::Blocked` is returned with the path to the
     /// directory that could not be locked.
-    pub fn try_new_with_config(
+    pub async fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
         auth_token: Option<Secret<String>>,
@@ -945,13 +1009,9 @@ impl FileSystemClient {
             (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
         };
 
-        Ok(StorageLockResult::Acquired(Self::new(
-            url.into_url(),
-            packages,
-            content,
-            namespace_map,
-            auth_token,
-        )?))
+        Ok(StorageLockResult::Acquired(
+            Self::new(url.into_url(), packages, content, namespace_map, auth_token).await?,
+        ))
     }
 
     /// Creates a client for the given registry URL.
@@ -960,7 +1020,7 @@ impl FileSystemClient {
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
-    pub fn new_with_config(
+    pub async fn new_with_config(
         url: Option<&str>,
         config: &Config,
         auth_token: Option<Secret<String>>,
@@ -978,6 +1038,7 @@ impl FileSystemClient {
             FileSystemNamespaceMapStorage::new(namespace_map_path),
             auth_token,
         )
+        .await
     }
 }
 
@@ -1182,3 +1243,43 @@ impl ClientError {
 
 /// Represents the result of a client operation.
 pub type ClientResult<T> = Result<T, ClientError>;
+
+/// Namespace mapping to store when retrying a command after receiving a hint header
+#[derive(Clone)]
+pub struct Retry {
+    namespace: String,
+    registry: String,
+}
+
+impl Retry {
+    /// New Retry
+    pub fn new(namespace: String, registry: String) -> Self {
+        Self {
+            namespace,
+            registry,
+        }
+    }
+
+    /// Map namespace using Retry information
+    pub async fn store_namespace<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+        &self,
+        client: &Client<R, C, N>,
+    ) -> Result<()> {
+        client
+            .store_namespace(
+                self.namespace.clone(),
+                RegistryDomain::from_str(&self.registry)?,
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+/// Interactively retry when hint header received from warg server
+pub async fn with_interactive_retry<F>(f: impl Fn(Option<Retry>) -> F) -> Result<()>
+where
+    F: Future<Output = Result<()>>,
+{
+    f(None).await?;
+    Ok(())
+}

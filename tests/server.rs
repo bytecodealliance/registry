@@ -41,7 +41,7 @@ mod postgres;
 async fn test_initial_checkpoint(config: &Config) -> Result<()> {
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
     // There should be only a single log entry (the initial operator log entry)
@@ -71,7 +71,8 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
+    let registry_domain = client.get_warg_registry(name.namespace()).await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
@@ -86,7 +87,7 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert([&name]).await?;
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(registry_domain.as_ref(), &name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -109,7 +110,10 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client
+        .download(registry_domain.as_ref(), &name, &"0.2.0".parse()?)
+        .await?
+        .is_none());
 
     Ok(())
 }
@@ -120,7 +124,8 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
 
     // Publish release
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
+    let registry_domain = client.get_warg_registry(name.namespace()).await?;
     let signing_key = test_signing_key();
     publish(
         &client,
@@ -151,7 +156,9 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
 
     // Assert that the package is yanked
     client.upsert([&name]).await?;
-    let opt = client.download(&name, &PACKAGE_VERSION.parse()?).await?;
+    let opt = client
+        .download(registry_domain.as_ref(), &name, &PACKAGE_VERSION.parse()?)
+        .await?;
     assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
 }
@@ -161,7 +168,8 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
+    let registry_domain = client.get_warg_registry(name.namespace()).await?;
     let signing_key = test_signing_key();
     let digest = publish_wit(
         &client,
@@ -176,7 +184,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     // Assert that the package can be downloaded
     client.upsert([&name]).await?;
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(registry_domain.as_ref(), &name, &PACKAGE_VERSION.parse()?)
         .await?
         .context("failed to resolve package")?;
 
@@ -199,7 +207,10 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client
+        .download(registry_domain.as_ref(), &name, &"0.2.0".parse()?)
+        .await?
+        .is_none());
 
     Ok(())
 }
@@ -211,7 +222,7 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
     // Publish empty content to the server
     // This should be rejected by policy because it is not valid WebAssembly
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     match publish(
         &client,
@@ -269,7 +280,7 @@ async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
 
     // Start by publishing a new component package
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
@@ -305,7 +316,7 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
 
     // Start by publishing a new component package
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
@@ -337,7 +348,7 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
 }
 
 async fn test_publishing_name_conflict(config: &Config) -> Result<()> {
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
 
     publish_component(
@@ -426,7 +437,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
@@ -441,7 +452,10 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     client.upsert([&name]).await?;
     let package = client
         .registry()
-        .load_package(client.get_warg_registry(), &name)
+        .load_package(
+            client.get_warg_registry(name.namespace()).await?.as_ref(),
+            &name,
+        )
         .await?
         .expect("expected the package to exist");
     package
@@ -451,7 +465,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
 
     // Look up the content URL for the record
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ContentSourcesResponse { content_sources } = client.content_sources(&digest).await?;
+    let ContentSourcesResponse { content_sources } = client.content_sources(None, &digest).await?;
     assert_eq!(content_sources.len(), 1);
     let sources = content_sources
         .get(&digest)
@@ -513,7 +527,7 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
 async fn test_get_ledger(config: &Config) -> Result<()> {
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
     let url = Url::parse(config.home_url.as_ref().unwrap())?

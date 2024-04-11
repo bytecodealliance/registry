@@ -4,7 +4,7 @@ use clap::Args;
 use warg_protocol::{registry::PackageName, VersionReq};
 
 /// Download a warg registry package.
-#[derive(Args)]
+#[derive(Args, Clone)]
 #[clap(disable_version_flag = true)]
 pub struct DownloadCommand {
     /// The common command options.
@@ -22,13 +22,14 @@ impl DownloadCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
+        let client = self.common.create_client(&config, retry).await?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
 
         println!("downloading package `{name}`...", name = self.name);
 
         let res = client
             .download(
+                registry_domain.as_ref(),
                 &self.name,
                 self.version.as_ref().unwrap_or(&VersionReq::STAR),
             )

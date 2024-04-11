@@ -15,7 +15,7 @@ use warg_protocol::{package::ReleaseState, registry::PackageName, VersionReq};
 use wasmparser::{Chunk, ComponentImport, ComponentImportSectionReader, Parser, Payload};
 
 /// Print Dependency Tree
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct DependenciesCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -30,12 +30,17 @@ impl DependenciesCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.package.namespace()).await?;
+        let client = self.common.create_client(&config, retry).await?;
 
         if let Some(info) = client
             .registry()
-            .load_package(client.get_warg_registry(), &self.package)
+            .load_package(
+                client
+                    .get_warg_registry(self.package.namespace())
+                    .await?
+                    .as_ref(),
+                &self.package,
+            )
             .await?
         {
             Self::print_package_info(&client, &info).await?;
@@ -52,11 +57,14 @@ impl DependenciesCommand {
         node: &mut TreeBuilder,
         parser: &mut DepsParser,
     ) -> Result<()> {
-        client.download(id, &version).await?;
+        let registry_domain = client.get_warg_registry(id.namespace()).await?;
+        client
+            .download(registry_domain.as_ref(), id, &version)
+            .await?;
 
         let package = client
             .registry()
-            .load_package(client.get_warg_registry(), id)
+            .load_package(registry_domain.as_ref(), id)
             .await?;
         if let Some(pkg) = package {
             let latest = pkg.state.releases().last();
@@ -92,15 +100,18 @@ impl DependenciesCommand {
     }
 
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
+        let registry_domain = client.get_warg_registry(info.name.namespace()).await?;
         let mut parser = DepsParser::new();
         let root_package = client
             .registry()
-            .load_package(client.get_warg_registry(), &info.name)
+            .load_package(registry_domain.as_ref(), &info.name)
             .await?;
         if let Some(rp) = root_package {
             let latest = rp.state.releases().last();
             if let Some(l) = latest {
-                client.download(&info.name, &VersionReq::STAR).await?;
+                client
+                    .download(registry_domain.as_ref(), &info.name, &VersionReq::STAR)
+                    .await?;
                 let mut tree = new_tree(info.name.namespace(), info.name.name(), &l.version);
                 if let ReleaseState::Released { content } = &l.state {
                     let path = client.content().content_location(content);

@@ -4,13 +4,9 @@ use anyhow::Result;
 use clap::Args;
 use secrecy::Secret;
 use std::path::PathBuf;
-use std::str::FromStr;
-use warg_client::storage::ContentStorage;
-use warg_client::storage::NamespaceMapStorage;
 use warg_client::storage::RegistryDomain;
-use warg_client::storage::RegistryStorage;
-use warg_client::Client;
 use warg_client::RegistryUrl;
+use warg_client::Retry;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_credentials::keyring::{get_auth_token, get_signing_key};
 use warg_crypto::signing::PrivateKey;
@@ -44,7 +40,7 @@ pub use self::reset::*;
 pub use self::update::*;
 
 /// Common options for commands.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct CommonOptions {
     /// The URL of the registry to use.
     #[clap(long, value_name = "URL")]
@@ -82,7 +78,9 @@ impl CommonOptions {
             self.registry.as_deref(),
             config,
             self.auth_token(config)?,
-        )? {
+        )
+        .await?
+        {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {
                 println!(
@@ -95,6 +93,7 @@ impl CommonOptions {
                     config,
                     self.auth_token(config)?.map(Secret::from),
                 )
+                .await
             }
         }?;
         if let Some(retry) = retry {
@@ -104,18 +103,13 @@ impl CommonOptions {
     }
 
     /// Gets the signing key for the given registry URL.
-    pub fn signing_key<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+    pub async fn signing_key(
         &self,
-        client: &Client<R, C, N>,
+        registry_domain: Option<&RegistryDomain>,
     ) -> Result<PrivateKey> {
-        let registry_url = if let Some(nm) = &client.get_warg_registry() {
-            Some(RegistryUrl::new(nm.to_string())?)
-        } else {
-            None
-        };
         let config = self.read_config()?;
         get_signing_key(
-            registry_url.map(|reg| reg.safe_label()).as_deref(),
+            registry_domain.map(|domain| domain.to_string()).as_deref(),
             &config.keys,
             config.home_url.as_deref(),
         )
@@ -132,35 +126,5 @@ impl CommonOptions {
             };
         }
         Ok(None)
-    }
-}
-
-/// Namespace mapping to store when retrying a command after receiving a hint header
-pub struct Retry {
-    namespace: String,
-    registry: String,
-}
-
-impl Retry {
-    /// New Retry
-    pub fn new(namespace: String, registry: String) -> Self {
-        Self {
-            namespace,
-            registry,
-        }
-    }
-
-    /// Map namespace using Retry information
-    pub async fn store_namespace<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
-        &self,
-        client: &Client<R, C, N>,
-    ) -> Result<()> {
-        client
-            .store_namespace(
-                self.namespace.clone(),
-                RegistryDomain::from_str(&self.registry)?,
-            )
-            .await?;
-        Ok(())
     }
 }

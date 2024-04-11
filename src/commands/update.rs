@@ -3,7 +3,7 @@ use anyhow::Result;
 use clap::{ArgAction, Args};
 
 /// Update all local package logs for a registry.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct UpdateCommand {
     /// The common command options.
     #[clap(flatten)]

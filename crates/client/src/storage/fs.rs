@@ -81,7 +81,7 @@ impl FileSystemRegistryStorage {
         })
     }
 
-    fn operator_path(&self, namespace_registry: &Option<RegistryDomain>) -> PathBuf {
+    fn operator_path(&self, namespace_registry: Option<&RegistryDomain>) -> PathBuf {
         if let Some(nm) = namespace_registry {
             return self
                 .registries_dir
@@ -93,7 +93,7 @@ impl FileSystemRegistryStorage {
 
     fn package_path(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         name: &PackageName,
     ) -> PathBuf {
         if let Some(nm) = namespace_registry {
@@ -131,7 +131,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_checkpoint(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
     ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>> {
         if let Some(nm) = namespace_registry {
             return load(&self.registries_dir.join(nm.to_string()).join("checkpoint")).await;
@@ -141,7 +141,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn store_checkpoint(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()> {
         if let Some(nm) = namespace_registry {
@@ -231,14 +231,14 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_operator(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
     ) -> Result<Option<OperatorInfo>> {
         Ok(load(&self.operator_path(namespace_registry)).await?)
     }
 
     async fn store_operator(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         info: OperatorInfo,
     ) -> Result<()> {
         store(&self.operator_path(namespace_registry), info).await
@@ -246,7 +246,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn load_package(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         package: &PackageName,
     ) -> Result<Option<PackageInfo>> {
         Ok(load(&self.package_path(namespace_registry, package)).await?)
@@ -254,7 +254,7 @@ impl RegistryStorage for FileSystemRegistryStorage {
 
     async fn store_package(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         info: &PackageInfo,
     ) -> Result<()> {
         store(&self.package_path(namespace_registry, &info.name), info).await

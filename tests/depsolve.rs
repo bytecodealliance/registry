@@ -17,7 +17,7 @@ pub mod support;
 async fn depsolve() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
     let signing_key = support::test_signing_key();
 
     let mut head = publish_package(
@@ -89,7 +89,10 @@ async fn depsolve() -> Result<()> {
 
     let info = client
         .registry()
-        .load_package(client.get_warg_registry(), &PackageName::new("test:meet")?)
+        .load_package(
+            client.get_warg_registry("test").await?.as_ref(),
+            &PackageName::new("test:meet")?,
+        )
         .await?
         .context("package does not exist in client storage")?;
 
@@ -147,7 +150,7 @@ async fn publish_package(
                 name: name.clone(),
                 head: Some(head),
                 entries: vec![PublishEntry::Release {
-                    version: format!("1.0.0").parse().unwrap(),
+                    version: "1.0.0".to_string().parse().unwrap(),
                     content: add_digest.clone(),
                 }],
             },

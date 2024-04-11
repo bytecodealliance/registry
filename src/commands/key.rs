@@ -10,7 +10,7 @@ use warg_crypto::signing::PrivateKey;
 use super::CommonOptions;
 
 /// Manage signing keys for interacting with a registry.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct KeyCommand {
     /// The subcommand to execute.
     #[clap(subcommand)]
@@ -30,7 +30,7 @@ impl KeyCommand {
 }
 
 /// The subcommand to execute.
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum KeySubcommand {
     /// Creates a new signing key for a registry in the local keyring.
     New(KeyNewCommand),
@@ -43,7 +43,7 @@ pub enum KeySubcommand {
 }
 
 /// Creates a new signing key for a registry in the local keyring.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct KeyNewCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -75,7 +75,7 @@ impl KeyNewCommand {
 }
 
 /// Shows information about the signing key for a registry in the local keyring.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct KeyInfoCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -99,7 +99,7 @@ impl KeyInfoCommand {
 }
 
 /// Sets the signing key for a registry in the local keyring.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct KeySetCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -132,7 +132,7 @@ impl KeySetCommand {
 }
 
 /// Deletes the signing key for a registry from the local keyring.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct KeyDeleteCommand {
     /// The common command options.
     #[clap(flatten)]

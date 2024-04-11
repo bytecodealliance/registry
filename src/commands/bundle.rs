@@ -1,11 +1,12 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{bail, Result};
 use clap::Args;
 use semver::VersionReq;
 use warg_client::storage::RegistryStorage;
+use warg_client::Retry;
 use warg_protocol::registry::PackageName;
 /// Bundle With Registry Dependencies
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct BundleCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -20,20 +21,22 @@ impl BundleCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.package.namespace()).await?;
+        let client = self.common.create_client(&config, retry).await?;
+        let registry_domain = client.get_warg_registry(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client
             .registry()
-            .load_package(client.get_warg_registry(), &self.package)
+            .load_package(registry_domain.as_ref(), &self.package)
             .await?
         {
             client.bundle_component(&info).await?;
         } else {
-            client.download(&self.package, &VersionReq::STAR).await?;
+            client
+                .download(registry_domain.as_ref(), &self.package, &VersionReq::STAR)
+                .await?;
             if let Some(info) = client
                 .registry()
-                .load_package(client.get_warg_registry(), &self.package)
+                .load_package(registry_domain.as_ref(), &self.package)
                 .await?
             {
                 client.bundle_component(&info).await?;

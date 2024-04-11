@@ -101,9 +101,10 @@ impl LockListBuilder {
             match import.kind {
                 ImportKind::Locked(_) | ImportKind::Unlocked => {
                     let id = PackageName::new(import.name.clone())?;
+                    let registry_domain = client.get_warg_registry(id.namespace()).await?;
                     if let Some(info) = client
                         .registry()
-                        .load_package(client.api.get_warg_registry(), &id)
+                        .load_package(registry_domain.as_ref(), &id)
                         .await?
                     {
                         let release = info.state.releases().last();
@@ -114,10 +115,15 @@ impl LockListBuilder {
                         }
                         self.lock_list.insert(import);
                     } else {
-                        client.download(&id, &VersionReq::STAR).await?;
+                        client
+                            .download(registry_domain.as_ref(), &id, &VersionReq::STAR)
+                            .await?;
                         if let Some(info) = client
                             .registry()
-                            .load_package(client.api.get_warg_registry(), &id)
+                            .load_package(
+                                client.get_warg_registry(id.namespace()).await?.as_ref(),
+                                &id,
+                            )
                             .await?
                         {
                             let release = info.state.releases().last();
@@ -213,7 +219,13 @@ where
                 if let Some(info) = self
                     .client
                     .registry()
-                    .load_package(self.client.api.get_warg_registry(), &pkg_id)
+                    .load_package(
+                        self.client
+                            .get_warg_registry(pkg_id.namespace())
+                            .await?
+                            .as_ref(),
+                        &pkg_id,
+                    )
                     .await?
                 {
                     let release = if parsed_imp.req != VersionReq::STAR {

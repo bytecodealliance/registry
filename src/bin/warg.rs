@@ -5,10 +5,10 @@ use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
     BundleCommand, ClearCommand, ConfigCommand, DependenciesCommand, DownloadCommand, InfoCommand,
-    KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand, Retry,
+    KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand,
     UpdateCommand,
 };
-use warg_client::ClientError;
+use warg_client::{with_interactive_retry, ClientError, Retry};
 
 fn version() -> &'static str {
     option_env!("CARGO_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -46,27 +46,98 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    if let Err(e) = match WargCli::parse() {
-        WargCli::Config(cmd) => cmd.exec().await,
-        WargCli::Info(cmd) => cmd.exec().await,
-        WargCli::Key(cmd) => cmd.exec().await,
-        WargCli::Lock(cmd) => cmd.exec(None).await,
-        WargCli::Bundle(cmd) => cmd.exec(None).await,
-        WargCli::Dependencies(cmd) => cmd.exec(None).await,
-        WargCli::Download(cmd) => cmd.exec(None).await,
-        WargCli::Update(cmd) => cmd.exec(None).await,
-        WargCli::Publish(cmd) => cmd.exec(None).await,
-        WargCli::Reset(cmd) => cmd.exec().await,
-        WargCli::Clear(cmd) => cmd.exec().await,
-        WargCli::Login(cmd) => cmd.exec().await,
-        WargCli::Logout(cmd) => cmd.exec().await,
-    } {
-        if let Some(e) = e.downcast_ref::<ClientError>() {
-            describe_client_error_or_retry(e).await?;
-        } else {
-            eprintln!("error: {e:?}");
+    match &WargCli::parse() {
+        WargCli::Config(cmd) => cmd.clone().exec().await?,
+        WargCli::Info(cmd) => cmd.clone().exec().await?,
+        WargCli::Key(cmd) => cmd.clone().exec().await?,
+        WargCli::Lock(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
         }
-        exit(1);
+        WargCli::Bundle(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
+        }
+        WargCli::Dependencies(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
+        }
+        WargCli::Download(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
+        }
+        WargCli::Update(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
+        }
+        WargCli::Publish(cmd) => {
+            with_interactive_retry(|retry: Option<Retry>| async {
+                if let Err(e) = cmd.clone().exec(retry).await {
+                    if let Some(e) = e.downcast_ref::<ClientError>() {
+                        describe_client_error_or_retry(e).await?;
+                    } else {
+                        eprintln!("error: {e:?}");
+                    }
+                    exit(1);
+                }
+                Ok(())
+            })
+            .await?
+        }
+        WargCli::Reset(cmd) => cmd.clone().exec().await?,
+        WargCli::Clear(cmd) => cmd.clone().exec().await?,
+        WargCli::Login(cmd) => cmd.clone().exec().await?,
+        WargCli::Logout(cmd) => cmd.clone().exec().await?,
     }
 
     Ok(())
@@ -167,7 +238,7 @@ async fn describe_client_error_or_retry(e: &ClientError) -> Result<()> {
     Ok(())
 }
 
-async fn describe_client_error(e: &ClientError) -> Result<()> {
+pub async fn describe_client_error(e: &ClientError) -> Result<()> {
     match e {
         ClientError::NoHomeRegistryUrl => {
             eprintln!("error: {e}; use the `config` subcommand to set a default URL");

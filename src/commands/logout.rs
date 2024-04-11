@@ -7,7 +7,7 @@ use warg_credentials::keyring::delete_auth_token;
 use super::CommonOptions;
 
 /// Manage auth tokens for interacting with a registry.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct LogoutCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -17,7 +17,7 @@ pub struct LogoutCommand {
     keyring_entry: KeyringEntryArgs,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct KeyringEntryArgs {
     /// The URL of the registry to delete an auth token for.
     #[clap(value_name = "URL")]

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use warg_client::{Config, RegistryUrl};
 
 /// Creates a new warg configuration file.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct ConfigCommand {
     /// The common command options.
     #[clap(flatten)]

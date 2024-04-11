@@ -67,7 +67,7 @@ async fn it_works_with_postgres() -> TestResult {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
         packages.len() as RegistryLen + 2, /* publishes + initial checkpoint + yank */
@@ -85,7 +85,7 @@ async fn it_works_with_postgres() -> TestResult {
     packages.push(PackageName::new("test:unknown-key")?);
 
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
         packages.len() as RegistryLen + 2, /* publishes + initial checkpoint + yank*/
@@ -97,7 +97,7 @@ async fn it_works_with_postgres() -> TestResult {
     fs::remove_dir_all(root.join("content"))?;
     fs::remove_dir_all(root.join("registries"))?;
 
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
     client.upsert(packages.iter()).await?;
 
     // Finally, after a restart, ensure the packages can be downloaded
@@ -106,7 +106,7 @@ async fn it_works_with_postgres() -> TestResult {
             continue;
         }
         client
-            .download(&package, &"0.1.0".parse()?)
+            .download(None, &package, &"0.1.0".parse()?)
             .await?
             .context("failed to resolve package")?;
     }

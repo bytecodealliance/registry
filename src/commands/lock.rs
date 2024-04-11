@@ -9,7 +9,7 @@ use warg_client::{
 use warg_protocol::registry::PackageName;
 
 /// Print Dependency Tree
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct LockCommand {
     /// The common command options.
     #[clap(flatten)]
@@ -24,20 +24,28 @@ impl LockCommand {
     /// Executes the command.
     pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.package.namespace()).await?;
+        let client = self.common.create_client(&config, retry).await?;
+        let registry_domain = client.get_warg_registry(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client
             .registry()
-            .load_package(client.get_warg_registry(), &self.package)
+            .load_package(registry_domain.as_ref(), &self.package)
             .await?
         {
             Self::lock(client, &info).await?;
         } else {
-            client.download(&self.package, &VersionReq::STAR).await?;
+            client
+                .download(registry_domain.as_ref(), &self.package, &VersionReq::STAR)
+                .await?;
             if let Some(info) = client
                 .registry()
-                .load_package(client.get_warg_registry(), &self.package)
+                .load_package(
+                    client
+                        .get_warg_registry(self.package.namespace())
+                        .await?
+                        .as_ref(),
+                    &self.package,
+                )
                 .await?
             {
                 Self::lock(client, &info).await?;

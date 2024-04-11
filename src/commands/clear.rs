@@ -3,7 +3,7 @@ use anyhow::Result;
 use clap::Args;
 
 /// Deletes local content cache.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct ClearCommand {
     /// The common command options.
     #[clap(flatten)]
