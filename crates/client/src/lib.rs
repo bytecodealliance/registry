@@ -102,7 +102,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         &self.namespace_map
     }
 
-    /// Get
+    /// Get warg registry domain
     pub async fn get_warg_registry(&self, namespace: &str) -> Result<Option<RegistryDomain>> {
         self.update_checkpoint(None, &self.api.latest_checkpoint(None).await?, vec![])
             .await?;
@@ -111,16 +111,19 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .load_operator(Some(&RegistryDomain::from_str(namespace)?))
             .await?;
         if let Some(op) = operator {
-            let namespace_state = op.state.namespace_state(namespace);
-            if let Ok(Some(warg_protocol::operator::NamespaceState::Imported { registry })) =
-                namespace_state
-            {
-                return Ok(Some(RegistryDomain::from_str(registry)?));
-            } else if let Ok(Some(warg_protocol::operator::NamespaceState::Defined)) =
-                namespace_state
-            {
-                return Ok(None);
-            };
+            match op.state.namespace_state(namespace) {
+                Ok(Some(warg_protocol::operator::NamespaceState::Imported { registry })) => {
+                    return Ok(Some(RegistryDomain::from_str(registry)?));
+                }
+                Ok(Some(warg_protocol::operator::NamespaceState::Defined)) => {
+                    return Ok(None);
+                }
+                Ok(None) => return Ok(None),
+                Err(e) => {
+                    eprintln!("Namespace `{namespace}` not found in operator log but found namespace `{e}`, which has alternative casing.");
+                    return Ok(None);
+                }
+            }
         };
         let nm_map = self.namespace_map.load_namespace_map().await?;
         Ok(if let Some(nm_map) = &nm_map {
@@ -494,28 +497,23 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         let packages = packages.into_iter();
         let mut namespaced: IndexMap<&str, Vec<&PackageName>> = IndexMap::new();
         for package in packages {
-            let namespace = package.namespace();
-            let namespace_packages = namespaced.get_mut(namespace);
-            if let Some(nm_pkgs) = namespace_packages {
-                nm_pkgs.push(package);
-            } else {
-                namespaced.insert(namespace, vec![package]);
-            }
+            namespaced
+                .entry(package.namespace())
+                .or_default()
+                .push(package);
         }
         let namespace_map = self.namespace_map.load_namespace_map().await?;
         if let Some(nm_map) = namespace_map {
             for (nm, pkg_names) in namespaced {
                 let mut updating = Vec::with_capacity(pkg_names.len());
                 let reg_domain = nm_map.get(nm);
-                if reg_domain.is_some() {
-                    for package in pkg_names {
-                        updating.push(
-                            self.registry
-                                .load_package(self.get_warg_registry(nm).await?.as_ref(), package)
-                                .await?
-                                .unwrap_or_else(|| PackageInfo::new(package.clone())),
-                        );
-                    }
+                for package in pkg_names {
+                    updating.push(
+                        self.registry
+                            .load_package(self.get_warg_registry(nm).await?.as_ref(), package)
+                            .await?
+                            .unwrap_or_else(|| PackageInfo::new(package.clone())),
+                    );
                 }
 
                 self.update_checkpoint(

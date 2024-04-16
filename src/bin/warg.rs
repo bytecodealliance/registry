@@ -46,99 +46,33 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    match &WargCli::parse() {
-        WargCli::Config(cmd) => cmd.clone().exec().await?,
-        WargCli::Info(cmd) => cmd.clone().exec().await?,
-        WargCli::Key(cmd) => cmd.clone().exec().await?,
-        WargCli::Lock(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
+    with_interactive_retry(|retry: Option<Retry>| async {
+        if let Err(e) = match WargCli::parse() {
+            WargCli::Config(cmd) => cmd.exec().await,
+            WargCli::Info(cmd) => cmd.exec().await,
+            WargCli::Key(cmd) => cmd.exec().await,
+            WargCli::Lock(cmd) => cmd.exec(retry).await,
+            WargCli::Bundle(cmd) => cmd.exec(retry).await,
+            WargCli::Dependencies(cmd) => cmd.exec(retry).await,
+            WargCli::Download(cmd) => cmd.exec(retry).await,
+            WargCli::Update(cmd) => cmd.exec(retry).await,
+            WargCli::Publish(cmd) => cmd.exec(retry).await,
+            WargCli::Reset(cmd) => cmd.exec().await,
+            WargCli::Clear(cmd) => cmd.exec().await,
+            WargCli::Login(cmd) => cmd.exec().await,
+            WargCli::Logout(cmd) => cmd.exec().await,
+        } {
+            if let Some(e) = e.downcast_ref::<ClientError>() {
+                describe_client_error_or_retry(e).await?;
+            } else {
+                eprintln!("error: {e:?}");
+            }
+            exit(1);
         }
-        WargCli::Bundle(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
-        }
-        WargCli::Dependencies(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
-        }
-        WargCli::Download(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
-        }
-        WargCli::Update(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
-        }
-        WargCli::Publish(cmd) => {
-            with_interactive_retry(|retry: Option<Retry>| async {
-                if let Err(e) = cmd.clone().exec(retry).await {
-                    if let Some(e) = e.downcast_ref::<ClientError>() {
-                        describe_client_error_or_retry(e).await?;
-                    } else {
-                        eprintln!("error: {e:?}");
-                    }
-                    exit(1);
-                }
-                Ok(())
-            })
-            .await?
-        }
-        WargCli::Reset(cmd) => cmd.clone().exec().await?,
-        WargCli::Clear(cmd) => cmd.clone().exec().await?,
-        WargCli::Login(cmd) => cmd.clone().exec().await?,
-        WargCli::Logout(cmd) => cmd.clone().exec().await?,
-    }
+
+        Ok(())
+    })
+    .await?;
 
     Ok(())
 }
@@ -162,9 +96,9 @@ async fn describe_client_error_or_retry(e: &ClientError) -> Result<()> {
             let registry = terms.next();
             if let (Some(namespace), Some(registry)) = (namespace, registry) {
                 let prompt = format!(
-                "The package `{}`, does not exist in the registry you're using.\nHowever, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
-                name.name()
-              );
+            "The package `{}`, does not exist in the registry you're using.\nHowever, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
+            name.name()
+          );
                 if Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt(prompt)
                     .interact()
