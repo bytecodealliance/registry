@@ -103,7 +103,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Get warg registry domain
-    pub async fn get_warg_registry(&self, namespace: &str) -> Result<Option<RegistryDomain>> {
+    pub async fn get_warg_registry(
+        &self,
+        namespace: &str,
+    ) -> Result<Option<RegistryDomain>, ClientError> {
         self.update_checkpoint(None, &self.api.latest_checkpoint(None).await?, vec![])
             .await?;
         let operator = self
@@ -120,8 +123,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 }
                 Ok(None) => return Ok(None),
                 Err(e) => {
-                    eprintln!("Namespace `{namespace}` not found in operator log but found namespace `{e}`, which has alternative casing.");
-                    return Ok(None);
+                    return Err(ClientError::SimilarNamespace {
+                        namespace: namespace.to_string(),
+                        e: e.to_string(),
+                    });
                 }
             }
         };
@@ -1054,6 +1059,15 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
+    /// Similar Namespace
+    #[error("Namespace `{namespace}` not found in operator log but found namespace `{e}`, which has alternative casing.")]
+    SimilarNamespace {
+        /// Namespace
+        namespace: String,
+        /// Provided Error
+        e: String,
+    },
+
     /// No home registry registry server URL is configured.
     #[error("no home registry registry server URL is configured")]
     NoHomeRegistryUrl,
