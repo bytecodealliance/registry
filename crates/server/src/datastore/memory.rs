@@ -734,7 +734,7 @@ impl DataStore for MemoryDataStore {
             .state
             .namespace_state(package_name.namespace())
         {
-            Ok(Some(state)) => match state {
+            Some(state) => match state {
                 operator::NamespaceState::Defined => {}
                 operator::NamespaceState::Imported { .. } => {
                     return Err(DataStoreError::PackageNamespaceImported(
@@ -742,16 +742,10 @@ impl DataStore for MemoryDataStore {
                     ))
                 }
             },
-            Ok(None) => {
+            None => {
                 return Err(DataStoreError::PackageNamespaceNotDefined(
                     package_name.namespace().to_string(),
                 ))
-            }
-            Err(existing_namespace) => {
-                return Err(DataStoreError::PackageNamespaceConflict {
-                    namespace: package_name.namespace().to_string(),
-                    existing: existing_namespace.to_string(),
-                })
             }
         }
 

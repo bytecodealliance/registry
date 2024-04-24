@@ -144,7 +144,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         let operator = self.registry().load_operator(&None).await?;
         let operator_log_maps_namespace = if let Some(op) = operator {
             let namespace_state = op.state.namespace_state(namespace);
-            if let Ok(Some(nm)) = namespace_state {
+            if let Some(nm) = namespace_state {
                 if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
                     self.api
                         .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
