@@ -59,11 +59,10 @@ pub enum ValidationError {
     #[error("record has lower timestamp than previous")]
     TimestampLowerThanPrevious,
 
-    #[error("the namespace `{namespace}` is invalid; namespace must be a kebab case string")]
+    #[error(
+        "the namespace `{namespace}` is invalid; namespace must be a lowercased kebab case string"
+    )]
     InvalidNamespace { namespace: String },
-
-    #[error("the namespace `{namespace}` conflicts with the existing namespace `{existing}`; namespace must be unique in a case insensitive way")]
-    NamespaceConflict { namespace: String, existing: String },
 
     #[error("the namespace `{namespace}` is already defined and cannot be redefined")]
     NamespaceAlreadyDefined { namespace: String },
@@ -73,8 +72,6 @@ pub enum ValidationError {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct NamespaceDefinition {
-    /// Case sensitive namespace name.
-    namespace: String,
     /// Namespace state.
     state: NamespaceState,
 }
@@ -123,7 +120,7 @@ pub struct LogState {
     /// The keys known to the state.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     keys: IndexMap<signing::KeyID, signing::PublicKey>,
-    /// The namespaces known to the state. The key is the lowercased namespace.
+    /// The namespaces known to the state. The key is the namespace.
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     namespaces: IndexMap<String, NamespaceDefinition>,
 }
@@ -164,20 +161,8 @@ impl LogState {
     }
 
     /// Gets the namespace state.
-    pub fn namespace_state(&self, namespace: &str) -> Result<Option<&NamespaceState>, &str> {
-        if let Some(def) = self.namespaces.get(&namespace.to_ascii_lowercase()) {
-            if def.namespace == namespace {
-                // namespace exact match, return namespace state
-                Ok(Some(&def.state))
-            } else {
-                // namespace matches a namespace but differ in a case sensitive way,
-                // so return error with existing namespace
-                Err(&def.namespace)
-            }
-        } else {
-            // namespace is not defined
-            Ok(None)
-        }
+    pub fn namespace_state(&self, namespace: &str) -> Option<&NamespaceState> {
+        self.namespaces.get(namespace).map(|def| &def.state)
     }
 
     /// Checks the key has permission to sign checkpoints.
@@ -411,30 +396,15 @@ impl LogState {
             });
         }
 
-        let namespace_lowercase = namespace.to_ascii_lowercase();
-
-        if let Some(def) = self.namespaces.get(&namespace_lowercase) {
-            if namespace == def.namespace {
-                // namespace matches exactly
-                Err(ValidationError::NamespaceAlreadyDefined {
-                    namespace: namespace.to_string(),
-                })
-            } else {
-                // namespace matches an existing namespace but differs in a case sensitive way
-                Err(ValidationError::NamespaceConflict {
-                    namespace: namespace.to_string(),
-                    existing: def.namespace.to_string(),
-                })
-            }
+        if self.namespaces.contains_key(namespace) {
+            // namespace is already defined
+            Err(ValidationError::NamespaceAlreadyDefined {
+                namespace: namespace.to_string(),
+            })
         } else {
             // namespace is not defined
-            self.namespaces.insert(
-                namespace_lowercase,
-                NamespaceDefinition {
-                    namespace: namespace.to_string(),
-                    state,
-                },
-            );
+            self.namespaces
+                .insert(namespace.to_string(), NamespaceDefinition { state });
 
             Ok(())
         }
@@ -647,14 +617,12 @@ mod tests {
                 (
                     "my-namespace".to_string(),
                     NamespaceDefinition {
-                        namespace: "my-namespace".to_string(),
                         state: NamespaceState::Defined,
                     },
                 ),
                 (
                     "imported-namespace".to_string(),
                     NamespaceDefinition {
-                        namespace: "imported-namespace".to_string(),
                         state: NamespaceState::Imported {
                             registry: "registry.example.com".to_string(),
                         },
@@ -716,7 +684,7 @@ mod tests {
 
             // This validation should fail
             match state.validate(&envelope).unwrap_err() {
-                ValidationError::NamespaceConflict { .. } => {}
+                ValidationError::InvalidNamespace { .. } => {}
                 _ => panic!("expected a different error"),
             }
         }
