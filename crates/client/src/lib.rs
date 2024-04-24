@@ -10,7 +10,6 @@ use secrecy::Secret;
 use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::fs;
-use std::future::Future;
 use std::str::FromStr;
 use std::{borrow::Cow, path::PathBuf, time::Duration};
 use storage::{
@@ -121,13 +120,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 Ok(Some(warg_protocol::operator::NamespaceState::Defined)) => {
                     return Ok(None);
                 }
-                Ok(None) => return Ok(None),
-                Err(e) => {
-                    return Err(ClientError::SimilarNamespace {
-                        namespace: namespace.to_string(),
-                        e: e.to_string(),
-                    });
-                }
+                _ => (),
             }
         };
         let nm_map = self.namespace_map.load_namespace_map().await?;
@@ -1285,13 +1278,4 @@ impl Retry {
             .await?;
         Ok(())
     }
-}
-
-/// Interactively retry when hint header received from warg server
-pub async fn with_interactive_retry<F>(f: impl Fn(Option<Retry>) -> F) -> Result<()>
-where
-    F: Future<Output = Result<()>>,
-{
-    f(None).await?;
-    Ok(())
 }

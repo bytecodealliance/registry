@@ -8,7 +8,7 @@ use warg_cli::commands::{
     KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand,
     UpdateCommand,
 };
-use warg_client::{with_interactive_retry, ClientError, Retry};
+use warg_client::{ClientError, Retry};
 
 fn version() -> &'static str {
     option_env!("CARGO_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -46,33 +46,28 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    with_interactive_retry(|retry: Option<Retry>| async {
-        if let Err(e) = match WargCli::parse() {
-            WargCli::Config(cmd) => cmd.exec().await,
-            WargCli::Info(cmd) => cmd.exec().await,
-            WargCli::Key(cmd) => cmd.exec().await,
-            WargCli::Lock(cmd) => cmd.exec(retry).await,
-            WargCli::Bundle(cmd) => cmd.exec(retry).await,
-            WargCli::Dependencies(cmd) => cmd.exec(retry).await,
-            WargCli::Download(cmd) => cmd.exec(retry).await,
-            WargCli::Update(cmd) => cmd.exec(retry).await,
-            WargCli::Publish(cmd) => cmd.exec(retry).await,
-            WargCli::Reset(cmd) => cmd.exec().await,
-            WargCli::Clear(cmd) => cmd.exec().await,
-            WargCli::Login(cmd) => cmd.exec().await,
-            WargCli::Logout(cmd) => cmd.exec().await,
-        } {
-            if let Some(e) = e.downcast_ref::<ClientError>() {
-                describe_client_error_or_retry(e).await?;
-            } else {
-                eprintln!("error: {e:?}");
-            }
-            exit(1);
+    if let Err(e) = match WargCli::parse() {
+        WargCli::Config(cmd) => cmd.exec().await,
+        WargCli::Info(cmd) => cmd.exec().await,
+        WargCli::Key(cmd) => cmd.exec().await,
+        WargCli::Lock(cmd) => cmd.exec(None).await,
+        WargCli::Bundle(cmd) => cmd.exec(None).await,
+        WargCli::Dependencies(cmd) => cmd.exec(None).await,
+        WargCli::Download(cmd) => cmd.exec(None).await,
+        WargCli::Update(cmd) => cmd.exec(None).await,
+        WargCli::Publish(cmd) => cmd.exec(None).await,
+        WargCli::Reset(cmd) => cmd.exec().await,
+        WargCli::Clear(cmd) => cmd.exec().await,
+        WargCli::Login(cmd) => cmd.exec().await,
+        WargCli::Logout(cmd) => cmd.exec().await,
+    } {
+        if let Some(e) = e.downcast_ref::<ClientError>() {
+            describe_client_error_or_retry(e).await?;
+        } else {
+            eprintln!("error: {e:?}");
         }
-
-        Ok(())
-    })
-    .await?;
+        exit(1);
+    }
 
     Ok(())
 }
