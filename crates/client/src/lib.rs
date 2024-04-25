@@ -169,6 +169,45 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .or(Err(ClientError::ClearContentCacheFailed))
     }
 
+    /// Check operator log for namespace mapping
+    pub async fn refresh_namespace(&mut self, namespace: &str) -> ClientResult<()> {
+        self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
+            .await?;
+        let operator = self.registry().load_operator(&None).await?;
+        let operator_log_maps_namespace = if let Some(op) = operator {
+            let namespace_state = op.state.namespace_state(namespace);
+            if let Some(nm) = namespace_state {
+                if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
+                    self.api
+                        .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !operator_log_maps_namespace {
+            let map = self.namespace_map().load_namespace_map().await?;
+            if let Some(map) = map {
+                let namespace = map.get(namespace);
+                if let Some(nm) = namespace {
+                    self.api
+                        .set_warg_registry(Some(RegistryDomain::from_str(nm)?));
+                } else {
+                    self.api.set_warg_registry(None);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Get warg-registry header value
+    pub fn get_warg_registry(&self) -> &Option<RegistryDomain> {
+        self.api.get_warg_registry()
+    }
+
     /// Locks component
     pub async fn lock_component(&self, info: &PackageInfo) -> ClientResult<Vec<u8>> {
         let mut builder = LockListBuilder::default();
@@ -687,6 +726,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     },
                 )
                 .await
+                .inspect(|res| {
+                    for warning in res.warnings.iter() {
+                        tracing::warn!("Fetch warning from registry: {}", warning.message);
+                    }
+                })
                 .map_err(|e| {
                     ClientError::translate_log_not_found(e, |id| {
                         packages.get(id).map(|p| p.name.clone())

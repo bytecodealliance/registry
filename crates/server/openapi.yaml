@@ -808,6 +808,12 @@ components:
           maxItems: 1000
           items:
             $ref: "#/components/schemas/PublishedRecordEnvelope"
+        warnings:
+          type: array
+          description: An optional list of warnings.
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/FetchWarning"
         packages:
           type: object
           description: The map of package log identifier to package records.
@@ -1085,6 +1091,12 @@ components:
               maxLength: 1048576
               example: "ZXhhbXBsZQ=="
         - $ref: "#/components/schemas/Signature"
+    FetchWarning:
+      description: A warning message
+      properties:
+        message:
+          description: The warning message itself.
+          type: string 
     PublishedRecordEnvelope:
       description: A signed envelope body with the published registry log index.
       allOf:

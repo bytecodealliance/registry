@@ -347,35 +347,6 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
     Ok(())
 }
 
-async fn test_publishing_name_conflict(config: &Config) -> Result<()> {
-    let client = create_client(config).await?;
-    let signing_key = test_signing_key();
-
-    publish_component(
-        &client,
-        &PackageName::new("test:name")?,
-        "0.1.0",
-        "(component)",
-        true,
-        &signing_key,
-    )
-    .await?;
-
-    // should be rejected
-    publish_component(
-        &client,
-        &PackageName::new("test:NAME")?,
-        "0.1.1",
-        "(component)",
-        true,
-        &signing_key,
-    )
-    .await
-    .expect_err("expected publish to fail");
-
-    Ok(())
-}
-
 async fn test_invalid_signature(config: &Config) -> Result<()> {
     const PACKAGE_NAME: &str = "test:invalid-signature";
 

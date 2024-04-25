@@ -145,6 +145,7 @@ impl PackageName {
             // Validate the namespace and name parts are valid kebab strings
             if KebabStr::new(&name[colon + 1..]).is_some()
                 && Self::is_valid_namespace(&name[..colon])
+                && name[colon + 1..].chars().all(|c| !c.is_ascii_uppercase())
             {
                 return Ok(Self {
                     package_name: name,
@@ -153,7 +154,7 @@ impl PackageName {
             }
         }
 
-        bail!("invalid package name `{name}`: expected format is `<namespace>:<name>`")
+        bail!("invalid package name `{name}`: expected format is `<namespace>:<name>` using lowercased characters")
     }
 
     /// Gets the namespace part of the package identifier.
@@ -168,7 +169,7 @@ impl PackageName {
 
     /// Check if string is a valid namespace.
     pub fn is_valid_namespace(namespace: &str) -> bool {
-        KebabStr::new(namespace).is_some()
+        KebabStr::new(namespace).is_some() && namespace.chars().all(|c| !c.is_ascii_uppercase())
     }
 }
 
