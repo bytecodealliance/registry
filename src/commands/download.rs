@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{anyhow, Result};
 use clap::Args;
 use warg_protocol::{registry::PackageName, VersionReq};
@@ -20,9 +20,9 @@ pub struct DownloadCommand {
 
 impl DownloadCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
 
         println!("downloading package `{name}`...", name = self.name);

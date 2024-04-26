@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
@@ -83,13 +83,13 @@ pub enum PublishCommand {
 
 impl PublishCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         match self {
-            Self::Init(cmd) => cmd.exec(retry).await,
-            Self::Release(cmd) => cmd.exec(retry).await,
-            Self::Yank(cmd) => cmd.exec(retry).await,
-            Self::Grant(cmd) => cmd.exec(retry).await,
-            Self::Revoke(cmd) => cmd.exec(retry).await,
+            Self::Init(cmd) => cmd.exec().await,
+            Self::Release(cmd) => cmd.exec().await,
+            Self::Yank(cmd) => cmd.exec().await,
+            Self::Grant(cmd) => cmd.exec().await,
+            Self::Revoke(cmd) => cmd.exec().await,
             Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
@@ -116,9 +116,9 @@ pub struct PublishInitCommand {
 
 impl PublishInitCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
 
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
@@ -187,9 +187,9 @@ pub struct PublishReleaseCommand {
 
 impl PublishReleaseCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -274,9 +274,9 @@ pub struct PublishYankCommand {
 
 impl PublishYankCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -352,9 +352,9 @@ pub struct PublishGrantCommand {
 
 impl PublishGrantCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -434,9 +434,9 @@ pub struct PublishRevokeCommand {
 
 impl PublishRevokeCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -505,7 +505,7 @@ impl PublishStartCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
@@ -539,7 +539,7 @@ impl PublishListCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -595,7 +595,7 @@ impl PublishAbortCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -627,7 +627,7 @@ impl PublishSubmitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -705,7 +705,7 @@ impl PublishWaitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
         let record_id = RecordId::from(self.record_id);
 
         println!(

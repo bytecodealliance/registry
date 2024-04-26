@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
 use clap::Args;
@@ -28,9 +28,9 @@ pub struct DependenciesCommand {
 
 impl DependenciesCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
 
         if let Some(info) = client
             .registry()

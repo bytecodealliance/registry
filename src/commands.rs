@@ -6,7 +6,6 @@ use secrecy::Secret;
 use std::path::PathBuf;
 use warg_client::storage::RegistryDomain;
 use warg_client::RegistryUrl;
-use warg_client::Retry;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_credentials::keyring::{get_auth_token, get_signing_key};
 use warg_crypto::signing::PrivateKey;
@@ -69,18 +68,12 @@ impl CommonOptions {
     }
 
     /// Creates the warg client to use.
-    pub async fn create_client(
-        &self,
-        config: &Config,
-        retry: Option<Retry>,
-    ) -> Result<FileSystemClient, ClientError> {
+    pub fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
         let client = match FileSystemClient::try_new_with_config(
             self.registry.as_deref(),
             config,
             self.auth_token(config)?,
-        )
-        .await?
-        {
+        )? {
             StorageLockResult::Acquired(client) => Ok(client),
             StorageLockResult::NotAcquired(path) => {
                 println!(
@@ -93,12 +86,8 @@ impl CommonOptions {
                     config,
                     self.auth_token(config)?.map(Secret::from),
                 )
-                .await
             }
         }?;
-        if let Some(retry) = retry {
-            retry.store_namespace(&client).await?;
-        }
         Ok(client)
     }
 

@@ -44,7 +44,7 @@ pub fn test_signing_key() -> PrivateKey {
 }
 
 pub async fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
-    match FileSystemClient::try_new_with_config(None, config, None).await? {
+    match FileSystemClient::try_new_with_config(None, config, None)? {
         StorageLockResult::Acquired(client) => Ok(client),
         _ => bail!("failed to acquire storage lock"),
     }
@@ -167,6 +167,7 @@ pub async fn spawn_server(
         namespace_map_path: Some(root.join("namespaces")),
         keys: IndexSet::new(),
         keyring_auth: false,
+        use_hints: false,
     };
 
     Ok((instance, config))

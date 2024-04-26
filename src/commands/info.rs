@@ -28,7 +28,7 @@ impl InfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config).await?;
 
         println!("registry: {url}", url = client.url());
         println!("\npackages in client storage:");

@@ -3,7 +3,6 @@ use anyhow::{bail, Result};
 use clap::Args;
 use semver::VersionReq;
 use warg_client::storage::RegistryStorage;
-use warg_client::Retry;
 use warg_protocol::registry::PackageName;
 /// Bundle With Registry Dependencies
 #[derive(Args, Clone)]
@@ -19,9 +18,9 @@ pub struct BundleCommand {
 
 impl BundleCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client

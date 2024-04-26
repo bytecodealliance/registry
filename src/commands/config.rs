@@ -70,6 +70,7 @@ impl ConfigCommand {
             namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
             keys: self.common.read_config()?.keys,
             keyring_auth: false,
+            use_hints: false,
         };
 
         config.write_to_file(&path)?;

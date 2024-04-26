@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
 use semver::VersionReq;
@@ -22,9 +22,9 @@ pub struct LockCommand {
 
 impl LockCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.package.namespace()).await?;
         println!("registry: {url}", url = client.url());
         if let Some(info) = client

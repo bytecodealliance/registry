@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::Result;
 use clap::{ArgAction, Args};
 
@@ -16,9 +16,9 @@ pub struct UpdateCommand {
 
 impl UpdateCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
+        let mut client = self.common.create_client(&config).await?;
 
         println!("updating package logs to the latest available versions...");
         if self.all {
