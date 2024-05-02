@@ -167,6 +167,8 @@ pub async fn spawn_server(
         namespace_map_path: Some(root.join("namespaces")),
         keys: IndexSet::new(),
         keyring_auth: false,
+        ignore_federation_hints: false,
+        auto_accept_federation_hints: false,
     };
 
     Ok((instance, config))

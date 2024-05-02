@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
 use futures::TryStreamExt;
@@ -83,13 +83,13 @@ pub enum PublishCommand {
 
 impl PublishCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         match self {
-            Self::Init(cmd) => cmd.exec(retry).await,
-            Self::Release(cmd) => cmd.exec(retry).await,
-            Self::Yank(cmd) => cmd.exec(retry).await,
-            Self::Grant(cmd) => cmd.exec(retry).await,
-            Self::Revoke(cmd) => cmd.exec(retry).await,
+            Self::Init(cmd) => cmd.exec().await,
+            Self::Release(cmd) => cmd.exec().await,
+            Self::Yank(cmd) => cmd.exec().await,
+            Self::Grant(cmd) => cmd.exec().await,
+            Self::Revoke(cmd) => cmd.exec().await,
             Self::Start(cmd) => cmd.exec().await,
             Self::List(cmd) => cmd.exec().await,
             Self::Abort(cmd) => cmd.exec().await,
@@ -116,13 +116,12 @@ pub struct PublishInitCommand {
 
 impl PublishInitCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config)?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
 
-        client.refresh_namespace(self.name.namespace()).await?;
-
-        let signing_key = self.common.signing_key(&client)?;
+        let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
         match enqueue(&client, &self.name, |_| {
             std::future::ready(Ok(PublishEntry::Init))
         })
@@ -188,11 +187,11 @@ pub struct PublishReleaseCommand {
 
 impl PublishReleaseCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
-        let signing_key = self.common.signing_key(&client)?;
+        let client = self.common.create_client(&config)?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
+        let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
         let path = self.path.clone();
         let version = self.version.clone();
@@ -275,11 +274,11 @@ pub struct PublishYankCommand {
 
 impl PublishYankCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
-        let signing_key = self.common.signing_key(&client)?;
+        let client = self.common.create_client(&config)?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
+        let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
         let version = self.version.clone();
         match enqueue(&client, &self.name, move |_| async move {
@@ -353,11 +352,11 @@ pub struct PublishGrantCommand {
 
 impl PublishGrantCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
-        let signing_key = self.common.signing_key(&client)?;
+        let client = self.common.create_client(&config)?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
+        let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
         match enqueue(&client, &self.name, |_| async {
             Ok(PublishEntry::Grant {
@@ -435,11 +434,11 @@ pub struct PublishRevokeCommand {
 
 impl PublishRevokeCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
-        let signing_key = self.common.signing_key(&client)?;
+        let client = self.common.create_client(&config)?;
+        let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
+        let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
         match enqueue(&client, &self.name, |_| async {
             Ok(PublishEntry::Revoke {
@@ -506,8 +505,7 @@ impl PublishStartCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, None).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
+        let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
@@ -541,7 +539,7 @@ impl PublishListCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -597,7 +595,7 @@ impl PublishAbortCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -629,7 +627,7 @@ impl PublishSubmitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config)?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -638,7 +636,7 @@ impl PublishSubmitCommand {
                     name = info.name
                 );
 
-                let signing_key = self.common.signing_key(&client)?;
+                let signing_key = self.common.signing_key(None).await?;
                 let record_id = client.publish_with_info(&signing_key, info.clone()).await?;
 
                 client.registry().store_publish(None).await?;
@@ -707,8 +705,7 @@ impl PublishWaitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, None).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
+        let client = self.common.create_client(&config)?;
         let record_id = RecordId::from(self.record_id);
 
         println!(

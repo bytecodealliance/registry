@@ -19,6 +19,14 @@ pub struct LoginCommand {
     /// The subcommand to execute.
     #[clap(flatten)]
     keyring_entry: KeyringEntryArgs,
+
+    /// Ignore federation hints.
+    #[clap(long)]
+    pub ignore_federation_hints: bool,
+
+    /// Auto accept federation hints.
+    #[clap(long)]
+    pub auto_accept_federation_hints: bool,
 }
 
 #[derive(Args)]
@@ -51,10 +59,21 @@ impl LoginCommand {
             .transpose()?
             .map(|u| u.to_string());
         let mut config = self.common.read_config()?;
+        config.ignore_federation_hints = self.ignore_federation_hints;
+        config.auto_accept_federation_hints = self.auto_accept_federation_hints;
+
         if home_url.is_some() {
             config.home_url = home_url.clone();
             config.write_to_file(&Config::default_config_path()?)?;
+
+            // reset if changing home registry
+            let client = self.common.create_client(&config)?;
+            client.reset_namespaces().await?;
+            client.reset_registry().await?;
         }
+
+        config.keyring_auth = true;
+
         if config.keys.is_empty() {
             config.keys.insert("default".to_string());
             let key = SigningKey::random(&mut OsRng).into();
@@ -66,7 +85,6 @@ impl LoginCommand {
                 .context("failed to read token")?;
             self.keyring_entry
                 .set_entry(self.common.read_config()?.home_url, &token)?;
-            config.keyring_auth = true;
             config.write_to_file(&Config::default_config_path()?)?;
             println!("auth token was set successfully, and generated default key",);
             println!("Public Key: {public_key}");
@@ -79,7 +97,6 @@ impl LoginCommand {
             .context("failed to read token")?;
         self.keyring_entry
             .set_entry(self.common.read_config()?.home_url, &token)?;
-        config.keyring_auth = true;
         config.write_to_file(&Config::default_config_path()?)?;
         println!("auth token was set successfully",);
         Ok(())

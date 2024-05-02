@@ -37,9 +37,8 @@ async fn client_incrementally_fetches() -> Result<()> {
         )
         .await?;
 
-    // Here we don't wait for a single publish operation to complete, except for the last one
-    // If the last one is accepted, it implies that all the previous ones were accepted as well
     let name = PackageName::new(PACKAGE_NAME)?;
+
     let mut head = client
         .publish_with_info(
             &signing_key,
@@ -51,6 +50,12 @@ async fn client_incrementally_fetches() -> Result<()> {
         )
         .await?;
 
+    client
+        .wait_for_publish(&name, &head, Duration::from_millis(100))
+        .await?;
+
+    // Here we don't wait for a single publish operation to complete, except for the last one
+    // If the last one is accepted, it implies that all the previous ones were accepted as well
     for i in 1..=RELEASE_COUNT {
         head = client
             .publish_with_info(
@@ -84,18 +89,21 @@ async fn client_incrementally_fetches() -> Result<()> {
     client.update().await?;
 
     // Fetch the package log
-    client.upsert([&name]).await?;
-
-    // Ensure that the package is in the packages list
-    let packages = client.registry().load_packages().await?;
-    assert_eq!(packages[0].name.as_ref(), PACKAGE_NAME);
+    let package = client.package(&name).await?;
 
     // Ensure the package log exists and has releases with all with the same digest
-    let package = client
-        .registry()
-        .load_package(client.get_warg_registry(), &name)
-        .await?
-        .context("package does not exist in client storage")?;
+    assert_eq!(
+        package.name,
+        client
+            .registry()
+            .load_package(
+                client.get_warg_registry(name.namespace()).await?.as_ref(),
+                &name,
+            )
+            .await?
+            .context("package does not exist in client storage")?
+            .name
+    );
 
     let mut count = 0;
     for release in package.state.releases() {

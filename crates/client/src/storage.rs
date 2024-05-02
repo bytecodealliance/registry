@@ -7,7 +7,7 @@ use futures_util::Stream;
 use indexmap::IndexMap;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, pin::Pin, str::FromStr, time::SystemTime};
+use std::{fmt, path::PathBuf, pin::Pin, str::FromStr, time::SystemTime};
 use warg_crypto::{
     hash::{AnyHash, HashAlgorithm},
     signing::{self, KeyID, PublicKey},
@@ -23,14 +23,20 @@ mod fs;
 pub use fs::*;
 
 /// Registry domain used for warg header values
-#[derive(Clone)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RegistryDomain(String);
 
-// impl From<String> for RegistryDomain {
-//     fn from(value: String) -> Self {
-//         RegistryDomain(value)
-//     }
-// }
+impl RegistryDomain {
+    /// Creates new `RegistryDomain` from string.
+    pub fn new(registry: String) -> Self {
+        Self(registry)
+    }
+
+    /// Extracts a string slice for the registry domain.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
 
 impl FromStr for RegistryDomain {
     type Err = Error;
@@ -40,19 +46,12 @@ impl FromStr for RegistryDomain {
     }
 }
 
-impl ToString for RegistryDomain {
-    fn to_string(&self) -> String {
-        self.0.clone()
+impl fmt::Display for RegistryDomain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{registry_domain}", registry_domain = &self.0)
     }
 }
 
-// impl TryFrom<HeaderValue> for RegistryName ...
-
-// impl From<RegistryDomain> for HeaderValue {
-// fn from(value: RegistryDomain) -> Self {
-//     HeaderValue::to_str(&value.to_string())
-// }
-// }
 impl TryFrom<RegistryDomain> for HeaderValue {
     type Error = Error;
 
@@ -61,14 +60,6 @@ impl TryFrom<RegistryDomain> for HeaderValue {
     }
 }
 
-// impl TryInto<RegistryDomain> for HeaderValue {
-//     type Error = Error;
-
-//     fn try_into(self) -> std::result::Result<RegistryDomain, anyhow::Error> {
-//         // Ok(HeaderValue::from_str(&value.to_string())?)
-
-//     }
-// }
 /// Trait for registry storage implementations.
 ///
 /// Stores information such as package/operator logs and checkpoints
@@ -86,13 +77,13 @@ pub trait RegistryStorage: Send + Sync {
     /// Loads most recent checkpoint
     async fn load_checkpoint(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
     ) -> Result<Option<SerdeEnvelope<TimestampedCheckpoint>>>;
 
     /// Stores most recent checkpoint
     async fn store_checkpoint(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<()>;
 
@@ -101,35 +92,32 @@ pub trait RegistryStorage: Send + Sync {
     /// Returns `Ok(None)` if the information is not present.
     async fn load_operator(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
     ) -> Result<Option<OperatorInfo>>;
 
     /// Stores the operator information in the storage.
     async fn store_operator(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         operator: OperatorInfo,
     ) -> Result<()>;
 
-    /// Loads the package information for all packages in the home registry storage .
-    async fn load_packages(&self) -> Result<Vec<PackageInfo>>;
-
-    /// Loads the package information for all packages in all registry storages.
-    async fn load_all_packages(&self) -> Result<IndexMap<String, Vec<PackageInfo>>>;
+    /// Loads the package information for all packages.
+    async fn load_all_packages(&self) -> Result<IndexMap<RegistryDomain, Vec<PackageInfo>>>;
 
     /// Loads the package information from the storage.
     ///
     /// Returns `Ok(None)` if the information is not present.
     async fn load_package(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         package: &PackageName,
     ) -> Result<Option<PackageInfo>>;
 
     /// Stores the package information in the storage.
     async fn store_package(
         &self,
-        namespace_registry: &Option<RegistryDomain>,
+        namespace_registry: Option<&RegistryDomain>,
         info: &PackageInfo,
     ) -> Result<()>;
 
@@ -203,6 +191,12 @@ pub trait NamespaceMapStorage: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct OperatorInfo {
+    /// The registry domain where the package is published.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<RegistryDomain>,
+    /// The last known checkpoint since checking the registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<Checkpoint>,
     /// The current operator log state
     #[serde(default)]
     pub state: operator::LogState,
@@ -220,7 +214,10 @@ pub struct OperatorInfo {
 pub struct PackageInfo {
     /// The package name to publish.
     pub name: PackageName,
-    /// The last known checkpoint of the package.
+    /// The registry domain where the package is published.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<RegistryDomain>,
+    /// The last known checkpoint since checking the registry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<Checkpoint>,
     /// The current package log state
@@ -239,6 +236,7 @@ impl PackageInfo {
     pub fn new(name: impl Into<PackageName>) -> Self {
         Self {
             name: name.into(),
+            registry: None,
             checkpoint: None,
             state: package::LogState::default(),
             head_registry_index: None,

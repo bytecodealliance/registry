@@ -5,7 +5,7 @@ use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt};
 use indexmap::IndexMap;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderValue},
     Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
 };
 use secrecy::{ExposeSecret, Secret};
@@ -159,11 +159,11 @@ async fn into_result<T: DeserializeOwned, E: DeserializeOwned + Into<ClientError
 }
 
 trait WithWargHeader {
-    fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder>;
+    fn warg_header(self, registry_header: Option<&RegistryDomain>) -> Result<RequestBuilder>;
 }
 
 impl WithWargHeader for RequestBuilder {
-    fn warg_header(self, registry_header: &Option<RegistryDomain>) -> Result<RequestBuilder> {
+    fn warg_header(self, registry_header: Option<&RegistryDomain>) -> Result<RequestBuilder> {
         if let Some(reg) = registry_header {
             Ok(self.header(REGISTRY_HEADER_NAME, HeaderValue::try_from(reg.clone())?))
         } else {
@@ -219,13 +219,20 @@ impl Client {
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(
         &self,
+        registry_domain: Option<&RegistryDomain>,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
         let url = self.url.join(paths::fetch_checkpoint());
-        tracing::debug!("getting latest checkpoint at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "getting latest checkpoint at `{url}` with registry header: {registry_header}"
+            );
+        } else {
+            tracing::debug!("getting latest checkpoint at `{url}`");
+        }
         into_result::<_, FetchError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -233,43 +240,26 @@ impl Client {
         .await
     }
 
-    /// Gets the latest checkpoints from registries.
-    pub async fn latest_checkpoints(
-        &self,
-        registries: impl Iterator<Item = &String>,
-    ) -> Result<IndexMap<String, SerdeEnvelope<TimestampedCheckpoint>>> {
-        let mut timestamps = IndexMap::new();
-        for reg in registries.into_iter() {
-            let url = self.url.join(paths::fetch_checkpoint());
-            let registry_header = HeaderName::try_from(REGISTRY_HEADER_NAME).unwrap();
-            let header_val = HeaderValue::try_from(reg).unwrap();
-            let res: SerdeEnvelope<TimestampedCheckpoint> = into_result::<_, FetchError>(
-                self.client
-                    .get(url)
-                    .header(registry_header, header_val)
-                    .auth(self.auth_token())
-                    .send()
-                    .await?,
-            )
-            .await?;
-            timestamps.insert(reg.clone(), res);
-        }
-        Ok(timestamps)
-    }
-
     /// Verify checkpoint of the registry.
     pub async fn verify_checkpoint(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         request: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<CheckpointVerificationResponse, ClientError> {
         let url = self.url.join(paths::verify_checkpoint());
-        tracing::debug!("verifying checkpoint at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "verifying checkpoint at `{url}` with registry header: {registry_header}"
+            );
+        } else {
+            tracing::debug!("verifying checkpoint at `{url}`");
+        }
 
         let response = self
             .client
             .post(url)
             .json(&request)
-            .warg_header(self.get_warg_registry())?
+            .warg_header(registry_domain)?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -279,15 +269,20 @@ impl Client {
     /// Fetches package log entries from the registry.
     pub async fn fetch_logs(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         request: FetchLogsRequest<'_>,
     ) -> Result<FetchLogsResponse, ClientError> {
         let url = self.url.join(paths::fetch_logs());
-        tracing::debug!("fetching logs at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!("fetching logs at `{url}` with registry header: {registry_header}");
+        } else {
+            tracing::debug!("fetching logs at `{url}`");
+        }
         let response = self
             .client
             .post(&url)
             .json(&request)
-            .warg_header(self.get_warg_registry())?
+            .warg_header(registry_domain)?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -306,15 +301,22 @@ impl Client {
     /// Fetches package names from the registry.
     pub async fn fetch_package_names(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         request: FetchPackageNamesRequest<'_>,
     ) -> Result<FetchPackageNamesResponse, ClientError> {
         let url = self.url.join(paths::fetch_package_names());
-        tracing::debug!("fetching package names at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "fetching package names at `{url}` with registry header: {registry_header}"
+            );
+        } else {
+            tracing::debug!("fetching package names at `{url}`");
+        }
 
         let response = self
             .client
             .post(url)
-            .warg_header(self.get_warg_registry())?
+            .warg_header(registry_domain)?
             .auth(self.auth_token())
             .json(&request)
             .send()
@@ -323,14 +325,23 @@ impl Client {
     }
 
     /// Gets ledger sources from the registry.
-    pub async fn ledger_sources(&self) -> Result<LedgerSourcesResponse, ClientError> {
+    pub async fn ledger_sources(
+        &self,
+        registry_domain: Option<&RegistryDomain>,
+    ) -> Result<LedgerSourcesResponse, ClientError> {
         let url = self.url.join(paths::ledger_sources());
-        tracing::debug!("getting ledger sources at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "getting ledger sources at `{url}` with registry header: {registry_header}"
+            );
+        } else {
+            tracing::debug!("getting ledger sources at `{url}`");
+        }
 
         into_result::<_, LedgerError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -341,20 +352,28 @@ impl Client {
     /// Publish a new record to a package log.
     pub async fn publish_package_record(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         log_id: &LogId,
         request: PublishRecordRequest<'_>,
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::publish_package_record(log_id));
-        tracing::debug!(
-            "appending record to package `{name}` at `{url}`",
-            name = request.package_name
-        );
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "appending record to package `{name}` at `{url}` with registry header: {registry_header}",
+                name = request.package_name
+            );
+        } else {
+            tracing::debug!(
+                "appending record to package `{name}` at `{url}`",
+                name = request.package_name
+            );
+        }
 
         let response = self
             .client
             .post(url)
             .json(&request)
-            .warg_header(self.get_warg_registry())?
+            .warg_header(registry_domain)?
             .auth(self.auth_token())
             .send()
             .await?;
@@ -364,16 +383,21 @@ impl Client {
     /// Gets a package record from the registry.
     pub async fn get_package_record(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         log_id: &LogId,
         record_id: &RecordId,
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::package_record(log_id, record_id));
-        tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}` with registry header: {registry_header}");
+        } else {
+            tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
+        }
 
         into_result::<_, PackageError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -384,15 +408,20 @@ impl Client {
     /// Gets a content sources from the registry.
     pub async fn content_sources(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         digest: &AnyHash,
     ) -> Result<ContentSourcesResponse, ClientError> {
         let url = self.url.join(&paths::content_sources(digest));
-        tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!("getting content sources for digest `{digest}` at `{url}` with registry header: {registry_header}");
+        } else {
+            tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
+        }
 
         into_result::<_, ContentError>(
             self.client
                 .get(url)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -403,11 +432,11 @@ impl Client {
     /// Downloads the content associated with a given record.
     pub async fn download_content(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         digest: &AnyHash,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
-        tracing::debug!("requesting content download for digest `{digest}`");
-
-        let ContentSourcesResponse { content_sources } = self.content_sources(digest).await?;
+        let ContentSourcesResponse { content_sources } =
+            self.content_sources(registry_domain, digest).await?;
 
         let sources = content_sources
             .get(digest)
@@ -438,26 +467,28 @@ impl Client {
         self.warg_registry_header = registry;
     }
 
-    /// Get warg-registry header value
-    pub fn get_warg_registry(&self) -> &Option<RegistryDomain> {
-        &self.warg_registry_header
-    }
-
     /// Proves the inclusion of the given package log heads in the registry.
     pub async fn prove_inclusion(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         request: InclusionRequest,
         checkpoint: &Checkpoint,
         leafs: &[LogLeaf],
     ) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_inclusion());
-        tracing::debug!("proving checkpoint inclusion at `{url}`");
+        if let Some(registry_header) = registry_domain {
+            tracing::debug!(
+                "proving checkpoint inclusion at `{url}` with registry header: {registry_header}"
+            );
+        } else {
+            tracing::debug!("proving checkpoint inclusion at `{url}`");
+        }
 
         let response = into_result::<InclusionResponse, ProofError>(
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,
@@ -470,6 +501,7 @@ impl Client {
     /// Proves consistency between two log roots.
     pub async fn prove_log_consistency(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         request: ConsistencyRequest,
         from_log_root: Cow<'_, AnyHash>,
         to_log_root: Cow<'_, AnyHash>,
@@ -479,7 +511,7 @@ impl Client {
             self.client
                 .post(url)
                 .json(&request)
-                .warg_header(self.get_warg_registry())?
+                .warg_header(registry_domain)?
                 .auth(self.auth_token())
                 .send()
                 .await?,

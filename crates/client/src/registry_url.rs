@@ -1,3 +1,4 @@
+use crate::storage::RegistryDomain;
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::IntoUrl;
 use url::{Host, Url};
@@ -87,6 +88,11 @@ impl RegistryUrl {
             }
         }
         label
+    }
+
+    /// Returns `RegistryDomain` from the `RegistryUrl`.
+    pub fn registry_domain(&self) -> RegistryDomain {
+        RegistryDomain::new(self.safe_label())
     }
 
     pub(crate) fn into_url(self) -> Url {

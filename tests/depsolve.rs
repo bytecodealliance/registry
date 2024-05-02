@@ -77,9 +77,8 @@ async fn depsolve() -> Result<()> {
         )
         .await?;
 
-    client.update().await?;
     client
-        .upsert([
+        .fetch_packages([
             &PackageName::new("test:add")?,
             &PackageName::new("test:inc")?,
             &PackageName::new("test:five")?,
@@ -89,7 +88,10 @@ async fn depsolve() -> Result<()> {
 
     let info = client
         .registry()
-        .load_package(client.get_warg_registry(), &PackageName::new("test:meet")?)
+        .load_package(
+            client.get_warg_registry("test").await?.as_ref(),
+            &PackageName::new("test:meet")?,
+        )
         .await?
         .context("package does not exist in client storage")?;
 
@@ -147,7 +149,7 @@ async fn publish_package(
                 name: name.clone(),
                 head: Some(head),
                 entries: vec![PublishEntry::Release {
-                    version: format!("1.0.0").parse().unwrap(),
+                    version: "1.0.0".to_string().parse().unwrap(),
                     content: add_digest.clone(),
                 }],
             },

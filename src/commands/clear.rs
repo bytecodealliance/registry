@@ -14,7 +14,7 @@ impl ClearCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config, None).await?;
+        let client = self.common.create_client(&config)?;
 
         println!("clearing local content cache...");
         client.clear_content_cache().await?;

@@ -3,8 +3,9 @@
 #![deny(missing_docs)]
 use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::Confirm;
 use indexmap::IndexMap;
-use reqwest::header::HeaderValue;
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
 use semver::{Version, VersionReq};
@@ -18,7 +19,7 @@ use storage::{
 };
 use thiserror::Error;
 use warg_api::v1::{
-    fetch::{FetchError, FetchLogsRequest, FetchLogsResponse},
+    fetch::{FetchError, FetchLogsRequest},
     package::{
         MissingContent, PackageError, PackageRecord, PackageRecordState, PublishRecordRequest,
         UploadEndpoint,
@@ -31,7 +32,7 @@ use warg_protocol::package::ReleaseState;
 use warg_protocol::{
     operator, package,
     registry::{LogId, LogLeaf, PackageName, RecordId, RegistryLen, TimestampedCheckpoint},
-    PublishedProtoEnvelope, SerdeEnvelope,
+    PublishedProtoEnvelope,
 };
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 
@@ -60,6 +61,8 @@ where
     content: C,
     namespace_map: N,
     api: api::Client,
+    ignore_federation_hints: bool,
+    auto_accept_federation_hints: bool,
 }
 
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
@@ -71,6 +74,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         content: C,
         namespace_map: N,
         auth_token: Option<Secret<String>>,
+        ignore_federation_hints: bool,
+        auto_accept_federation_hints: bool,
     ) -> ClientResult<Self> {
         let api = api::Client::new(url, auth_token)?;
         Ok(Self {
@@ -78,6 +83,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             content,
             namespace_map,
             api,
+            ignore_federation_hints,
+            auto_accept_federation_hints,
         })
     }
 
@@ -101,6 +108,37 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         &self.namespace_map
     }
 
+    /// Get warg registry domain. If `check_for_latest_checkpoint`, then will check for the latest
+    /// registry checkpoint first.
+    pub async fn get_warg_registry(
+        &self,
+        namespace: &str,
+    ) -> Result<Option<RegistryDomain>, ClientError> {
+        let operator = self
+            .registry()
+            .load_operator(Some(&RegistryDomain::from_str(namespace)?))
+            .await?;
+        if let Some(op) = operator {
+            match op.state.namespace_state(namespace) {
+                Some(warg_protocol::operator::NamespaceState::Imported { registry }) => {
+                    return Ok(Some(RegistryDomain::from_str(registry)?));
+                }
+                Some(warg_protocol::operator::NamespaceState::Defined) => {
+                    return Ok(None);
+                }
+                _ => (),
+            }
+        };
+        let nm_map = self.namespace_map.load_namespace_map().await?;
+        Ok(if let Some(nm_map) = &nm_map {
+            nm_map
+                .get(namespace)
+                .map(|domain| RegistryDomain::from_str(domain).unwrap())
+        } else {
+            None
+        })
+    }
+
     /// Stores namespace mapping in local storage
     pub async fn store_namespace(
         &self,
@@ -120,10 +158,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     }
 
     /// Reset client storage for the registry.
-    pub async fn reset_registry(&self, all_registries: bool) -> ClientResult<()> {
+    pub async fn reset_registry(&self) -> ClientResult<()> {
         tracing::info!("resetting registry local state");
         self.registry
-            .reset(all_registries)
+            .reset(true)
             .await
             .or(Err(ClientError::ResettingRegistryLocalStateFailed))
     }
@@ -135,45 +173,6 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .clear()
             .await
             .or(Err(ClientError::ClearContentCacheFailed))
-    }
-
-    /// Check operator log for namespace mapping
-    pub async fn refresh_namespace(&mut self, namespace: &str) -> ClientResult<()> {
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, vec![])
-            .await?;
-        let operator = self.registry().load_operator(&None).await?;
-        let operator_log_maps_namespace = if let Some(op) = operator {
-            let namespace_state = op.state.namespace_state(namespace);
-            if let Some(nm) = namespace_state {
-                if let warg_protocol::operator::NamespaceState::Imported { registry } = nm {
-                    self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(registry)?));
-                }
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        if !operator_log_maps_namespace {
-            let map = self.namespace_map().load_namespace_map().await?;
-            if let Some(map) = map {
-                let namespace = map.get(namespace);
-                if let Some(nm) = namespace {
-                    self.api
-                        .set_warg_registry(Some(RegistryDomain::from_str(nm)?));
-                } else {
-                    self.api.set_warg_registry(None);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Get warg-registry header value
-    pub fn get_warg_registry(&self) -> &Option<RegistryDomain> {
-        self.api.get_warg_registry()
     }
 
     /// Locks component
@@ -194,7 +193,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             let id = PackageName::new(name)?;
             let info = self
                 .registry()
-                .load_package(self.api.get_warg_registry(), &id)
+                .load_package(self.get_warg_registry(id.namespace()).await?.as_ref(), &id)
                 .await?;
             if let Some(inf) = info {
                 let release = if version != VersionReq::STAR {
@@ -331,36 +330,33 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         );
         tracing::debug!("entries: {:?}", info.entries);
 
-        let mut package = self
-            .registry
-            .load_package(self.api.get_warg_registry(), &info.name)
-            .await?
-            .unwrap_or_else(|| PackageInfo::new(info.name.clone()));
-
-        // If we're not initializing the package and a head was not explicitly specified,
-        // updated to the latest checkpoint to get the latest known head.
-        if !initializing && info.head.is_none() {
-            self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut package])
-                .await?;
-
-            info.head = package.state.head().as_ref().map(|h| h.digest.clone());
-        }
-
-        match (initializing, info.head.is_some()) {
-            (true, true) => {
-                return Err(ClientError::CannotInitializePackage { name: package.name })
+        let package = match self.package(&info.name).await {
+            Ok(package) => {
+                if initializing {
+                    return Err(ClientError::CannotInitializePackage { name: package.name });
+                } else if info.head.is_none() {
+                    // If we're not initializing the package and a head was not explicitly specified,
+                    // updated to the latest checkpoint to get the latest known head.
+                    info.head = package.state.head().as_ref().map(|h| h.digest.clone());
+                }
+                package
             }
-            (false, false) => {
-                return Err(ClientError::MustInitializePackage { name: package.name })
+            Err(ClientError::PackageDoesNotExist { .. }) => {
+                if !initializing {
+                    return Err(ClientError::MustInitializePackage { name: info.name });
+                }
+                PackageInfo::new(info.name.clone())
             }
-            _ => (),
-        }
+            err => err?,
+        };
+        let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
 
         let record = info.finalize(signing_key)?;
         let log_id = LogId::package_log::<Sha256>(&package.name);
         let record = self
             .api
             .publish_package_record(
+                registry_domain.as_ref(),
                 &log_id,
                 PublishRecordRequest {
                     package_name: Cow::Borrowed(&package.name),
@@ -429,8 +425,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         record_id: &RecordId,
         interval: Duration,
     ) -> ClientResult<()> {
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
         let log_id = LogId::package_log::<Sha256>(package);
-        let mut current = self.get_package_record(package, &log_id, record_id).await?;
+        let mut current = self
+            .get_package_record(registry_domain.as_ref(), package, &log_id, record_id)
+            .await?;
 
         loop {
             match current.state {
@@ -438,6 +437,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     return Err(ClientError::PackageMissingContent);
                 }
                 PackageRecordState::Published { .. } => {
+                    self.update().await?;
                     return Ok(());
                 }
                 PackageRecordState::Rejected { reason } => {
@@ -449,54 +449,21 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 }
                 PackageRecordState::Processing => {
                     tokio::time::sleep(interval).await;
-                    current = self.get_package_record(package, &log_id, record_id).await?;
+                    current = self
+                        .get_package_record(registry_domain.as_ref(), package, &log_id, record_id)
+                        .await?;
                 }
             }
         }
     }
 
-    /// Updates every package log in every client registry storage to the latest registry checkpoint.
-    pub async fn update_all(&mut self) -> ClientResult<()> {
-        let packages = self.registry.load_all_packages().await?;
-        let checkpoints = self.api.latest_checkpoints(packages.keys()).await?;
-        self.update_checkpoints(checkpoints, packages).await?;
-        Ok(())
-    }
-
-    /// Updates every package log in client storage to the latest registry checkpoint.
+    /// Updates all package logs in client registry storage to the latest registry checkpoint.
     pub async fn update(&self) -> ClientResult<()> {
-        tracing::info!("updating all packages to latest checkpoint");
+        tracing::info!("updating downloaded package logs");
 
-        let mut updating = self.registry.load_packages().await?;
-
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
-
-        Ok(())
-    }
-
-    /// Inserts or updates the logs of the specified packages in client storage to
-    /// the latest registry checkpoint.
-    pub async fn upsert<'a, I>(&self, packages: I) -> Result<(), ClientError>
-    where
-        I: IntoIterator<Item = &'a PackageName>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        tracing::info!("updating specific packages to latest checkpoint");
-
-        let packages = packages.into_iter();
-        let mut updating = Vec::with_capacity(packages.len());
-        for package in packages {
-            updating.push(
-                self.registry
-                    .load_package(self.api.get_warg_registry(), package)
-                    .await?
-                    .unwrap_or_else(|| PackageInfo::new(package.clone())),
-            );
+        for mut packages in self.registry.load_all_packages().await?.into_values() {
+            self.update_checkpoints(&mut packages).await?;
         }
-
-        self.update_checkpoint(&self.api.latest_checkpoint().await?, &mut updating)
-            .await?;
 
         Ok(())
     }
@@ -516,11 +483,18 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     /// the resolved version.
     pub async fn download(
         &self,
-        name: &PackageName,
+        package: &PackageName,
         requirement: &VersionReq,
     ) -> Result<Option<PackageDownload>, ClientError> {
-        tracing::info!("downloading package `{name}` with requirement `{requirement}`");
-        let info = self.fetch_package(name).await?;
+        let info = self.package(package).await?;
+
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
+
+        if let Some(ref registry_header) = registry_domain {
+            tracing::info!("downloading package `{package}` with requirement `{requirement}` with registry header: {registry_header}");
+        } else {
+            tracing::info!("downloading package `{package}` with requirement `{requirement}`");
+        }
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -528,7 +502,9 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     .content()
                     .context("invalid state: not yanked but missing content")?
                     .clone();
-                let path = self.download_content(&digest).await?;
+                let path = self
+                    .download_content(registry_domain.as_ref(), &digest)
+                    .await?;
                 Ok(Some(PackageDownload {
                     version: release.version.clone(),
                     digest,
@@ -553,8 +529,15 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         package: &PackageName,
         version: &Version,
     ) -> Result<PackageDownload, ClientError> {
-        tracing::info!("downloading version {version} of package `{package}`");
-        let info = self.fetch_package(package).await?;
+        let info = self.package(package).await?;
+
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
+
+        if let Some(ref registry_header) = registry_domain {
+            tracing::info!("downloading version {version} of package `{package}` with registry header: {registry_header}");
+        } else {
+            tracing::info!("downloading version {version} of package `{package}`");
+        }
 
         let release =
             info.state
@@ -574,71 +557,169 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         Ok(PackageDownload {
             version: version.clone(),
             digest: digest.clone(),
-            path: self.download_content(digest).await?,
+            path: self
+                .download_content(registry_domain.as_ref(), digest)
+                .await?,
         })
     }
 
-    /// Update checkpoint for list of packages
-    async fn update_checkpoint<'a>(
+    async fn update_packages_and_return_federated_packages<'a>(
         &self,
-        ts_checkpoint: &SerdeEnvelope<TimestampedCheckpoint>,
-        packages: impl IntoIterator<Item = &mut PackageInfo>,
-    ) -> Result<(), ClientError> {
+        registry_domain: Option<&RegistryDomain>,
+        packages: impl IntoIterator<Item = &'a mut PackageInfo>,
+    ) -> Result<IndexMap<Option<RegistryDomain>, Vec<&'a mut PackageInfo>>, ClientError> {
+        let ts_checkpoint = self.api.latest_checkpoint(registry_domain).await?;
         let checkpoint = &ts_checkpoint.as_ref().checkpoint;
-        tracing::info!(
-            "updating to checkpoint log length `{}`",
-            checkpoint.log_length
-        );
 
+        if let Some(registry_header) = registry_domain {
+            tracing::info!(
+                "updating to checkpoint log length `{}` with registry header: {registry_header}",
+                checkpoint.log_length
+            );
+        } else {
+            tracing::info!(
+                "updating to checkpoint log length `{}`",
+                checkpoint.log_length
+            );
+        }
+
+        // operator log info
         let mut operator = self
             .registry
-            .load_operator(self.api.get_warg_registry())
+            .load_operator(registry_domain)
             .await?
             .unwrap_or_default();
 
-        // Map package names to package logs that need to be updated
+        // map package names to package logs that need to be updated
         let mut packages = packages
             .into_iter()
             .filter_map(|p| match &p.checkpoint {
                 // Don't bother updating if the package is already at the specified checkpoint
-                Some(c) if c == checkpoint => None,
+                // If `registry` field is not set, then update.
+                Some(c) if p.registry.is_some() && c == checkpoint => None,
                 _ => Some((LogId::package_log::<Sha256>(&p.name), p)),
             })
             .inspect(|(_, p)| tracing::info!("package `{name}` will be updated", name = p.name))
             .collect::<IndexMap<_, _>>();
-        if packages.is_empty() {
-            return Ok(());
+
+        // if operator log and all packages are up to date at the latest checkpoint, then return
+        if operator.checkpoint.is_some_and(|c| &c == checkpoint) && packages.is_empty() {
+            return Ok(IndexMap::default());
         }
 
-        let mut last_known = packages
-            .iter()
-            .map(|(id, p)| (id.clone(), p.head_fetch_token.clone()))
-            .collect::<IndexMap<_, _>>();
+        // federated packages in other registries
+        let mut federated_packages: IndexMap<Option<RegistryDomain>, Vec<&mut PackageInfo>> =
+            IndexMap::with_capacity(packages.len());
 
+        // loop and fetch logs
         loop {
-            // let response: FetchLogsResponse = match self
-            let response: FetchLogsResponse = self
+            let response = match self
                 .api
-                .fetch_logs(FetchLogsRequest {
-                    log_length: checkpoint.log_length,
-                    operator: operator
-                        .head_fetch_token
-                        .as_ref()
-                        .map(|t| Cow::Borrowed(t.as_str())),
-                    limit: None,
-                    packages: Cow::Borrowed(&last_known),
-                })
+                .fetch_logs(
+                    registry_domain,
+                    FetchLogsRequest {
+                        log_length: checkpoint.log_length,
+                        operator: operator
+                            .head_fetch_token
+                            .as_ref()
+                            .map(|t| Cow::Borrowed(t.as_str())),
+                        limit: None,
+                        // last known fetch token for each package log ID
+                        packages: Cow::Owned(
+                            packages
+                                .iter()
+                                .map(|(id, p)| (id.clone(), p.head_fetch_token.clone()))
+                                .collect::<IndexMap<_, _>>(),
+                        ),
+                    },
+                )
                 .await
                 .inspect(|res| {
                     for warning in res.warnings.iter() {
                         tracing::warn!("Fetch warning from registry: {}", warning.message);
                     }
-                })
-                .map_err(|e| {
-                    ClientError::translate_log_not_found(e, |id| {
-                        packages.get(id).map(|p| p.name.clone())
-                    })
-                })?;
+                }) {
+                Ok(res) => Ok(res),
+                Err(err) => match &err {
+                    api::ClientError::Fetch(FetchError::LogNotFound(log_id))
+                    | api::ClientError::Package(PackageError::LogNotFound(log_id)) => {
+                        if let Some(name) = packages.get(log_id).map(|p| p.name.clone()) {
+                            Err(ClientError::PackageDoesNotExist { name })
+                        } else {
+                            Err(ClientError::Api(err))
+                        }
+                    }
+                    api::ClientError::LogNotFoundWithHint(log_id, hint) => {
+                        match hint.to_str().ok().map(|s| s.split_once('=')) {
+                            Some(Some((namespace, registry)))
+                                if !self.ignore_federation_hints
+                                    && packages.contains_key(log_id) =>
+                            {
+                                let package_name = &packages.get(log_id).unwrap().name;
+
+                                if self.auto_accept_federation_hints
+                                    || Confirm::with_theme(&ColorfulTheme::default())
+                                        .with_prompt(format!(
+"Package `{package_name}` is not in `{current_registry}` registry.
+Registry recommends using `{registry}` registry for packages in `{namespace}` namespace.
+Accept recommendation y/N\n",
+current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().safe_label()),
+))
+                                        .default(true)
+                                        .interact()
+                                        .unwrap()
+                                {
+                                    let federated_registry_domain =
+                                        Some(RegistryDomain::from_str(registry)?);
+                                    self.store_namespace(
+                                        namespace.to_string(),
+                                        federated_registry_domain.clone().unwrap(),
+                                    )
+                                    .await?;
+
+                                    // filter packages with namespace in other registry
+                                    packages = packages
+                                        .into_iter()
+                                        .filter_map(|(log_id, package_info)| {
+                                            if package_info.name.namespace() == namespace {
+                                                if let Some(package_set) = federated_packages
+                                                    .get_mut(&federated_registry_domain)
+                                                {
+                                                    package_set.push(package_info);
+                                                } else {
+                                                    federated_packages.insert(
+                                                        federated_registry_domain.clone(),
+                                                        vec![package_info],
+                                                    );
+                                                }
+
+                                                None
+                                            } else {
+                                                Some((log_id, package_info))
+                                            }
+                                        })
+                                        .collect();
+
+                                    // continue fetching logs from this registry
+                                    continue;
+                                } else {
+                                    Err(ClientError::PackageDoesNotExist {
+                                        name: package_name.clone(),
+                                    })
+                                }
+                            }
+                            _ => {
+                                if let Some(name) = packages.get(log_id).map(|p| p.name.clone()) {
+                                    Err(ClientError::PackageDoesNotExist { name })
+                                } else {
+                                    Err(ClientError::Api(err))
+                                }
+                            }
+                        }
+                    }
+                    _ => Err(ClientError::Api(err)),
+                },
+            }?;
 
             for record in response.operator {
                 let proto_envelope: PublishedProtoEnvelope<operator::OperatorRecord> =
@@ -694,20 +775,16 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             if !response.more {
                 break;
             }
-
-            // Update the last known record fetch token for each package log
-            for (id, fetch_token) in last_known.iter_mut() {
-                *fetch_token = packages[id].head_fetch_token.clone();
-            }
         }
 
         // verify checkpoint signature
         TimestampedCheckpoint::verify(
-            operator.state.public_key(ts_checkpoint.key_id()).ok_or(
-                ClientError::InvalidCheckpointKeyId {
+            operator
+                .state
+                .public_key(ts_checkpoint.to_owned().to_owned().key_id())
+                .ok_or(ClientError::InvalidCheckpointKeyId {
                     key_id: ts_checkpoint.key_id().clone(),
-                },
-            )?,
+                })?,
             &ts_checkpoint.as_ref().encode(),
             ts_checkpoint.signature(),
         )
@@ -746,6 +823,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         if !leafs.is_empty() {
             self.api
                 .prove_inclusion(
+                    registry_domain,
                     InclusionRequest {
                         log_length: checkpoint.log_length,
                         leafs: leaf_indices,
@@ -756,11 +834,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 .await?;
         }
 
-        if let Some(from) = self
-            .registry
-            .load_checkpoint(self.api.get_warg_registry())
-            .await?
-        {
+        if let Some(from) = self.registry.load_checkpoint(registry_domain).await? {
             let from_log_length = from.as_ref().checkpoint.log_length;
             let to_log_length = ts_checkpoint.as_ref().checkpoint.log_length;
 
@@ -774,6 +848,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 Ordering::Less => {
                     self.api
                         .prove_log_consistency(
+                            registry_domain,
                             ConsistencyRequest {
                                 from: from_log_length,
                                 to: to_log_length,
@@ -797,61 +872,101 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             }
         }
 
+        operator.registry = registry_domain
+            .cloned()
+            .or_else(|| Some(self.url().registry_domain()));
+        operator.checkpoint = Some(checkpoint.clone()); // updated to this checkpoint
         self.registry
-            .store_operator(self.api.get_warg_registry(), operator)
+            .store_operator(registry_domain, operator)
             .await?;
 
         for package in packages.values_mut() {
-            package.checkpoint = Some(checkpoint.clone());
+            package.registry = registry_domain
+                .cloned()
+                .or_else(|| Some(self.url().registry_domain()));
+            package.checkpoint = Some(checkpoint.clone()); // updated to this checkpoint
             self.registry
-                .store_package(self.api.get_warg_registry(), package)
+                .store_package(registry_domain, package)
                 .await?;
         }
 
         self.registry
-            .store_checkpoint(self.api.get_warg_registry(), ts_checkpoint)
+            .store_checkpoint(registry_domain, &ts_checkpoint)
             .await?;
 
-        Ok(())
+        // return packages to be retrieved from other registries
+        Ok(federated_packages)
     }
 
+    /// Update checkpoint for list of packages
     async fn update_checkpoints<'a>(
-        &mut self,
-        ts_checkpoints: IndexMap<std::string::String, SerdeEnvelope<TimestampedCheckpoint>>,
-        mut packages: IndexMap<String, Vec<PackageInfo>>,
+        &self,
+        packages: impl IntoIterator<Item = &mut PackageInfo>,
     ) -> Result<(), ClientError> {
-        for (name, ts_checkpoint) in ts_checkpoints {
-            if self.url().safe_label() != name {
-                self.api
-                    .set_warg_registry(Some(RegistryDomain::from_str(&name)?));
+        // first collect the packages that we already have namespace mappings for
+        let mut federated_packages: IndexMap<Option<RegistryDomain>, Vec<&mut PackageInfo>> =
+            IndexMap::new();
+        for package in packages.into_iter() {
+            let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
+            if let Some(package_set) = federated_packages.get_mut(&registry_domain) {
+                package_set.push(package);
             } else {
-                self.api.set_warg_registry(None)
+                federated_packages.insert(registry_domain, vec![package]);
             }
-            let mut packages = packages.get_mut(&name.clone());
-            if let Some(pkgs) = &mut packages {
-                self.update_checkpoint(&ts_checkpoint, pkgs.as_mut_slice())
-                    .await?;
+        }
+
+        while let Some((registry_domain, packages)) = federated_packages.pop() {
+            for (registry_domain, mut packages) in self
+                .update_packages_and_return_federated_packages(registry_domain.as_ref(), packages)
+                .await?
+                .into_iter()
+            {
+                if let Some(package_set) = federated_packages.get_mut(&registry_domain) {
+                    package_set.reserve(packages.len());
+                    package_set.append(&mut packages);
+                } else {
+                    federated_packages.insert(registry_domain, packages);
+                }
             }
         }
 
         Ok(())
     }
 
-    async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
+    /// Fetches package logs.
+    pub async fn fetch_packages(
+        &self,
+        names: impl IntoIterator<Item = &PackageName>,
+    ) -> Result<Vec<PackageInfo>, ClientError> {
+        let mut packages: Vec<PackageInfo> = names
+            .into_iter()
+            .map(|name| PackageInfo::new(name.clone()))
+            .collect();
+        self.update_checkpoints(packages.iter_mut()).await?;
+        Ok(packages)
+    }
+
+    /// Retrieves the `PackageInfo` from local storage, if present, otherwise fetches from the
+    /// registry.
+    pub async fn package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
+        let registry_domain = self.get_warg_registry(name.namespace()).await?;
         match self
             .registry
-            .load_package(self.api.get_warg_registry(), name)
+            .load_package(registry_domain.as_ref(), name)
             .await?
         {
-            Some(info) => {
+            Some(mut info) => {
                 tracing::info!("log for package `{name}` already exists in storage");
+                if info.registry.is_none() {
+                    info.registry = registry_domain
+                        .clone()
+                        .or_else(|| Some(self.url().registry_domain()));
+                }
                 Ok(info)
             }
             None => {
                 let mut info = PackageInfo::new(name.clone());
-                self.update_checkpoint(&self.api.latest_checkpoint().await?, [&mut info])
-                    .await?;
-
+                self.update_checkpoints([&mut info]).await?;
                 Ok(info)
             }
         }
@@ -859,13 +974,14 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
     async fn get_package_record(
         &self,
+        registry_domain: Option<&RegistryDomain>,
         package: &PackageName,
         log_id: &LogId,
         record_id: &RecordId,
     ) -> ClientResult<PackageRecord> {
         let record = self
             .api
-            .get_package_record(log_id, record_id)
+            .get_package_record(registry_domain, log_id, record_id)
             .await
             .map_err(|e| {
                 ClientError::translate_log_not_found(e, |id| {
@@ -883,7 +999,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     ///
     /// If the content already exists in client storage, the existing path
     /// is returned.
-    pub async fn download_content(&self, digest: &AnyHash) -> Result<PathBuf, ClientError> {
+    async fn download_content(
+        &self,
+        registry_domain: Option<&RegistryDomain>,
+        digest: &AnyHash,
+    ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
                 tracing::info!("content for digest `{digest}` already exists in storage");
@@ -892,7 +1012,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             None => {
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(digest).await?),
+                        Box::pin(self.api.download_content(registry_domain, digest).await?),
                         Some(digest),
                     )
                     .await?;
@@ -956,6 +1076,8 @@ impl FileSystemClient {
             content,
             namespace_map,
             auth_token,
+            config.ignore_federation_hints,
+            config.auto_accept_federation_hints,
         )?))
     }
 
@@ -982,6 +1104,8 @@ impl FileSystemClient {
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
             auth_token,
+            config.ignore_federation_hints,
+            config.auto_accept_federation_hints,
         )
     }
 }
@@ -1000,6 +1124,15 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
+    /// Similar Namespace
+    #[error("Namespace `{namespace}` not found in operator log but found namespace `{e}`, which has alternative casing.")]
+    SimilarNamespace {
+        /// Namespace
+        namespace: String,
+        /// Provided Error
+        e: String,
+    },
+
     /// No home registry registry server URL is configured.
     #[error("no home registry registry server URL is configured")]
     NoHomeRegistryUrl,
@@ -1064,15 +1197,6 @@ pub enum ClientError {
     PackageDoesNotExist {
         /// The missing package.
         name: PackageName,
-    },
-
-    /// The package does not exist with hint.
-    #[error("package `{name}` does not exist")]
-    PackageDoesNotExistWithHint {
-        /// The missing package.
-        name: PackageName,
-        /// The registry hint
-        hint: HeaderValue,
     },
 
     /// The package version does not exist.
@@ -1168,14 +1292,6 @@ impl ClientError {
             | api::ClientError::Package(PackageError::LogNotFound(id)) => {
                 if let Some(name) = lookup(id) {
                     return Self::PackageDoesNotExist { name };
-                }
-            }
-            api::ClientError::LogNotFoundWithHint(log_id, hint) => {
-                if let Some(name) = lookup(log_id) {
-                    return Self::PackageDoesNotExistWithHint {
-                        name,
-                        hint: hint.clone(),
-                    };
                 }
             }
             _ => {}

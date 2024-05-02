@@ -1,31 +1,23 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::Result;
-use clap::{ArgAction, Args};
+use clap::Args;
 
-/// Update all local package logs for a registry.
+/// Update all local package logs.
 #[derive(Args)]
 pub struct UpdateCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
-
-    /// The common command options.
-    #[clap(short, long, value_name = "ALL", action = ArgAction::SetTrue)]
-    pub all: bool,
 }
 
 impl UpdateCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
+        let client = self.common.create_client(&config)?;
 
         println!("updating package logs to the latest available versions...");
-        if self.all {
-            client.update_all().await?;
-        } else {
-            client.update().await?;
-        }
+        client.update().await?;
 
         Ok(())
     }

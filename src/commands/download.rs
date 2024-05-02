@@ -1,4 +1,4 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::{anyhow, Result};
 use clap::Args;
 use warg_protocol::{registry::PackageName, VersionReq};
@@ -15,29 +15,30 @@ pub struct DownloadCommand {
     pub name: PackageName,
     #[clap(long, short, value_name = "VERSION")]
     /// The version requirement of the package to download; defaults to `*`.
-    pub version: Option<VersionReq>,
+    pub version: Option<String>,
 }
 
 impl DownloadCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.name.namespace()).await?;
+        let client = self.common.create_client(&config)?;
 
         println!("downloading package `{name}`...", name = self.name);
 
+        // if user specifies exact verion, then set the `VersionReq` to exact match
+        let version = match &self.version {
+            Some(version) => VersionReq::parse(&format!("={}", version))?,
+            None => VersionReq::STAR,
+        };
+
         let res = client
-            .download(
-                &self.name,
-                self.version.as_ref().unwrap_or(&VersionReq::STAR),
-            )
+            .download(&self.name, &version)
             .await?
             .ok_or_else(|| {
                 anyhow!(
                     "a version of package `{name}` that satisfies `{version}` was not found",
                     name = self.name,
-                    version = self.version.as_ref().unwrap_or(&VersionReq::STAR)
                 )
             })?;
 
