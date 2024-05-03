@@ -54,15 +54,6 @@ pub enum DataStoreError {
     #[error("the package record was invalid: {0}")]
     PackageValidationFailed(#[from] package::ValidationError),
 
-    #[error("the package `{name}` conflicts with package `{existing}`; package names must be unique in a case insensitive way")]
-    PackageNameConflict {
-        name: PackageName,
-        existing: PackageName,
-    },
-
-    #[error("the package namespace `{namespace}` conflicts with existing namespace `{existing}`; package namespaces must be unique in a case insensitive way")]
-    PackageNamespaceConflict { namespace: String, existing: String },
-
     #[error("the package namespace `{0}` is not defined")]
     PackageNamespaceNotDefined(String),
 

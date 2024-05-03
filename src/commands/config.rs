@@ -19,6 +19,14 @@ pub struct ConfigCommand {
     #[clap(long, value_name = "CONTENT")]
     pub content_dir: Option<PathBuf>,
 
+    /// Ignore federation hints.
+    #[clap(long)]
+    pub ignore_federation_hints: bool,
+
+    /// Auto accept federation hints.
+    #[clap(long)]
+    pub auto_accept_federation_hints: bool,
+
     /// Overwrite the existing configuration file.
     #[clap(long)]
     pub overwrite: bool,
@@ -70,9 +78,16 @@ impl ConfigCommand {
             namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
             keys: self.common.read_config()?.keys,
             keyring_auth: false,
+            ignore_federation_hints: self.ignore_federation_hints,
+            auto_accept_federation_hints: self.auto_accept_federation_hints,
         };
 
         config.write_to_file(&path)?;
+
+        // reset when changing home registry
+        let client = self.common.create_client(&config)?;
+        client.reset_namespaces().await?;
+        client.reset_registry().await?;
 
         println!(
             "created warg configuration file `{path}`",

@@ -1,11 +1,6 @@
-use super::{CommonOptions, Retry};
+use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
-use semver::VersionReq;
-use warg_client::{
-    storage::{PackageInfo, RegistryStorage},
-    FileSystemClient,
-};
 use warg_protocol::registry::PackageName;
 
 /// Print Dependency Tree
@@ -22,32 +17,13 @@ pub struct LockCommand {
 
 impl LockCommand {
     /// Executes the command.
-    pub async fn exec(self, retry: Option<Retry>) -> Result<()> {
+    pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let mut client = self.common.create_client(&config, retry).await?;
-        client.refresh_namespace(self.package.namespace()).await?;
-        println!("registry: {url}", url = client.url());
-        if let Some(info) = client
-            .registry()
-            .load_package(client.get_warg_registry(), &self.package)
-            .await?
-        {
-            Self::lock(client, &info).await?;
-        } else {
-            client.download(&self.package, &VersionReq::STAR).await?;
-            if let Some(info) = client
-                .registry()
-                .load_package(client.get_warg_registry(), &self.package)
-                .await?
-            {
-                Self::lock(client, &info).await?;
-            }
-        }
-        Ok(())
-    }
+        let client = self.common.create_client(&config)?;
 
-    async fn lock(client: FileSystemClient, info: &PackageInfo) -> Result<()> {
-        client.lock_component(info).await?;
+        let info = client.package(&self.package).await?;
+        client.lock_component(&info).await?;
+
         Ok(())
     }
 }

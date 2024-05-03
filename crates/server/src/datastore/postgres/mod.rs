@@ -991,24 +991,7 @@ impl DataStore for PostgresDataStore {
             }
         }
 
-        // verify package name is unique in a case insensitive way
-        match schema::logs::table
-            .select(schema::logs::name)
-            .filter(
-                lower(schema::logs::name).eq(TextRef(&package_name.as_ref().to_ascii_lowercase())),
-            )
-            .first::<Option<String>>(&mut conn)
-            .await
-            .optional()?
-        {
-            Some(Some(name)) if name != package_name.as_ref() => {
-                Err(DataStoreError::PackageNameConflict {
-                    name: package_name.clone(),
-                    existing: PackageName::new(name).unwrap(),
-                })
-            }
-            _ => Ok(()),
-        }
+        Ok(())
     }
 
     async fn verify_timestamped_checkpoint_signature(

@@ -41,9 +41,9 @@ indexmap.workspace = true
 semver.workspace = true
 wat = "1.0.85"
 wasmprinter = "0.2.78"
-dialoguer = "0.11.0"
+dialoguer = { workspace = true }
 itertools = "0.12.1"
-secrecy= { workspace = true }
+secrecy = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true }
@@ -72,6 +72,7 @@ homepage = "https://warg.io/"
 repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
+dialoguer = "0.11.0"
 ptree = "0.4.0"
 warg-api = { path = "crates/api", version = "0.5.0-dev" }
 warg-credentials = { path = "crates/credentials", version = "0.5.0-dev" }
@@ -141,5 +142,5 @@ regex = "1"
 wasm-encoder = "0.41.0"
 wasm-compose = "0.5.2"
 wasmparser = "0.121.0"
-protox = "0.5.1"
+protox = "0.6.0"
 toml = "0.8.2"

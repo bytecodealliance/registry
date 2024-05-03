@@ -1,11 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use dialoguer::{theme::ColorfulTheme, Confirm};
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use warg_cli::commands::{
     BundleCommand, ClearCommand, ConfigCommand, DependenciesCommand, DownloadCommand, InfoCommand,
-    KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand, Retry,
+    KeyCommand, LockCommand, LoginCommand, LogoutCommand, PublishCommand, ResetCommand,
     UpdateCommand,
 };
 use warg_client::ClientError;
@@ -50,19 +49,19 @@ async fn main() -> Result<()> {
         WargCli::Config(cmd) => cmd.exec().await,
         WargCli::Info(cmd) => cmd.exec().await,
         WargCli::Key(cmd) => cmd.exec().await,
-        WargCli::Lock(cmd) => cmd.exec(None).await,
-        WargCli::Bundle(cmd) => cmd.exec(None).await,
-        WargCli::Dependencies(cmd) => cmd.exec(None).await,
-        WargCli::Download(cmd) => cmd.exec(None).await,
-        WargCli::Update(cmd) => cmd.exec(None).await,
-        WargCli::Publish(cmd) => cmd.exec(None).await,
+        WargCli::Lock(cmd) => cmd.exec().await,
+        WargCli::Bundle(cmd) => cmd.exec().await,
+        WargCli::Dependencies(cmd) => cmd.exec().await,
+        WargCli::Download(cmd) => cmd.exec().await,
+        WargCli::Update(cmd) => cmd.exec().await,
+        WargCli::Publish(cmd) => cmd.exec().await,
         WargCli::Reset(cmd) => cmd.exec().await,
         WargCli::Clear(cmd) => cmd.exec().await,
         WargCli::Login(cmd) => cmd.exec().await,
         WargCli::Logout(cmd) => cmd.exec().await,
     } {
         if let Some(e) = e.downcast_ref::<ClientError>() {
-            describe_client_error_or_retry(e).await?;
+            describe_client_error(e).await?;
         } else {
             eprintln!("error: {e:?}");
         }
@@ -72,112 +71,53 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn describe_client_error_or_retry(e: &ClientError) -> Result<()> {
+pub async fn describe_client_error(e: &ClientError) -> Result<()> {
     match e {
         ClientError::NoHomeRegistryUrl => {
-            eprintln!("error: {e}; use the `config` subcommand to set a home registry URL");
+            eprintln!("Registry not set. Use `config` or `login` subcommand to set registry.");
         }
         ClientError::PackageValidationFailed { name, inner } => {
-            eprintln!("error: the log for package `{name}` is invalid: {inner}")
+            eprintln!("The log for package `{name}` validation failed: {inner}")
         }
         ClientError::PackageLogEmpty { name } => {
-            eprintln!("error: the log for package `{name}` is empty (the registry could be lying)");
+            eprintln!("The log for package `{name}` is empty (the registry could be lying)");
             eprintln!("see issue https://github.com/bytecodealliance/registry/issues/66");
         }
-        ClientError::PackageDoesNotExistWithHint { name, hint } => {
-            let hint_reg = hint.to_str().unwrap();
-            let mut terms = hint_reg.split('=');
-            let namespace = terms.next();
-            let registry = terms.next();
-            if let (Some(namespace), Some(registry)) = (namespace, registry) {
-                let prompt = format!(
-                "The package `{}`, does not exist in the registry you're using.\nHowever, the package namespace `{namespace}` does exist in the registry at {registry}.\nWould you like to configure your warg cli to use this registry for packages with this namespace in the future? y/N\n",
-                name.name()
-              );
-                if Confirm::with_theme(&ColorfulTheme::default())
-                    .with_prompt(prompt)
-                    .interact()
-                    .unwrap()
-                {
-                    if let Err(e) = match WargCli::parse() {
-                        WargCli::Config(cmd) => cmd.exec().await,
-                        WargCli::Info(cmd) => cmd.exec().await,
-                        WargCli::Key(cmd) => cmd.exec().await,
-                        WargCli::Lock(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Bundle(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Dependencies(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Download(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Update(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Publish(cmd) => {
-                            cmd.exec(Some(Retry::new(
-                                namespace.to_string(),
-                                registry.to_string(),
-                            )))
-                            .await
-                        }
-                        WargCli::Reset(cmd) => cmd.exec().await,
-                        WargCli::Clear(cmd) => cmd.exec().await,
-                        WargCli::Login(cmd) => cmd.exec().await,
-                        WargCli::Logout(cmd) => cmd.exec().await,
-                    } {
-                        if let Some(e) = e.downcast_ref::<ClientError>() {
-                            describe_client_error(e).await?;
-                        } else {
-                            eprintln!("error: {e:?}");
-                        }
-                        exit(1);
-                    }
-                }
+        ClientError::PackageDoesNotExist {
+            name,
+            has_auth_token,
+        } => {
+            eprintln!("Package `{name}` was not found or you do not have access.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
             }
         }
-        _ => {
-            eprintln!("error: {e}")
+        ClientError::PackageVersionDoesNotExist { name, version } => {
+            eprintln!("Package `{name}` version `{version}` was not found.")
         }
-    }
-    Ok(())
-}
-
-async fn describe_client_error(e: &ClientError) -> Result<()> {
-    match e {
-        ClientError::NoHomeRegistryUrl => {
-            eprintln!("error: {e}; use the `config` subcommand to set a default URL");
+        ClientError::PackageVersionRequirementDoesNotExist { name, version } => {
+            eprintln!(
+                "Package `{name}` version that satisfies requirement `{version}` was not found."
+            )
         }
-        ClientError::PackageValidationFailed { name, inner } => {
-            eprintln!("error: the log for package `{name}` is invalid: {inner}")
+        ClientError::MustInitializePackage {
+            name,
+            has_auth_token,
+        } => {
+            eprintln!("Package `{name}` is not initialized or you do not have access.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
+            }
+            eprintln!("To initialize package: `warg publish init {name}`");
         }
-        ClientError::PackageLogEmpty { name } => {
-            eprintln!("error: the log for package `{name}` is empty (the registry could be lying)");
-            eprintln!("see issue https://github.com/bytecodealliance/registry/issues/66");
+        ClientError::CannotInitializePackage { name } => {
+            eprintln!("Package `{name}` is already initialized.")
+        }
+        ClientError::PublishRejected { name, reason, .. } => {
+            eprintln!("Package `{name}` publish rejected: {reason}")
+        }
+        ClientError::Unauthorized(reason) => {
+            eprintln!("Unauthorized: {reason}")
         }
         _ => {
             eprintln!("error: {e}")

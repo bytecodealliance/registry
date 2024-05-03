@@ -114,6 +114,14 @@ pub struct Config {
     /// Whether or not an auth key should be retreived from keyring
     #[serde(default)]
     pub keyring_auth: bool,
+
+    /// Ignore registry hints provided by a warg server
+    #[serde(default)]
+    pub ignore_federation_hints: bool,
+
+    /// Auto accept registry hint or ask the user to confirm
+    #[serde(default)]
+    pub auto_accept_federation_hints: bool,
 }
 
 impl Config {
@@ -192,6 +200,8 @@ impl Config {
             }),
             keys: self.keys.clone(),
             keyring_auth: self.keyring_auth,
+            ignore_federation_hints: self.ignore_federation_hints,
+            auto_accept_federation_hints: self.auto_accept_federation_hints,
         };
 
         serde_json::to_writer_pretty(

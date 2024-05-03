@@ -17,7 +17,7 @@ async fn it_publishes_a_component() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
         2,
@@ -36,7 +36,7 @@ async fn it_yanks_a_package() -> Result<()> {
 
     // There should be three entries in the registry
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
         3,
@@ -53,7 +53,7 @@ async fn it_publishes_a_wit_package() -> Result<()> {
 
     // There should be two log entries in the registry
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     assert_eq!(
         ts_checkpoint.as_ref().checkpoint.log_length,
         2,

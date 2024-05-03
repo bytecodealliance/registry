@@ -17,7 +17,7 @@ use warg_api::v1::{
 };
 use warg_client::{
     api,
-    storage::{PublishEntry, PublishInfo, RegistryStorage},
+    storage::{PublishEntry, PublishInfo},
     ClientError, Config,
 };
 use warg_crypto::{
@@ -41,7 +41,7 @@ mod postgres;
 async fn test_initial_checkpoint(config: &Config) -> Result<()> {
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
     // There should be only a single log entry (the initial operator log entry)
@@ -83,8 +83,6 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     )
     .await?;
 
-    // Assert that the package can be downloaded
-    client.upsert([&name]).await?;
     let download = client
         .download(&name, &PACKAGE_VERSION.parse()?)
         .await?
@@ -149,8 +147,6 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
         .wait_for_publish(&name, &record_id, Duration::from_millis(100))
         .await?;
 
-    // Assert that the package is yanked
-    client.upsert([&name]).await?;
     let opt = client.download(&name, &PACKAGE_VERSION.parse()?).await?;
     assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
@@ -173,8 +169,6 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     )
     .await?;
 
-    // Assert that the package can be downloaded
-    client.upsert([&name]).await?;
     let download = client
         .download(&name, &PACKAGE_VERSION.parse()?)
         .await?
@@ -381,7 +375,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
     let body = response.text().await?;
     assert_eq!(
         status,
-        StatusCode::FORBIDDEN,
+        StatusCode::UNAUTHORIZED,
         "unexpected response from server: {status}\n{body}",
     );
     assert!(
@@ -409,12 +403,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     )
     .await?;
 
-    client.upsert([&name]).await?;
-    let package = client
-        .registry()
-        .load_package(client.get_warg_registry(), &name)
-        .await?
-        .expect("expected the package to exist");
+    let package = client.package(&name).await?;
     package
         .state
         .release(&Version::parse(PACKAGE_VERSION)?)
@@ -422,7 +411,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
 
     // Look up the content URL for the record
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
-    let ContentSourcesResponse { content_sources } = client.content_sources(&digest).await?;
+    let ContentSourcesResponse { content_sources } = client.content_sources(None, &digest).await?;
     assert_eq!(content_sources.len(), 1);
     let sources = content_sources
         .get(&digest)
@@ -484,7 +473,7 @@ async fn test_fetch_package_names(config: &Config) -> Result<()> {
 async fn test_get_ledger(config: &Config) -> Result<()> {
     let client = api::Client::new(config.home_url.as_ref().unwrap(), None)?;
 
-    let ts_checkpoint = client.latest_checkpoint().await?;
+    let ts_checkpoint = client.latest_checkpoint(None).await?;
     let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
     let url = Url::parse(config.home_url.as_ref().unwrap())?

@@ -145,13 +145,7 @@ impl From<DataStoreError> for PackageApiError {
                 PackageError::Unauthorized(e.to_string())
             }
             DataStoreError::PackageNamespaceNotDefined(id) => PackageError::NamespaceNotDefined(id),
-            DataStoreError::PackageNamespaceConflict { existing, .. } => {
-                PackageError::NamespaceConflict(existing)
-            }
             DataStoreError::PackageNamespaceImported(id) => PackageError::NamespaceImported(id),
-            DataStoreError::PackageNameConflict { existing, .. } => {
-                PackageError::PackageNameConflict(existing)
-            }
             // Other errors are internal server errors
             e => {
                 tracing::error!("unexpected data store error: {e}");

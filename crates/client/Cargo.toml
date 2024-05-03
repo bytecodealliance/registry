@@ -24,6 +24,7 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+dialoguer = { workspace = true }
 tokio-util = { workspace = true }
 tempfile = { workspace = true }
 reqwest = { workspace = true }
