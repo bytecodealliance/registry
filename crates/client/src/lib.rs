@@ -532,11 +532,12 @@ package_name = &info.name,
 
         let registry_domain = self.get_warg_registry(package.namespace()).await?;
 
-        if let Some(ref registry_header) = registry_domain {
-            tracing::info!("downloading package `{package}` with requirement `{requirement}` with registry header: {registry_header}");
-        } else {
-            tracing::info!("downloading package `{package}` with requirement `{requirement}`");
-        }
+        tracing::debug!(
+            desc = "downloading package",
+            package = package.as_ref(),
+            version_requirement = requirement.to_string(),
+            registry_header = ?registry_domain
+        );
 
         match info.state.find_latest_release(requirement) {
             Some(release) => {
@@ -575,11 +576,12 @@ package_name = &info.name,
 
         let registry_domain = self.get_warg_registry(package.namespace()).await?;
 
-        if let Some(ref registry_header) = registry_domain {
-            tracing::info!("downloading version {version} of package `{package}` with registry header: {registry_header}");
-        } else {
-            tracing::info!("downloading version {version} of package `{package}`");
-        }
+        tracing::debug!(
+            desc = "downloading package version",
+            package = package.as_ref(),
+            version = version.to_string(),
+            registry_header = ?registry_domain
+        );
 
         let release =
             info.state
@@ -613,17 +615,11 @@ package_name = &info.name,
         let ts_checkpoint = self.api.latest_checkpoint(registry_domain).await?;
         let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
-        if let Some(registry_header) = registry_domain {
-            tracing::info!(
-                "updating to checkpoint log length `{}` with registry header: {registry_header}",
-                checkpoint.log_length
-            );
-        } else {
-            tracing::info!(
-                "updating to checkpoint log length `{}`",
-                checkpoint.log_length
-            );
-        }
+        tracing::debug!(
+            desc = "updating to checkpoint",
+            log_length = checkpoint.log_length,
+            registry_header = ?registry_domain
+        );
 
         // operator log info
         let mut operator = self

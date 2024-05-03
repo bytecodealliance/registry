@@ -222,13 +222,11 @@ impl Client {
         registry_domain: Option<&RegistryDomain>,
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
         let url = self.url.join(paths::fetch_checkpoint());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "getting latest checkpoint at `{url}` with registry header: {registry_header}"
-            );
-        } else {
-            tracing::debug!("getting latest checkpoint at `{url}`");
-        }
+        tracing::debug!(
+            desc = "getting latest checkpoint",
+            url = url,
+            registry_header = ?registry_domain
+        );
         into_result::<_, FetchError>(
             self.client
                 .get(url)
@@ -247,13 +245,11 @@ impl Client {
         request: SerdeEnvelope<TimestampedCheckpoint>,
     ) -> Result<CheckpointVerificationResponse, ClientError> {
         let url = self.url.join(paths::verify_checkpoint());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "verifying checkpoint at `{url}` with registry header: {registry_header}"
-            );
-        } else {
-            tracing::debug!("verifying checkpoint at `{url}`");
-        }
+        tracing::debug!(
+            desc = "verifying checkpoint",
+            url = url,
+            registry_header = ?registry_domain
+        );
 
         let response = self
             .client
@@ -273,11 +269,11 @@ impl Client {
         request: FetchLogsRequest<'_>,
     ) -> Result<FetchLogsResponse, ClientError> {
         let url = self.url.join(paths::fetch_logs());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!("fetching logs at `{url}` with registry header: {registry_header}");
-        } else {
-            tracing::debug!("fetching logs at `{url}`");
-        }
+        tracing::debug!(
+            desc = "fetching logs",
+            url = url,
+            registry_header = ?registry_domain
+        );
         let response = self
             .client
             .post(&url)
@@ -305,14 +301,11 @@ impl Client {
         request: FetchPackageNamesRequest<'_>,
     ) -> Result<FetchPackageNamesResponse, ClientError> {
         let url = self.url.join(paths::fetch_package_names());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "fetching package names at `{url}` with registry header: {registry_header}"
-            );
-        } else {
-            tracing::debug!("fetching package names at `{url}`");
-        }
-
+        tracing::debug!(
+            desc = "fetching package names",
+            url = url,
+            registry_header = ?registry_domain
+        );
         let response = self
             .client
             .post(url)
@@ -330,14 +323,11 @@ impl Client {
         registry_domain: Option<&RegistryDomain>,
     ) -> Result<LedgerSourcesResponse, ClientError> {
         let url = self.url.join(paths::ledger_sources());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "getting ledger sources at `{url}` with registry header: {registry_header}"
-            );
-        } else {
-            tracing::debug!("getting ledger sources at `{url}`");
-        }
-
+        tracing::debug!(
+            desc = "getting ledger sources",
+            url = url,
+            registry_header = ?registry_domain
+        );
         into_result::<_, LedgerError>(
             self.client
                 .get(url)
@@ -357,18 +347,12 @@ impl Client {
         request: PublishRecordRequest<'_>,
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::publish_package_record(log_id));
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "appending record to package `{name}` at `{url}` with registry header: {registry_header}",
-                name = request.package_name
-            );
-        } else {
-            tracing::debug!(
-                "appending record to package `{name}` at `{url}`",
-                name = request.package_name
-            );
-        }
-
+        tracing::debug!(
+            desc = "publishing to package",
+            log_id = log_id.to_string(),
+            url = url,
+            registry_header = ?registry_domain
+        );
         let response = self
             .client
             .post(url)
@@ -388,12 +372,13 @@ impl Client {
         record_id: &RecordId,
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::package_record(log_id, record_id));
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}` with registry header: {registry_header}");
-        } else {
-            tracing::debug!("getting record `{record_id}` for package `{log_id}` at `{url}`");
-        }
-
+        tracing::debug!(
+            desc = "getting package record",
+            log_id = log_id.to_string(),
+            record_id = record_id.to_string(),
+            url = url,
+            registry_header = ?registry_domain
+        );
         into_result::<_, PackageError>(
             self.client
                 .get(url)
@@ -412,12 +397,12 @@ impl Client {
         digest: &AnyHash,
     ) -> Result<ContentSourcesResponse, ClientError> {
         let url = self.url.join(&paths::content_sources(digest));
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!("getting content sources for digest `{digest}` at `{url}` with registry header: {registry_header}");
-        } else {
-            tracing::debug!("getting content sources for digest `{digest}` at `{url}`");
-        }
-
+        tracing::debug!(
+            desc = "getting content sources for digest",
+            digest = digest.to_string(),
+            url = url,
+            registry_header = ?registry_domain
+        );
         into_result::<_, ContentError>(
             self.client
                 .get(url)
@@ -476,14 +461,11 @@ impl Client {
         leafs: &[LogLeaf],
     ) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_inclusion());
-        if let Some(registry_header) = registry_domain {
-            tracing::debug!(
-                "proving checkpoint inclusion at `{url}` with registry header: {registry_header}"
-            );
-        } else {
-            tracing::debug!("proving checkpoint inclusion at `{url}`");
-        }
-
+        tracing::debug!(
+            desc = "proving checkpoint inclusion",
+            url = url,
+            registry_header = ?registry_domain
+        );
         let response = into_result::<InclusionResponse, ProofError>(
             self.client
                 .post(url)
