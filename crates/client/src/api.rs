@@ -223,9 +223,9 @@ impl Client {
     ) -> Result<SerdeEnvelope<TimestampedCheckpoint>, ClientError> {
         let url = self.url.join(paths::fetch_checkpoint());
         tracing::debug!(
-            desc = "getting latest checkpoint",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "getting latest checkpoint",
         );
         into_result::<_, FetchError>(
             self.client
@@ -246,9 +246,9 @@ impl Client {
     ) -> Result<CheckpointVerificationResponse, ClientError> {
         let url = self.url.join(paths::verify_checkpoint());
         tracing::debug!(
-            desc = "verifying checkpoint",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "verifying checkpoint",
         );
 
         let response = self
@@ -270,9 +270,9 @@ impl Client {
     ) -> Result<FetchLogsResponse, ClientError> {
         let url = self.url.join(paths::fetch_logs());
         tracing::debug!(
-            desc = "fetching logs",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "fetching logs",
         );
         let response = self
             .client
@@ -302,9 +302,9 @@ impl Client {
     ) -> Result<FetchPackageNamesResponse, ClientError> {
         let url = self.url.join(paths::fetch_package_names());
         tracing::debug!(
-            desc = "fetching package names",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "fetching package names",
         );
         let response = self
             .client
@@ -324,9 +324,9 @@ impl Client {
     ) -> Result<LedgerSourcesResponse, ClientError> {
         let url = self.url.join(paths::ledger_sources());
         tracing::debug!(
-            desc = "getting ledger sources",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "getting ledger sources",
         );
         into_result::<_, LedgerError>(
             self.client
@@ -348,10 +348,10 @@ impl Client {
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::publish_package_record(log_id));
         tracing::debug!(
-            desc = "publishing to package",
             log_id = log_id.to_string(),
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "publishing to package",
         );
         let response = self
             .client
@@ -373,11 +373,11 @@ impl Client {
     ) -> Result<PackageRecord, ClientError> {
         let url = self.url.join(&paths::package_record(log_id, record_id));
         tracing::debug!(
-            desc = "getting package record",
             log_id = log_id.to_string(),
             record_id = record_id.to_string(),
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "getting package record",
         );
         into_result::<_, PackageError>(
             self.client
@@ -398,10 +398,10 @@ impl Client {
     ) -> Result<ContentSourcesResponse, ClientError> {
         let url = self.url.join(&paths::content_sources(digest));
         tracing::debug!(
-            desc = "getting content sources for digest",
             digest = digest.to_string(),
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "getting content sources for digest",
         );
         into_result::<_, ContentError>(
             self.client
@@ -462,9 +462,9 @@ impl Client {
     ) -> Result<(), ClientError> {
         let url = self.url.join(paths::prove_inclusion());
         tracing::debug!(
-            desc = "proving checkpoint inclusion",
-            url = url,
-            registry_header = ?registry_domain
+            url,
+            registry_header = ?registry_domain,
+            "proving checkpoint inclusion",
         );
         let response = into_result::<InclusionResponse, ProofError>(
             self.client

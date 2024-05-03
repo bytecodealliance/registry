@@ -533,10 +533,10 @@ package_name = &info.name,
         let registry_domain = self.get_warg_registry(package.namespace()).await?;
 
         tracing::debug!(
-            desc = "downloading package",
             package = package.as_ref(),
             version_requirement = requirement.to_string(),
-            registry_header = ?registry_domain
+            registry_header = ?registry_domain,
+            "downloading",
         );
 
         match info.state.find_latest_release(requirement) {
@@ -577,10 +577,10 @@ package_name = &info.name,
         let registry_domain = self.get_warg_registry(package.namespace()).await?;
 
         tracing::debug!(
-            desc = "downloading package version",
             package = package.as_ref(),
             version = version.to_string(),
-            registry_header = ?registry_domain
+            registry_header = ?registry_domain,
+            "downloading exact version",
         );
 
         let release =
@@ -616,9 +616,9 @@ package_name = &info.name,
         let checkpoint = &ts_checkpoint.as_ref().checkpoint;
 
         tracing::debug!(
-            desc = "updating to checkpoint",
             log_length = checkpoint.log_length,
-            registry_header = ?registry_domain
+            registry_header = ?registry_domain,
+            "updating to checkpoint",
         );
 
         // operator log info
