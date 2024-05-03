@@ -115,11 +115,11 @@ pub struct Config {
     #[serde(default)]
     pub keyring_auth: bool,
 
-    /// Whether or ignore registry hints provided by a warg server
+    /// Ignore registry hints provided by a warg server
     #[serde(default)]
     pub ignore_federation_hints: bool,
 
-    /// Whether or not to auto accept registry hint or ask the user to confirm
+    /// Auto accept registry hint or ask the user to confirm
     #[serde(default)]
     pub auto_accept_federation_hints: bool,
 }
