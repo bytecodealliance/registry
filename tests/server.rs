@@ -375,7 +375,7 @@ async fn test_invalid_signature(config: &Config) -> Result<()> {
     let body = response.text().await?;
     assert_eq!(
         status,
-        StatusCode::FORBIDDEN,
+        StatusCode::UNAUTHORIZED,
         "unexpected response from server: {status}\n{body}",
     );
     assert!(

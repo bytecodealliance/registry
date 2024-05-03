@@ -1,7 +1,7 @@
 //! A client library for Warg component registries.
 
 #![deny(missing_docs)]
-use crate::storage::PackageInfo;
+use crate::storage::{PackageInfo, PublishEntry};
 use anyhow::{anyhow, Context, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
@@ -108,8 +108,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         &self.namespace_map
     }
 
-    /// Get warg registry domain. If `check_for_latest_checkpoint`, then will check for the latest
-    /// registry checkpoint first.
+    /// Get warg registry domain.
     pub async fn get_warg_registry(
         &self,
         namespace: &str,
@@ -130,13 +129,11 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             }
         };
         let nm_map = self.namespace_map.load_namespace_map().await?;
-        Ok(if let Some(nm_map) = &nm_map {
+        Ok(nm_map.and_then(|nm_map| {
             nm_map
                 .get(namespace)
                 .map(|domain| RegistryDomain::from_str(domain).unwrap())
-        } else {
-            None
-        })
+        }))
     }
 
     /// Stores namespace mapping in local storage
@@ -341,9 +338,38 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 }
                 package
             }
-            Err(ClientError::PackageDoesNotExist { .. }) => {
+            Err(ClientError::PackageDoesNotExist {
+                name,
+                has_auth_token,
+            }) => {
                 if !initializing {
-                    return Err(ClientError::MustInitializePackage { name: info.name });
+                    let prompt = if has_auth_token {
+                        format!(
+"Package `{package_name}` does not already exist or you do not have access.
+Do you wish to initialize `{package_name}` and publish release y/N\n",
+package_name = &info.name,
+)
+                    } else {
+                        format!(
+"Package `{package_name}` does not already exist or you do not have access.
+You may be required to login. Try: `warg login`
+Do you wish to initialize `{package_name}` and publish release y/N\n",
+package_name = &info.name,
+)
+                    };
+                    if Confirm::with_theme(&ColorfulTheme::default())
+                        .with_prompt(prompt)
+                        .default(false)
+                        .interact()
+                        .unwrap()
+                    {
+                        info.entries.insert(0, PublishEntry::Init);
+                    } else {
+                        return Err(ClientError::MustInitializePackage {
+                            name,
+                            has_auth_token,
+                        });
+                    }
                 }
                 PackageInfo::new(info.name.clone())
             }
@@ -353,6 +379,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
 
         let record = info.finalize(signing_key)?;
         let log_id = LogId::package_log::<Sha256>(&package.name);
+        let record_id = RecordId::package_record::<Sha256>(&record);
         let record = self
             .api
             .publish_package_record(
@@ -365,14 +392,26 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                 },
             )
             .await
-            .map_err(|e| {
-                ClientError::translate_log_not_found(e, |id| {
-                    if id == &log_id {
-                        Some(package.name.clone())
-                    } else {
-                        None
+            .map_err(|e| match e {
+                api::ClientError::Package(PackageError::Rejection(reason)) => {
+                    ClientError::PublishRejected {
+                        name: package.name.clone(),
+                        reason,
+                        record_id,
                     }
-                })
+                }
+                api::ClientError::Package(PackageError::Unauthorized(reason)) => {
+                    ClientError::Unauthorized(reason)
+                }
+                e => {
+                    ClientError::translate_log_not_found(e, self.api.auth_token().is_some(), |id| {
+                        if id == &log_id {
+                            Some(package.name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                }
             })?;
 
         // TODO: parallelize this
@@ -406,6 +445,9 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                             record_id: record.record_id.clone(),
                             reason,
                         }
+                    }
+                    api::ClientError::Package(PackageError::Unauthorized(reason)) => {
+                        ClientError::Unauthorized(reason)
                     }
                     _ => e.into(),
                 })?;
@@ -612,6 +654,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             IndexMap::with_capacity(packages.len());
 
         // loop and fetch logs
+        let has_auth_token = self.api.auth_token().is_some();
         loop {
             let response = match self
                 .api
@@ -644,7 +687,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     api::ClientError::Fetch(FetchError::LogNotFound(log_id))
                     | api::ClientError::Package(PackageError::LogNotFound(log_id)) => {
                         if let Some(name) = packages.get(log_id).map(|p| p.name.clone()) {
-                            Err(ClientError::PackageDoesNotExist { name })
+                            Err(ClientError::PackageDoesNotExist {
+                                name,
+                                has_auth_token,
+                            })
                         } else {
                             Err(ClientError::Api(err))
                         }
@@ -705,12 +751,16 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
                                 } else {
                                     Err(ClientError::PackageDoesNotExist {
                                         name: package_name.clone(),
+                                        has_auth_token,
                                     })
                                 }
                             }
                             _ => {
                                 if let Some(name) = packages.get(log_id).map(|p| p.name.clone()) {
-                                    Err(ClientError::PackageDoesNotExist { name })
+                                    Err(ClientError::PackageDoesNotExist {
+                                        name,
+                                        has_auth_token,
+                                    })
                                 } else {
                                     Err(ClientError::Api(err))
                                 }
@@ -916,14 +966,13 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
         }
 
         while let Some((registry_domain, packages)) = federated_packages.pop() {
-            for (registry_domain, mut packages) in self
+            for (registry_domain, packages) in self
                 .update_packages_and_return_federated_packages(registry_domain.as_ref(), packages)
                 .await?
                 .into_iter()
             {
                 if let Some(package_set) = federated_packages.get_mut(&registry_domain) {
-                    package_set.reserve(packages.len());
-                    package_set.append(&mut packages);
+                    package_set.extend(packages);
                 } else {
                     federated_packages.insert(registry_domain, packages);
                 }
@@ -983,14 +1032,23 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
             .api
             .get_package_record(registry_domain, log_id, record_id)
             .await
-            .map_err(|e| {
-                ClientError::translate_log_not_found(e, |id| {
-                    if id == log_id {
-                        Some(package.clone())
-                    } else {
-                        None
+            .map_err(|e| match e {
+                api::ClientError::Package(PackageError::Rejection(reason)) => {
+                    ClientError::PublishRejected {
+                        name: package.clone(),
+                        reason,
+                        record_id: record_id.clone(),
                     }
-                })
+                }
+                e => {
+                    ClientError::translate_log_not_found(e, self.api.auth_token().is_some(), |id| {
+                        if id == log_id {
+                            Some(package.clone())
+                        } else {
+                            None
+                        }
+                    })
+                }
             })?;
         Ok(record)
     }
@@ -1124,15 +1182,6 @@ pub struct PackageDownload {
 /// Represents an error returned by Warg registry clients.
 #[derive(Debug, Error)]
 pub enum ClientError {
-    /// Similar Namespace
-    #[error("Namespace `{namespace}` not found in operator log but found namespace `{e}`, which has alternative casing.")]
-    SimilarNamespace {
-        /// Namespace
-        namespace: String,
-        /// Provided Error
-        e: String,
-    },
-
     /// No home registry registry server URL is configured.
     #[error("no home registry registry server URL is configured")]
     NoHomeRegistryUrl,
@@ -1144,6 +1193,10 @@ pub enum ClientError {
     /// Clearing content local cache.
     #[error("clear content cache failed")]
     ClearContentCacheFailed,
+
+    /// Unauthorized rejection
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
 
     /// Checkpoint signature failed verification
     #[error("invalid checkpoint signature")]
@@ -1179,6 +1232,8 @@ pub enum ClientError {
     MustInitializePackage {
         /// The name of the package that must be initialized.
         name: PackageName,
+        /// Client has authentication credentials.
+        has_auth_token: bool,
     },
 
     /// There is no publish operation in progress.
@@ -1197,6 +1252,8 @@ pub enum ClientError {
     PackageDoesNotExist {
         /// The missing package.
         name: PackageName,
+        /// Client has authentication credentials.
+        has_auth_token: bool,
     },
 
     /// The package version does not exist.
@@ -1204,6 +1261,15 @@ pub enum ClientError {
     PackageVersionDoesNotExist {
         /// The missing version of the package.
         version: Version,
+        /// The package with the missing version.
+        name: PackageName,
+    },
+
+    /// The package version requirement does not exist.
+    #[error("version that satisfies requirement `{version}` was not found for package `{name}`")]
+    PackageVersionRequirementDoesNotExist {
+        /// The missing version requirement of the package.
+        version: VersionReq,
         /// The package with the missing version.
         name: PackageName,
     },
@@ -1285,13 +1351,17 @@ pub enum ClientError {
 impl ClientError {
     fn translate_log_not_found(
         e: api::ClientError,
+        has_auth_token: bool,
         lookup: impl Fn(&LogId) -> Option<PackageName>,
     ) -> Self {
         match &e {
             api::ClientError::Fetch(FetchError::LogNotFound(id))
             | api::ClientError::Package(PackageError::LogNotFound(id)) => {
                 if let Some(name) = lookup(id) {
-                    return Self::PackageDoesNotExist { name };
+                    return Self::PackageDoesNotExist {
+                        name,
+                        has_auth_token,
+                    };
                 }
             }
             _ => {}

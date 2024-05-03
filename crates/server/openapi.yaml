@@ -222,9 +222,9 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/PackageRecord"
-        "403":
+        "401":
           description: |
-            The key used to sign the record was not authorized to publish a record to the log.
+            Unauthorized rejection from the registry.
           headers:
             Warg-Registry:
               $ref: "#/components/headers/WargRegistryHeader"

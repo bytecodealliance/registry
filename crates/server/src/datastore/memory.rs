@@ -74,7 +74,6 @@ struct State {
     operators: IndexMap<LogId, Log<operator::LogState, operator::OperatorRecord>>,
     packages: IndexMap<LogId, Log<package::LogState, package::PackageRecord>>,
     package_names: IndexMap<LogId, Option<PackageName>>,
-    package_names_lowercase: IndexMap<String, PackageName>,
     checkpoints: IndexMap<RegistryLen, SerdeEnvelope<TimestampedCheckpoint>>,
     records: IndexMap<LogId, IndexMap<RecordId, RecordStatus>>,
     log_leafs: IndexMap<RegistryIndex, LogLeaf>,
@@ -313,10 +312,6 @@ impl DataStore for MemoryDataStore {
         state
             .package_names
             .insert(log_id.clone(), Some(package_name.clone()));
-        state.package_names_lowercase.insert(
-            package_name.as_ref().to_ascii_lowercase(),
-            package_name.clone(),
-        );
 
         assert!(prev.is_none());
         Ok(())
@@ -749,19 +744,7 @@ impl DataStore for MemoryDataStore {
             }
         }
 
-        // verify package name is unique in a case insensitive way
-        match state
-            .package_names_lowercase
-            .get(&package_name.as_ref().to_ascii_lowercase())
-        {
-            Some(existing) if existing.as_ref() != package_name.as_ref() => {
-                Err(DataStoreError::PackageNameConflict {
-                    name: package_name.clone(),
-                    existing: existing.clone(),
-                })
-            }
-            _ => Ok(()),
-        }
+        Ok(())
     }
 
     async fn verify_timestamped_checkpoint_signature(

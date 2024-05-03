@@ -127,12 +127,6 @@ pub enum PackageError {
     /// The provided package's namespace is imported from another registry.
     #[error("namespace `{0}` is an imported namespace from another registry")]
     NamespaceImported(String),
-    /// The provided package's namespace conflicts with an existing namespace where the name only differs by case.
-    #[error("namespace conflicts with existing namespace `{0}`; package namespaces must be unique in a case insensitive way")]
-    NamespaceConflict(String),
-    /// The provided package name conflicts with an existing package where the name only differs by case.
-    #[error("the package conflicts with existing package name `{0}`; package names must be unique in a case insensitive way")]
-    PackageNameConflict(PackageName),
     /// The operation was not authorized by the registry.
     #[error("unauthorized operation: {0}")]
     Unauthorized(String),
@@ -156,13 +150,9 @@ impl PackageError {
     /// Returns the HTTP status code of the error.
     pub fn status(&self) -> u16 {
         match self {
-            // Note: this is 403 and not a 401 as the registry does not use
-            // HTTP authentication.
-            Self::Unauthorized { .. } => 403,
+            Self::Unauthorized { .. } => 401,
             Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
-            Self::NamespaceImported(_)
-            | Self::NamespaceConflict(_)
-            | Self::PackageNameConflict(_) => 409,
+            Self::NamespaceImported(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -189,7 +179,7 @@ where
     <T as ToOwned>::Owned: Serialize + for<'b> Deserialize<'b>,
 {
     Unauthorized {
-        status: Status<403>,
+        status: Status<401>,
         message: Cow<'a, str>,
     },
     NotFound {
@@ -225,7 +215,7 @@ impl Serialize for PackageError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Unauthorized(message) => RawError::Unauthorized::<()> {
-                status: Status::<403>,
+                status: Status::<401>,
                 message: Cow::Borrowed(message),
             }
             .serialize(serializer),
@@ -251,18 +241,6 @@ impl Serialize for PackageError {
                 status: Status::<409>,
                 ty: EntityType::NamespaceImport,
                 id: Cow::Borrowed(namespace),
-            }
-            .serialize(serializer),
-            Self::NamespaceConflict(existing) => RawError::Conflict {
-                status: Status::<409>,
-                ty: EntityType::Namespace,
-                id: Cow::Borrowed(existing),
-            }
-            .serialize(serializer),
-            Self::PackageNameConflict(existing) => RawError::Conflict {
-                status: Status::<409>,
-                ty: EntityType::Name,
-                id: Cow::Borrowed(existing),
             }
             .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
@@ -322,11 +300,7 @@ impl<'de> Deserialize<'de> for PackageError {
                 )),
             },
             RawError::Conflict { status: _, ty, id } => match ty {
-                EntityType::Namespace => Ok(Self::NamespaceConflict(id.into_owned())),
                 EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
-                EntityType::Name => Ok(Self::PackageNameConflict(
-                    PackageName::new(id.into_owned()).unwrap(),
-                )),
                 _ => Err(serde::de::Error::invalid_value(
                     Unexpected::Enum,
                     &"a valid entity type",

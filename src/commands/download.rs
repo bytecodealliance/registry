@@ -1,6 +1,7 @@
 use super::CommonOptions;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Args;
+use warg_client::ClientError;
 use warg_protocol::{registry::PackageName, VersionReq};
 
 /// Download a warg registry package.
@@ -35,11 +36,9 @@ impl DownloadCommand {
         let res = client
             .download(&self.name, &version)
             .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "a version of package `{name}` that satisfies `{version}` was not found",
-                    name = self.name,
-                )
+            .ok_or_else(|| ClientError::PackageVersionRequirementDoesNotExist {
+                name: self.name.clone(),
+                version,
             })?;
 
         println!(

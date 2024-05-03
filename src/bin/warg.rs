@@ -74,14 +74,50 @@ async fn main() -> Result<()> {
 pub async fn describe_client_error(e: &ClientError) -> Result<()> {
     match e {
         ClientError::NoHomeRegistryUrl => {
-            eprintln!("error: {e}; use the `config` subcommand to set a default URL");
+            eprintln!("Registry not set. Use `config` or `login` subcommand to set registry.");
         }
         ClientError::PackageValidationFailed { name, inner } => {
-            eprintln!("error: the log for package `{name}` is invalid: {inner}")
+            eprintln!("The log for package `{name}` validation failed: {inner}")
         }
         ClientError::PackageLogEmpty { name } => {
-            eprintln!("error: the log for package `{name}` is empty (the registry could be lying)");
+            eprintln!("The log for package `{name}` is empty (the registry could be lying)");
             eprintln!("see issue https://github.com/bytecodealliance/registry/issues/66");
+        }
+        ClientError::PackageDoesNotExist {
+            name,
+            has_auth_token,
+        } => {
+            eprintln!("Package `{name}` was not found or you do not have access.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
+            }
+        }
+        ClientError::PackageVersionDoesNotExist { name, version } => {
+            eprintln!("Package `{name}` version `{version}` was not found.")
+        }
+        ClientError::PackageVersionRequirementDoesNotExist { name, version } => {
+            eprintln!(
+                "Package `{name}` version that satisfies requirement `{version}` was not found."
+            )
+        }
+        ClientError::MustInitializePackage {
+            name,
+            has_auth_token,
+        } => {
+            eprintln!("Package `{name}` is not initialized or you do not have access.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
+            }
+            eprintln!("To initialize package: `warg publish init {name}`");
+        }
+        ClientError::CannotInitializePackage { name } => {
+            eprintln!("Package `{name}` is already initialized.")
+        }
+        ClientError::PublishRejected { name, reason, .. } => {
+            eprintln!("Package `{name}` publish rejected: {reason}")
+        }
+        ClientError::Unauthorized(reason) => {
+            eprintln!("Unauthorized: {reason}")
         }
         _ => {
             eprintln!("error: {e}")
