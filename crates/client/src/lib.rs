@@ -312,35 +312,39 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     pub async fn publish_with_info(
         &self,
         signing_key: &signing::PrivateKey,
-        info: PublishInfo,
+        publish_info: PublishInfo,
     ) -> ClientResult<RecordId> {
-        if info.entries.is_empty() {
+        if publish_info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
-                name: info.name.clone(),
+                name: publish_info.name.clone(),
             });
         }
 
         tracing::info!(
             "publishing {new}package `{name}`",
-            name = info.name,
-            new = if info.initializing() { "new " } else { "" }
+            name = publish_info.name,
+            new = if publish_info.initializing() {
+                "new "
+            } else {
+                ""
+            }
         );
-        tracing::debug!("entries: {:?}", info.entries);
+        tracing::debug!("entries: {:?}", publish_info.entries);
 
         let mut accepted_prompt_to_initialize = false;
+        let mut init_record_id: Option<RecordId> = None;
 
         let (package, record) = loop {
-            let mut info = PublishInfo {
-                name: info.name.clone(),
-                head: info.head.clone(),
-                entries: info.entries.clone(),
-            };
+            let mut info = publish_info.clone();
             let mut initializing = info.initializing();
 
             let package = match self.fetch_package(&info.name).await {
                 Ok(package) => {
                     if initializing {
-                        return Err(ClientError::CannotInitializePackage { name: package.name });
+                        return Err(ClientError::CannotInitializePackage {
+                            name: package.name,
+                            init_record_id,
+                        });
                     } else if info.head.is_none() {
                         // If we're not initializing the package and a head was not explicitly specified,
                         // set to the latest known head.
@@ -355,17 +359,18 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     if !initializing {
                         let prompt = if has_auth_token {
                             format!(
-"Package `{package_name}` does not already exist or you do not have access.
-Do you wish to initialize `{package_name}` and publish release y/N\n",
-package_name = &info.name,
-)
+                                "Package `{package_name}` was not found.
+If it exists, you may not have access.
+Attempt to create `{package_name}` and publish the release y/N\n",
+                                package_name = &info.name,
+                            )
                         } else {
                             format!(
-"Package `{package_name}` does not already exist or you do not have access.
-You may be required to login. Try: `warg login`
-Do you wish to initialize `{package_name}` and publish release y/N\n",
-package_name = &info.name,
-)
+                                "Package `{package_name}` was not found.
+If it exists, you may not have access without logging in. Try: `warg login`
+Attempt to create `{package_name}` and publish the release y/N\n",
+                                package_name = &info.name,
+                            )
                         };
                         if accepted_prompt_to_initialize
                             || Confirm::with_theme(&ColorfulTheme::default())
@@ -430,6 +435,7 @@ package_name = &info.name,
                             Err(ClientError::PackageDoesNotExist { .. }) => {}
                             Err(err) => return Err(err),
                         }
+                        init_record_id = Some(pending_record_id.clone());
                     }
                     self.wait_for_publish(&package.name, &pending_record_id, DEFAULT_WAIT_INTERVAL)
                         .await
@@ -527,7 +533,7 @@ package_name = &info.name,
                     return Err(ClientError::PackageMissingContent);
                 }
                 PackageRecordState::Published { .. } => {
-                    self.fetch_package(&package).await?;
+                    self.fetch_package(package).await?;
                     return Ok(());
                 }
                 PackageRecordState::Rejected { reason } => {
@@ -1276,6 +1282,8 @@ pub enum ClientError {
     CannotInitializePackage {
         /// The package name that already exists.
         name: PackageName,
+        /// The record identifier for the init record.
+        init_record_id: Option<RecordId>,
     },
 
     /// The package must be initialized before publishing.

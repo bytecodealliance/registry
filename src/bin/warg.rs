@@ -110,8 +110,18 @@ pub async fn describe_client_error(e: &ClientError) -> Result<()> {
             }
             eprintln!("To initialize package: `warg publish init {name}`");
         }
-        ClientError::CannotInitializePackage { name } => {
-            eprintln!("Package `{name}` is already initialized.")
+        ClientError::CannotInitializePackage {
+            name,
+            init_record_id,
+        } => {
+            if init_record_id.is_some() {
+                eprintln!(
+                    "Package `{name}` was initialized but with a different record than you signed.
+This may be expected behavior for registries that offer key management."
+                )
+            } else {
+                eprintln!("Package `{name}` is already initialized.")
+            }
         }
         ClientError::PublishRejected { name, reason, .. } => {
             eprintln!("Package `{name}` publish rejected: {reason}")
