@@ -50,6 +50,8 @@ pub mod storage;
 pub use self::config::*;
 pub use self::registry_url::RegistryUrl;
 
+const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
+
 /// A client for a Warg registry.
 pub struct Client<R, C, N>
 where
@@ -310,7 +312,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     pub async fn publish_with_info(
         &self,
         signing_key: &signing::PrivateKey,
-        mut info: PublishInfo,
+        info: PublishInfo,
     ) -> ClientResult<RecordId> {
         if info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
@@ -318,101 +320,147 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             });
         }
 
-        let initializing = info.initializing();
-
         tracing::info!(
             "publishing {new}package `{name}`",
             name = info.name,
-            new = if initializing { "new " } else { "" }
+            new = if info.initializing() { "new " } else { "" }
         );
         tracing::debug!("entries: {:?}", info.entries);
 
-        let package = match self.package(&info.name).await {
-            Ok(package) => {
-                if initializing {
-                    return Err(ClientError::CannotInitializePackage { name: package.name });
-                } else if info.head.is_none() {
-                    // If we're not initializing the package and a head was not explicitly specified,
-                    // updated to the latest checkpoint to get the latest known head.
-                    info.head = package.state.head().as_ref().map(|h| h.digest.clone());
+        let mut accepted_prompt_to_initialize = false;
+
+        let (package, record) = loop {
+            let mut info = PublishInfo {
+                name: info.name.clone(),
+                head: info.head.clone(),
+                entries: info.entries.clone(),
+            };
+            let mut initializing = info.initializing();
+
+            let package = match self.fetch_package(&info.name).await {
+                Ok(package) => {
+                    if initializing {
+                        return Err(ClientError::CannotInitializePackage { name: package.name });
+                    } else if info.head.is_none() {
+                        // If we're not initializing the package and a head was not explicitly specified,
+                        // set to the latest known head.
+                        info.head = package.state.head().as_ref().map(|h| h.digest.clone());
+                    }
+                    package
                 }
-                package
-            }
-            Err(ClientError::PackageDoesNotExist {
-                name,
-                has_auth_token,
-            }) => {
-                if !initializing {
-                    let prompt = if has_auth_token {
-                        format!(
+                Err(ClientError::PackageDoesNotExist {
+                    name,
+                    has_auth_token,
+                }) => {
+                    if !initializing {
+                        let prompt = if has_auth_token {
+                            format!(
 "Package `{package_name}` does not already exist or you do not have access.
 Do you wish to initialize `{package_name}` and publish release y/N\n",
 package_name = &info.name,
 )
-                    } else {
-                        format!(
+                        } else {
+                            format!(
 "Package `{package_name}` does not already exist or you do not have access.
 You may be required to login. Try: `warg login`
 Do you wish to initialize `{package_name}` and publish release y/N\n",
 package_name = &info.name,
 )
-                    };
-                    if Confirm::with_theme(&ColorfulTheme::default())
-                        .with_prompt(prompt)
-                        .default(false)
-                        .interact()
-                        .unwrap()
-                    {
-                        info.entries.insert(0, PublishEntry::Init);
-                    } else {
-                        return Err(ClientError::MustInitializePackage {
-                            name,
-                            has_auth_token,
-                        });
+                        };
+                        if accepted_prompt_to_initialize
+                            || Confirm::with_theme(&ColorfulTheme::default())
+                                .with_prompt(prompt)
+                                .default(false)
+                                .interact()
+                                .unwrap()
+                        {
+                            info.entries.insert(0, PublishEntry::Init);
+                            initializing = true;
+                            accepted_prompt_to_initialize = true;
+                        } else {
+                            return Err(ClientError::MustInitializePackage {
+                                name,
+                                has_auth_token,
+                            });
+                        }
                     }
+                    PackageInfo::new(info.name.clone())
                 }
-                PackageInfo::new(info.name.clone())
-            }
-            err => err?,
-        };
-        let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
+                err => err?,
+            };
+            let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
 
-        let record = info.finalize(signing_key)?;
-        let log_id = LogId::package_log::<Sha256>(&package.name);
-        let record_id = RecordId::package_record::<Sha256>(&record);
-        let record = self
-            .api
-            .publish_package_record(
-                registry_domain.as_ref(),
-                &log_id,
-                PublishRecordRequest {
-                    package_name: Cow::Borrowed(&package.name),
-                    record: Cow::Owned(record.into()),
-                    content_sources: Default::default(),
-                },
-            )
-            .await
-            .map_err(|e| match e {
-                api::ClientError::Package(PackageError::Rejection(reason)) => {
-                    ClientError::PublishRejected {
+            let log_id = LogId::package_log::<Sha256>(&package.name);
+            let record = info.finalize(signing_key)?;
+            let record_id = RecordId::package_record::<Sha256>(&record);
+            let record = match self
+                .api
+                .publish_package_record(
+                    registry_domain.as_ref(),
+                    &log_id,
+                    PublishRecordRequest {
+                        package_name: Cow::Borrowed(&package.name),
+                        record: Cow::Owned(record.into()),
+                        content_sources: Default::default(),
+                    },
+                )
+                .await
+            {
+                Ok(record) => Ok(record),
+                Err(api::ClientError::Package(PackageError::Rejection(reason))) => {
+                    Err(ClientError::PublishRejected {
                         name: package.name.clone(),
                         reason,
                         record_id,
+                    })
+                }
+                Err(api::ClientError::Package(PackageError::Unauthorized(reason))) => {
+                    Err(ClientError::Unauthorized(reason))
+                }
+                Err(api::ClientError::Package(PackageError::ConflictPendingPublish(
+                    pending_record_id,
+                ))) => {
+                    // conflicting pending publish succeeds,
+                    tracing::info!("waiting for conflicting publish to complete");
+                    // check registry for federated namespace mapping, if initializing
+                    if initializing {
+                        match self.fetch_package(&package.name).await {
+                            Ok(_) => {}
+                            // may not exist until conflicting publish completes
+                            Err(ClientError::PackageDoesNotExist { .. }) => {}
+                            Err(err) => return Err(err),
+                        }
                     }
+                    self.wait_for_publish(&package.name, &pending_record_id, DEFAULT_WAIT_INTERVAL)
+                        .await
+                        .map_err(|err| match err {
+                            ClientError::PackageMissingContent => {
+                                ClientError::ConflictPendingPublish {
+                                    name: package.name.clone(),
+                                    record_id,
+                                    pending_record_id,
+                                }
+                            }
+                            err => err,
+                        })?;
+
+                    continue;
                 }
-                api::ClientError::Package(PackageError::Unauthorized(reason)) => {
-                    ClientError::Unauthorized(reason)
-                }
-                e => {
-                    ClientError::translate_log_not_found(e, self.api.auth_token().is_some(), |id| {
+                Err(e) => Err(ClientError::translate_log_not_found(
+                    e,
+                    self.api.auth_token().is_some(),
+                    |id| {
                         if id == &log_id {
                             Some(package.name.clone())
                         } else {
                             None
                         }
-                    })
-                }
-            })?;
+                    },
+                )),
+            }?;
+
+            break (package, record);
+        };
 
         // TODO: parallelize this
         for (digest, MissingContent { upload }) in record.missing_content() {
@@ -479,7 +527,7 @@ package_name = &info.name,
                     return Err(ClientError::PackageMissingContent);
                 }
                 PackageRecordState::Published { .. } => {
-                    self.update().await?;
+                    self.fetch_package(&package).await?;
                     return Ok(());
                 }
                 PackageRecordState::Rejected { reason } => {
@@ -978,7 +1026,7 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
         Ok(())
     }
 
-    /// Fetches package logs.
+    /// Fetches package logs without checking local storage first.
     pub async fn fetch_packages(
         &self,
         names: impl IntoIterator<Item = &PackageName>,
@@ -989,6 +1037,13 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
             .collect();
         self.update_checkpoints(packages.iter_mut()).await?;
         Ok(packages)
+    }
+
+    /// Fetches the `PackageInfo` without checking local storage first.
+    pub async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
+        let mut info = PackageInfo::new(name.clone());
+        self.update_checkpoints([&mut info]).await?;
+        Ok(info)
     }
 
     /// Retrieves the `PackageInfo` from local storage, if present, otherwise fetches from the
@@ -1311,6 +1366,17 @@ pub enum ClientError {
         record_id: RecordId,
         /// The reason it was rejected.
         reason: String,
+    },
+
+    /// A publish operation was rejected due to conflicting pending publish.
+    #[error("the publishing of package `{name}` was rejected due to conflicting pending publish of record `{pending_record_id}`")]
+    ConflictPendingPublish {
+        /// The package that was rejected.
+        name: PackageName,
+        /// The record identifier for the record that was rejected.
+        record_id: RecordId,
+        /// The record identifier for the pending publish record.
+        pending_record_id: RecordId,
     },
 
     /// The package is still missing content.

@@ -116,6 +116,13 @@ pub async fn describe_client_error(e: &ClientError) -> Result<()> {
         ClientError::PublishRejected { name, reason, .. } => {
             eprintln!("Package `{name}` publish rejected: {reason}")
         }
+        ClientError::ConflictPendingPublish {
+            name,
+            pending_record_id,
+            ..
+        } => {
+            eprintln!("Package `{name}` publish rejected due to conflict with pending publish of record `{pending_record_id}`")
+        }
         ClientError::Unauthorized(reason) => {
             eprintln!("Unauthorized: {reason}")
         }
