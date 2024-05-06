@@ -1,10 +1,16 @@
 //! A client library for Warg component registries.
 
 #![deny(missing_docs)]
-use crate::storage::{PackageInfo, PublishEntry};
+use crate::storage::PackageInfo;
+
+#[cfg(not(feature = "not-cli"))]
+use crate::storage::PublishEntry;
+
 use anyhow::{anyhow, Context, Result};
-use dialoguer::theme::ColorfulTheme;
-use dialoguer::Confirm;
+
+#[cfg(not(feature = "not-cli"))]
+use dialoguer::{theme::ColorfulTheme, Confirm};
+
 use indexmap::IndexMap;
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
@@ -63,21 +69,27 @@ where
     content: C,
     namespace_map: N,
     api: api::Client,
+    #[cfg(not(feature = "not-cli"))]
     ignore_federation_hints: bool,
+    #[cfg(not(feature = "not-cli"))]
     auto_accept_federation_hints: bool,
+    #[cfg(not(feature = "not-cli"))]
+    disable_dialoguer: bool,
 }
 
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
     /// Creates a new client for the given URL, registry storage, and
     /// content storage.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         url: impl IntoUrl,
         registry: R,
         content: C,
         namespace_map: N,
         auth_token: Option<Secret<String>>,
-        ignore_federation_hints: bool,
-        auto_accept_federation_hints: bool,
+        #[cfg(not(feature = "not-cli"))] ignore_federation_hints: bool,
+        #[cfg(not(feature = "not-cli"))] auto_accept_federation_hints: bool,
+        #[cfg(not(feature = "not-cli"))] disable_dialoguer: bool,
     ) -> ClientResult<Self> {
         let api = api::Client::new(url, auth_token)?;
         Ok(Self {
@@ -85,8 +97,12 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             content,
             namespace_map,
             api,
+            #[cfg(not(feature = "not-cli"))]
             ignore_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
             auto_accept_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
+            disable_dialoguer,
         })
     }
 
@@ -331,12 +347,19 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         );
         tracing::debug!("entries: {:?}", publish_info.entries);
 
+        #[cfg(not(feature = "not-cli"))]
         let mut accepted_prompt_to_initialize = false;
+
         let mut init_record_id: Option<RecordId> = None;
 
         let (package, record) = loop {
             let mut info = publish_info.clone();
+
+            #[cfg(not(feature = "not-cli"))]
             let mut initializing = info.initializing();
+
+            #[cfg(feature = "not-cli")]
+            let initializing = info.initializing();
 
             let package = match self.fetch_package(&info.name).await {
                 Ok(package) => {
@@ -356,37 +379,42 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     name,
                     has_auth_token,
                 }) => {
-                    if !initializing {
-                        let prompt = if has_auth_token {
-                            format!(
-                                "Package `{package_name}` was not found.
+                    if !initializing && cfg!(feature = "not-cli") {
+                        return Err(ClientError::MustInitializePackage {
+                            name,
+                            has_auth_token,
+                        });
+                    } else if !initializing {
+                        #[cfg(not(feature = "not-cli"))]
+                        {
+                            if self.disable_dialoguer {
+                                return Err(ClientError::MustInitializePackage {
+                                    name,
+                                    has_auth_token,
+                                });
+                            }
+
+                            if accepted_prompt_to_initialize
+                                || Confirm::with_theme(&ColorfulTheme::default())
+                                    .with_prompt(format!(
+                                        "Package `{package_name}` was not found.
 If it exists, you may not have access.
 Attempt to create `{package_name}` and publish the release y/N\n",
-                                package_name = &info.name,
-                            )
-                        } else {
-                            format!(
-                                "Package `{package_name}` was not found.
-If it exists, you may not have access without logging in. Try: `warg login`
-Attempt to create `{package_name}` and publish the release y/N\n",
-                                package_name = &info.name,
-                            )
-                        };
-                        if accepted_prompt_to_initialize
-                            || Confirm::with_theme(&ColorfulTheme::default())
-                                .with_prompt(prompt)
-                                .default(false)
-                                .interact()
-                                .unwrap()
-                        {
-                            info.entries.insert(0, PublishEntry::Init);
-                            initializing = true;
-                            accepted_prompt_to_initialize = true;
-                        } else {
-                            return Err(ClientError::MustInitializePackage {
-                                name,
-                                has_auth_token,
-                            });
+                                        package_name = &info.name,
+                                    ))
+                                    .default(false)
+                                    .interact()
+                                    .unwrap()
+                            {
+                                info.entries.insert(0, PublishEntry::Init);
+                                initializing = true;
+                                accepted_prompt_to_initialize = true;
+                            } else {
+                                return Err(ClientError::MustInitializePackage {
+                                    name,
+                                    has_auth_token,
+                                });
+                            }
                         }
                     }
                     PackageInfo::new(info.name.clone())
@@ -700,7 +728,13 @@ Attempt to create `{package_name}` and publish the release y/N\n",
         }
 
         // federated packages in other registries
-        let mut federated_packages: IndexMap<Option<RegistryDomain>, Vec<&mut PackageInfo>> =
+        #[cfg(not(feature = "not-cli"))]
+        let mut federated_packages: IndexMap<
+            Option<RegistryDomain>,
+            Vec<&mut PackageInfo>,
+        > = IndexMap::with_capacity(packages.len());
+        #[cfg(feature = "not-cli")]
+        let federated_packages: IndexMap<Option<RegistryDomain>, Vec<&mut PackageInfo>> =
             IndexMap::with_capacity(packages.len());
 
         // loop and fetch logs
@@ -745,10 +779,44 @@ Attempt to create `{package_name}` and publish the release y/N\n",
                             Err(ClientError::Api(err))
                         }
                     }
+
+                    #[cfg(feature = "not-cli")]
+                    api::ClientError::LogNotFoundWithHint(log_id, hint) => {
+                        let name = packages.get(log_id).unwrap().name.clone();
+
+                        match hint.to_str().ok().map(|s| s.split_once('=')) {
+                            Some(Some((namespace, registry))) if packages.contains_key(log_id) => {
+                                Err(ClientError::PackageDoesNotExistWithHintHeader {
+                                    name,
+                                    has_auth_token,
+                                    hint_namespace: namespace.to_string(),
+                                    hint_registry: registry.to_string(),
+                                })
+                            }
+                            _ => Err(ClientError::PackageDoesNotExist {
+                                name,
+                                has_auth_token,
+                            }),
+                        }
+                    }
+
+                    #[cfg(not(feature = "not-cli"))]
                     api::ClientError::LogNotFoundWithHint(log_id, hint) => {
                         match hint.to_str().ok().map(|s| s.split_once('=')) {
                             Some(Some((namespace, registry)))
-                                if !self.ignore_federation_hints
+                                if self.disable_dialoguer && packages.contains_key(log_id) =>
+                            {
+                                let name = packages.get(log_id).unwrap().name.clone();
+                                Err(ClientError::PackageDoesNotExistWithHintHeader {
+                                    name,
+                                    has_auth_token,
+                                    hint_namespace: namespace.to_string(),
+                                    hint_registry: registry.to_string(),
+                                })
+                            }
+                            Some(Some((namespace, registry)))
+                                if !self.disable_dialoguer
+                                    && !self.ignore_federation_hints
                                     && packages.contains_key(log_id) =>
                             {
                                 let package_name = &packages.get(log_id).unwrap().name;
@@ -1191,8 +1259,12 @@ impl FileSystemClient {
             content,
             namespace_map,
             auth_token,
+            #[cfg(not(feature = "not-cli"))]
             config.ignore_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
             config.auto_accept_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
+            config.disable_dialoguer,
         )?))
     }
 
@@ -1219,8 +1291,12 @@ impl FileSystemClient {
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
             auth_token,
+            #[cfg(not(feature = "not-cli"))]
             config.ignore_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
             config.auto_accept_federation_hints,
+            #[cfg(not(feature = "not-cli"))]
+            config.disable_dialoguer,
         )
     }
 }
@@ -1313,6 +1389,19 @@ pub enum ClientError {
         name: PackageName,
         /// Client has authentication credentials.
         has_auth_token: bool,
+    },
+
+    /// The package does not exist with hint header.
+    #[error("package `{name}` does not exist but the registry suggests checking registry `{hint_registry}` for packages in namespace `{hint_namespace}`")]
+    PackageDoesNotExistWithHintHeader {
+        /// The missing package.
+        name: PackageName,
+        /// Client has authentication credentials.
+        has_auth_token: bool,
+        /// The hint namespace.
+        hint_namespace: String,
+        /// The hint registry.
+        hint_registry: String,
     },
 
     /// The package version does not exist.

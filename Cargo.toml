@@ -58,6 +58,7 @@ testresult = "0.3.0"
 [features]
 default = []
 postgres = ["warg-server/postgres"]
+not-cli = ["warg-client/not-cli"]
 
 [workspace]
 members = ["crates/server"]

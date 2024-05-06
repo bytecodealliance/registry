@@ -92,6 +92,19 @@ pub async fn describe_client_error(e: &ClientError) -> Result<()> {
                 eprintln!("You may be required to login. Try: `warg login`");
             }
         }
+        ClientError::PackageDoesNotExistWithHintHeader {
+            name,
+            has_auth_token,
+            hint_namespace,
+            hint_registry,
+        } => {
+            eprintln!(
+                "Package `{name}` was not found or you do not have access.
+The registry suggests using registry `{hint_registry}` for packages in namespace `{hint_namespace}`.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
+            }
+        }
         ClientError::PackageVersionDoesNotExist { name, version } => {
             eprintln!("Package `{name}` version `{version}` was not found.")
         }

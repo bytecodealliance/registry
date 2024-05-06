@@ -169,6 +169,7 @@ pub async fn spawn_server(
         keyring_auth: false,
         ignore_federation_hints: false,
         auto_accept_federation_hints: false,
+        disable_dialoguer: true,
     };
 
     Ok((instance, config))

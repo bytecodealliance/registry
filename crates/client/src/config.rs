@@ -122,6 +122,10 @@ pub struct Config {
     /// Auto accept registry hint or ask the user to confirm
     #[serde(default)]
     pub auto_accept_federation_hints: bool,
+
+    /// Disable dialoguer prompts.
+    #[serde(default)]
+    pub disable_dialoguer: bool,
 }
 
 impl Config {
@@ -202,6 +206,7 @@ impl Config {
             keyring_auth: self.keyring_auth,
             ignore_federation_hints: self.ignore_federation_hints,
             auto_accept_federation_hints: self.auto_accept_federation_hints,
+            disable_dialoguer: self.disable_dialoguer,
         };
 
         serde_json::to_writer_pretty(
