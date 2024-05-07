@@ -31,8 +31,6 @@ p256 = { workspace = true }
 rand_core = { workspace = true }
 url = { workspace = true }
 # TODO: remove these demo-related dependencies
-wasmtime = "10.0"
-wasmtime-wasi = "10.0"
 reqwest.workspace = true
 warg-api.workspace = true
 ptree.workspace = true
