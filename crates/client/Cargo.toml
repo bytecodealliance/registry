@@ -13,7 +13,6 @@ repository = { workspace = true}
 default = ["cli-interactive"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 cli-interactive = ["dep:dialoguer"]
-not-interactive-cli = []
 
 [dependencies]
 warg-crypto = { workspace = true }

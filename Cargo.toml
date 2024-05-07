@@ -57,7 +57,6 @@ testresult = "0.3.0"
 default = ["cli-interactive"]
 postgres = ["warg-server/postgres"]
 cli-interactive = ["warg-client/cli-interactive"]
-not-interactive-cli = []
 
 [workspace]
 members = ["crates/server"]
