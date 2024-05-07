@@ -59,7 +59,9 @@ impl DownloadCommand {
         if let Some(path) = self
             .output
             .map(|mut p| {
-                if p.is_file() {
+                if p.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
+                {
                     p
                 } else {
                     p.push(&default_file_name);
@@ -81,7 +83,12 @@ impl DownloadCommand {
                 }
             })
         {
-            std::fs::copy(download.path, path)?;
+            std::fs::copy(download.path, &path)?;
+            println!(
+                "Wrote `{name}` to {path}",
+                name = self.name,
+                path = path.display(),
+            );
         }
 
         Ok(())
