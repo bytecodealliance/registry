@@ -92,6 +92,19 @@ pub async fn describe_client_error(e: &ClientError) -> Result<()> {
                 eprintln!("You may be required to login. Try: `warg login`");
             }
         }
+        ClientError::PackageDoesNotExistWithHintHeader {
+            name,
+            has_auth_token,
+            hint_namespace,
+            hint_registry,
+        } => {
+            eprintln!(
+                "Package `{name}` was not found or you do not have access.
+The registry suggests using registry `{hint_registry}` for packages in namespace `{hint_namespace}`.");
+            if !has_auth_token {
+                eprintln!("You may be required to login. Try: `warg login`");
+            }
+        }
         ClientError::PackageVersionDoesNotExist { name, version } => {
             eprintln!("Package `{name}` version `{version}` was not found.")
         }
@@ -110,11 +123,28 @@ pub async fn describe_client_error(e: &ClientError) -> Result<()> {
             }
             eprintln!("To initialize package: `warg publish init {name}`");
         }
-        ClientError::CannotInitializePackage { name } => {
-            eprintln!("Package `{name}` is already initialized.")
+        ClientError::CannotInitializePackage {
+            name,
+            init_record_id,
+        } => {
+            if init_record_id.is_some() {
+                eprintln!(
+                    "Package `{name}` was initialized but with a different record than you signed.
+This may be expected behavior for registries that offer key management."
+                )
+            } else {
+                eprintln!("Package `{name}` is already initialized.")
+            }
         }
         ClientError::PublishRejected { name, reason, .. } => {
             eprintln!("Package `{name}` publish rejected: {reason}")
+        }
+        ClientError::ConflictPendingPublish {
+            name,
+            pending_record_id,
+            ..
+        } => {
+            eprintln!("Package `{name}` publish rejected due to conflict with pending publish of record `{pending_record_id}`")
         }
         ClientError::Unauthorized(reason) => {
             eprintln!("Unauthorized: {reason}")

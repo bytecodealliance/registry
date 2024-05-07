@@ -80,6 +80,7 @@ impl ConfigCommand {
             keyring_auth: false,
             ignore_federation_hints: self.ignore_federation_hints,
             auto_accept_federation_hints: self.auto_accept_federation_hints,
+            disable_interactive: false,
         };
 
         config.write_to_file(&path)?;

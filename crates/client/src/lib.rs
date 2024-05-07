@@ -1,10 +1,10 @@
 //! A client library for Warg component registries.
 
 #![deny(missing_docs)]
-use crate::storage::{PackageInfo, PublishEntry};
+use crate::storage::PackageInfo;
+
 use anyhow::{anyhow, Context, Result};
-use dialoguer::theme::ColorfulTheme;
-use dialoguer::Confirm;
+
 use indexmap::IndexMap;
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
@@ -50,6 +50,8 @@ pub mod storage;
 pub use self::config::*;
 pub use self::registry_url::RegistryUrl;
 
+const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
+
 /// A client for a Warg registry.
 pub struct Client<R, C, N>
 where
@@ -63,11 +65,13 @@ where
     api: api::Client,
     ignore_federation_hints: bool,
     auto_accept_federation_hints: bool,
+    disable_interactive: bool,
 }
 
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
     /// Creates a new client for the given URL, registry storage, and
     /// content storage.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         url: impl IntoUrl,
         registry: R,
@@ -76,6 +80,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         auth_token: Option<Secret<String>>,
         ignore_federation_hints: bool,
         auto_accept_federation_hints: bool,
+        disable_interactive: bool,
     ) -> ClientResult<Self> {
         let api = api::Client::new(url, auth_token)?;
         Ok(Self {
@@ -85,6 +90,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             api,
             ignore_federation_hints,
             auto_accept_federation_hints,
+            disable_interactive,
         })
     }
 
@@ -310,109 +316,166 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
     pub async fn publish_with_info(
         &self,
         signing_key: &signing::PrivateKey,
-        mut info: PublishInfo,
+        publish_info: PublishInfo,
     ) -> ClientResult<RecordId> {
-        if info.entries.is_empty() {
+        if publish_info.entries.is_empty() {
             return Err(ClientError::NothingToPublish {
-                name: info.name.clone(),
+                name: publish_info.name.clone(),
             });
         }
 
-        let initializing = info.initializing();
-
         tracing::info!(
             "publishing {new}package `{name}`",
-            name = info.name,
-            new = if initializing { "new " } else { "" }
+            name = publish_info.name,
+            new = if publish_info.initializing() {
+                "new "
+            } else {
+                ""
+            }
         );
-        tracing::debug!("entries: {:?}", info.entries);
+        tracing::debug!("entries: {:?}", publish_info.entries);
 
-        let package = match self.package(&info.name).await {
-            Ok(package) => {
-                if initializing {
-                    return Err(ClientError::CannotInitializePackage { name: package.name });
-                } else if info.head.is_none() {
-                    // If we're not initializing the package and a head was not explicitly specified,
-                    // updated to the latest checkpoint to get the latest known head.
-                    info.head = package.state.head().as_ref().map(|h| h.digest.clone());
-                }
-                package
-            }
-            Err(ClientError::PackageDoesNotExist {
-                name,
-                has_auth_token,
-            }) => {
-                if !initializing {
-                    let prompt = if has_auth_token {
-                        format!(
-"Package `{package_name}` does not already exist or you do not have access.
-Do you wish to initialize `{package_name}` and publish release y/N\n",
-package_name = &info.name,
-)
-                    } else {
-                        format!(
-"Package `{package_name}` does not already exist or you do not have access.
-You may be required to login. Try: `warg login`
-Do you wish to initialize `{package_name}` and publish release y/N\n",
-package_name = &info.name,
-)
-                    };
-                    if Confirm::with_theme(&ColorfulTheme::default())
-                        .with_prompt(prompt)
-                        .default(false)
-                        .interact()
-                        .unwrap()
-                    {
-                        info.entries.insert(0, PublishEntry::Init);
-                    } else {
-                        return Err(ClientError::MustInitializePackage {
-                            name,
-                            has_auth_token,
+        let mut accepted_prompt_to_initialize = false;
+
+        let mut init_record_id: Option<RecordId> = None;
+
+        let (package, record) = loop {
+            let mut info = publish_info.clone();
+
+            let mut initializing = info.initializing();
+
+            let package = match self.fetch_package(&info.name).await {
+                Ok(package) => {
+                    if initializing {
+                        return Err(ClientError::CannotInitializePackage {
+                            name: package.name,
+                            init_record_id,
                         });
+                    } else if info.head.is_none() {
+                        // If we're not initializing the package and a head was not explicitly specified,
+                        // set to the latest known head.
+                        info.head = package.state.head().as_ref().map(|h| h.digest.clone());
                     }
+                    package
                 }
-                PackageInfo::new(info.name.clone())
-            }
-            err => err?,
-        };
-        let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
+                Err(ClientError::PackageDoesNotExist {
+                    name,
+                    has_auth_token,
+                }) => {
+                    if !initializing {
+                        if self.disable_interactive || cfg!(not(feature = "cli-interactive")) {
+                            return Err(ClientError::MustInitializePackage {
+                                name,
+                                has_auth_token,
+                            });
+                        }
 
-        let record = info.finalize(signing_key)?;
-        let log_id = LogId::package_log::<Sha256>(&package.name);
-        let record_id = RecordId::package_record::<Sha256>(&record);
-        let record = self
-            .api
-            .publish_package_record(
-                registry_domain.as_ref(),
-                &log_id,
-                PublishRecordRequest {
-                    package_name: Cow::Borrowed(&package.name),
-                    record: Cow::Owned(record.into()),
-                    content_sources: Default::default(),
-                },
-            )
-            .await
-            .map_err(|e| match e {
-                api::ClientError::Package(PackageError::Rejection(reason)) => {
-                    ClientError::PublishRejected {
+                        #[cfg(feature = "cli-interactive")]
+                        {
+                            use crate::storage::PublishEntry;
+                            use dialoguer::{theme::ColorfulTheme, Confirm};
+
+                            if accepted_prompt_to_initialize
+                                || Confirm::with_theme(&ColorfulTheme::default())
+                                    .with_prompt(format!(
+                                        "Package `{package_name}` was not found.
+If it exists, you may not have access.
+Attempt to create `{package_name}` and publish the release y/N\n",
+                                        package_name = &info.name,
+                                    ))
+                                    .default(false)
+                                    .interact()
+                                    .unwrap()
+                            {
+                                info.entries.insert(0, PublishEntry::Init);
+                                initializing = true;
+                                accepted_prompt_to_initialize = true;
+                            } else {
+                                return Err(ClientError::MustInitializePackage {
+                                    name,
+                                    has_auth_token,
+                                });
+                            }
+                        }
+                    }
+                    PackageInfo::new(info.name.clone())
+                }
+                err => err?,
+            };
+            let registry_domain = self.get_warg_registry(package.name.namespace()).await?;
+
+            let log_id = LogId::package_log::<Sha256>(&package.name);
+            let record = info.finalize(signing_key)?;
+            let record_id = RecordId::package_record::<Sha256>(&record);
+            let record = match self
+                .api
+                .publish_package_record(
+                    registry_domain.as_ref(),
+                    &log_id,
+                    PublishRecordRequest {
+                        package_name: Cow::Borrowed(&package.name),
+                        record: Cow::Owned(record.into()),
+                        content_sources: Default::default(),
+                    },
+                )
+                .await
+            {
+                Ok(record) => Ok(record),
+                Err(api::ClientError::Package(PackageError::Rejection(reason))) => {
+                    Err(ClientError::PublishRejected {
                         name: package.name.clone(),
                         reason,
                         record_id,
+                    })
+                }
+                Err(api::ClientError::Package(PackageError::Unauthorized(reason))) => {
+                    Err(ClientError::Unauthorized(reason))
+                }
+                Err(api::ClientError::Package(PackageError::ConflictPendingPublish(
+                    pending_record_id,
+                ))) => {
+                    // conflicting pending publish succeeds,
+                    tracing::info!("waiting for conflicting publish to complete");
+                    // check registry for federated namespace mapping, if initializing
+                    if initializing {
+                        match self.fetch_package(&package.name).await {
+                            Ok(_) => {}
+                            // may not exist until conflicting publish completes
+                            Err(ClientError::PackageDoesNotExist { .. }) => {}
+                            Err(err) => return Err(err),
+                        }
+                        init_record_id = Some(pending_record_id.clone());
                     }
+                    self.wait_for_publish(&package.name, &pending_record_id, DEFAULT_WAIT_INTERVAL)
+                        .await
+                        .map_err(|err| match err {
+                            ClientError::PackageMissingContent => {
+                                ClientError::ConflictPendingPublish {
+                                    name: package.name.clone(),
+                                    record_id,
+                                    pending_record_id,
+                                }
+                            }
+                            err => err,
+                        })?;
+
+                    continue;
                 }
-                api::ClientError::Package(PackageError::Unauthorized(reason)) => {
-                    ClientError::Unauthorized(reason)
-                }
-                e => {
-                    ClientError::translate_log_not_found(e, self.api.auth_token().is_some(), |id| {
+                Err(e) => Err(ClientError::translate_log_not_found(
+                    e,
+                    self.api.auth_token().is_some(),
+                    |id| {
                         if id == &log_id {
                             Some(package.name.clone())
                         } else {
                             None
                         }
-                    })
-                }
-            })?;
+                    },
+                )),
+            }?;
+
+            break (package, record);
+        };
 
         // TODO: parallelize this
         for (digest, MissingContent { upload }) in record.missing_content() {
@@ -479,7 +542,7 @@ package_name = &info.name,
                     return Err(ClientError::PackageMissingContent);
                 }
                 PackageRecordState::Published { .. } => {
-                    self.update().await?;
+                    self.fetch_package(package).await?;
                     return Ok(());
                 }
                 PackageRecordState::Rejected { reason } => {
@@ -691,12 +754,37 @@ package_name = &info.name,
                             Err(ClientError::Api(err))
                         }
                     }
+
+                    api::ClientError::LogNotFoundWithHint(log_id, hint)
+                        if self.disable_interactive =>
+                    {
+                        let name = packages.get(log_id).unwrap().name.clone();
+
+                        match hint.to_str().ok().map(|s| s.split_once('=')) {
+                            Some(Some((namespace, registry))) if packages.contains_key(log_id) => {
+                                Err(ClientError::PackageDoesNotExistWithHintHeader {
+                                    name,
+                                    has_auth_token,
+                                    hint_namespace: namespace.to_string(),
+                                    hint_registry: registry.to_string(),
+                                })
+                            }
+                            _ => Err(ClientError::PackageDoesNotExist {
+                                name,
+                                has_auth_token,
+                            }),
+                        }
+                    }
+
+                    #[cfg(feature = "cli-interactive")]
                     api::ClientError::LogNotFoundWithHint(log_id, hint) => {
                         match hint.to_str().ok().map(|s| s.split_once('=')) {
                             Some(Some((namespace, registry)))
                                 if !self.ignore_federation_hints
                                     && packages.contains_key(log_id) =>
                             {
+                                use dialoguer::{theme::ColorfulTheme, Confirm};
+
                                 let package_name = &packages.get(log_id).unwrap().name;
 
                                 if self.auto_accept_federation_hints
@@ -978,7 +1066,7 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
         Ok(())
     }
 
-    /// Fetches package logs.
+    /// Fetches package logs without checking local storage first.
     pub async fn fetch_packages(
         &self,
         names: impl IntoIterator<Item = &PackageName>,
@@ -989,6 +1077,13 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
             .collect();
         self.update_checkpoints(packages.iter_mut()).await?;
         Ok(packages)
+    }
+
+    /// Fetches the `PackageInfo` without checking local storage first.
+    pub async fn fetch_package(&self, name: &PackageName) -> Result<PackageInfo, ClientError> {
+        let mut info = PackageInfo::new(name.clone());
+        self.update_checkpoints([&mut info]).await?;
+        Ok(info)
     }
 
     /// Retrieves the `PackageInfo` from local storage, if present, otherwise fetches from the
@@ -1124,6 +1219,9 @@ impl FileSystemClient {
             (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
         };
 
+        let disable_interactive =
+            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+
         Ok(StorageLockResult::Acquired(Self::new(
             url.into_url(),
             packages,
@@ -1132,6 +1230,7 @@ impl FileSystemClient {
             auth_token,
             config.ignore_federation_hints,
             config.auto_accept_federation_hints,
+            disable_interactive,
         )?))
     }
 
@@ -1152,6 +1251,10 @@ impl FileSystemClient {
             content_dir,
             namespace_map_path,
         } = config.storage_paths_for_url(url)?;
+
+        let disable_interactive =
+            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+
         Self::new(
             registry_url.into_url(),
             FileSystemRegistryStorage::lock(registries_dir)?,
@@ -1160,6 +1263,7 @@ impl FileSystemClient {
             auth_token,
             config.ignore_federation_hints,
             config.auto_accept_federation_hints,
+            disable_interactive,
         )
     }
 }
@@ -1221,6 +1325,8 @@ pub enum ClientError {
     CannotInitializePackage {
         /// The package name that already exists.
         name: PackageName,
+        /// The record identifier for the init record.
+        init_record_id: Option<RecordId>,
     },
 
     /// The package must be initialized before publishing.
@@ -1250,6 +1356,19 @@ pub enum ClientError {
         name: PackageName,
         /// Client has authentication credentials.
         has_auth_token: bool,
+    },
+
+    /// The package does not exist with hint header.
+    #[error("package `{name}` does not exist but the registry suggests checking registry `{hint_registry}` for packages in namespace `{hint_namespace}`")]
+    PackageDoesNotExistWithHintHeader {
+        /// The missing package.
+        name: PackageName,
+        /// Client has authentication credentials.
+        has_auth_token: bool,
+        /// The hint namespace.
+        hint_namespace: String,
+        /// The hint registry.
+        hint_registry: String,
     },
 
     /// The package version does not exist.
@@ -1311,6 +1430,17 @@ pub enum ClientError {
         record_id: RecordId,
         /// The reason it was rejected.
         reason: String,
+    },
+
+    /// A publish operation was rejected due to conflicting pending publish.
+    #[error("the publishing of package `{name}` was rejected due to conflicting pending publish of record `{pending_record_id}`")]
+    ConflictPendingPublish {
+        /// The package that was rejected.
+        name: PackageName,
+        /// The record identifier for the record that was rejected.
+        record_id: RecordId,
+        /// The record identifier for the pending publish record.
+        pending_record_id: RecordId,
     },
 
     /// The package is still missing content.

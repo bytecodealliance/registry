@@ -282,7 +282,7 @@ paths:
                   type:
                     type: string
                     description: The type of entity that was not found.
-                    enum: [name, namespace, namespaceImport]
+                    enum: [name, namespace, namespaceImport, record]
                     example: namespace
                   id:
                     type: string

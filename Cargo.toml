@@ -31,8 +31,6 @@ p256 = { workspace = true }
 rand_core = { workspace = true }
 url = { workspace = true }
 # TODO: remove these demo-related dependencies
-wasmtime = "10.0"
-wasmtime-wasi = "10.0"
 reqwest.workspace = true
 warg-api.workspace = true
 ptree.workspace = true
@@ -56,8 +54,9 @@ wit-parser = "0.13.1"
 testresult = "0.3.0"
 
 [features]
-default = []
+default = ["cli-interactive"]
 postgres = ["warg-server/postgres"]
+cli-interactive = ["warg-client/cli-interactive"]
 
 [workspace]
 members = ["crates/server"]
@@ -66,7 +65,7 @@ members = ["crates/server"]
 version = "0.5.0-dev"
 authors = ["The Warg Registry Project Developers"]
 edition = "2021"
-rust-version = "1.66.0"
+rust-version = "1.76.0"
 license = "Apache-2.0 WITH LLVM-exception"
 homepage = "https://warg.io/"
 repository = "https://github.com/bytecodealliance/registry"

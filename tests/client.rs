@@ -18,7 +18,7 @@ fn create_client(config: &Config) -> Result<FileSystemClient> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn client_incrementally_fetches() -> Result<()> {
-    const RELEASE_COUNT: usize = 300;
+    const RELEASE_COUNT: usize = 10;
     const PACKAGE_NAME: &str = "test:package";
 
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;

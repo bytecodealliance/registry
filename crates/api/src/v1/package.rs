@@ -5,6 +5,7 @@ use crate::Status;
 use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::borrow::Cow;
+use std::str::FromStr;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
@@ -133,6 +134,9 @@ pub enum PackageError {
     /// The operation was not supported by the registry.
     #[error("the requested operation is not supported: {0}")]
     NotSupported(String),
+    /// The package was rejected by the registry, due to a conflict with a pending publish.
+    #[error("the package conflicts with pending publish of record `{0}`")]
+    ConflictPendingPublish(RecordId),
     /// The package was rejected by the registry.
     #[error("the package was rejected by the registry: {0}")]
     Rejection(String),
@@ -152,7 +156,7 @@ impl PackageError {
         match self {
             Self::Unauthorized { .. } => 401,
             Self::LogNotFound(_) | Self::RecordNotFound(_) | Self::NamespaceNotDefined(_) => 404,
-            Self::NamespaceImported(_) => 409,
+            Self::NamespaceImported(_) | Self::ConflictPendingPublish(_) => 409,
             Self::RecordNotSourcing => 405,
             Self::Rejection(_) => 422,
             Self::NotSupported(_) => 501,
@@ -243,6 +247,12 @@ impl Serialize for PackageError {
                 id: Cow::Borrowed(namespace),
             }
             .serialize(serializer),
+            Self::ConflictPendingPublish(record_id) => RawError::Conflict {
+                status: Status::<409>,
+                ty: EntityType::Record,
+                id: Cow::Borrowed(record_id),
+            }
+            .serialize(serializer),
             Self::RecordNotSourcing => RawError::RecordNotSourcing::<()> {
                 status: Status::<405>,
             }
@@ -277,14 +287,14 @@ impl<'de> Deserialize<'de> for PackageError {
             }
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
-                    id.parse::<AnyHash>()
+                    AnyHash::from_str(&id)
                         .map_err(|_| {
                             serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid log id")
                         })?
                         .into(),
                 )),
                 EntityType::Record => Ok(Self::RecordNotFound(
-                    id.parse::<AnyHash>()
+                    AnyHash::from_str(&id)
                         .map_err(|_| {
                             serde::de::Error::invalid_value(
                                 Unexpected::Str(&id),
@@ -301,6 +311,16 @@ impl<'de> Deserialize<'de> for PackageError {
             },
             RawError::Conflict { status: _, ty, id } => match ty {
                 EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
+                EntityType::Record => Ok(Self::ConflictPendingPublish(
+                    AnyHash::from_str(&id)
+                        .map_err(|_| {
+                            serde::de::Error::invalid_value(
+                                Unexpected::Str(&id),
+                                &"a valid record id",
+                            )
+                        })?
+                        .into(),
+                )),
                 _ => Err(serde::de::Error::invalid_value(
                     Unexpected::Enum,
                     &"a valid entity type",

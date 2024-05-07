@@ -45,11 +45,16 @@ impl LockListBuilder {
     }
 
     #[async_recursion]
-    async fn parse_package<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+    async fn parse_package<R, C, N>(
         &mut self,
         client: &Client<R, C, N>,
         mut bytes: &[u8],
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        R: RegistryStorage,
+        C: ContentStorage,
+        N: NamespaceMapStorage,
+    {
         let mut parser = Parser::new(0);
         let mut imports: Vec<String> = Vec::new();
         loop {
@@ -157,11 +162,16 @@ impl LockListBuilder {
 
     /// List of deps for building
     #[async_recursion]
-    pub async fn build_list<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage>(
+    pub async fn build_list<R, C, N>(
         &mut self,
         client: &Client<R, C, N>,
         info: &PackageInfo,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        R: RegistryStorage,
+        C: ContentStorage,
+        N: NamespaceMapStorage,
+    {
         let release = info.state.releases().last();
         if let Some(r) = release {
             let state = &r.state;
