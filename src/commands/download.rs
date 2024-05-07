@@ -1,6 +1,8 @@
 use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
+use dialoguer::{theme::ColorfulTheme, Confirm};
+use std::path::PathBuf;
 use warg_client::ClientError;
 use warg_protocol::{registry::PackageName, VersionReq};
 
@@ -14,9 +16,12 @@ pub struct DownloadCommand {
     /// The package name to download.
     #[clap(value_name = "PACKAGE")]
     pub name: PackageName,
-    #[clap(long, short, value_name = "VERSION")]
     /// The version requirement of the package to download; defaults to `*`.
+    #[clap(long, short, value_name = "VERSION")]
     pub version: Option<String>,
+    /// The output path for the file. If not specified, just downloads to local cache.
+    #[clap(long, short = 'o')]
+    pub output: Option<PathBuf>,
 }
 
 impl DownloadCommand {
@@ -33,7 +38,7 @@ impl DownloadCommand {
             None => VersionReq::STAR,
         };
 
-        let res = client
+        let download = client
             .download(&self.name, &version)
             .await?
             .ok_or_else(|| ClientError::PackageVersionRequirementDoesNotExist {
@@ -42,11 +47,42 @@ impl DownloadCommand {
             })?;
 
         println!(
-            "downloaded version {version} of package `{name}` ({digest})",
+            "Downloaded version {version} of package `{name}` ({digest}) to local cache",
             name = self.name,
-            version = res.version,
-            digest = res.digest
+            version = download.version,
+            digest = download.digest
         );
+
+        // use the `output` path specified or ask the use if wants to save in the current working
+        // directory
+        let default_file_name = format!("{name}.wasm", name = self.name.name());
+        if let Some(path) = self
+            .output
+            .map(|mut p| {
+                if p.is_file() {
+                    p
+                } else {
+                    p.push(&default_file_name);
+                    p
+                }
+            })
+            .or_else(|| {
+                if Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt(format!(
+                        "Write `{default_file_name}` in current directory? y/N\n",
+                    ))
+                    .default(true)
+                    .interact()
+                    .unwrap()
+                {
+                    Some(PathBuf::from(default_file_name))
+                } else {
+                    None
+                }
+            })
+        {
+            std::fs::copy(download.path, path)?;
+        }
 
         Ok(())
     }

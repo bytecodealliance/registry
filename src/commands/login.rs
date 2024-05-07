@@ -63,7 +63,7 @@ impl LoginCommand {
         config.auto_accept_federation_hints = self.auto_accept_federation_hints;
 
         if home_url.is_some() {
-            config.home_url = home_url.clone();
+            config.home_url.clone_from(home_url);
             config.write_to_file(&Config::default_config_path()?)?;
 
             // reset if changing home registry
