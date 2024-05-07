@@ -12,7 +12,7 @@ repository = { workspace = true}
 [features]
 default = ["cli-interactive"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
-cli-interactive = ["dialoguer"]
+cli-interactive = ["dep:dialoguer"]
 not-interactive-cli = []
 
 [dependencies]
