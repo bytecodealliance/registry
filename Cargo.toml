@@ -83,7 +83,7 @@ warg-transparency = { path = "crates/transparency", version = "0.5.0-dev" }
 warg-server = { path = "crates/server", version = "0.5.0-dev" }
 clap = { version = "4.3.24", features = ["derive", "env"] }
 thiserror = "1.0.56"
-keyring = "2.3.0"
+keyring = { version = "2.3.3", features = [ "platform-windows", "platform-macos", "linux-default-keyutils" ] }
 anyhow = "1.0.79"
 serde = { version = "1.0.196", features = ["derive", "rc"] }
 serde_json = "1.0.113"
