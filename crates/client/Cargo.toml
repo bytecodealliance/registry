@@ -10,9 +10,10 @@ homepage = { workspace = true }
 repository = { workspace = true}
 
 [features]
-default = ["dialoguer"]
+default = ["cli-interactive"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
-not-cli = []
+cli-interactive = ["dialoguer"]
+not-interactive-cli = []
 
 [dependencies]
 warg-crypto = { workspace = true }

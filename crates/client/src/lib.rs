@@ -3,12 +3,12 @@
 #![deny(missing_docs)]
 use crate::storage::PackageInfo;
 
-#[cfg(not(feature = "not-cli"))]
+#[cfg(feature = "cli-interactive")]
 use crate::storage::PublishEntry;
 
 use anyhow::{anyhow, Context, Result};
 
-#[cfg(not(feature = "not-cli"))]
+#[cfg(feature = "cli-interactive")]
 use dialoguer::{theme::ColorfulTheme, Confirm};
 
 use indexmap::IndexMap;
@@ -69,12 +69,12 @@ where
     content: C,
     namespace_map: N,
     api: api::Client,
-    #[cfg(not(feature = "not-cli"))]
+    #[cfg(feature = "cli-interactive")]
     ignore_federation_hints: bool,
-    #[cfg(not(feature = "not-cli"))]
+    #[cfg(feature = "cli-interactive")]
     auto_accept_federation_hints: bool,
-    #[cfg(not(feature = "not-cli"))]
-    disable_dialoguer: bool,
+    #[cfg(feature = "cli-interactive")]
+    disable_interactive: bool,
 }
 
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
@@ -87,9 +87,9 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         content: C,
         namespace_map: N,
         auth_token: Option<Secret<String>>,
-        #[cfg(not(feature = "not-cli"))] ignore_federation_hints: bool,
-        #[cfg(not(feature = "not-cli"))] auto_accept_federation_hints: bool,
-        #[cfg(not(feature = "not-cli"))] disable_dialoguer: bool,
+        #[cfg(feature = "cli-interactive")] ignore_federation_hints: bool,
+        #[cfg(feature = "cli-interactive")] auto_accept_federation_hints: bool,
+        #[cfg(feature = "cli-interactive")] disable_interactive: bool,
     ) -> ClientResult<Self> {
         let api = api::Client::new(url, auth_token)?;
         Ok(Self {
@@ -97,12 +97,12 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             content,
             namespace_map,
             api,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             ignore_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             auto_accept_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
-            disable_dialoguer,
+            #[cfg(feature = "cli-interactive")]
+            disable_interactive,
         })
     }
 
@@ -347,7 +347,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         );
         tracing::debug!("entries: {:?}", publish_info.entries);
 
-        #[cfg(not(feature = "not-cli"))]
+        #[cfg(feature = "cli-interactive")]
         let mut accepted_prompt_to_initialize = false;
 
         let mut init_record_id: Option<RecordId> = None;
@@ -355,10 +355,10 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         let (package, record) = loop {
             let mut info = publish_info.clone();
 
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             let mut initializing = info.initializing();
 
-            #[cfg(feature = "not-cli")]
+            #[cfg(not(feature = "cli-interactive"))]
             let initializing = info.initializing();
 
             let package = match self.fetch_package(&info.name).await {
@@ -379,15 +379,15 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     name,
                     has_auth_token,
                 }) => {
-                    if !initializing && cfg!(feature = "not-cli") {
+                    if !initializing && cfg!(not(feature = "cli-interactive")) {
                         return Err(ClientError::MustInitializePackage {
                             name,
                             has_auth_token,
                         });
                     } else if !initializing {
-                        #[cfg(not(feature = "not-cli"))]
+                        #[cfg(feature = "cli-interactive")]
                         {
-                            if self.disable_dialoguer {
+                            if self.disable_interactive {
                                 return Err(ClientError::MustInitializePackage {
                                     name,
                                     has_auth_token,
@@ -728,12 +728,12 @@ Attempt to create `{package_name}` and publish the release y/N\n",
         }
 
         // federated packages in other registries
-        #[cfg(not(feature = "not-cli"))]
+        #[cfg(feature = "cli-interactive")]
         let mut federated_packages: IndexMap<
             Option<RegistryDomain>,
             Vec<&mut PackageInfo>,
         > = IndexMap::with_capacity(packages.len());
-        #[cfg(feature = "not-cli")]
+        #[cfg(not(feature = "cli-interactive"))]
         let federated_packages: IndexMap<Option<RegistryDomain>, Vec<&mut PackageInfo>> =
             IndexMap::with_capacity(packages.len());
 
@@ -780,7 +780,7 @@ Attempt to create `{package_name}` and publish the release y/N\n",
                         }
                     }
 
-                    #[cfg(feature = "not-cli")]
+                    #[cfg(not(feature = "cli-interactive"))]
                     api::ClientError::LogNotFoundWithHint(log_id, hint) => {
                         let name = packages.get(log_id).unwrap().name.clone();
 
@@ -800,11 +800,11 @@ Attempt to create `{package_name}` and publish the release y/N\n",
                         }
                     }
 
-                    #[cfg(not(feature = "not-cli"))]
+                    #[cfg(feature = "cli-interactive")]
                     api::ClientError::LogNotFoundWithHint(log_id, hint) => {
                         match hint.to_str().ok().map(|s| s.split_once('=')) {
                             Some(Some((namespace, registry)))
-                                if self.disable_dialoguer && packages.contains_key(log_id) =>
+                                if self.disable_interactive && packages.contains_key(log_id) =>
                             {
                                 let name = packages.get(log_id).unwrap().name.clone();
                                 Err(ClientError::PackageDoesNotExistWithHintHeader {
@@ -815,7 +815,7 @@ Attempt to create `{package_name}` and publish the release y/N\n",
                                 })
                             }
                             Some(Some((namespace, registry)))
-                                if !self.disable_dialoguer
+                                if !self.disable_interactive
                                     && !self.ignore_federation_hints
                                     && packages.contains_key(log_id) =>
                             {
@@ -1259,12 +1259,12 @@ impl FileSystemClient {
             content,
             namespace_map,
             auth_token,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             config.ignore_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             config.auto_accept_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
-            config.disable_dialoguer,
+            #[cfg(feature = "cli-interactive")]
+            config.disable_interactive,
         )?))
     }
 
@@ -1291,12 +1291,12 @@ impl FileSystemClient {
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
             auth_token,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             config.ignore_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
+            #[cfg(feature = "cli-interactive")]
             config.auto_accept_federation_hints,
-            #[cfg(not(feature = "not-cli"))]
-            config.disable_dialoguer,
+            #[cfg(feature = "cli-interactive")]
+            config.disable_interactive,
         )
     }
 }

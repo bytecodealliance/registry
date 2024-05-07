@@ -123,9 +123,9 @@ pub struct Config {
     #[serde(default)]
     pub auto_accept_federation_hints: bool,
 
-    /// Disable dialoguer prompts.
+    /// Disable interactive prompts.
     #[serde(default)]
-    pub disable_dialoguer: bool,
+    pub disable_interactive: bool,
 }
 
 impl Config {
@@ -206,7 +206,7 @@ impl Config {
             keyring_auth: self.keyring_auth,
             ignore_federation_hints: self.ignore_federation_hints,
             auto_accept_federation_hints: self.auto_accept_federation_hints,
-            disable_dialoguer: self.disable_dialoguer,
+            disable_interactive: self.disable_interactive,
         };
 
         serde_json::to_writer_pretty(
