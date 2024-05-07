@@ -362,12 +362,14 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     name,
                     has_auth_token,
                 }) => {
-                    if !initializing && self.disable_interactive {
-                        return Err(ClientError::MustInitializePackage {
-                            name,
-                            has_auth_token,
-                        });
-                    } else if !initializing {
+                    if !initializing {
+                        if self.disable_interactive || cfg!(not(feature = "cli-interactive")) {
+                            return Err(ClientError::MustInitializePackage {
+                                name,
+                                has_auth_token,
+                            });
+                        }
+
                         #[cfg(feature = "cli-interactive")]
                         {
                             use crate::storage::PublishEntry;
