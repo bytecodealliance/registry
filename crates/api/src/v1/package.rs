@@ -5,6 +5,7 @@ use crate::Status;
 use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::borrow::Cow;
+use std::str::FromStr;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 use warg_protocol::{
@@ -286,14 +287,14 @@ impl<'de> Deserialize<'de> for PackageError {
             }
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::Log => Ok(Self::LogNotFound(
-                    id.parse::<AnyHash>()
+                    AnyHash::from_str(&id)
                         .map_err(|_| {
                             serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid log id")
                         })?
                         .into(),
                 )),
                 EntityType::Record => Ok(Self::RecordNotFound(
-                    id.parse::<AnyHash>()
+                    AnyHash::from_str(&id)
                         .map_err(|_| {
                             serde::de::Error::invalid_value(
                                 Unexpected::Str(&id),
@@ -311,7 +312,7 @@ impl<'de> Deserialize<'de> for PackageError {
             RawError::Conflict { status: _, ty, id } => match ty {
                 EntityType::NamespaceImport => Ok(Self::NamespaceImported(id.into_owned())),
                 EntityType::Record => Ok(Self::ConflictPendingPublish(
-                    id.parse::<AnyHash>()
+                    AnyHash::from_str(&id)
                         .map_err(|_| {
                             serde::de::Error::invalid_value(
                                 Unexpected::Str(&id),

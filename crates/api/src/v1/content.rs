@@ -5,6 +5,7 @@ use crate::Status;
 use indexmap::IndexMap;
 use serde::{de::Unexpected, Deserialize, Serialize, Serializer};
 use std::borrow::Cow;
+use std::str::FromStr;
 use thiserror::Error;
 use warg_crypto::hash::AnyHash;
 
@@ -95,7 +96,7 @@ impl<'de> Deserialize<'de> for ContentError {
         match RawError::<String>::deserialize(deserializer)? {
             RawError::NotFound { status: _, ty, id } => match ty {
                 EntityType::ContentDigest => Ok(Self::ContentDigestNotFound(
-                    id.parse::<AnyHash>().map_err(|_| {
+                    AnyHash::from_str(&id).map_err(|_| {
                         serde::de::Error::invalid_value(Unexpected::Str(&id), &"a valid digest")
                     })?,
                 )),
