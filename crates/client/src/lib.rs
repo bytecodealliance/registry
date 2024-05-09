@@ -36,6 +36,9 @@ use warg_protocol::{
 };
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
 
+#[cfg(feature = "keyring")]
+pub mod keyring;
+
 pub mod api;
 mod config;
 /// Tools for locking and bundling components
@@ -1200,7 +1203,7 @@ impl FileSystemClient {
     pub fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
-        auth_token: Option<Secret<String>>,
+        mut auth_token: Option<Secret<String>>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
             registry_url: url,
@@ -1222,6 +1225,10 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
+        if cfg!(feature = "keyring") && auth_token.is_none() && config.keyring_auth {
+            auth_token = crate::keyring::get_auth_token(&url)?
+        }
+
         Ok(StorageLockResult::Acquired(Self::new(
             url.into_url(),
             packages,
@@ -1234,6 +1241,23 @@ impl FileSystemClient {
         )?))
     }
 
+    /// Attempts to create a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
+    /// URL, an error is returned.
+    ///
+    /// If a lock cannot be acquired for a storage directory, then
+    /// `NewClientResult::Blocked` is returned with the path to the
+    /// directory that could not be locked.
+    ///
+    /// Same as calling `try_new_with_config` with
+    /// `Config::from_default_file()?.unwrap_or_default()`.
+    pub fn try_new_with_default_config(
+        url: Option<&str>,
+    ) -> Result<StorageLockResult<Self>, ClientError> {
+        Self::try_new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
+    }
+
     /// Creates a client for the given registry URL.
     ///
     /// If the URL is `None`, the home registry URL is used; if there is no home registry
@@ -1243,7 +1267,7 @@ impl FileSystemClient {
     pub fn new_with_config(
         url: Option<&str>,
         config: &Config,
-        auth_token: Option<Secret<String>>,
+        mut auth_token: Option<Secret<String>>,
     ) -> Result<Self, ClientError> {
         let StoragePaths {
             registry_url,
@@ -1255,6 +1279,10 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
+        if cfg!(feature = "keyring") && auth_token.is_none() && config.keyring_auth {
+            auth_token = crate::keyring::get_auth_token(&registry_url)?
+        }
+
         Self::new(
             registry_url.into_url(),
             FileSystemRegistryStorage::lock(registries_dir)?,
@@ -1265,6 +1293,19 @@ impl FileSystemClient {
             config.auto_accept_federation_hints,
             disable_interactive,
         )
+    }
+
+    /// Creates a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
+    /// URL, an error is returned.
+    ///
+    /// This method blocks if storage locks cannot be acquired.
+    ///
+    /// Same as calling `new_with_config` with
+    /// `Config::from_default_file()?.unwrap_or_default()`.
+    pub fn new_with_default_config(url: Option<&str>) -> Result<Self, ClientError> {
+        Self::new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
     }
 }
 

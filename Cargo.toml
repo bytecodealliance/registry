@@ -54,9 +54,10 @@ wit-parser = "0.13.1"
 testresult = "0.3.0"
 
 [features]
-default = ["cli-interactive"]
+default = ["cli-interactive", "keyring"]
 postgres = ["warg-server/postgres"]
 cli-interactive = ["warg-client/cli-interactive"]
+keyring = ["warg-client/keyring"]
 
 [workspace]
 members = ["crates/server"]

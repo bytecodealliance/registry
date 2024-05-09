@@ -1830,9 +1830,9 @@ dependencies = [
 
 [[package]]
 name = "keyring"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be8bc4c6b6e9d85ecdad090fcf342a9216f53d747a537cc05e3452fd650ca46"
+checksum = "363387f0019d714aa60cc30ab4fe501a747f4c08fc58f069dd14be971bd495a0"
 dependencies = [
  "byteorder",
  "lazy_static 1.4.0",
@@ -4159,6 +4159,7 @@ dependencies = [
  "futures-util",
  "indexmap 2.2.4",
  "itertools 0.12.1",
+ "keyring",
  "libc",
  "normpath",
  "once_cell",
@@ -4192,12 +4193,7 @@ dependencies = [
 name = "warg-credentials"
 version = "0.5.0-dev"
 dependencies = [
- "anyhow",
- "indexmap 2.2.4",
- "keyring",
- "secrecy",
  "warg-client",
- "warg-crypto",
 ]
 
 [[package]]

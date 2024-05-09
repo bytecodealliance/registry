@@ -2,12 +2,10 @@
 
 use anyhow::Result;
 use clap::Args;
-use secrecy::Secret;
 use std::path::PathBuf;
+use warg_client::keyring::get_signing_key;
 use warg_client::storage::RegistryDomain;
-use warg_client::RegistryUrl;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
-use warg_credentials::keyring::{get_auth_token, get_signing_key};
 use warg_crypto::signing::PrivateKey;
 
 mod bundle;
@@ -69,25 +67,18 @@ impl CommonOptions {
 
     /// Creates the warg client to use.
     pub fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
-        let client = match FileSystemClient::try_new_with_config(
-            self.registry.as_deref(),
-            config,
-            self.auth_token(config)?,
-        )? {
-            StorageLockResult::Acquired(client) => Ok(client),
-            StorageLockResult::NotAcquired(path) => {
-                println!(
-                    "blocking on lock for directory `{path}`...",
-                    path = path.display()
-                );
+        let client =
+            match FileSystemClient::try_new_with_config(self.registry.as_deref(), config, None)? {
+                StorageLockResult::Acquired(client) => Ok(client),
+                StorageLockResult::NotAcquired(path) => {
+                    println!(
+                        "blocking on lock for directory `{path}`...",
+                        path = path.display()
+                    );
 
-                FileSystemClient::new_with_config(
-                    self.registry.as_deref(),
-                    config,
-                    self.auth_token(config)?.map(Secret::from),
-                )
-            }
-        }?;
+                    FileSystemClient::new_with_config(self.registry.as_deref(), config, None)
+                }
+            }?;
         Ok(client)
     }
 
@@ -102,18 +93,5 @@ impl CommonOptions {
             &config.keys,
             config.home_url.as_deref(),
         )
-    }
-    /// Gets the auth token for the given registry URL.
-    pub fn auth_token(&self, config: &Config) -> Result<Option<Secret<String>>> {
-        if config.keyring_auth {
-            return if let Some(reg_url) = &self.registry {
-                Ok(get_auth_token(&RegistryUrl::new(reg_url)?)?)
-            } else if let Some(url) = config.home_url.as_ref() {
-                Ok(get_auth_token(&RegistryUrl::new(url)?)?)
-            } else {
-                Ok(None)
-            };
-        }
-        Ok(None)
     }
 }

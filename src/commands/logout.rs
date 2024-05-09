@@ -1,8 +1,6 @@
 use anyhow::{bail, Result};
 use clap::Args;
-use warg_client::{Config, RegistryUrl};
-
-use warg_credentials::keyring::delete_auth_token;
+use warg_client::{keyring::delete_auth_token, Config, RegistryUrl};
 
 use super::CommonOptions;
 

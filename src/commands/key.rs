@@ -3,8 +3,10 @@ use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::Config;
-use warg_credentials::keyring::{delete_signing_key, get_signing_key, set_signing_key};
+use warg_client::{
+    keyring::{delete_signing_key, get_signing_key, set_signing_key},
+    Config,
+};
 use warg_crypto::signing::PrivateKey;
 
 use super::CommonOptions;

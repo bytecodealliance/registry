@@ -3,9 +3,10 @@ use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Password};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::{Config, RegistryUrl};
-
-use warg_credentials::keyring::{set_auth_token, set_signing_key};
+use warg_client::{
+    keyring::{set_auth_token, set_signing_key},
+    Config, RegistryUrl,
+};
 
 use super::CommonOptions;
 
