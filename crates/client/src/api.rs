@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use futures_util::{Stream, TryStreamExt};
+use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStreamExt};
 use indexmap::IndexMap;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
@@ -441,7 +441,10 @@ impl Client {
                 continue;
             }
 
-            return Ok(response.bytes_stream().map_err(|e| anyhow!(e)));
+            return Ok(validate_stream(
+                digest,
+                response.bytes_stream().map_err(|e| anyhow!(e)),
+            ));
         }
 
         Err(ClientError::AllSourcesFailed(digest.clone()))
@@ -626,4 +629,35 @@ impl Client {
 
         Ok(())
     }
+}
+
+fn validate_stream(
+    digest: &AnyHash,
+    stream: impl Stream<Item = Result<Bytes>>,
+) -> impl Stream<Item = Result<Bytes>> {
+    let hasher = Some(digest.algorithm().hasher());
+    let expected = digest.clone();
+    stream
+        .map_ok(Some)
+        .chain(once(async { Ok(None) }))
+        .scan(hasher, move |hasher, res| {
+            ready(match res {
+                Ok(Some(bytes)) => {
+                    hasher.as_mut().unwrap().update(&bytes);
+                    Some(Ok(bytes))
+                }
+                Ok(None) => {
+                    let hasher = std::mem::take(hasher).unwrap();
+                    let computed = hasher.finalize();
+                    if expected == computed {
+                        None
+                    } else {
+                        Some(Err(anyhow!(
+                            "expected digest `{expected}` but computed digest `{computed}`"
+                        )))
+                    }
+                }
+                Err(err) => Some(Err(err)),
+            })
+        })
 }
