@@ -4,7 +4,8 @@
 use crate::storage::PackageInfo;
 
 use anyhow::{anyhow, Context, Result};
-
+use bytes::Bytes;
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use indexmap::IndexMap;
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
@@ -18,6 +19,7 @@ use storage::{
     FileSystemRegistryStorage, NamespaceMapStorage, PublishInfo, RegistryDomain, RegistryStorage,
 };
 use thiserror::Error;
+use tokio_util::io::ReaderStream;
 use warg_api::v1::{
     fetch::{FetchError, FetchLogsRequest},
     package::{
@@ -35,6 +37,9 @@ use warg_protocol::{
     PublishedProtoEnvelope,
 };
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
+
+#[cfg(feature = "keyring")]
+pub mod keyring;
 
 pub mod api;
 mod config;
@@ -621,12 +626,58 @@ Attempt to create `{package_name}` and publish the release y/N\n",
         }
     }
 
-    /// Downloads the specified version of a package into client storage.
+    /// Downloads the latest version of a package.
     ///
     /// If the requested package log is not present in client storage, it
     /// will be fetched from the registry first.
     ///
     /// An error is returned if the package does not exist.
+    ///
+    /// If a version satisfying the requirement does not exist, `None` is
+    /// returned.
+    pub async fn download_as_stream(
+        &self,
+        package: &PackageName,
+        requirement: &VersionReq,
+    ) -> Result<Option<(PackageDownloadInfo, impl Stream<Item = Result<Bytes>>)>, ClientError> {
+        let info = self.package(package).await?;
+
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
+
+        tracing::debug!(
+            package = package.as_ref(),
+            version_requirement = requirement.to_string(),
+            registry_header = ?registry_domain,
+            "downloading",
+        );
+
+        match info.state.find_latest_release(requirement) {
+            Some(release) => {
+                let digest = release
+                    .content()
+                    .context("invalid state: not yanked but missing content")?
+                    .clone();
+                let stream = self
+                    .download_content_stream(registry_domain.as_ref(), &digest)
+                    .await?;
+                Ok(Some((
+                    PackageDownloadInfo {
+                        version: release.version.clone(),
+                        digest,
+                    },
+                    stream,
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Downloads the specified version of a package into client storage.
+    ///
+    /// If the requested package log is not present in client storage, it
+    /// will be fetched from the registry first.
+    ///
+    /// An error is returned if the package or version does not exist.
     ///
     /// Returns the path within client storage of the package contents for
     /// the specified version.
@@ -668,6 +719,53 @@ Attempt to create `{package_name}` and publish the release y/N\n",
                 .download_content(registry_domain.as_ref(), digest)
                 .await?,
         })
+    }
+
+    /// Downloads the specified version of a package.
+    ///
+    /// If the requested package log is not present in client storage, it
+    /// will be fetched from the registry first.
+    ///
+    /// An error is returned if the package or version does not exist.
+    pub async fn download_exact_as_stream(
+        &self,
+        package: &PackageName,
+        version: &Version,
+    ) -> Result<(PackageDownloadInfo, impl Stream<Item = Result<Bytes>>), ClientError> {
+        let info = self.package(package).await?;
+
+        let registry_domain = self.get_warg_registry(package.namespace()).await?;
+
+        tracing::debug!(
+            package = package.as_ref(),
+            version = version.to_string(),
+            registry_header = ?registry_domain,
+            "downloading exact version",
+        );
+
+        let release =
+            info.state
+                .release(version)
+                .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
+                    version: version.clone(),
+                    name: package.clone(),
+                })?;
+
+        let digest = release
+            .content()
+            .ok_or_else(|| ClientError::PackageVersionDoesNotExist {
+                version: version.clone(),
+                name: package.clone(),
+            })?;
+
+        Ok((
+            PackageDownloadInfo {
+                version: version.clone(),
+                digest: digest.clone(),
+            },
+            self.download_content_stream(registry_domain.as_ref(), digest)
+                .await?,
+        ))
     }
 
     async fn update_packages_and_return_federated_packages<'a>(
@@ -1174,6 +1272,30 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
             }
         }
     }
+
+    /// Downloads the content for the specified digest as a stream.
+    ///
+    /// If the content already exists in client storage, it is read from the client storage.
+    ///
+    /// The download is not stored in client storage.
+    async fn download_content_stream(
+        &self,
+        registry_domain: Option<&RegistryDomain>,
+        digest: &AnyHash,
+    ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
+        match self.content.content_location(digest) {
+            Some(path) => {
+                tracing::info!("content for digest `{digest}` already exists in storage");
+                let file = tokio::fs::File::open(path)
+                    .await
+                    .map_err(ClientError::IoError)?;
+                Ok(ReaderStream::new(file).map_err(Into::into).boxed())
+            }
+            None => Ok(Box::pin(
+                self.api.download_content(registry_domain, digest).await?,
+            )),
+        }
+    }
 }
 /// A Warg registry client that uses the local file system to store
 /// package logs and content.
@@ -1200,7 +1322,7 @@ impl FileSystemClient {
     pub fn try_new_with_config(
         url: Option<&str>,
         config: &Config,
-        auth_token: Option<Secret<String>>,
+        mut auth_token: Option<Secret<String>>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         let StoragePaths {
             registry_url: url,
@@ -1222,6 +1344,11 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
+        #[cfg(feature = "keyring")]
+        if auth_token.is_none() && config.keyring_auth {
+            auth_token = crate::keyring::get_auth_token(&url)?
+        }
+
         Ok(StorageLockResult::Acquired(Self::new(
             url.into_url(),
             packages,
@@ -1234,6 +1361,23 @@ impl FileSystemClient {
         )?))
     }
 
+    /// Attempts to create a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
+    /// URL, an error is returned.
+    ///
+    /// If a lock cannot be acquired for a storage directory, then
+    /// `NewClientResult::Blocked` is returned with the path to the
+    /// directory that could not be locked.
+    ///
+    /// Same as calling `try_new_with_config` with
+    /// `Config::from_default_file()?.unwrap_or_default()`.
+    pub fn try_new_with_default_config(
+        url: Option<&str>,
+    ) -> Result<StorageLockResult<Self>, ClientError> {
+        Self::try_new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
+    }
+
     /// Creates a client for the given registry URL.
     ///
     /// If the URL is `None`, the home registry URL is used; if there is no home registry
@@ -1243,7 +1387,7 @@ impl FileSystemClient {
     pub fn new_with_config(
         url: Option<&str>,
         config: &Config,
-        auth_token: Option<Secret<String>>,
+        mut auth_token: Option<Secret<String>>,
     ) -> Result<Self, ClientError> {
         let StoragePaths {
             registry_url,
@@ -1254,6 +1398,11 @@ impl FileSystemClient {
 
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+
+        #[cfg(feature = "keyring")]
+        if auth_token.is_none() && config.keyring_auth {
+            auth_token = crate::keyring::get_auth_token(&registry_url)?
+        }
 
         Self::new(
             registry_url.into_url(),
@@ -1266,6 +1415,19 @@ impl FileSystemClient {
             disable_interactive,
         )
     }
+
+    /// Creates a client for the given registry URL.
+    ///
+    /// If the URL is `None`, the home registry URL is used; if there is no home registry
+    /// URL, an error is returned.
+    ///
+    /// This method blocks if storage locks cannot be acquired.
+    ///
+    /// Same as calling `new_with_config` with
+    /// `Config::from_default_file()?.unwrap_or_default()`.
+    pub fn new_with_default_config(url: Option<&str>) -> Result<Self, ClientError> {
+        Self::new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
+    }
 }
 
 /// Represents information about a downloaded package.
@@ -1277,6 +1439,14 @@ pub struct PackageDownload {
     pub digest: AnyHash,
     /// The path to the downloaded package contents.
     pub path: PathBuf,
+}
+
+/// Represents information about a downloaded package.
+pub struct PackageDownloadInfo {
+    /// The package version that was downloaded.
+    pub version: Version,
+    /// The digest of the package contents.
+    pub digest: AnyHash,
 }
 
 /// Represents an error returned by Warg registry clients.
@@ -1472,6 +1642,10 @@ pub enum ClientError {
     /// An error occurred while performing a client operation.
     #[error("{0:?}")]
     Other(#[from] anyhow::Error),
+
+    /// An error occurred while performing a IO.
+    #[error("error: {0:?}")]
+    IoError(#[from] std::io::Error),
 }
 
 impl ClientError {

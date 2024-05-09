@@ -10,9 +10,10 @@ homepage = { workspace = true }
 repository = { workspace = true}
 
 [features]
-default = ["cli-interactive"]
+default = ["cli-interactive", "keyring"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 cli-interactive = ["dep:dialoguer"]
+keyring = ["dep:keyring"]
 
 [dependencies]
 warg-crypto = { workspace = true }
@@ -51,6 +52,7 @@ wasmprinter = "0.2.75"
 sha256 = "1.4.0"
 ptree = { workspace = true }
 secrecy= { workspace = true }
+keyring = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52"
