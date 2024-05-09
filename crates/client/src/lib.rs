@@ -1225,7 +1225,8 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
-        if cfg!(feature = "keyring") && auth_token.is_none() && config.keyring_auth {
+        #[cfg(feature = "keyring")]
+        if auth_token.is_none() && config.keyring_auth {
             auth_token = crate::keyring::get_auth_token(&url)?
         }
 
@@ -1279,7 +1280,8 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
-        if cfg!(feature = "keyring") && auth_token.is_none() && config.keyring_auth {
+        #[cfg(feature = "keyring")]
+        if auth_token.is_none() && config.keyring_auth {
             auth_token = crate::keyring::get_auth_token(&registry_url)?
         }
 
