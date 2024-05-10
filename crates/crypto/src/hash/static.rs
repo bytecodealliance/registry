@@ -154,8 +154,7 @@ impl<'de, T: SupportedDigest> Deserialize<'de> for Hash<T> {
                 formatter.write_fmt(format_args!("{} bytes", self.0.as_ref().len()))
             }
 
-            #[cfg(feature = "alloc")]
-            fn visit_byte_buf<E: Error>(self, v: alloc::vec::Vec<u8>) -> Result<Self::Value, E> {
+            fn visit_byte_buf<E: Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
                 self.visit_bytes(&v)
             }
 

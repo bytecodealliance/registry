@@ -3,7 +3,7 @@
 use crate::RegistryUrl;
 use anyhow::{bail, Context, Result};
 use indexmap::IndexSet;
-use secrecy::{self, Secret};
+use secrecy::Secret;
 use warg_crypto::signing::PrivateKey;
 
 /// Gets the auth token entry for the given registry and key name.
