@@ -1346,7 +1346,7 @@ impl FileSystemClient {
 
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
-            auth_token = crate::keyring::get_auth_token(&url)?
+            auth_token = crate::keyring::Keyring::default().get_auth_token(&url)?
         }
 
         Ok(StorageLockResult::Acquired(Self::new(
@@ -1401,7 +1401,7 @@ impl FileSystemClient {
 
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
-            auth_token = crate::keyring::get_auth_token(&registry_url)?
+            auth_token = crate::keyring::Keyring::default().get_auth_token(&registry_url)?
         }
 
         Self::new(

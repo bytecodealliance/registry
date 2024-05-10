@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
-use warg_client::keyring::get_signing_key;
+use warg_client::keyring::Keyring;
 use warg_client::storage::RegistryDomain;
 use warg_client::{ClientError, Config, FileSystemClient, StorageLockResult};
 use warg_crypto::signing::PrivateKey;
@@ -88,7 +88,7 @@ impl CommonOptions {
         registry_domain: Option<&RegistryDomain>,
     ) -> Result<PrivateKey> {
         let config = self.read_config()?;
-        get_signing_key(
+        Keyring::default().get_signing_key(
             registry_domain.map(|domain| domain.to_string()).as_deref(),
             &config.keys,
             config.home_url.as_deref(),
