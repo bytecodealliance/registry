@@ -60,7 +60,7 @@ impl LoginCommand {
         let mut config = self.common.read_config()?;
         config.ignore_federation_hints = self.ignore_federation_hints;
         config.auto_accept_federation_hints = self.auto_accept_federation_hints;
-        let keyring = Keyring::default();
+        let keyring = Keyring::from_config(&config)?;
 
         if home_url.is_some() {
             config.home_url.clone_from(home_url);

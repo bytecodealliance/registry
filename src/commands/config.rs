@@ -2,7 +2,7 @@ use super::CommonOptions;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use warg_client::{Config, RegistryUrl};
+use warg_client::{keyring::Keyring, Config, RegistryUrl};
 
 /// Creates a new warg configuration file.
 #[derive(Args)]
@@ -40,6 +40,10 @@ pub struct ConfigCommand {
     /// The path to the namespace map
     #[clap(long, value_name = "NAMESPACE_PATH")]
     pub namespace_path: Option<PathBuf>,
+
+    /// The backend to use for keyring access
+    #[clap(long, value_name = "KEYRING_BACKEND", value_parser = keyring_backend_parser, long_help = keyring_backend_help())]
+    pub keyring_backend: Option<String>,
 }
 
 impl ConfigCommand {
@@ -81,6 +85,7 @@ impl ConfigCommand {
             ignore_federation_hints: self.ignore_federation_hints,
             auto_accept_federation_hints: self.auto_accept_federation_hints,
             disable_interactive: false,
+            keyring_backend: self.keyring_backend.clone(),
         };
 
         config.write_to_file(&path)?;
@@ -97,4 +102,41 @@ impl ConfigCommand {
 
         Ok(())
     }
+}
+
+fn keyring_backend_parser(s: &str) -> Result<String, String> {
+    if Keyring::SUPPORTED_BACKENDS.contains(&s) {
+        Ok(s.to_string())
+    } else {
+        Err(format!("`{s}` is not a supported keyring backend."))
+    }
+}
+
+fn keyring_backend_help() -> clap::builder::StyledStr {
+    use std::fmt::Write as _;
+
+    let mut help = String::new();
+
+    writeln!(
+        &mut help,
+        "The backend to use for keyring access. The following options are supported:\n"
+    )
+    .unwrap();
+    for backend in Keyring::SUPPORTED_BACKENDS {
+        writeln!(
+            &mut help,
+            "{:16} {}",
+            backend,
+            Keyring::describe_backend(backend)
+        )
+        .unwrap();
+    }
+    writeln!(
+        &mut help,
+        "\nThe default is `{}`.",
+        Keyring::DEFAULT_BACKEND
+    )
+    .unwrap();
+
+    help.into()
 }

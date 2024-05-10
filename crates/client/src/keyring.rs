@@ -1,5 +1,6 @@
 //! Utilities for interacting with keyring and performing signing operations.
 
+use crate::config::Config;
 use crate::RegistryUrl;
 use anyhow::{anyhow, bail, Context};
 use indexmap::IndexSet;
@@ -13,7 +14,7 @@ pub struct Keyring {
 }
 
 /// The type of keyring errors.
-/// 
+///
 /// Currently just a synonym for [`anyhow::Error`], but will change to
 /// something capable of more user-friendly diagnostics.
 pub type KeyringError = anyhow::Error;
@@ -109,6 +110,15 @@ impl Keyring {
         Self::load_backend(backend)
             .ok_or_else(|| anyhow!("failed to initialize keyring: unsupported backend {backend}"))
             .map(|imp| Self { imp })
+    }
+
+    /// Instantiate a new keyring using the backend specified in a configuration file.
+    pub fn from_config(config: &Config) -> Result<Self> {
+        if let Some(ref backend) = config.keyring_backend {
+            Self::new(backend.as_str())
+        } else {
+            Self::new(Self::SUPPORTED_BACKENDS[0])
+        }
     }
 
     /// Gets the auth token entry for the given registry and key name.
@@ -320,12 +330,5 @@ impl Keyring {
                 }
             }
         }
-    }
-}
-
-impl std::default::Default for Keyring {
-    fn default() -> Self {
-        Self::new(Self::DEFAULT_BACKEND)
-            .expect("loading the default keyring backend should never fail")
     }
 }

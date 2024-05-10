@@ -38,10 +38,10 @@ impl KeyringEntryArgs {
 impl LogoutCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let keyring = Keyring::default();
-        self.keyring_entry
-            .delete_entry(&keyring, self.common.read_config()?.home_url)?;
         let mut config = self.common.read_config()?;
+        let keyring = Keyring::from_config(&config)?;
+        self.keyring_entry
+            .delete_entry(&keyring, config.home_url.clone())?;
         config.keyring_auth = false;
         config.write_to_file(&Config::default_config_path()?)?;
         println!("auth token was deleted successfully",);

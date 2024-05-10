@@ -60,7 +60,7 @@ impl KeyNewCommand {
         } else {
             config.keys.insert("default".to_string());
         }
-        Keyring::default().set_signing_key(
+        Keyring::from_config(config)?.set_signing_key(
             self.common.registry.as_deref(),
             &key,
             &mut config.keys,
@@ -86,7 +86,7 @@ impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = &self.common.read_config()?;
-        let private_key = Keyring::default().get_signing_key(
+        let private_key = Keyring::from_config(config)?.get_signing_key(
             self.common.registry.as_deref(),
             &config.keys,
             config.home_url.as_deref(),
@@ -117,7 +117,7 @@ impl KeySetCommand {
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
         let config = &mut self.common.read_config()?;
 
-        Keyring::default().set_signing_key(
+        Keyring::from_config(config)?.set_signing_key(
             self.common.registry.as_deref(),
             &key,
             &mut config.keys,
@@ -148,7 +148,7 @@ impl KeyDeleteCommand {
             .with_prompt("are you sure you want to delete your signing key")
             .interact()?
         {
-            Keyring::default().delete_signing_key(
+            Keyring::from_config(config)?.delete_signing_key(
                 self.common.registry.as_deref(),
                 &config.keys,
                 config.home_url.as_deref(),
