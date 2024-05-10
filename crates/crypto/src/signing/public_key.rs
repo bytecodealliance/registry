@@ -1,7 +1,6 @@
 use super::{Signature, SignatureAlgorithm, SignatureAlgorithmParseError};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use core::fmt;
-use p256;
 use serde::{Deserialize, Serialize};
 use signature::{Error as SignatureError, Verifier};
 use std::str::FromStr;

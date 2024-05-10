@@ -91,6 +91,7 @@ pub struct NewCheckpoint<'a> {
 
 #[derive(Queryable)]
 #[diesel(table_name = checkpoints)]
+#[allow(dead_code)]
 pub struct CheckpointData {
     pub id: i32,
     pub checkpoint_id: ParsedText<AnyHash>,

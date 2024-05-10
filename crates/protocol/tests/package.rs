@@ -38,7 +38,7 @@ fn validate_input(input: Vec<EnvelopeData>) -> Result<LogState> {
             let key = signing::PrivateKey::decode(e_data.key.clone()).unwrap();
             let mut record: package::PackageRecord = e_data.contents.try_into().unwrap();
 
-            record.prev = last.clone();
+            record.prev.clone_from(last);
 
             let envelope = ProtoEnvelope::signed_contents(&key, record).unwrap();
 
