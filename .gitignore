@@ -10,3 +10,6 @@ publish
 # Test generated files
 bundled.wasm
 locked.wasm
+
+# IDE specific files
+.idea

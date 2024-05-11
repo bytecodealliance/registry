@@ -1,3 +1,26 @@
+.github
+
+# IDE
+.vscode
+.idea
+
+# Build
 target
+**/*.wasm
+
+# Documentation
+docs
+LICENSE
+**/*.md
+**/*.yaml
+
+# test
+tests
+
+# Deployment
 infra
-docker-compose*.yaml
+ci
+
+# Docker
+**/docker-compose*.yaml
+**/Dockerfile
