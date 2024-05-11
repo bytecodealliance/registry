@@ -1,34 +1,33 @@
-# Base in-memory configuration for the registry service
+name: warg-server
+
 services:
-  import-secrets:
-    container_name: import-secrets
-    image: debian:bullseye-slim
-    command: ["cp", "-v", "-R", "-T", "/src/secrets/warg", "/var/secrets/warg"]
+  fix-permission:
+    image: busybox
+    command: ["sh", "-c", "chown -R 1000:1000 /var/lib/warg-server/data"]
     volumes:
-      - warg-secrets:/var/secrets/warg:rw
-      - ./infra/local/.secrets:/src/secrets/warg:ro
-  warg-registry:
-    build:
-      target: warg-server
-      args:
-        - FEATURES=postgres
-    ports:
-      - '${WARG_SERVER_LISTEN_ADDRESS?e.g., 127.0.0.1:17513}:8090'
-    # Set the base settings with environment variables.
-    # NOTE: Test for cli environment variables support.
+      - content:/var/lib/warg-server/data
+
+  api:
+    build: .
+    develop:
+      watch:
+        - path: .
+          action: rebuild
     environment:
-      - WARG_CONTENT_DIR=/var/run/warg/server-content
-      - WARG_OPERATOR_KEY_FILE=/var/secrets/warg/operator_key
+      WARG_OPERATOR_KEY_FILE: /run/secrets/warg_operator_key
+    secrets:
+      - warg_operator_key
+    ports:
+      - 8090:8090
     volumes:
-      - warg-server-content:/var/run/warg/server-content:rw
-      - warg-secrets:/var/secrets/warg:ro
-    networks:
-      - infra
+      - content:/var/lib/warg-server/data
     depends_on:
-      import-secrets:
+      fix-permission:
         condition: service_completed_successfully
+
+secrets:
+  warg_operator_key:
+    environment: "WARG_OPERATOR_KEY"
+
 volumes:
-  warg-server-content:
-  warg-secrets:
-networks:
-  infra:
+  content:
