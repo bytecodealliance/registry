@@ -3,10 +3,8 @@ use clap::{Args, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Confirm, Password};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::{
-    keyring::{delete_signing_key, get_signing_key, set_signing_key},
-    Config,
-};
+use warg_client::keyring::Keyring;
+use warg_client::Config;
 use warg_crypto::signing::PrivateKey;
 
 use super::CommonOptions;
@@ -62,7 +60,7 @@ impl KeyNewCommand {
         } else {
             config.keys.insert("default".to_string());
         }
-        set_signing_key(
+        Keyring::from_config(config)?.set_signing_key(
             self.common.registry.as_deref(),
             &key,
             &mut config.keys,
@@ -88,7 +86,7 @@ impl KeyInfoCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = &self.common.read_config()?;
-        let private_key = get_signing_key(
+        let private_key = Keyring::from_config(config)?.get_signing_key(
             self.common.registry.as_deref(),
             &config.keys,
             config.home_url.as_deref(),
@@ -119,7 +117,7 @@ impl KeySetCommand {
             PrivateKey::decode(key_str).context("signing key is not in the correct format")?;
         let config = &mut self.common.read_config()?;
 
-        set_signing_key(
+        Keyring::from_config(config)?.set_signing_key(
             self.common.registry.as_deref(),
             &key,
             &mut config.keys,
@@ -150,7 +148,7 @@ impl KeyDeleteCommand {
             .with_prompt("are you sure you want to delete your signing key")
             .interact()?
         {
-            delete_signing_key(
+            Keyring::from_config(config)?.delete_signing_key(
                 self.common.registry.as_deref(),
                 &config.keys,
                 config.home_url.as_deref(),

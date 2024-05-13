@@ -1346,7 +1346,7 @@ impl FileSystemClient {
 
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
-            auth_token = crate::keyring::get_auth_token(&url)?
+            auth_token = crate::keyring::Keyring::from_config(config)?.get_auth_token(&url)?
         }
 
         Ok(StorageLockResult::Acquired(Self::new(
@@ -1401,7 +1401,8 @@ impl FileSystemClient {
 
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
-            auth_token = crate::keyring::get_auth_token(&registry_url)?
+            auth_token =
+                crate::keyring::Keyring::from_config(config)?.get_auth_token(&registry_url)?
         }
 
         Self::new(
@@ -1634,6 +1635,10 @@ pub enum ClientError {
         /// The checkpoint log length.
         log_length: RegistryLen,
     },
+
+    /// An error occurred while accessing the keyring.
+    #[error(transparent)]
+    Keyring(#[from] crate::keyring::KeyringError),
 
     /// An error occurred during an API operation.
     #[error(transparent)]

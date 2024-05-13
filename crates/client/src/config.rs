@@ -126,6 +126,10 @@ pub struct Config {
     /// Disable interactive prompts.
     #[serde(default)]
     pub disable_interactive: bool,
+
+    /// Use the specified backend for keyring access.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyring_backend: Option<String>,
 }
 
 impl Config {
@@ -207,6 +211,7 @@ impl Config {
             ignore_federation_hints: self.ignore_federation_hints,
             auto_accept_federation_hints: self.auto_accept_federation_hints,
             disable_interactive: self.disable_interactive,
+            keyring_backend: self.keyring_backend.clone(),
         };
 
         serde_json::to_writer_pretty(

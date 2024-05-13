@@ -3,10 +3,8 @@ use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Password};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
-use warg_client::{
-    keyring::{set_auth_token, set_signing_key},
-    Config, RegistryUrl,
-};
+use warg_client::keyring::Keyring;
+use warg_client::{Config, RegistryUrl};
 
 use super::CommonOptions;
 
@@ -38,14 +36,15 @@ struct KeyringEntryArgs {
 }
 
 impl KeyringEntryArgs {
-    fn set_entry(&self, home_url: Option<String>, token: &str) -> Result<()> {
+    fn set_entry(&self, keyring: &Keyring, home_url: Option<String>, token: &str) -> Result<()> {
         if let Some(url) = &self.url {
-            set_auth_token(url, token)
+            keyring.set_auth_token(url, token)?;
         } else if let Some(url) = &home_url {
-            set_auth_token(&RegistryUrl::new(url)?, token)
+            keyring.set_auth_token(&RegistryUrl::new(url)?, token)?;
         } else {
             bail!("Please configure your home registry: warg config --registry <registry-url>")
         }
+        Ok(())
     }
 }
 
@@ -62,6 +61,7 @@ impl LoginCommand {
         let mut config = self.common.read_config()?;
         config.ignore_federation_hints = self.ignore_federation_hints;
         config.auto_accept_federation_hints = self.auto_accept_federation_hints;
+        let keyring = Keyring::from_config(&config)?;
 
         if home_url.is_some() {
             config.home_url.clone_from(home_url);
@@ -78,14 +78,14 @@ impl LoginCommand {
         if config.keys.is_empty() {
             config.keys.insert("default".to_string());
             let key = SigningKey::random(&mut OsRng).into();
-            set_signing_key(None, &key, &mut config.keys, config.home_url.as_deref())?;
+            keyring.set_signing_key(None, &key, &mut config.keys, config.home_url.as_deref())?;
             let public_key = key.public_key();
             let token = Password::with_theme(&ColorfulTheme::default())
                 .with_prompt("Enter auth token")
                 .interact()
                 .context("failed to read token")?;
             self.keyring_entry
-                .set_entry(self.common.read_config()?.home_url, &token)?;
+                .set_entry(&keyring, self.common.read_config()?.home_url, &token)?;
             config.write_to_file(&Config::default_config_path()?)?;
             println!("auth token was set successfully, and generated default key",);
             println!("Public Key: {public_key}");
@@ -97,7 +97,7 @@ impl LoginCommand {
             .interact()
             .context("failed to read token")?;
         self.keyring_entry
-            .set_entry(self.common.read_config()?.home_url, &token)?;
+            .set_entry(&keyring, self.common.read_config()?.home_url, &token)?;
         config.write_to_file(&Config::default_config_path()?)?;
         println!("auth token was set successfully",);
         Ok(())
