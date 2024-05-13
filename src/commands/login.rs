@@ -38,12 +38,13 @@ struct KeyringEntryArgs {
 impl KeyringEntryArgs {
     fn set_entry(&self, keyring: &Keyring, home_url: Option<String>, token: &str) -> Result<()> {
         if let Some(url) = &self.url {
-            keyring.set_auth_token(url, token)
+            keyring.set_auth_token(url, token)?;
         } else if let Some(url) = &home_url {
-            keyring.set_auth_token(&RegistryUrl::new(url)?, token)
+            keyring.set_auth_token(&RegistryUrl::new(url)?, token)?;
         } else {
             bail!("Please configure your home registry: warg config --registry <registry-url>")
         }
+        Ok(())
     }
 }
 

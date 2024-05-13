@@ -1636,6 +1636,10 @@ pub enum ClientError {
         log_length: RegistryLen,
     },
 
+    /// An error occurred while accessing the keyring.
+    #[error(transparent)]
+    Keyring(#[from] crate::keyring::KeyringError),
+
     /// An error occurred during an API operation.
     #[error(transparent)]
     Api(#[from] api::ClientError),

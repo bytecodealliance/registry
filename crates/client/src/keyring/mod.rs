@@ -2,22 +2,20 @@
 
 use crate::config::Config;
 use crate::RegistryUrl;
-use anyhow::{anyhow, bail, Context};
 use indexmap::IndexSet;
 use secrecy::Secret;
 use warg_crypto::signing::PrivateKey;
+
+mod error;
+use error::KeyringAction;
+pub use error::KeyringError;
 
 /// Interface to a pluggable keyring backend
 #[derive(Debug)]
 pub struct Keyring {
     imp: Box<keyring::CredentialBuilder>,
+    name: &'static str,
 }
-
-/// The type of keyring errors.
-///
-/// Currently just a synonym for [`anyhow::Error`], but will change to
-/// something capable of more user-friendly diagnostics.
-pub type KeyringError = anyhow::Error;
 
 /// Result type for keyring errors.
 pub type Result<T, E = KeyringError> = std::result::Result<T, E>;
@@ -108,8 +106,15 @@ impl Keyring {
     /// The argument should be an element of [Self::SUPPORTED_BACKENDS].
     pub fn new(backend: &str) -> Result<Self> {
         Self::load_backend(backend)
-            .ok_or_else(|| anyhow!("failed to initialize keyring: unsupported backend {backend}"))
-            .map(|imp| Self { imp })
+            .ok_or_else(|| KeyringError::unknown_backend(backend.to_string()))
+            .map(|imp| Self {
+                imp,
+                // Get an equivalent &'static str from our &str
+                name: Self::SUPPORTED_BACKENDS
+                    .iter()
+                    .find(|s| **s == backend)
+                    .expect("successfully-loaded backend should be found in SUPPORTED_BACKENDS"),
+            })
     }
 
     /// Instantiate a new keyring using the backend specified in a configuration file.
@@ -127,7 +132,14 @@ impl Keyring {
         let cred = self
             .imp
             .build(None, &label, &registry_url.safe_label())
-            .context("failed to get keyring entry")?;
+            .map_err(|e| {
+                KeyringError::auth_token_access_error(
+                    self.name,
+                    registry_url,
+                    KeyringAction::Open,
+                    e,
+                )
+            })?;
         Ok(keyring::Entry::new_with_credential(cred))
     }
 
@@ -137,47 +149,29 @@ impl Keyring {
         match entry.get_password() {
             Ok(secret) => Ok(Some(Secret::from(secret))),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(keyring::Error::Ambiguous(_)) => {
-                bail!("more than one auth token for registry `{registry_url}`");
-            }
-            Err(e) => {
-                bail!("failed to get auth token for registry `{registry_url}`: {e}");
-            }
+            Err(e) => Err(KeyringError::auth_token_access_error(
+                self.name,
+                registry_url,
+                KeyringAction::Get,
+                e,
+            )),
         }
     }
 
     /// Deletes the auth token
     pub fn delete_auth_token(&self, registry_url: &RegistryUrl) -> Result<()> {
         let entry = self.get_auth_token_entry(registry_url)?;
-        match entry.delete_password() {
-            Ok(()) => Ok(()),
-            Err(keyring::Error::NoEntry) => {
-                bail!("no auth token found for registry `{registry_url}`");
-            }
-            Err(keyring::Error::Ambiguous(_)) => {
-                bail!("more than one auth token found for registry `{registry_url}`");
-            }
-            Err(e) => {
-                bail!("failed to delete auth token for registry `{registry_url}`: {e}");
-            }
-        }
+        entry.delete_password().map_err(|e| {
+            KeyringError::auth_token_access_error(self.name, registry_url, KeyringAction::Delete, e)
+        })
     }
 
     /// Sets the auth token
     pub fn set_auth_token(&self, registry_url: &RegistryUrl, token: &str) -> Result<()> {
         let entry = self.get_auth_token_entry(registry_url)?;
-        match entry.set_password(token) {
-            Ok(()) => Ok(()),
-            Err(keyring::Error::NoEntry) => {
-                bail!("no auth token found for registry `{registry_url}`");
-            }
-            Err(keyring::Error::Ambiguous(_)) => {
-                bail!("more than one auth token for registry `{registry_url}`");
-            }
-            Err(e) => {
-                bail!("failed to set auth token for registry `{registry_url}`: {e}");
-            }
-        }
+        entry.set_password(token).map_err(|e| {
+            KeyringError::auth_token_access_error(self.name, registry_url, KeyringAction::Set, e)
+        })
     }
 
     /// Gets the signing key entry for the given registry and key name.
@@ -196,7 +190,14 @@ impl Keyring {
             let cred = self
                 .imp
                 .build(None, "warg-signing-key", user)
-                .context("failed to get keyring entry")?;
+                .map_err(|e| {
+                    KeyringError::signing_key_access_error(
+                        self.name,
+                        Some(registry_url),
+                        KeyringAction::Open,
+                        e,
+                    )
+                })?;
             Ok(keyring::Entry::new_with_credential(cred))
         } else {
             if let Some(url) = home_url {
@@ -206,9 +207,25 @@ impl Keyring {
                         .build(
                             None,
                             "warg-signing-key",
-                            &RegistryUrl::new(url)?.safe_label(),
+                            &RegistryUrl::new(url)
+                                .map_err(|e| {
+                                    KeyringError::signing_key_access_error(
+                                        self.name,
+                                        Some(url),
+                                        KeyringAction::Open,
+                                        e,
+                                    )
+                                })?
+                                .safe_label(),
                         )
-                        .context("failed to get keyring entry")?;
+                        .map_err(|e| {
+                            KeyringError::signing_key_access_error(
+                                self.name,
+                                Some(url),
+                                KeyringAction::Open,
+                                e,
+                            )
+                        })?;
                     return Ok(keyring::Entry::new_with_credential(cred));
                 }
             }
@@ -217,11 +234,18 @@ impl Keyring {
                 let cred = self
                     .imp
                     .build(None, "warg-signing-key", "default")
-                    .context("failed to get keyring entry")?;
+                    .map_err(|e| {
+                        KeyringError::signing_key_access_error(
+                            self.name,
+                            None::<&str>,
+                            KeyringAction::Open,
+                            e,
+                        )
+                    })?;
                 return Ok(keyring::Entry::new_with_credential(cred));
             }
 
-            bail!("error: Please set a default signing key by typing `warg key set <alg:base64>` or `warg key new`");
+            Err(KeyringError::no_default_signing_key(self.name))
         }
     }
 
@@ -237,28 +261,20 @@ impl Keyring {
         let entry = self.get_signing_key_entry(registry_url, keys, home_url)?;
 
         match entry.get_password() {
-            Ok(secret) => PrivateKey::decode(secret).context("failed to parse signing key"),
-            Err(keyring::Error::NoEntry) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("no signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("no signing key found");
-                }
-            }
-            Err(keyring::Error::Ambiguous(_)) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("more than one signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("more than one signing key found");
-                }
-            }
-            Err(e) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("failed to get signing key for registry `{registry_url}`: {e}");
-                } else {
-                    bail!("failed to get signing key`");
-                }
-            }
+            Ok(secret) => PrivateKey::decode(secret).map_err(|e| {
+                KeyringError::signing_key_access_error(
+                    self.name,
+                    registry_url,
+                    KeyringAction::Get,
+                    anyhow::Error::from(e),
+                )
+            }),
+            Err(e) => Err(KeyringError::signing_key_access_error(
+                self.name,
+                registry_url,
+                KeyringAction::Get,
+                e,
+            )),
         }
     }
 
@@ -271,30 +287,9 @@ impl Keyring {
         home_url: Option<&str>,
     ) -> Result<()> {
         let entry = self.get_signing_key_entry(registry_url, keys, home_url)?;
-        match entry.set_password(&key.encode()) {
-            Ok(()) => Ok(()),
-            Err(keyring::Error::NoEntry) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("no signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("no signing key found`");
-                }
-            }
-            Err(keyring::Error::Ambiguous(_)) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("more than one signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("more than one signing key found");
-                }
-            }
-            Err(e) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("failed to get signing key for registry `{registry_url}`: {e}");
-                } else {
-                    bail!("failed to get signing: {e}");
-                }
-            }
-        }
+        entry.set_password(&key.encode()).map_err(|e| {
+            KeyringError::signing_key_access_error(self.name, registry_url, KeyringAction::Set, e)
+        })
     }
 
     /// Deletes the signing key for the given registry host and key name.
@@ -305,30 +300,13 @@ impl Keyring {
         home_url: Option<&str>,
     ) -> Result<()> {
         let entry = self.get_signing_key_entry(registry_url, keys, home_url)?;
-
-        match entry.delete_password() {
-            Ok(()) => Ok(()),
-            Err(keyring::Error::NoEntry) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("no signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("no signing key found");
-                }
-            }
-            Err(keyring::Error::Ambiguous(_)) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("more than one signing key found for registry `{registry_url}`");
-                } else {
-                    bail!("more than one signing key found`");
-                }
-            }
-            Err(e) => {
-                if let Some(registry_url) = registry_url {
-                    bail!("failed to delete signing key for registry `{registry_url}`: {e}");
-                } else {
-                    bail!("failed to delete signing key");
-                }
-            }
-        }
+        entry.delete_password().map_err(|e| {
+            KeyringError::signing_key_access_error(
+                self.name,
+                registry_url,
+                KeyringAction::Delete,
+                e,
+            )
+        })
     }
 }

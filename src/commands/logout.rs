@@ -26,12 +26,13 @@ struct KeyringEntryArgs {
 impl KeyringEntryArgs {
     fn delete_entry(&self, keyring: &Keyring, home_url: Option<String>) -> Result<()> {
         if let Some(url) = &self.url {
-            keyring.delete_auth_token(url)
+            keyring.delete_auth_token(url)?;
         } else if let Some(url) = &home_url {
-            keyring.delete_auth_token(&RegistryUrl::new(url)?)
+            keyring.delete_auth_token(&RegistryUrl::new(url)?)?;
         } else {
             bail!("Please configure your home registry: warg config --registry <registry-url>")
         }
+        Ok(())
     }
 }
 

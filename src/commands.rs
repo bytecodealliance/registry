@@ -88,10 +88,11 @@ impl CommonOptions {
         registry_domain: Option<&RegistryDomain>,
     ) -> Result<PrivateKey> {
         let config = self.read_config()?;
-        Keyring::from_config(&config)?.get_signing_key(
+        let key = Keyring::from_config(&config)?.get_signing_key(
             registry_domain.map(|domain| domain.to_string()).as_deref(),
             &config.keys,
             config.home_url.as_deref(),
-        )
+        )?;
+        Ok(key)
     }
 }
