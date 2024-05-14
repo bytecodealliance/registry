@@ -58,6 +58,7 @@ default = ["cli-interactive", "keyring"]
 postgres = ["warg-server/postgres"]
 cli-interactive = ["warg-client/cli-interactive"]
 keyring = ["warg-client/keyring"]
+native-tls-vendored = ["warg-client/native-tls-vendored"]
 
 [workspace]
 members = ["crates/server"]
