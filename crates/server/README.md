@@ -20,7 +20,7 @@ Also, provide the `WARG_NAMESPACE` environment variable to define the initial na
 $ WARG_NAMESPACE=example WARG_OPERATOR_KEY="ecdsa-p256:I+UlDo0HxyBBFeelhPPWmD+LnklOpqZDkrFP5VduASk=" cargo run -- --content-dir content
 2023-04-18T23:48:52.149746Z  INFO warg_server::services::core: initializing core service
 2023-04-18T23:48:52.170199Z  INFO warg_server::services::core: core service is running
-2023-04-18T23:48:52.170233Z  INFO warg_server: listening on 127.0.0.1:8090
+2023-04-18T23:48:52.170233Z  INFO warg_server: listening on 0.0.0.0:8090
 ```
 
 ### PostgreSQL storage

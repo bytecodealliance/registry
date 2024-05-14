@@ -1,52 +1,48 @@
 # PostgreSQL-enabled configuration override for the registry service
+name: warg-server
+
 services:
-  db:
-    # NOTE: Note as of 2023-04-26 not all IaaS supports v15 for managed SQL
-    image: postgres:14
-    restart: always
+  api:
     environment:
-      POSTGRES_DB: warg_registry
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /var/secrets/warg/data-store/postgres/password
-    ports:
-      - "${WARG_POSTGRES_LISTEN_ADDRESS?e.g., 127.0.0.1:17514}:5432"
-    healthcheck:
-      test: [ "CMD", "pg_isready", "-q", "-d", "warg_registry", "-U", "postgres" ]
-      interval: 1s
-      timeout: 1s
-      retries: 30
-    volumes:
-      - warg-secrets:/var/secrets/warg:ro
-      - postgres-data:/var/lib/postgresql/data:rw
-    networks:
-      - infra
+      WARG_DATA_STORE: postgres
+      WARG_DATABASE_URL: "postgres://warg:${POSTGRES_PASSWORD}@postgres:5432/warg"
     depends_on:
-      import-secrets:
+      migration:
         condition: service_completed_successfully
-  warg-registry-db-migration:
+
+  migration:
     build:
-      target: warg-postgres-migration
+      context: .
+      target: migration
+    environment:
+      DATABASE_URL: "postgres://warg:${POSTGRES_PASSWORD}@postgres:5432/warg"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-      import-secrets:
-        condition: service_completed_successfully
-    env_file:
-      - ./infra/local/.secrets/data-store/postgres/database_url_env
-    networks:
-      - infra
-  warg-registry:
-    depends_on:
-      import-secrets:
-        condition: service_completed_successfully    
-      warg-registry-db-migration:
-        condition: service_completed_successfully
-    # Database config using cli args because base config already set from base environment.
-    # NOTE: Test for cli args support.
-    command: 
-      - --data-store
-      - postgres
-      - --database-url-file
-      - /var/secrets/warg/data-store/postgres/database_url
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: warg
+      POSTGRES_USER: warg
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "warg", "-U", "warg" ]
+      start_period: 5s
+      start_interval: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - postgres_password
+    expose:
+      - 5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+secrets:
+  postgres_password:
+    environment: "POSTGRES_PASSWORD"
+
 volumes:
   postgres-data:
