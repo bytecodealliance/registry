@@ -17,7 +17,7 @@ pub mod datastore;
 pub mod policy;
 pub mod services;
 
-const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8090";
+const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:8090";
 const DEFAULT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
 type ShutdownFut = Pin<Box<dyn Future<Output = ()> + Send + Sync>>;

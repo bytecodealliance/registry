@@ -24,7 +24,7 @@ struct Args {
     verbose: u8,
 
     /// Address to listen to
-    #[arg(short, long, env = "WARG_LISTEN", default_value = "127.0.0.1:8090")]
+    #[arg(short, long, env = "WARG_LISTEN", default_value = "0.0.0.0:8090")]
     listen: SocketAddr,
 
     /// The content storage directory to use.
