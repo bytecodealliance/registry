@@ -11,13 +11,13 @@
     <a href="https://github.com/bytecodealliance/registry/actions?query=workflow%3ACI"><img src="https://github.com/bytecodealliance/registry/workflows/Rust/badge.svg" alt="build status" /></a>
     <a href="https://crates.io/crates/warg-cli"><img src="https://img.shields.io/crates/v/warg-cli.svg?style=flat-square" alt="Crates.io version" /></a>
     <a href="https://crates.io/crates/warg-cli"><img src="https://img.shields.io/crates/d/warg-cli.svg?style=flat-square" alt="Download" /></a>
-    <a href="https://bytecodealliance.github.io/warg-cli/"><img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square" alt="docs.rs docs" /></a>
+    <a href="https://docs.rs/warg-client/latest/warg_client/"><img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square" alt="docs.rs docs" /></a>
   </p>
 </div>
 
 ## Overview
 
-This repository contains the reference implementation of the Warg protocol, a client,
+This repository contains the reference implementation of the Warg protocol, a client library,
 server, and CLI.
 
 A Warg client and server can be used to distribute WebAssembly components to
@@ -27,21 +27,20 @@ See the [introduction](docs/README.md) for the design decisions and scope.
 
 ## Prerequisites
 
-- The latest [stable Rust](https://www.rust-lang.org/tools/install).
+- Install the latest [stable Rust](https://www.rust-lang.org/tools/install).
 
 ## Installation
 
-To install `warg`, first you'll want to install
-[the latest stable Rust](https://www.rust-lang.org/tools/install) and then
-you'll execute to  install the subcommand:
-
+To install or upgrade the `warg` CLI:
 ```
-cargo install --git https://github.com/bytecodealliance/registry
+cargo install warg-cli
 ```
 
-The [currently published crate](https://crates.io/crates/warg-cli)
-on crates.io is a nonfunctional placeholder and these instructions will be
-updated to install the crates.io package once a proper release is made.
+To install or upgrade the `warg` reference implmentation server:
+```
+cargo install warg-server
+```
+
 
 ## Getting Started
 
@@ -156,22 +155,12 @@ warg publish revoke --name example:hello sha256:abc...
 
 ### Resetting and clearing local data
 
-To reset local data for the home registry:
+To reset local package log data for registries:
 ```
 warg reset
 ```
 
-To reset local data for a specific registry, such as `registry.example.com`:
-```
-warg reset --registry registry.example.com
-```
-
-To reset local data for all registries:
-```
-warg reset --all
-```
-
-To clear local content for all registries:
+To clear downloaded package content for all registries:
 ```
 warg clear
 ```
@@ -193,15 +182,29 @@ git clone https://github.com/bytecodealliance/registry
 
 ### Testing Changes
 
-Ideally, there should be tests written for all changes. Test can be run via:
+Ideally, there should be tests written for all changes.
+
+Run the tests of the in-memory implementation of the `warg-server`:
 
 ```
-cargo test --all
+cargo test --workspace
 ```
 
-### Testing with Containers
+Run the tests of the Postgres implementation of the `warg-server`:
 
-See the [local infra documentation](infra/local/README.md) on how to develop and test with locally running containers.
+```
+docker run -d --name postgres-test -e POSTGRES_PASSWORD=password -p 5433:5432 postgres
+diesel database setup --database-url postgres://postgres:password@localhost:5433/test-registry --migration-dir crates/server/src/datastore/postgres/migrations
+WARG_DATABASE_URL=postgres://postgres:password@localhost:5433/test-registry cargo test --features postgres -- --nocapture
+```
+
+You may need to install [Docker](https://www.docker.com/get-started/) and the
+[Diesel CLI](https://diesel.rs/guides/getting-started) first with the Postgres feature.
+
+```
+cargo install diesel_cli --no-default-features --features postgres
+```
+
 
 ### Submitting Changes
 
