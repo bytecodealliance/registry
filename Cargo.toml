@@ -93,7 +93,7 @@ tokio-util = "0.7.10"
 serde_with = { version = "3.6.0", features = ["base64"] }
 indexmap = { version = "2.2.4", features = ["serde"] }
 tempfile = "3.10.0"
-reqwest = { version = "0.11.24", features = ["json", "stream"] }
+reqwest = { version = "0.12.4", features = ["json", "stream", "socks"] }
 futures-util = "0.3.30"
 async-trait = "0.1.77"
 bytes = "1.5.0"
