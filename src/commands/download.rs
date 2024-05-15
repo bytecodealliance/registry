@@ -30,7 +30,7 @@ impl DownloadCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        println!("downloading package `{name}`...", name = self.name);
+        println!("Downloading `{name}`...", name = self.name);
 
         // if user specifies exact verion, then set the `VersionReq` to exact match
         let version = match &self.version {
@@ -47,8 +47,7 @@ impl DownloadCommand {
             })?;
 
         println!(
-            "Downloaded version {version} of package `{name}` ({digest}) to local cache",
-            name = self.name,
+            "Downloaded version: {version}\nDigest: {digest}\n",
             version = download.version,
             digest = download.digest
         );
