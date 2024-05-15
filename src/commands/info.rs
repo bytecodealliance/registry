@@ -2,6 +2,7 @@ use super::CommonOptions;
 use anyhow::Result;
 use clap::{ArgAction, Args};
 use warg_client::{
+    keyring::Keyring,
     storage::{ContentStorage, NamespaceMapStorage, PackageInfo, RegistryStorage},
     Client,
 };
@@ -30,13 +31,29 @@ impl InfoCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
 
-        println!("registry: {url}", url = client.url());
-        println!("\npackages in client storage:");
+        println!("\nRegistry: {url}", url = client.url());
+        if config.keyring_auth
+            && Keyring::from_config(&config)?
+                .get_auth_token(client.url())?
+                .is_some()
+        {
+            println!(
+                "(Using credentials{keyring_backend})",
+                keyring_backend = if let Some(keyring_backend) = &config.keyring_backend {
+                    format!(" stored in `{keyring_backend}` keyring backend")
+                } else {
+                    "".to_string()
+                }
+            );
+        } else {
+            println!("(Not logged in)");
+        }
+        println!("\nPackages in client storage:");
         match self.package {
             Some(package) => {
                 let info = client.package(&package).await?;
                 if let Some(registry) = client.get_warg_registry(package.namespace()).await? {
-                    println!("registry: {registry}");
+                    println!("Registry: {registry}");
                 }
                 Self::print_package_info(&info);
             }
@@ -47,24 +64,26 @@ impl InfoCommand {
                     .await?
                     .iter()
                     .for_each(|(registry, packages)| {
-                        println!("registry: {registry}");
+                        println!("\nRegistry: {registry}");
                         packages.iter().for_each(Self::print_package_info);
                     });
             }
         }
 
         if self.namespaces {
-            println!("\nnamespace mappings in client storage");
+            println!("\nNamespace mappings in client storage");
             Self::print_namespace_map(&client).await?;
             return Ok(());
         }
+
+        println!();
 
         Ok(())
     }
 
     fn print_package_info(info: &PackageInfo) {
-        println!("  name: {name}", name = info.name);
-        println!("  versions:");
+        println!("  Name: {name}", name = info.name);
+        println!("  Versions:");
         info.state.releases().for_each(|r| {
             if let Some(content) = r.content() {
                 Self::print_release(&r.version, content);

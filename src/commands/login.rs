@@ -1,6 +1,7 @@
+use crate::commands::config::{keyring_backend_help, keyring_backend_parser};
 use anyhow::{bail, Context, Result};
 use clap::Args;
-use dialoguer::{theme::ColorfulTheme, Password};
+use dialoguer::{theme::ColorfulTheme, Confirm, Password};
 use p256::ecdsa::SigningKey;
 use rand_core::OsRng;
 use warg_client::keyring::Keyring;
@@ -15,10 +16,6 @@ pub struct LoginCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
-    /// The subcommand to execute.
-    #[clap(flatten)]
-    keyring_entry: KeyringEntryArgs,
-
     /// Ignore federation hints.
     #[clap(long)]
     pub ignore_federation_hints: bool,
@@ -26,80 +23,99 @@ pub struct LoginCommand {
     /// Auto accept federation hints.
     #[clap(long)]
     pub auto_accept_federation_hints: bool,
-}
 
-#[derive(Args)]
-struct KeyringEntryArgs {
-    /// The URL of the registry to store an auth token for.
-    #[clap(value_name = "URL")]
-    pub url: Option<RegistryUrl>,
-}
-
-impl KeyringEntryArgs {
-    fn set_entry(&self, keyring: &Keyring, home_url: Option<String>, token: &str) -> Result<()> {
-        if let Some(url) = &self.url {
-            keyring.set_auth_token(url, token)?;
-        } else if let Some(url) = &home_url {
-            keyring.set_auth_token(&RegistryUrl::new(url)?, token)?;
-        } else {
-            bail!("Please configure your home registry: warg config --registry <registry-url>")
-        }
-        Ok(())
-    }
+    /// The backend to use for keyring access
+    #[clap(long, value_name = "KEYRING_BACKEND", value_parser = keyring_backend_parser, long_help = keyring_backend_help())]
+    pub keyring_backend: Option<String>,
 }
 
 impl LoginCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
-        let home_url = &self
+        let mut config = self.common.read_config()?;
+        let mut registry_url = &self
             .common
             .registry
-            .clone()
+            .as_ref()
             .map(RegistryUrl::new)
             .transpose()?
             .map(|u| u.to_string());
-        let mut config = self.common.read_config()?;
         config.ignore_federation_hints = self.ignore_federation_hints;
         config.auto_accept_federation_hints = self.auto_accept_federation_hints;
-        let keyring = Keyring::from_config(&config)?;
 
-        if home_url.is_some() {
-            config.home_url.clone_from(home_url);
+        // set keyring backend, if specified
+        if self.keyring_backend.is_some() {
+            config.keyring_backend = self.keyring_backend;
+        }
+
+        if registry_url.is_none() && config.home_url.is_none() {
+            bail!("Please set your registry: warg login --registry <registry-url>");
+        }
+
+        if registry_url.is_some()
+            && registry_url != &config.home_url
+            && Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!(
+                    "Set `{registry}` as your home (or default) registry?",
+                    registry = registry_url.as_deref().unwrap(),
+                ))
+                .default(true)
+                .interact()?
+        {
+            config.home_url.clone_from(registry_url);
             config.write_to_file(&Config::default_config_path()?)?;
 
             // reset if changing home registry
             let client = self.common.create_client(&config)?;
             client.reset_namespaces().await?;
             client.reset_registry().await?;
+        } else if registry_url.is_none() {
+            registry_url = &config.home_url;
         }
 
+        let keyring = Keyring::from_config(&config)?;
         config.keyring_auth = true;
+
+        let prompt = format!(
+            "Enter auth token for registry: {registry}",
+            registry = registry_url.as_deref().unwrap()
+        );
 
         if config.keys.is_empty() {
             config.keys.insert("default".to_string());
             let key = SigningKey::random(&mut OsRng).into();
-            keyring.set_signing_key(None, &key, &mut config.keys, config.home_url.as_deref())?;
+            keyring.set_signing_key(None, &key, &mut config.keys, registry_url.as_deref())?;
             let public_key = key.public_key();
             let token = Password::with_theme(&ColorfulTheme::default())
-                .with_prompt("Enter auth token")
+                .with_prompt(prompt)
                 .interact()
                 .context("failed to read token")?;
-            self.keyring_entry
-                .set_entry(&keyring, self.common.read_config()?.home_url, &token)?;
+            keyring.set_auth_token(&RegistryUrl::new(registry_url.as_deref().unwrap())?, &token)?;
             config.write_to_file(&Config::default_config_path()?)?;
-            println!("auth token was set successfully, and generated default key",);
+            println!("Auth token was set successfully, and generated default key.");
             println!("Public Key: {public_key}");
             return Ok(());
         }
 
         let token = Password::with_theme(&ColorfulTheme::default())
-            .with_prompt("Enter auth token")
+            .with_prompt(prompt)
             .interact()
             .context("failed to read token")?;
-        self.keyring_entry
-            .set_entry(&keyring, self.common.read_config()?.home_url, &token)?;
+        keyring.set_auth_token(&RegistryUrl::new(registry_url.as_deref().unwrap())?, &token)?;
         config.write_to_file(&Config::default_config_path()?)?;
-        println!("auth token was set successfully",);
+        println!("Auth token was set successfully.");
+
+        if let Ok(private_key) = keyring.get_signing_key(
+            self.common.registry.as_deref(),
+            &config.keys,
+            registry_url.as_deref(),
+        ) {
+            println!("\nSigning key is still available:");
+            let public_key = private_key.public_key();
+            println!("Key ID: {}", public_key.fingerprint());
+            println!("Public Key: {public_key}");
+        }
+
         Ok(())
     }
 }

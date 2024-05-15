@@ -21,11 +21,11 @@ pub struct ConfigCommand {
 
     /// Ignore federation hints.
     #[clap(long)]
-    pub ignore_federation_hints: bool,
+    pub ignore_federation_hints: Option<bool>,
 
     /// Auto accept federation hints.
     #[clap(long)]
-    pub auto_accept_federation_hints: bool,
+    pub auto_accept_federation_hints: Option<bool>,
 
     /// Overwrite the existing configuration file.
     #[clap(long)]
@@ -53,58 +53,104 @@ impl ConfigCommand {
             .path
             .map(Ok)
             .unwrap_or_else(Config::default_config_path)?;
+        let cwd = std::env::current_dir().context("failed to determine current directory")?;
 
-        if !self.overwrite && path.is_file() {
-            bail!(
-                "configuration file `{path}` already exists; use `--overwrite` to overwrite it",
+        if self.overwrite && path.is_file() {
+            println!(
+                "Overwriting configuration file: `{path}`",
                 path = path.display()
             );
         }
 
-        let home_url = &self
-            .common
-            .registry
-            .clone()
-            .map(RegistryUrl::new)
-            .transpose()?
-            .map(|u| u.to_string());
+        let mut changing_home_registry = false;
+
+        let config = if self.overwrite {
+            let home_url = self
+                .common
+                .registry
+                .as_ref()
+                .map(RegistryUrl::new)
+                .transpose()?
+                .map(|u| u.to_string())
+                .ok_or(anyhow::anyhow!(
+                    "Please configure your home registry: warg config --registry <registry-url>"
+                ))?;
+
+            changing_home_registry = true;
+
+            Config {
+                home_url: Some(home_url),
+                registries_dir: self.registries_dir.map(|p| cwd.join(p)),
+                content_dir: self.content_dir.map(|p| cwd.join(p)),
+                namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
+                keys: self.common.read_config()?.keys,
+                keyring_auth: false,
+                ignore_federation_hints: self.ignore_federation_hints.unwrap_or_default(),
+                auto_accept_federation_hints: self.auto_accept_federation_hints.unwrap_or_default(),
+                disable_interactive: false,
+                keyring_backend: self.keyring_backend,
+            }
+        } else {
+            let mut config = self.common.read_config()?;
+            if self.common.registry.is_some() {
+                let home_url = self
+                    .common
+                    .registry
+                    .as_ref()
+                    .map(RegistryUrl::new)
+                    .transpose()?
+                    .map(|u| u.to_string());
+                if home_url != config.home_url {
+                    changing_home_registry = true;
+                    config.home_url = home_url;
+                }
+            }
+            if config.home_url.is_none() {
+                bail!("Please configure your home registry: warg config --registry <registry-url>");
+            }
+            if self.registries_dir.is_some() {
+                config.registries_dir = self.registries_dir.map(|p| cwd.join(p));
+            }
+            if self.content_dir.is_some() {
+                config.content_dir = self.content_dir.map(|p| cwd.join(p));
+            }
+            if self.namespace_path.is_some() {
+                config.namespace_map_path = self.namespace_path.map(|p| cwd.join(p));
+            }
+            if let Some(ignore_federation_hints) = self.ignore_federation_hints {
+                config.ignore_federation_hints = ignore_federation_hints;
+            }
+            if let Some(auto_accept_federation_hints) = self.auto_accept_federation_hints {
+                config.auto_accept_federation_hints = auto_accept_federation_hints;
+            }
+            if self.keyring_backend.is_some() {
+                config.keyring_backend = self.keyring_backend;
+            }
+
+            config
+        };
 
         // The paths specified on the command line are relative to the current
         // directory.
         //
         // `write_to_file` will handle normalizing the paths to be relative to
         // the configuration file's directory.
-        let cwd = std::env::current_dir().context("failed to determine current directory")?;
-        let config = Config {
-            home_url: home_url.clone(),
-            registries_dir: self.registries_dir.map(|p| cwd.join(p)),
-            content_dir: self.content_dir.map(|p| cwd.join(p)),
-            namespace_map_path: self.namespace_path.map(|p| cwd.join(p)),
-            keys: self.common.read_config()?.keys,
-            keyring_auth: false,
-            ignore_federation_hints: self.ignore_federation_hints,
-            auto_accept_federation_hints: self.auto_accept_federation_hints,
-            disable_interactive: false,
-            keyring_backend: self.keyring_backend.clone(),
-        };
-
         config.write_to_file(&path)?;
 
         // reset when changing home registry
-        let client = self.common.create_client(&config)?;
-        client.reset_namespaces().await?;
-        client.reset_registry().await?;
+        if changing_home_registry {
+            let client = self.common.create_client(&config)?;
+            client.reset_namespaces().await?;
+            client.reset_registry().await?;
+        }
 
-        println!(
-            "created warg configuration file `{path}`",
-            path = path.display(),
-        );
+        println!("Set configuration file `{path}`", path = path.display(),);
 
         Ok(())
     }
 }
 
-fn keyring_backend_parser(s: &str) -> Result<String, String> {
+pub(crate) fn keyring_backend_parser(s: &str) -> Result<String, String> {
     if Keyring::SUPPORTED_BACKENDS.contains(&s) {
         Ok(s.to_string())
     } else {
@@ -112,7 +158,7 @@ fn keyring_backend_parser(s: &str) -> Result<String, String> {
     }
 }
 
-fn keyring_backend_help() -> clap::builder::StyledStr {
+pub(crate) fn keyring_backend_help() -> clap::builder::StyledStr {
     use std::fmt::Write as _;
 
     let mut help = String::new();
