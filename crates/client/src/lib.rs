@@ -6,7 +6,7 @@ use crate::storage::PackageInfo;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use reqwest::{Body, IntoUrl};
 use secrecy::Secret;
 use semver::{Version, VersionReq};
@@ -71,6 +71,8 @@ where
     ignore_federation_hints: bool,
     auto_accept_federation_hints: bool,
     disable_interactive: bool,
+    keyring_backend: Option<String>,
+    keys: IndexSet<String>,
 }
 
 impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C, N> {
@@ -86,6 +88,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         ignore_federation_hints: bool,
         auto_accept_federation_hints: bool,
         disable_interactive: bool,
+        keyring_backend: Option<String>,
+        keys: IndexSet<String>,
     ) -> ClientResult<Self> {
         let api = api::Client::new(url, auth_token)?;
         Ok(Self {
@@ -96,6 +100,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             ignore_federation_hints,
             auto_accept_federation_hints,
             disable_interactive,
+            keyring_backend,
+            keys,
         })
     }
 
@@ -307,6 +313,47 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             .ok_or(ClientError::NotPublishing)?;
 
         let res = self.publish_with_info(signing_key, info).await;
+        self.registry.store_publish(None).await?;
+        res
+    }
+
+    /// Submits the provided publish information or, if not provided, loads from client
+    /// storage. Uses the keyring to retrieve a key and sign.
+    ///
+    /// If there's no publishing information in client storage, an error is returned.
+    ///
+    /// Returns the identifier of the record that was published.
+    ///
+    /// Use `wait_for_publish` to wait for the record to transition to the `published` state.
+    #[cfg(feature = "keyring")]
+    pub async fn sign_with_keyring_and_publish(
+        &self,
+        publish_info: Option<PublishInfo>,
+    ) -> ClientResult<RecordId> {
+        let publish_info = if let Some(publish_info) = publish_info {
+            publish_info
+        } else {
+            self.registry
+                .load_publish()
+                .await?
+                .ok_or(ClientError::NotPublishing)?
+        };
+
+        let registry_domain = self
+            .get_warg_registry(publish_info.name.namespace())
+            .await?;
+        let signing_key = keyring::Keyring::new(
+            self.keyring_backend
+                .as_deref()
+                .unwrap_or(keyring::Keyring::DEFAULT_BACKEND),
+        )?
+        .get_signing_key(
+            registry_domain.map(|domain| domain.to_string()).as_deref(),
+            &self.keys,
+            Some(&self.url().to_string()),
+        )?;
+
+        let res = self.publish_with_info(&signing_key, publish_info).await;
         self.registry.store_publish(None).await?;
         res
     }
@@ -1344,6 +1391,12 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
+        let (keyring_backend, keys) = if cfg!(feature = "keyring") {
+            (config.keyring_backend.clone(), config.keys.clone())
+        } else {
+            (None, IndexSet::new())
+        };
+
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
             auth_token = crate::keyring::Keyring::from_config(config)?.get_auth_token(&url)?
@@ -1358,6 +1411,8 @@ impl FileSystemClient {
             config.ignore_federation_hints,
             config.auto_accept_federation_hints,
             disable_interactive,
+            keyring_backend,
+            keys,
         )?))
     }
 
@@ -1399,6 +1454,12 @@ impl FileSystemClient {
         let disable_interactive =
             cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
 
+        let (keyring_backend, keys) = if cfg!(feature = "keyring") {
+            (config.keyring_backend.clone(), config.keys.clone())
+        } else {
+            (None, IndexSet::new())
+        };
+
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
             auth_token =
@@ -1414,6 +1475,8 @@ impl FileSystemClient {
             config.ignore_federation_hints,
             config.auto_accept_federation_hints,
             disable_interactive,
+            keyring_backend,
+            keys,
         )
     }
 

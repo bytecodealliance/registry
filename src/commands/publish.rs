@@ -1,6 +1,7 @@
 use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
+use dialoguer::{theme::ColorfulTheme, Confirm};
 use futures::TryStreamExt;
 use itertools::Itertools;
 use std::{future::Future, path::PathBuf, time::Duration};
@@ -275,6 +276,20 @@ pub struct PublishYankCommand {
 impl PublishYankCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
+        if !Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!(
+                "`Yank` revokes a version, making it unavailable. It is permanent and cannot be reversed.
+Yank `{version}` of `{package}`?",
+                version = &self.version,
+                package = &self.name,
+            ))
+            .default(false)
+            .interact()?
+        {
+            println!("Aborted and did not yank.");
+            return Ok(());
+        }
+
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config)?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;

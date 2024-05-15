@@ -107,7 +107,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace_map_path: Option<PathBuf>,
 
-    /// List of creds availabe in keyring
+    /// List of creds available in keyring
     #[serde(default, skip_serializing_if = "IndexSet::is_empty")]
     pub keys: IndexSet<String>,
 
