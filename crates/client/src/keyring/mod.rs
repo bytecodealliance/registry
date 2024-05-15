@@ -10,6 +10,8 @@ mod error;
 use error::KeyringAction;
 pub use error::KeyringError;
 
+pub mod flatfile;
+
 /// Interface to a pluggable keyring backend
 #[derive(Debug)]
 pub struct Keyring {
@@ -24,19 +26,20 @@ impl Keyring {
     #[cfg(target_os = "linux")]
     /// List of supported credential store backends
     pub const SUPPORTED_BACKENDS: &'static [&'static str] =
-        &["secret-service", "linux-keyutils", "mock"];
+        &["secret-service", "flat-file", "linux-keyutils", "mock"];
     #[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
     /// List of supported credential store backends
-    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["secret-service", "mock"];
+    pub const SUPPORTED_BACKENDS: &'static [&'static str] =
+        &["secret-service", "flat-file", "mock"];
     #[cfg(target_os = "windows")]
     /// List of supported credential store backends
-    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["windows", "mock"];
+    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["windows", "flat-file", "mock"];
     #[cfg(target_os = "macos")]
     /// List of supported credential store backends
-    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["macos", "mock"];
+    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["macos", "flat-file", "mock"];
     #[cfg(target_os = "ios")]
     /// List of supported credential store backends
-    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["ios", "mock"];
+    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["ios", "flat-file", "mock"];
     #[cfg(not(any(
         target_os = "linux",
         target_os = "freebsd",
@@ -46,7 +49,7 @@ impl Keyring {
         target_os = "windows",
     )))]
     /// List of supported credential store backends
-    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["mock"];
+    pub const SUPPORTED_BACKENDS: &'static [&'static str] = &["flat-file", "mock"];
 
     /// The default backend when no configuration option is set
     pub const DEFAULT_BACKEND: &'static str = Self::SUPPORTED_BACKENDS[0];
@@ -59,43 +62,51 @@ impl Keyring {
             "windows" => "Windows Credential Manager",
             "macos" => "MacOS Keychain",
             "ios" => "Apple iOS Keychain",
+            "flat-file" => "Unencrypted flat files in your warg config directory",
             "mock" => "Mock credential store with no persistence (for testing only)",
             _ => "(no description available)"
         }
     }
 
-    fn load_backend(backend: &str) -> Option<Box<keyring::CredentialBuilder>> {
+    fn load_backend(backend: &str) -> Result<Box<keyring::CredentialBuilder>> {
         if !Self::SUPPORTED_BACKENDS.contains(&backend) {
-            return None;
+            return Err(KeyringError::unknown_backend(backend.to_owned()));
         }
 
         #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
         if backend == "secret-service" {
-            return Some(keyring::secret_service::default_credential_builder());
+            return Ok(keyring::secret_service::default_credential_builder());
         }
 
         #[cfg(target_os = "linux")]
         if backend == "linux-keyutils" {
-            return Some(keyring::keyutils::default_credential_builder());
+            return Ok(keyring::keyutils::default_credential_builder());
         }
 
         #[cfg(target_os = "macos")]
         if backend == "macos" {
-            return Some(keyring::macos::default_credential_builder());
+            return Ok(keyring::macos::default_credential_builder());
         }
 
         #[cfg(target_os = "ios")]
         if backend == "ios" {
-            return Some(keyring::ios::default_credential_builder());
+            return Ok(keyring::ios::default_credential_builder());
         }
 
         #[cfg(target_os = "windows")]
         if backend == "windows" {
-            return Some(keyring::windows::default_credential_builder());
+            return Ok(keyring::windows::default_credential_builder());
+        }
+
+        if backend == "flat-file" {
+            return Ok(Box::new(
+                flatfile::FlatfileCredentialBuilder::new()
+                    .map_err(|e| KeyringError::backend_init_failure("flat-file", e))?,
+            ));
         }
 
         if backend == "mock" {
-            return Some(keyring::mock::default_credential_builder());
+            return Ok(keyring::mock::default_credential_builder());
         }
 
         unreachable!("missing logic for backend {backend}")
@@ -105,16 +116,14 @@ impl Keyring {
     ///
     /// The argument should be an element of [Self::SUPPORTED_BACKENDS].
     pub fn new(backend: &str) -> Result<Self> {
-        Self::load_backend(backend)
-            .ok_or_else(|| KeyringError::unknown_backend(backend.to_string()))
-            .map(|imp| Self {
-                imp,
-                // Get an equivalent &'static str from our &str
-                name: Self::SUPPORTED_BACKENDS
-                    .iter()
-                    .find(|s| **s == backend)
-                    .expect("successfully-loaded backend should be found in SUPPORTED_BACKENDS"),
-            })
+        Self::load_backend(backend).map(|imp| Self {
+            imp,
+            // Get an equivalent &'static str from our &str
+            name: Self::SUPPORTED_BACKENDS
+                .iter()
+                .find(|s| **s == backend)
+                .expect("successfully-loaded backend should be found in SUPPORTED_BACKENDS"),
+        })
     }
 
     /// Instantiate a new keyring using the backend specified in a configuration file.
@@ -122,7 +131,7 @@ impl Keyring {
         if let Some(ref backend) = config.keyring_backend {
             Self::new(backend.as_str())
         } else {
-            Self::new(Self::SUPPORTED_BACKENDS[0])
+            Self::new(Self::DEFAULT_BACKEND)
         }
     }
 
