@@ -9,6 +9,10 @@ enum KeyringErrorImpl {
     UnknownBackend {
         backend: String,
     },
+    BackendInitFailure {
+        backend: &'static str,
+        cause: KeyringErrorCause,
+    },
     NoDefaultSigningKey {
         backend: &'static str,
     },
@@ -55,6 +59,16 @@ impl From<anyhow::Error> for KeyringErrorCause {
 impl KeyringError {
     pub(super) fn unknown_backend(backend: String) -> Self {
         KeyringError(KeyringErrorImpl::UnknownBackend { backend })
+    }
+
+    pub(super) fn backend_init_failure(
+        backend: &'static str,
+        cause: impl Into<KeyringErrorCause>,
+    ) -> Self {
+        KeyringError(KeyringErrorImpl::BackendInitFailure {
+            backend,
+            cause: cause.into(),
+        })
     }
 
     pub(super) fn no_default_signing_key(backend: &'static str) -> Self {
@@ -109,6 +123,9 @@ impl std::fmt::Display for KeyringError {
         match &self.0 {
             KeyringErrorImpl::UnknownBackend { backend } => {
                 write!(f, "unknown backend '{backend}'. Run `warg config --keyring_backend <backend>` to configure a keyring backend supported on this platform.")
+            }
+            KeyringErrorImpl::BackendInitFailure { backend, .. } => {
+                write!(f, "failed to initialize backend '{backend}'.")
             }
             KeyringErrorImpl::NoDefaultSigningKey { backend } => {
                 let _ = backend;
@@ -166,7 +183,8 @@ impl std::fmt::Display for KeyringError {
 impl std::error::Error for KeyringError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.0 {
-            KeyringErrorImpl::AccessError { cause, .. } => match cause {
+            KeyringErrorImpl::AccessError { cause, .. }
+            | KeyringErrorImpl::BackendInitFailure { cause, .. } => match cause {
                 KeyringErrorCause::Backend(e) => Some(e),
                 KeyringErrorCause::Other(e) => Some(e.as_ref()),
             },
