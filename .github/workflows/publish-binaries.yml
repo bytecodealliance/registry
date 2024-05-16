@@ -54,9 +54,9 @@ jobs:
         if: ${{ matrix.cross }}
       - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
         if: ${{ matrix.cross }}
-      - run: mv ./target/${{ matrix.rust-target }}/release/warg-cli.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os == 'windows-latest'
-      - run: mv ./target/${{ matrix.rust-target }}/release/warg-cli ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os != 'windows-latest'
       - name: Login GH CLI
         shell: bash
@@ -93,9 +93,9 @@ jobs:
         if: ${{ matrix.cross }}
       - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
         if: ${{ matrix.cross }}
-      - run: mv ./target/${{ matrix.rust-target }}/release/warg-cli.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os == 'windows-latest'
-      - run: mv ./target/${{ matrix.rust-target }}/release/warg-cli ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os != 'windows-latest'
       - name: Login GH CLI
         shell: bash
