@@ -57,6 +57,10 @@ pub use self::registry_url::RegistryUrl;
 
 const DEFAULT_WAIT_INTERVAL: Duration = Duration::from_secs(1);
 
+/// For Bytecode Alliance projects, the default registry is set to `bytecodealliance.org`.
+/// The `.well-known` config path may resolve to another domain where the registry is hosted.
+pub const DEFAULT_REGISTRY: &str = "bytecodealliance.org";
+
 /// A client for a Warg registry.
 pub struct Client<R, C, N>
 where
@@ -1358,6 +1362,39 @@ pub enum StorageLockResult<T> {
 }
 
 impl FileSystemClient {
+    async fn storage_paths(
+        url: Option<&str>,
+        config: &Config,
+        disable_interactive: bool,
+    ) -> Result<StoragePaths, ClientError> {
+        let checking_url_for_well_known = RegistryUrl::new(
+            url.or(config.home_url.as_deref())
+                .unwrap_or(DEFAULT_REGISTRY),
+        )?;
+
+        let url = if let Some(warg_url) =
+            api::Client::new(checking_url_for_well_known.to_string(), None)?
+                .well_known_config()
+                .await?
+        {
+            if !disable_interactive && warg_url != checking_url_for_well_known {
+                println!(
+                    "Resolved `{well_known}` to registry hosted on `{registry}`",
+                    well_known = checking_url_for_well_known.registry_domain(),
+                    registry = warg_url.registry_domain(),
+                );
+            }
+            warg_url
+        } else {
+            RegistryUrl::new(
+                url.or(config.home_url.as_deref())
+                    .ok_or(ClientError::NoHomeRegistryUrl)?,
+            )?
+        };
+
+        config.storage_paths_for_url(url)
+    }
+
     /// Attempts to create a client for the given registry URL.
     ///
     /// If the URL is `None`, the home registry URL is used; if there is no home registry
@@ -1366,30 +1403,20 @@ impl FileSystemClient {
     /// If a lock cannot be acquired for a storage directory, then
     /// `NewClientResult::Blocked` is returned with the path to the
     /// directory that could not be locked.
-    pub fn try_new_with_config(
-        url: Option<&str>,
+    pub async fn try_new_with_config(
+        registry: Option<&str>,
         config: &Config,
         mut auth_token: Option<Secret<String>>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
+        let disable_interactive =
+            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+
         let StoragePaths {
             registry_url: url,
             registries_dir,
             content_dir,
             namespace_map_path,
-        } = config.storage_paths_for_url(url)?;
-
-        let (packages, content, namespace_map) = match (
-            FileSystemRegistryStorage::try_lock(registries_dir.clone())?,
-            FileSystemContentStorage::try_lock(content_dir.clone())?,
-            FileSystemNamespaceMapStorage::new(namespace_map_path.clone()),
-        ) {
-            (Some(packages), Some(content), namespace_map) => (packages, content, namespace_map),
-            (None, _, _) => return Ok(StorageLockResult::NotAcquired(registries_dir)),
-            (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
-        };
-
-        let disable_interactive =
-            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+        } = Self::storage_paths(registry, config, disable_interactive).await?;
 
         let (keyring_backend, keys) = if cfg!(feature = "keyring") {
             (config.keyring_backend.clone(), config.keys.clone())
@@ -1401,6 +1428,16 @@ impl FileSystemClient {
         if auth_token.is_none() && config.keyring_auth {
             auth_token = crate::keyring::Keyring::from_config(config)?.get_auth_token(&url)?
         }
+
+        let (packages, content, namespace_map) = match (
+            FileSystemRegistryStorage::try_lock(registries_dir.clone())?,
+            FileSystemContentStorage::try_lock(content_dir.clone())?,
+            FileSystemNamespaceMapStorage::new(namespace_map_path.clone()),
+        ) {
+            (Some(packages), Some(content), namespace_map) => (packages, content, namespace_map),
+            (None, _, _) => return Ok(StorageLockResult::NotAcquired(registries_dir)),
+            (_, None, _) => return Ok(StorageLockResult::NotAcquired(content_dir)),
+        };
 
         Ok(StorageLockResult::Acquired(Self::new(
             url.into_url(),
@@ -1427,10 +1464,11 @@ impl FileSystemClient {
     ///
     /// Same as calling `try_new_with_config` with
     /// `Config::from_default_file()?.unwrap_or_default()`.
-    pub fn try_new_with_default_config(
+    pub async fn try_new_with_default_config(
         url: Option<&str>,
     ) -> Result<StorageLockResult<Self>, ClientError> {
         Self::try_new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
+            .await
     }
 
     /// Creates a client for the given registry URL.
@@ -1439,20 +1477,20 @@ impl FileSystemClient {
     /// URL, an error is returned.
     ///
     /// This method blocks if storage locks cannot be acquired.
-    pub fn new_with_config(
-        url: Option<&str>,
+    pub async fn new_with_config(
+        registry: Option<&str>,
         config: &Config,
         mut auth_token: Option<Secret<String>>,
     ) -> Result<Self, ClientError> {
+        let disable_interactive =
+            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+
         let StoragePaths {
-            registry_url,
+            registry_url: url,
             registries_dir,
             content_dir,
             namespace_map_path,
-        } = config.storage_paths_for_url(url)?;
-
-        let disable_interactive =
-            cfg!(not(feature = "cli-interactive")) || config.disable_interactive;
+        } = Self::storage_paths(registry, config, disable_interactive).await?;
 
         let (keyring_backend, keys) = if cfg!(feature = "keyring") {
             (config.keyring_backend.clone(), config.keys.clone())
@@ -1462,12 +1500,11 @@ impl FileSystemClient {
 
         #[cfg(feature = "keyring")]
         if auth_token.is_none() && config.keyring_auth {
-            auth_token =
-                crate::keyring::Keyring::from_config(config)?.get_auth_token(&registry_url)?
+            auth_token = crate::keyring::Keyring::from_config(config)?.get_auth_token(&url)?
         }
 
         Self::new(
-            registry_url.into_url(),
+            url.into_url(),
             FileSystemRegistryStorage::lock(registries_dir)?,
             FileSystemContentStorage::lock(content_dir)?,
             FileSystemNamespaceMapStorage::new(namespace_map_path),
@@ -1489,8 +1526,8 @@ impl FileSystemClient {
     ///
     /// Same as calling `new_with_config` with
     /// `Config::from_default_file()?.unwrap_or_default()`.
-    pub fn new_with_default_config(url: Option<&str>) -> Result<Self, ClientError> {
-        Self::new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None)
+    pub async fn new_with_default_config(url: Option<&str>) -> Result<Self, ClientError> {
+        Self::new_with_config(url, &Config::from_default_file()?.unwrap_or_default(), None).await
     }
 }
 

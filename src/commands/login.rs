@@ -16,6 +16,11 @@ pub struct LoginCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
+    /// The URL of the registry to use.
+    #[clap(value_name = "URL")]
+    #[arg(hide = true)]
+    pub registry_url: Option<String>,
+
     /// Ignore federation hints.
     #[clap(long)]
     pub ignore_federation_hints: bool,
@@ -31,7 +36,13 @@ pub struct LoginCommand {
 
 impl LoginCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(mut self) -> Result<()> {
+        if self.registry_url.is_some() {
+            if self.common.registry.is_some() {
+                bail!("Registry URL provided in two different arguments. Use only one.");
+            }
+            self.common.registry = self.registry_url;
+        }
         let mut config = self.common.read_config()?;
         let mut registry_url = &self
             .common
@@ -52,6 +63,8 @@ impl LoginCommand {
             bail!("Please set your registry: warg login --registry <registry-url>");
         }
 
+        let mut changing_home_registry = false;
+
         if registry_url.is_some()
             && registry_url != &config.home_url
             && Confirm::with_theme(&ColorfulTheme::default())
@@ -66,9 +79,7 @@ impl LoginCommand {
             config.write_to_file(&Config::default_config_path()?)?;
 
             // reset if changing home registry
-            let client = self.common.create_client(&config)?;
-            client.reset_namespaces().await?;
-            client.reset_registry().await?;
+            changing_home_registry = true;
         } else if registry_url.is_none() {
             registry_url = &config.home_url;
         }
@@ -76,9 +87,26 @@ impl LoginCommand {
         let keyring = Keyring::from_config(&config)?;
         config.keyring_auth = true;
 
+        let client = if *registry_url == config.home_url {
+            self.common.create_client(&config).await?
+        } else {
+            let mut config = config.clone();
+            config.home_url.clone_from(registry_url);
+            self.common.create_client(&config).await?
+        };
+
+        // the client may resolve the registry to well-known on a different registry host,
+        // so replace the `registry_url` with that host
+        let registry_url = Some(client.url().to_string());
+
+        if changing_home_registry {
+            client.reset_namespaces().await?;
+            client.reset_registry().await?;
+        }
+
         let prompt = format!(
             "Enter auth token for registry: {registry}",
-            registry = registry_url.as_deref().unwrap()
+            registry = client.url().registry_domain(),
         );
 
         if config.keys.is_empty() {

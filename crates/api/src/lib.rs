@@ -5,6 +5,22 @@ pub mod v1;
 
 use serde::{de::Unexpected, Deserialize, Serialize};
 
+/// Relative URL path for the `WellKnownConfig`.
+pub const WELL_KNOWN_PATH: &str = ".well-known/wasm-pkg/registry.json";
+
+/// This config allows a domain to point to another URL where the registry
+/// API is hosted.
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WellKnownConfig {
+    /// For OCI registries, the domain name where the registry is hosted.
+    pub oci_registry: Option<String>,
+    /// For OCI registries, a name prefix to use before the namespace.
+    pub oci_namespace_prefix: Option<String>,
+    /// For Warg registries, the URL where the registry is hosted.
+    pub warg_url: Option<String>,
+}
+
 /// A utility type for serializing and deserializing constant status codes.
 struct Status<const CODE: u16>;
 
