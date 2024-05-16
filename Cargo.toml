@@ -63,7 +63,7 @@ keyring = ["warg-client/keyring"]
 members = ["crates/server"]
 
 [workspace.package]
-version = "0.7.0-dev"
+version = "0.7.0"
 authors = ["The Warg Registry Project Developers"]
 edition = "2021"
 rust-version = "1.76.0"
@@ -74,14 +74,14 @@ repository = "https://github.com/bytecodealliance/registry"
 [workspace.dependencies]
 dialoguer = "0.11.0"
 ptree = "0.4.0"
-warg-api = { path = "crates/api", version = "0.7.0-dev" }
-warg-credentials = { path = "crates/credentials", version = "0.7.0-dev" }
-warg-client = { path = "crates/client", version = "0.7.0-dev" }
-warg-crypto = { path = "crates/crypto", version = "0.7.0-dev" }
-warg-protobuf = { path = "proto", version = "0.7.0-dev" }
-warg-protocol = { path = "crates/protocol", version = "0.7.0-dev" }
-warg-transparency = { path = "crates/transparency", version = "0.7.0-dev" }
-warg-server = { path = "crates/server", version = "0.7.0-dev" }
+warg-api = { path = "crates/api", version = "0.7.0" }
+warg-credentials = { path = "crates/credentials", version = "0.7.0" }
+warg-client = { path = "crates/client", version = "0.7.0" }
+warg-crypto = { path = "crates/crypto", version = "0.7.0" }
+warg-protobuf = { path = "proto", version = "0.7.0" }
+warg-protocol = { path = "crates/protocol", version = "0.7.0" }
+warg-transparency = { path = "crates/transparency", version = "0.7.0" }
+warg-server = { path = "crates/server", version = "0.7.0" }
 clap = { version = "4.3.24", features = ["derive", "env"] }
 thiserror = "1.0.56"
 keyring = "2.3.3"
