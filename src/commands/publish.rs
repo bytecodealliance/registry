@@ -119,7 +119,7 @@ impl PublishInitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
 
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
@@ -190,7 +190,7 @@ impl PublishReleaseCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -291,7 +291,7 @@ Yank `{version}` of `{package}`?",
         }
 
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -369,7 +369,7 @@ impl PublishGrantCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -451,7 +451,7 @@ impl PublishRevokeCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let registry_domain = client.get_warg_registry(self.name.namespace()).await?;
         let signing_key = self.common.signing_key(registry_domain.as_ref()).await?;
 
@@ -520,7 +520,7 @@ impl PublishStartCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => bail!("a publish is already in progress for package `{name}`; use `publish abort` to abort the current publish", name = info.name),
@@ -554,7 +554,7 @@ impl PublishListCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -610,7 +610,7 @@ impl PublishAbortCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -642,7 +642,7 @@ impl PublishSubmitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
 
         match client.registry().load_publish().await? {
             Some(info) => {
@@ -720,7 +720,7 @@ impl PublishWaitCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
         let record_id = RecordId::from(self.record_id);
 
         println!(

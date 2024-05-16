@@ -17,7 +17,7 @@ pub mod support;
 async fn depsolve() -> Result<()> {
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
     let signing_key = support::test_signing_key();
 
     let mut head = publish_package(

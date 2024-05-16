@@ -12,20 +12,24 @@ use secrecy::{ExposeSecret, Secret};
 use serde::de::DeserializeOwned;
 use std::borrow::Cow;
 use thiserror::Error;
-use warg_api::v1::{
-    content::{ContentError, ContentSourcesResponse},
-    fetch::{
-        FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
-        FetchPackageNamesResponse,
+use warg_api::{
+    v1::{
+        content::{ContentError, ContentSourcesResponse},
+        fetch::{
+            FetchError, FetchLogsRequest, FetchLogsResponse, FetchPackageNamesRequest,
+            FetchPackageNamesResponse,
+        },
+        ledger::{LedgerError, LedgerSourcesResponse},
+        monitor::{CheckpointVerificationResponse, MonitorError},
+        package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
+        paths,
+        proof::{
+            ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse,
+            ProofError,
+        },
+        REGISTRY_HEADER_NAME, REGISTRY_HINT_HEADER_NAME,
     },
-    ledger::{LedgerError, LedgerSourcesResponse},
-    monitor::{CheckpointVerificationResponse, MonitorError},
-    package::{ContentSource, PackageError, PackageRecord, PublishRecordRequest},
-    paths,
-    proof::{
-        ConsistencyRequest, ConsistencyResponse, InclusionRequest, InclusionResponse, ProofError,
-    },
-    REGISTRY_HEADER_NAME, REGISTRY_HINT_HEADER_NAME,
+    WellKnownConfig, WELL_KNOWN_PATH,
 };
 use warg_crypto::hash::{AnyHash, HashError, Sha256};
 use warg_protocol::{
@@ -107,6 +111,9 @@ pub enum ClientError {
     /// The provided log was not found with hint header.
     #[error("log `{0}` was not found in this registry, but the registry provided the hint header: `{1:?}`")]
     LogNotFoundWithHint(LogId, HeaderValue),
+    /// Invalid well-known config.
+    #[error("server returned an invalid well-known config: `{0}`")]
+    InvalidWellKnownConfig(String),
     /// An other error occurred during the requested operation.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -216,6 +223,29 @@ impl Client {
     pub fn url(&self) -> &RegistryUrl {
         &self.url
     }
+    /// Gets the `.well-known` configuration registry URL.
+    pub async fn well_known_config(&self) -> Result<Option<RegistryUrl>, ClientError> {
+        let url = self.url.join(WELL_KNOWN_PATH);
+        tracing::debug!(url, "getting `.well-known` config",);
+
+        let res = self.client.get(url).send().await?;
+
+        if res.status().is_success() {
+            if let Some(warg_url) = res
+                .json::<WellKnownConfig>()
+                .await
+                .map_err(|e| ClientError::InvalidWellKnownConfig(e.to_string()))?
+                .warg_url
+            {
+                Ok(Some(RegistryUrl::new(warg_url)?))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Gets the latest checkpoint from the registry.
     pub async fn latest_checkpoint(
         &self,

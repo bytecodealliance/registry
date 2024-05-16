@@ -95,7 +95,7 @@ async fn it_works_with_postgres() -> TestResult {
     fs::remove_dir_all(root.join("content"))?;
     fs::remove_dir_all(root.join("registries"))?;
 
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
     client.fetch_packages(packages.iter()).await?;
 
     // Finally, after a restart, ensure the packages can be downloaded

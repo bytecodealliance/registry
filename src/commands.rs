@@ -66,9 +66,11 @@ impl CommonOptions {
     }
 
     /// Creates the warg client to use.
-    pub fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
+    pub async fn create_client(&self, config: &Config) -> Result<FileSystemClient, ClientError> {
         let client =
-            match FileSystemClient::try_new_with_config(self.registry.as_deref(), config, None)? {
+            match FileSystemClient::try_new_with_config(self.registry.as_deref(), config, None)
+                .await?
+            {
                 StorageLockResult::Acquired(client) => Ok(client),
                 StorageLockResult::NotAcquired(path) => {
                     println!(
@@ -76,7 +78,7 @@ impl CommonOptions {
                         path = path.display()
                     );
 
-                    FileSystemClient::new_with_config(self.registry.as_deref(), config, None)
+                    FileSystemClient::new_with_config(self.registry.as_deref(), config, None).await
                 }
             }?;
         Ok(client)

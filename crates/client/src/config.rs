@@ -300,13 +300,8 @@ impl Config {
 
     pub(crate) fn storage_paths_for_url(
         &self,
-        url: Option<&str>,
+        registry_url: RegistryUrl,
     ) -> Result<StoragePaths, ClientError> {
-        let registry_url = RegistryUrl::new(
-            url.or(self.home_url.as_deref())
-                .ok_or(ClientError::NoHomeRegistryUrl)?,
-        )?;
-
         let label = registry_url.safe_label();
         let registries_dir = self.registries_dir()?.join(label);
         let content_dir = self.content_dir()?;

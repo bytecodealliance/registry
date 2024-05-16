@@ -28,7 +28,7 @@ impl DownloadCommand {
     /// Executes the command.
     pub async fn exec(self) -> Result<()> {
         let config = self.common.read_config()?;
-        let client = self.common.create_client(&config)?;
+        let client = self.common.create_client(&config).await?;
 
         println!("Downloading `{name}`...", name = self.name);
 

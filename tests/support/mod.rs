@@ -43,8 +43,8 @@ pub fn test_signing_key() -> PrivateKey {
     PrivateKey::decode(key.to_string()).unwrap()
 }
 
-pub fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
-    match FileSystemClient::try_new_with_config(None, config, None)? {
+pub async fn create_client(config: &warg_client::Config) -> Result<FileSystemClient> {
+    match FileSystemClient::try_new_with_config(None, config, None).await? {
         StorageLockResult::Acquired(client) => Ok(client),
         _ => bail!("failed to acquire storage lock"),
     }

@@ -9,8 +9,8 @@ use warg_protocol::registry::PackageName;
 
 pub mod support;
 
-fn create_client(config: &Config) -> Result<FileSystemClient> {
-    match FileSystemClient::try_new_with_config(None, config, None)? {
+async fn create_client(config: &Config) -> Result<FileSystemClient> {
+    match FileSystemClient::try_new_with_config(None, config, None).await? {
         StorageLockResult::Acquired(client) => Ok(client),
         _ => bail!("failed to acquire storage lock"),
     }
@@ -23,7 +23,7 @@ async fn client_incrementally_fetches() -> Result<()> {
 
     let (_server, config) = spawn_server(&root().await?, None, None, None).await?;
 
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
     let signing_key = support::test_signing_key();
 
     // Store a single component that will be used for every release
@@ -83,7 +83,7 @@ async fn client_incrementally_fetches() -> Result<()> {
         .context("failed to remove registries directory")?;
 
     // Recreate the client with the same config
-    let client = create_client(&config)?;
+    let client = create_client(&config).await?;
 
     // Regression test: update on empty registry storage
     client.update().await?;

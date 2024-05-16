@@ -139,7 +139,7 @@ impl ConfigCommand {
 
         // reset when changing home registry
         if changing_home_registry {
-            let client = self.common.create_client(&config)?;
+            let client = self.common.create_client(&config).await?;
             client.reset_namespaces().await?;
             client.reset_registry().await?;
         }

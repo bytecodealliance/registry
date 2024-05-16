@@ -71,7 +71,7 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,
@@ -118,7 +118,7 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
 
     // Publish release
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     publish(
         &client,
@@ -157,7 +157,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     let digest = publish_wit(
         &client,
@@ -205,7 +205,7 @@ async fn test_wasm_content_policy(config: &Config) -> Result<()> {
     // Publish empty content to the server
     // This should be rejected by policy because it is not valid WebAssembly
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     match publish(
         &client,
@@ -263,7 +263,7 @@ async fn test_unauthorized_signing_key(config: &Config) -> Result<()> {
 
     // Start by publishing a new component package
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
@@ -299,7 +299,7 @@ async fn test_unknown_signing_key(config: &Config) -> Result<()> {
 
     // Start by publishing a new component package
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     publish_component(
         &client,
@@ -391,7 +391,7 @@ async fn test_custom_content_url(config: &Config) -> Result<()> {
     const PACKAGE_VERSION: &str = "0.1.0";
 
     let name = PackageName::new(PACKAGE_NAME)?;
-    let client = create_client(config)?;
+    let client = create_client(config).await?;
     let signing_key = test_signing_key();
     let digest = publish_component(
         &client,

@@ -39,7 +39,7 @@ impl LogoutCommand {
         }
         println!(
             "Logged out of registry: {registry}",
-            registry = registry_url_str
+            registry = registry_url.registry_domain(),
         );
         Ok(())
     }
