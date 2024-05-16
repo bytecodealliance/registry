@@ -230,20 +230,23 @@ impl Client {
 
         let res = self.client.get(url).send().await?;
 
-        if res.status().is_success() {
-            if let Some(warg_url) = res
-                .json::<WellKnownConfig>()
-                .await
-                .map_err(|_| {
-                    ClientError::InvalidWellKnownConfig(self.url.registry_domain().to_string())
-                })?
-                .warg_url
-            {
-                Ok(Some(RegistryUrl::new(warg_url)?))
-            } else {
-                Ok(None)
-            }
+        if !res.status().is_success() {
+            tracing::debug!("the `.well-known` config was not found");
+            return Ok(None);
+        }
+
+        if let Some(warg_url) = res
+            .json::<WellKnownConfig>()
+            .await
+            .map_err(|e| {
+                tracing::debug!("parsing `.well-known` config failed: {e}");
+                ClientError::InvalidWellKnownConfig(self.url.registry_domain().to_string())
+            })?
+            .warg_url
+        {
+            Ok(Some(RegistryUrl::new(warg_url)?))
         } else {
+            tracing::debug!("the `.well-known` config did not have a `wargUrl` set");
             Ok(None)
         }
     }
