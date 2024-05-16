@@ -231,7 +231,7 @@ impl Client {
         let res = self.client.get(url).send().await?;
 
         if !res.status().is_success() {
-            tracing::debug!("the `.well-known` config was not found");
+            tracing::debug!("the `.well-known` config request returned HTTP status `{status}`", status = res.status());
             return Ok(None);
         }
 
