@@ -1,0 +1,103 @@
+name: "Publish binaries"
+
+on:
+  push:
+    branches: ["main"]
+    tags:
+      - "v*"
+    
+jobs:
+  bump_dev_release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'bytecodealliance/registry'
+    name: Create dev release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Login GH CLI
+        run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
+      - name: Delete old dev release
+        run: gh release delete -R bytecodealliance/registry dev -y || true
+      - name: Create new latest release
+        run: gh release create -R bytecodealliance/registry dev --prerelease --notes "Published artifacts from the latest build"
+
+  publish_dev_release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'bytecodealliance/registry'
+    name: Publish to dev release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - rust-target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - rust-target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - rust-target: x86_64-apple-darwin
+            os: macos-latest
+          - rust-target: aarch64-apple-darwin
+            os: macos-latest
+          - rust-target: x86_64-pc-windows-gnu
+            os: windows-latest
+
+    needs:
+      - bump_dev_release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.rust-target }}
+      - run: cargo build --release --target ${{ matrix.rust-target }}
+        if: ${{ ! matrix.cross }}
+      - run: cargo install cross
+        if: ${{ matrix.cross }}
+      - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
+        if: ${{ matrix.cross }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+        if: matrix.os == 'windows-latest'
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+        if: matrix.os != 'windows-latest'
+      - name: Login GH CLI
+        shell: bash
+        run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
+      - run: gh release upload -R bytecodealliance/registry --clobber dev target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+
+  publish_tagged_release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'bytecodealliance/registry'
+    name: Publish to tagged release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - rust-target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - rust-target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - rust-target: x86_64-apple-darwin
+            os: macos-latest
+          - rust-target: aarch64-apple-darwin
+            os: macos-latest
+          - rust-target: x86_64-pc-windows-gnu
+            os: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.rust-target }}
+      - run: cargo build --release --target ${{ matrix.rust-target }}
+        if: ${{ ! matrix.cross }}
+      - run: cargo install cross
+        if: ${{ matrix.cross }}
+      - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
+        if: ${{ matrix.cross }}
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+        if: matrix.os == 'windows-latest'
+      - run: mv ./target/${{ matrix.rust-target }}/release/warg ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
+        if: matrix.os != 'windows-latest'
+      - name: Login GH CLI
+        shell: bash
+        run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
+      - run: gh release upload -R bytecodealliance/registry --clobber ${{ github.ref_name }} target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
