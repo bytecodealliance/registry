@@ -168,7 +168,7 @@ impl std::fmt::Display for KeyringError {
                         "implementation, such as GNOME Keyring or KWallet, is installed, ",
                         "or one is installed but not correctly configured. Consult your OS ",
                         "distribution's documentation for instructions on setting it up, or run ",
-                        "`warg config --keyring_backend <backend>` to use a different backend.")
+                        "`warg config --keyring-backend <backend>` to use a different backend.")
                     )?;
                 }
 
