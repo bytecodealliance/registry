@@ -18,6 +18,7 @@ pub struct LoginCommand {
 
     /// The URL of the registry to use.
     #[clap(value_name = "URL")]
+    #[arg(hide = true)]
     pub registry_url: Option<String>,
 
     /// Ignore federation hints.
