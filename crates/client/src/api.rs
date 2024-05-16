@@ -112,7 +112,7 @@ pub enum ClientError {
     #[error("log `{0}` was not found in this registry, but the registry provided the hint header: `{1:?}`")]
     LogNotFoundWithHint(LogId, HeaderValue),
     /// Invalid well-known config.
-    #[error("server returned an invalid well-known config: `{0}`")]
+    #[error("registry `{0}` returned an invalid well-known config")]
     InvalidWellKnownConfig(String),
     /// An other error occurred during the requested operation.
     #[error(transparent)]
@@ -234,7 +234,9 @@ impl Client {
             if let Some(warg_url) = res
                 .json::<WellKnownConfig>()
                 .await
-                .map_err(|e| ClientError::InvalidWellKnownConfig(e.to_string()))?
+                .map_err(|_| {
+                    ClientError::InvalidWellKnownConfig(self.url.registry_domain().to_string())
+                })?
                 .warg_url
             {
                 Ok(Some(RegistryUrl::new(warg_url)?))

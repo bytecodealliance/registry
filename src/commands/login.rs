@@ -16,6 +16,10 @@ pub struct LoginCommand {
     #[clap(flatten)]
     pub common: CommonOptions,
 
+    /// The URL of the registry to use.
+    #[clap(value_name = "URL")]
+    pub registry_url: Option<String>,
+
     /// Ignore federation hints.
     #[clap(long)]
     pub ignore_federation_hints: bool,
@@ -31,7 +35,13 @@ pub struct LoginCommand {
 
 impl LoginCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(mut self) -> Result<()> {
+        if self.registry_url.is_some() {
+            if self.common.registry.is_some() {
+                bail!("Registry URL provided in two different arguments. Use only one.");
+            }
+            self.common.registry = self.registry_url;
+        }
         let mut config = self.common.read_config()?;
         let mut registry_url = &self
             .common

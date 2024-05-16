@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Args;
 use warg_client::{keyring::Keyring, Config, RegistryUrl};
 
@@ -10,11 +10,21 @@ pub struct LogoutCommand {
     /// The common command options.
     #[clap(flatten)]
     pub common: CommonOptions,
+
+    /// The URL of the registry to use.
+    #[clap(value_name = "URL")]
+    pub registry_url: Option<String>,
 }
 
 impl LogoutCommand {
     /// Executes the command.
-    pub async fn exec(self) -> Result<()> {
+    pub async fn exec(mut self) -> Result<()> {
+        if self.registry_url.is_some() {
+            if self.common.registry.is_some() {
+                bail!("Registry URL provided in two different arguments. Use only one.");
+            }
+            self.common.registry = self.registry_url;
+        }
         let mut config = self.common.read_config()?;
         let registry_url = &self
             .common
