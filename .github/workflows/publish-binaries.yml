@@ -52,7 +52,7 @@ jobs:
         if: ${{ ! matrix.cross }}
       - run: cargo install cross
         if: ${{ matrix.cross }}
-      - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
+      - run: cross build --release --target ${{ matrix.rust-target }}
         if: ${{ matrix.cross }}
       - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os == 'windows-latest'
@@ -91,7 +91,7 @@ jobs:
         if: ${{ ! matrix.cross }}
       - run: cargo install cross
         if: ${{ matrix.cross }}
-      - run: cross build --release --target ${{ matrix.rust-target }} --features native-tls-vendored
+      - run: cross build --release --target ${{ matrix.rust-target }}
         if: ${{ matrix.cross }}
       - run: mv ./target/${{ matrix.rust-target }}/release/warg.exe ./target/${{ matrix.rust-target }}/release/warg-cli-${{ matrix.rust-target }}
         if: matrix.os == 'windows-latest'
