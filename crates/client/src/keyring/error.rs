@@ -163,12 +163,12 @@ impl std::fmt::Display for KeyringError {
                 {
                     write!(
                         f,
-                        concat!(" Since you are using the 'secret-service' backend, ",
-                        "the likely cause of this error is that no secret service ",
-                        "implementation, such as GNOME Keyring or KWallet, is installed, ",
-                        "or one is installed but not correctly configured. Consult your OS ",
-                        "distribution's documentation for instructions on setting it up, or run ",
-                        "`warg config --keyring_backend <backend>` to use a different backend.")
+                        "\nThe 'secret-service' keyring backend failed.
+You may not have a secret service, such as GNOME Keyring or KWallet, installed or configured.
+Consult your OS distribution's documentation for installation instructions.
+
+Alternatively, use `warg config --keyring-backend <backend>` to set a different keyring backend.
+See `warg config --help` for the options."
                     )?;
                 }
 
