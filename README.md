@@ -8,7 +8,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/bytecodealliance/registry/actions?query=workflow%3ACI"><img src="https://github.com/bytecodealliance/registry/workflows/Rust/badge.svg" alt="build status" /></a>
+    <a href="https://github.com/bytecodealliance/registry/actions/workflows/main.yml"><img src="https://github.com/bytecodealliance/registry/actions/workflows/main.yml/badge.svg" alt="build status" /></a>
     <a href="https://crates.io/crates/warg-cli"><img src="https://img.shields.io/crates/v/warg-cli.svg?style=flat-square" alt="Crates.io version" /></a>
     <a href="https://crates.io/crates/warg-cli"><img src="https://img.shields.io/crates/d/warg-cli.svg?style=flat-square" alt="Download" /></a>
     <a href="https://docs.rs/warg-client/latest/warg_client/"><img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square" alt="docs.rs docs" /></a>
