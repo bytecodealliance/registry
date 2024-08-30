@@ -13,6 +13,7 @@ repository = { workspace = true}
 default = ["cli-interactive", "keyring", "rustls-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
 cli-interactive = ["dep:dialoguer"]
 keyring = ["dep:keyring"]
 

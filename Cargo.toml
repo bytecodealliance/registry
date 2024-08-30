@@ -60,6 +60,7 @@ cli-interactive = ["warg-client/cli-interactive"]
 keyring = ["warg-client/keyring"]
 native-tls-vendored = ["warg-client/native-tls-vendored"]
 rustls-tls = ["warg-client/rustls-tls"]
+native-tls = ["warg-client/native-tls"]
 
 [workspace]
 members = ["crates/server"]
@@ -95,7 +96,7 @@ tokio-util = "0.7.10"
 serde_with = { version = "3.6.0", features = ["base64"] }
 indexmap = { version = "2.2.4", features = ["serde"] }
 tempfile = "3.10.0"
-reqwest = { version = "0.12.4", features = ["json", "stream", "socks"] }
+reqwest = { version = "0.12.7", default-features = false, features = ["charset", "http2", "macos-system-configuration", "json", "stream", "socks"] }
 futures-util = "0.3.30"
 async-trait = "0.1.77"
 bytes = "1.5.0"
