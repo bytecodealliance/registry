@@ -54,11 +54,12 @@ wit-parser = "0.13.1"
 testresult = "0.3.0"
 
 [features]
-default = ["cli-interactive", "keyring"]
+default = ["cli-interactive", "keyring", "rustls-tls"]
 postgres = ["warg-server/postgres"]
 cli-interactive = ["warg-client/cli-interactive"]
 keyring = ["warg-client/keyring"]
 native-tls-vendored = ["warg-client/native-tls-vendored"]
+rustls-tls = ["warg-client/rustls-tls"]
 
 [workspace]
 members = ["crates/server"]

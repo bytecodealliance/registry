@@ -10,8 +10,9 @@ homepage = { workspace = true }
 repository = { workspace = true}
 
 [features]
-default = ["cli-interactive", "keyring"]
+default = ["cli-interactive", "keyring", "rustls-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
+rustls-tls = ["reqwest/rustls-tls"]
 cli-interactive = ["dep:dialoguer"]
 keyring = ["dep:keyring"]
 
