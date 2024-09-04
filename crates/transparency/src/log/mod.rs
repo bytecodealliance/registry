@@ -6,6 +6,7 @@
 //!
 //! Implementations:
 //! * [`InOrderLog`] -
+//!
 //! The only implementation in this module is ,
 //! which is a [`VerifiableLog`] whose contents are structured
 //! using binary in-order interval numbering as described in
