@@ -25,9 +25,14 @@ pub struct LoginCommand {
     #[clap(long)]
     pub ignore_federation_hints: bool,
 
-    /// Auto accept federation hints.
+    /// Disable auto accept federation hints.
     #[clap(long)]
-    pub auto_accept_federation_hints: bool,
+    pub disable_auto_accept_federation_hints: bool,
+
+    /// Automatically attempt package initialize if does not exist
+    /// or ask the user to confirm first.
+    #[clap(long)]
+    pub disable_auto_package_init: bool,
 
     /// The backend to use for keyring access
     #[clap(long, value_name = "KEYRING_BACKEND", value_parser = keyring_backend_parser, long_help = keyring_backend_help())]
@@ -52,7 +57,8 @@ impl LoginCommand {
             .transpose()?
             .map(|u| u.to_string());
         config.ignore_federation_hints = self.ignore_federation_hints;
-        config.auto_accept_federation_hints = self.auto_accept_federation_hints;
+        config.disable_auto_accept_federation_hints = self.disable_auto_accept_federation_hints;
+        config.disable_auto_package_init = self.disable_auto_package_init;
 
         // set keyring backend, if specified
         if self.keyring_backend.is_some() {

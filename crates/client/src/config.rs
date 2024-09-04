@@ -121,12 +121,12 @@ pub struct Config {
 
     /// Auto accept registry hint or ask the user to confirm
     #[serde(default)]
-    pub auto_accept_federation_hints: bool,
+    pub disable_auto_accept_federation_hints: bool,
 
     /// Automatically attempt package initialize if does not exist
     /// or ask the user to confirm first
     #[serde(default)]
-    pub auto_package_init: bool,
+    pub disable_auto_package_init: bool,
 
     /// Disable interactive prompts.
     #[serde(default)]
@@ -214,8 +214,8 @@ impl Config {
             keys: self.keys.clone(),
             keyring_auth: self.keyring_auth,
             ignore_federation_hints: self.ignore_federation_hints,
-            auto_accept_federation_hints: self.auto_accept_federation_hints,
-            auto_package_init: self.auto_package_init,
+            disable_auto_accept_federation_hints: self.disable_auto_accept_federation_hints,
+            disable_auto_package_init: self.disable_auto_package_init,
             disable_interactive: self.disable_interactive,
             keyring_backend: self.keyring_backend.clone(),
         };
