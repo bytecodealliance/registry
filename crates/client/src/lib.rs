@@ -73,7 +73,8 @@ where
     namespace_map: N,
     api: api::Client,
     ignore_federation_hints: bool,
-    auto_accept_federation_hints: bool,
+    disable_auto_accept_federation_hints: bool,
+    disable_auto_package_init: bool,
     disable_interactive: bool,
     keyring_backend: Option<String>,
     keys: IndexSet<String>,
@@ -90,7 +91,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         namespace_map: N,
         auth_token: Option<Secret<String>>,
         ignore_federation_hints: bool,
-        auto_accept_federation_hints: bool,
+        disable_auto_accept_federation_hints: bool,
+        disable_auto_package_init: bool,
         disable_interactive: bool,
         keyring_backend: Option<String>,
         keys: IndexSet<String>,
@@ -102,7 +104,8 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             namespace_map,
             api,
             ignore_federation_hints,
-            auto_accept_federation_hints,
+            disable_auto_accept_federation_hints,
+            disable_auto_package_init,
             disable_interactive,
             keyring_backend,
             keys,
@@ -419,38 +422,44 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     has_auth_token,
                 }) => {
                     if !initializing {
-                        if self.disable_interactive || cfg!(not(feature = "cli-interactive")) {
-                            return Err(ClientError::MustInitializePackage {
-                                name,
-                                has_auth_token,
-                            });
-                        }
-
-                        #[cfg(feature = "cli-interactive")]
-                        {
-                            use crate::storage::PublishEntry;
-                            use dialoguer::{theme::ColorfulTheme, Confirm};
-
-                            if accepted_prompt_to_initialize
-                                || Confirm::with_theme(&ColorfulTheme::default())
-                                    .with_prompt(format!(
-                                        "Package `{package_name}` was not found.
-If it exists, you may not have access.
-Attempt to create `{package_name}` and publish the release y/N\n",
-                                        package_name = &info.name,
-                                    ))
-                                    .default(false)
-                                    .interact()
-                                    .unwrap()
-                            {
-                                info.entries.insert(0, PublishEntry::Init);
-                                initializing = true;
-                                accepted_prompt_to_initialize = true;
-                            } else {
+                        if !self.disable_auto_package_init {
+                            info.entries.insert(0, crate::storage::PublishEntry::Init);
+                            initializing = true;
+                            accepted_prompt_to_initialize = true;
+                        } else {
+                            if self.disable_interactive || cfg!(not(feature = "cli-interactive")) {
                                 return Err(ClientError::MustInitializePackage {
                                     name,
                                     has_auth_token,
                                 });
+                            }
+
+                            #[cfg(feature = "cli-interactive")]
+                            {
+                                use crate::storage::PublishEntry;
+                                use dialoguer::{theme::ColorfulTheme, Confirm};
+
+                                if accepted_prompt_to_initialize
+                                    || Confirm::with_theme(&ColorfulTheme::default())
+                                        .with_prompt(format!(
+                                            "Package `{package_name}` was not found.
+    If it exists, you may not have access.
+    Attempt to create `{package_name}` and publish the release y/N\n",
+                                            package_name = &info.name,
+                                        ))
+                                        .default(false)
+                                        .interact()
+                                        .unwrap()
+                                {
+                                    info.entries.insert(0, PublishEntry::Init);
+                                    initializing = true;
+                                    accepted_prompt_to_initialize = true;
+                                } else {
+                                    return Err(ClientError::MustInitializePackage {
+                                        name,
+                                        has_auth_token,
+                                    });
+                                }
                             }
                         }
                     }
@@ -936,7 +945,7 @@ Attempt to create `{package_name}` and publish the release y/N\n",
 
                                 let package_name = &packages.get(log_id).unwrap().name;
 
-                                if self.auto_accept_federation_hints
+                                if !self.disable_auto_accept_federation_hints
                                     || Confirm::with_theme(&ColorfulTheme::default())
                                         .with_prompt(format!(
 "Package `{package_name}` is not in `{current_registry}` registry.
@@ -1446,7 +1455,8 @@ impl FileSystemClient {
             namespace_map,
             auth_token,
             config.ignore_federation_hints,
-            config.auto_accept_federation_hints,
+            config.disable_auto_accept_federation_hints,
+            config.disable_auto_package_init,
             disable_interactive,
             keyring_backend,
             keys,
@@ -1510,7 +1520,8 @@ impl FileSystemClient {
             FileSystemNamespaceMapStorage::new(namespace_map_path),
             auth_token,
             config.ignore_federation_hints,
-            config.auto_accept_federation_hints,
+            config.disable_auto_accept_federation_hints,
+            config.disable_auto_package_init,
             disable_interactive,
             keyring_backend,
             keys,

@@ -23,9 +23,14 @@ pub struct ConfigCommand {
     #[clap(long)]
     pub ignore_federation_hints: Option<bool>,
 
-    /// Auto accept federation hints.
+    /// Disable auto accept federation hints.
     #[clap(long)]
-    pub auto_accept_federation_hints: Option<bool>,
+    pub disable_auto_accept_federation_hints: Option<bool>,
+
+    /// Automatically attempt package initialize if does not exist
+    /// or ask the user to confirm first.
+    #[clap(long)]
+    pub disable_auto_package_init: Option<bool>,
 
     /// Overwrite the existing configuration file.
     #[clap(long)]
@@ -86,7 +91,10 @@ impl ConfigCommand {
                 keys: self.common.read_config()?.keys,
                 keyring_auth: false,
                 ignore_federation_hints: self.ignore_federation_hints.unwrap_or_default(),
-                auto_accept_federation_hints: self.auto_accept_federation_hints.unwrap_or_default(),
+                disable_auto_accept_federation_hints: self
+                    .disable_auto_accept_federation_hints
+                    .unwrap_or_default(),
+                disable_auto_package_init: self.disable_auto_package_init.unwrap_or_default(),
                 disable_interactive: false,
                 keyring_backend: self.keyring_backend,
             }
@@ -120,8 +128,13 @@ impl ConfigCommand {
             if let Some(ignore_federation_hints) = self.ignore_federation_hints {
                 config.ignore_federation_hints = ignore_federation_hints;
             }
-            if let Some(auto_accept_federation_hints) = self.auto_accept_federation_hints {
-                config.auto_accept_federation_hints = auto_accept_federation_hints;
+            if let Some(disable_auto_accept_federation_hints) =
+                self.disable_auto_accept_federation_hints
+            {
+                config.disable_auto_accept_federation_hints = disable_auto_accept_federation_hints;
+            }
+            if let Some(disable_auto_package_init) = self.disable_auto_package_init {
+                config.disable_auto_package_init = disable_auto_package_init;
             }
             if self.keyring_backend.is_some() {
                 config.keyring_backend = self.keyring_backend;
