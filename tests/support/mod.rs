@@ -169,6 +169,7 @@ pub async fn spawn_server(
         keyring_auth: false,
         ignore_federation_hints: false,
         auto_accept_federation_hints: false,
+        auto_package_init: false,
         disable_interactive: true,
         keyring_backend: None,
     };

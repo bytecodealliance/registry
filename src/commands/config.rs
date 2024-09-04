@@ -27,6 +27,11 @@ pub struct ConfigCommand {
     #[clap(long)]
     pub auto_accept_federation_hints: Option<bool>,
 
+    /// Automatically attempt package initialize if does not exist
+    /// or ask the user to confirm first.
+    #[clap(long)]
+    pub auto_package_init: Option<bool>,
+
     /// Overwrite the existing configuration file.
     #[clap(long)]
     pub overwrite: bool,
@@ -86,7 +91,8 @@ impl ConfigCommand {
                 keys: self.common.read_config()?.keys,
                 keyring_auth: false,
                 ignore_federation_hints: self.ignore_federation_hints.unwrap_or_default(),
-                auto_accept_federation_hints: self.auto_accept_federation_hints.unwrap_or_default(),
+                auto_accept_federation_hints: self.auto_accept_federation_hints.unwrap_or(true),
+                auto_package_init: self.auto_package_init.unwrap_or(true),
                 disable_interactive: false,
                 keyring_backend: self.keyring_backend,
             }
