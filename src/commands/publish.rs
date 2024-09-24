@@ -1,3 +1,5 @@
+use crate::progress::ProgressStream;
+
 use super::CommonOptions;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Subcommand};
@@ -197,14 +199,19 @@ impl PublishReleaseCommand {
         let path = self.path.clone();
         let version = self.version.clone();
         match enqueue(&client, &self.name, move |c| async move {
+            let file = tokio::fs::File::open(&path)
+                .await
+                .with_context(|| format!("failed to open `{path}`", path = path.display()))?;
+            let file_len = file.metadata().await?.len();
+            let reader = BufReader::new(file);
             let content = c
                 .content()
                 .store_content(
                     Box::pin(
-                        ReaderStream::new(BufReader::new(
-                            tokio::fs::File::open(&path).await.with_context(|| {
-                                format!("failed to open `{path}`", path = path.display())
-                            })?,
+                        ReaderStream::new(ProgressStream::new(
+                            reader,
+                            file_len,
+                            format!("uploading {path:?}.."),
                         ))
                         .map_err(|e| anyhow!(e)),
                     ),
