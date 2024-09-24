@@ -1,3 +1,5 @@
+use crate::progress::make_progress_handler;
+
 use super::CommonOptions;
 use anyhow::Result;
 use clap::Args;
@@ -30,8 +32,6 @@ impl DownloadCommand {
         let config = self.common.read_config()?;
         let client = self.common.create_client(&config).await?;
 
-        println!("Downloading `{name}`...", name = self.name);
-
         // if user specifies exact verion, then set the `VersionReq` to exact match
         let version = match &self.version {
             Some(version) => VersionReq::parse(&format!("={}", version))?,
@@ -39,7 +39,11 @@ impl DownloadCommand {
         };
 
         let download = client
-            .download(&self.name, &version)
+            .download(
+                &self.name,
+                &version,
+                make_progress_handler(format!("Downloading `{name}`...", name = self.name)),
+            )
             .await?
             .ok_or_else(|| ClientError::PackageVersionRequirementDoesNotExist {
                 name: self.name.clone(),

@@ -655,6 +655,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
         &self,
         package: &PackageName,
         requirement: &VersionReq,
+        with_progress: impl FnMut(u64, u64) + Send + Sync + 'static,
     ) -> Result<Option<PackageDownload>, ClientError> {
         let info = self.package(package).await?;
 
@@ -674,7 +675,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                     .context("invalid state: not yanked but missing content")?
                     .clone();
                 let path = self
-                    .download_content(registry_domain.as_ref(), &digest)
+                    .download_content(registry_domain.as_ref(), &digest, with_progress)
                     .await?;
                 Ok(Some(PackageDownload {
                     version: release.version.clone(),
@@ -776,7 +777,7 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
             version: version.clone(),
             digest: digest.clone(),
             path: self
-                .download_content(registry_domain.as_ref(), digest)
+                .download_content(registry_domain.as_ref(), digest, |_, _| ())
                 .await?,
         })
     }
@@ -1310,6 +1311,7 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
         &self,
         registry_domain: Option<&RegistryDomain>,
         digest: &AnyHash,
+        with_progress: impl FnMut(u64, u64) + Send + Sync + 'static,
     ) -> Result<PathBuf, ClientError> {
         match self.content.content_location(digest) {
             Some(path) => {
@@ -1319,7 +1321,11 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
             None => {
                 self.content
                     .store_content(
-                        Box::pin(self.api.download_content(registry_domain, digest).await?),
+                        Box::pin(
+                            self.api
+                                .download_content(registry_domain, digest, with_progress)
+                                .await?,
+                        ),
                         Some(digest),
                     )
                     .await?;
@@ -1352,7 +1358,9 @@ current_registry = registry_domain.map(|d| d.as_str()).unwrap_or(&self.url().saf
                 Ok(ReaderStream::new(file).map_err(Into::into).boxed())
             }
             None => Ok(Box::pin(
-                self.api.download_content(registry_domain, digest).await?,
+                self.api
+                    .download_content(registry_domain, digest, |_, _| ())
+                    .await?,
             )),
         }
     }

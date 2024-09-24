@@ -1,3 +1,5 @@
+use crate::progress::make_progress_handler;
+
 use super::CommonOptions;
 use anyhow::{bail, Result};
 use async_recursion::async_recursion;
@@ -47,9 +49,14 @@ impl DependenciesCommand {
         node: &mut TreeBuilder,
         parser: &mut DepsParser,
     ) -> Result<()> {
-        client.download(id, &version).await?;
-
-        if let Some(download) = client.download(id, &version).await? {
+        if let Some(download) = client
+            .download(
+                id,
+                &version,
+                make_progress_handler(format!("Downloading `{id}`")),
+            )
+            .await?
+        {
             let bytes = fs::read(download.path)?;
             let deps = parser.parse(&bytes)?;
             for dep in deps {
@@ -77,7 +84,11 @@ impl DependenciesCommand {
     async fn print_package_info(client: &FileSystemClient, info: &PackageInfo) -> Result<()> {
         let mut parser = DepsParser::new();
 
-        if let Some(download) = client.download(&info.name, &Default::default()).await? {
+        let progress = |_inc, _total| {};
+        if let Some(download) = client
+            .download(&info.name, &Default::default(), progress)
+            .await?
+        {
             let mut tree = new_tree(info.name.namespace(), info.name.name(), &download.version);
             let bytes = fs::read(&download.path)?;
             let deps = parser.parse(&bytes)?;

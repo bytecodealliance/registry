@@ -457,6 +457,7 @@ impl Client {
         &self,
         registry_domain: Option<&RegistryDomain>,
         digest: &AnyHash,
+        mut with_progress: impl FnMut(u64, u64) + Send + Sync + 'static,
     ) -> Result<impl Stream<Item = Result<Bytes>>, ClientError> {
         let ContentSourcesResponse { content_sources } =
             self.content_sources(registry_domain, digest).await?;
@@ -479,10 +480,16 @@ impl Client {
                 continue;
             }
 
-            return Ok(validate_stream(
-                digest,
-                response.bytes_stream().map_err(|e| anyhow!(e)),
-            ));
+            let total_bytes = response.content_length().unwrap_or(0);
+            let stream = response
+                .bytes_stream()
+                .map_err(|e| anyhow!(e))
+                .inspect(move |r| {
+                    if let Ok(b) = r {
+                        with_progress(b.len() as u64, total_bytes);
+                    }
+                });
+            return Ok(validate_stream(digest, stream));
         }
 
         Err(ClientError::AllSourcesFailed(digest.clone()))

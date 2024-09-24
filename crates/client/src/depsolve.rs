@@ -120,7 +120,7 @@ impl LockListBuilder {
                         }
                         self.lock_list.insert(import);
                     } else {
-                        client.download(&id, &VersionReq::STAR).await?;
+                        client.download(&id, &VersionReq::STAR, |_, _| ()).await?;
                         if let Some(info) = client
                             .registry()
                             .load_package(
