@@ -42,6 +42,7 @@ wasmprinter = "0.2.78"
 dialoguer = { workspace = true }
 itertools = "0.12.1"
 secrecy = { workspace = true }
+indicatif = "0.17.8"
 
 [dev-dependencies]
 reqwest = { workspace = true }
