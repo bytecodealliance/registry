@@ -84,7 +84,7 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     .await?;
 
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(&name, &PACKAGE_VERSION.parse()?, |_, _| ())
         .await?
         .context("failed to resolve package")?;
 
@@ -107,7 +107,7 @@ async fn test_component_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client.download(&name, &"0.2.0".parse()?,  |_, _| ()).await?.is_none());
 
     Ok(())
 }
@@ -147,7 +147,7 @@ async fn test_package_yanking(config: &Config) -> Result<()> {
         .wait_for_publish(&name, &record_id, Duration::from_millis(100))
         .await?;
 
-    let opt = client.download(&name, &PACKAGE_VERSION.parse()?).await?;
+    let opt = client.download(&name, &PACKAGE_VERSION.parse()?,  |_, _| ()).await?;
     assert!(opt.is_none(), "expected no download, got {opt:?}");
     Ok(())
 }
@@ -170,7 +170,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     .await?;
 
     let download = client
-        .download(&name, &PACKAGE_VERSION.parse()?)
+        .download(&name, &PACKAGE_VERSION.parse()?,  |_, _| ())
         .await?
         .context("failed to resolve package")?;
 
@@ -193,7 +193,7 @@ async fn test_wit_publishing(config: &Config) -> Result<()> {
     }
 
     // Assert that a different version can't be downloaded
-    assert!(client.download(&name, &"0.2.0".parse()?).await?.is_none());
+    assert!(client.download(&name, &"0.2.0".parse()?,  |_, _| ()).await?.is_none());
 
     Ok(())
 }
