@@ -2,6 +2,7 @@
 
 use crate::{ClientError, RegistryUrl};
 use anyhow::{anyhow, Context, Result};
+use etcetera::BaseStrategy;
 use indexmap::IndexSet;
 use normpath::PathExt;
 use once_cell::sync::Lazy;
@@ -12,8 +13,16 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-static CACHE_DIR: Lazy<Option<PathBuf>> = Lazy::new(dirs::cache_dir);
-static CONFIG_DIR: Lazy<Option<PathBuf>> = Lazy::new(dirs::config_dir);
+static CACHE_DIR: Lazy<Option<PathBuf>> = Lazy::new(|| {
+    etcetera::choose_base_strategy()
+        .ok()
+        .map(|strat| strat.cache_dir())
+});
+static CONFIG_DIR: Lazy<Option<PathBuf>> = Lazy::new(|| {
+    etcetera::choose_base_strategy()
+        .ok()
+        .map(|strat| strat.config_dir())
+});
 static CONFIG_FILE_NAME: &str = "warg-config.json";
 
 fn find_warg_config(cwd: &Path) -> Option<PathBuf> {

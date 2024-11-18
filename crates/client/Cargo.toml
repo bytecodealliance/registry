@@ -41,7 +41,7 @@ tracing = { workspace = true }
 itertools = { workspace = true }
 wasmparser = { workspace = true }
 wasm-compose = { workspace = true }
-dirs = { workspace = true }
+etcetera = { workspace = true }
 once_cell = { workspace = true }
 walkdir = { workspace = true }
 normpath = { workspace = true }

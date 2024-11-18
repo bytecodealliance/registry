@@ -96,8 +96,8 @@ warg key new --registry 127.0.0.1:8090
 The new signing key will be stored in your operating system's key store and
 used to sign package log entries when publishing to the registry.
 
-[config_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.config_dir.html
-[cache_dir]: https://docs.rs/dirs/5.0.0/dirs/fn.cache_dir.html
+[config_dir]: https://docs.rs/etcetera/0.8.0/etcetera/base_strategy/trait.BaseStrategy.html#tymethod.config_dir
+[cache_dir]: https://docs.rs/etcetera/0.8.0/etcetera/base_strategy/trait.BaseStrategy.html#tymethod.cache_dir
 
 ### Publishing a package
 

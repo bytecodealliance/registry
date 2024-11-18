@@ -7,6 +7,7 @@
 
 use keyring::credential::{Credential, CredentialApi, CredentialBuilderApi};
 
+use etcetera::BaseStrategy;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -27,7 +28,9 @@ impl FlatfileCredentialBuilder {
     /// Construct the credential builder, storing credentials in
     /// `$XDG_CONFIG_HOME/warg/keyring`.
     pub fn new() -> keyring::Result<Self> {
-        let dir = dirs::config_dir()
+        let dir = etcetera::choose_base_strategy()
+            .ok()
+            .map(|strat| strat.config_dir())
             .ok_or(keyring::Error::NoEntry)?
             .join("warg")
             .join("keyring");
