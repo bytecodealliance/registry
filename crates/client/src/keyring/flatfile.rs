@@ -75,6 +75,10 @@ impl CredentialBuilderApi for FlatfileCredentialBuilder {
 
 impl CredentialApi for FlatfileCredential {
     fn set_password(&self, password: &str) -> keyring::Result<()> {
+        self.set_secret(password.as_bytes())
+    }
+
+    fn set_secret(&self, password: &[u8]) -> keyring::Result<()> {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
@@ -83,18 +87,23 @@ impl CredentialApi for FlatfileCredential {
         let mut f = options
             .open(self.0.as_path())
             .map_err(|e| keyring::Error::PlatformFailure(Box::new(e)))?;
-        f.write_all(password.as_bytes())
+        f.write_all(password)
             .map_err(|e| keyring::Error::PlatformFailure(Box::new(e)))?;
         Ok(())
     }
 
     fn get_password(&self) -> keyring::Result<String> {
+        String::from_utf8(self.get_secret()?)
+            .map_err(|e| keyring::Error::BadEncoding(e.into_bytes()))
+    }
+
+    fn get_secret(&self) -> keyring::Result<Vec<u8>> {
         match File::open(self.0.as_path()) {
             Ok(mut f) => {
                 let mut buf = Vec::new();
                 f.read_to_end(&mut buf)
                     .map_err(|e| keyring::Error::PlatformFailure(Box::new(e)))?;
-                String::from_utf8(buf).map_err(|e| keyring::Error::BadEncoding(e.into_bytes()))
+                Ok(buf)
             }
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -106,7 +115,7 @@ impl CredentialApi for FlatfileCredential {
         }
     }
 
-    fn delete_password(&self) -> keyring::Result<()> {
+    fn delete_credential(&self) -> keyring::Result<()> {
         match std::fs::remove_file(self.0.as_path()) {
             Ok(()) => Ok(()),
             Err(e) => {
@@ -146,7 +155,7 @@ fn test_smoke() {
     #[cfg(unix)]
     assert_eq!(_fileattr.permissions().mode() & 0o7777, 0o600);
 
-    cred.delete_password().unwrap();
+    cred.delete_credential().unwrap();
     assert!(matches!(
         cred.get_password().unwrap_err(),
         keyring::Error::NoEntry
