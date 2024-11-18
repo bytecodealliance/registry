@@ -170,7 +170,7 @@ impl Keyring {
     /// Deletes the auth token
     pub fn delete_auth_token(&self, registry_url: &RegistryUrl) -> Result<()> {
         let entry = self.get_auth_token_entry(registry_url)?;
-        entry.delete_password().map_err(|e| {
+        entry.delete_credential().map_err(|e| {
             KeyringError::auth_token_access_error(self.name, registry_url, KeyringAction::Delete, e)
         })
     }
@@ -309,7 +309,7 @@ impl Keyring {
         home_url: Option<&str>,
     ) -> Result<()> {
         let entry = self.get_signing_key_entry(registry_url, keys, home_url)?;
-        entry.delete_password().map_err(|e| {
+        entry.delete_credential().map_err(|e| {
             KeyringError::signing_key_access_error(
                 self.name,
                 registry_url,
