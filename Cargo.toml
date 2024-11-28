@@ -76,7 +76,7 @@ repository = "https://github.com/bytecodealliance/registry"
 
 [workspace.dependencies]
 dialoguer = "0.11.0"
-ptree = "0.5.1"
+ptree = "0.5.2"
 warg-api = { path = "crates/api", version = "0.9.0-dev" }
 warg-credentials = { path = "crates/credentials", version = "0.9.0-dev" }
 warg-client = { path = "crates/client", version = "0.9.0-dev" }
