@@ -38,7 +38,7 @@ jobs:
       run: rustup update stable --no-self-update && rustup default stable && rustup target add wasm32-wasi && rustup target add wasm32-unknown-unknown
       shell: bash
     - name: Install diesel-cli
-      run: cargo install diesel_cli
+      run: cargo install --no-default-features --features postgres diesel_cli
     - name: Build all crates
       run: cargo build --all --features postgres
     - name: Run postgres tests
