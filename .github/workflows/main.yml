@@ -19,8 +19,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install Rust
-      run: rustup update stable --no-self-update && rustup default stable && rustup target add wasm32-wasi && rustup target add wasm32-unknown-unknown
       shell: bash
+      run: |
+        rustup update stable --no-self-update
+        rustup default stable
+        rustup target add wasm32-wasip2
+        rustup target add wasm32-unknown-unknown
     - name: Build all crates
       run: cargo build --all --features warg-server/debug
     - name: Run all tests
@@ -35,8 +39,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install Rust
-      run: rustup update stable --no-self-update && rustup default stable && rustup target add wasm32-wasi && rustup target add wasm32-unknown-unknown
       shell: bash
+      run: |
+        rustup update stable --no-self-update
+        rustup default stable
+        rustup target add wasm32-wasip2
+        rustup target add wasm32-unknown-unknown
     - name: Install diesel-cli
       run: cargo install --no-default-features --features postgres diesel_cli
     - name: Build all crates
@@ -50,7 +58,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install Rust
-      run: rustup update stable --no-self-update && rustup default stable
+      run: |
+        rustup update stable --no-self-update
+        rustup default stable
     - name: Install warg CLI
       run: cargo install --locked --path .
 
@@ -60,6 +70,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install Rust
-      run: rustup update stable && rustup default stable && rustup component add rustfmt
+      run: |
+        rustup update stable
+        rustup default stable
+        rustup component add rustfmt
     - name: Run `cargo fmt`
       run: cargo fmt -- --check
