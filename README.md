@@ -36,7 +36,7 @@ To install or upgrade the `warg` CLI:
 cargo install warg-cli
 ```
 
-To install or upgrade the reference implmentation server:
+To install or upgrade the reference implementation server:
 ```
 cargo install warg-server
 ```
