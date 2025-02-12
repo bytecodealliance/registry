@@ -1,3 +1,10 @@
+> [!WARNING]  
+> This repository is no longer being actively maintained by Bytecode Alliance members.
+> Work on an OCI-based registry system continues in the
+> [bytecodealliance/wasm-pkg-tools repository](https://github.com/bytecodealliance/wasm-pkg-tools).
+> Any questions about this repository can be discussed in that repository or the
+> [Bytecode Alliance Zulip #SIG-Packaging channel](https://bytecodealliance.zulipchat.com/#narrow/channel/441851-SIG-Packaging).
+
 <div align="center">
   <h1><code>WebAssembly Registry (Warg)</code></h1>
 
