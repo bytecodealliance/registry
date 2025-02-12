@@ -29,6 +29,7 @@ pub struct Config {
     addr: Option<SocketAddr>,
     data_store: Option<Box<dyn DataStore>>,
     content_dir: PathBuf,
+    global_auth_token: Option<String>,
     content_base_url: Option<Url>,
     shutdown: Option<ShutdownFut>,
     checkpoint_interval: Option<Duration>,
@@ -74,6 +75,7 @@ impl Config {
             addr: None,
             data_store: None,
             content_dir,
+            global_auth_token: None,
             content_base_url: None,
             shutdown: None,
             checkpoint_interval: None,
@@ -138,6 +140,12 @@ impl Config {
     /// Sets the record policy to use for the server.
     pub fn with_record_policy(mut self, policy: impl RecordPolicy + 'static) -> Self {
         self.record_policy = Some(Arc::new(policy));
+        self
+    }
+
+    /// Sets the optional global auth token.
+    pub fn with_global_auth_token(mut self, global_auth_token: Option<String>) -> Self {
+        self.global_auth_token = global_auth_token;
         self
     }
 }
@@ -225,6 +233,7 @@ impl Server {
             files_dir,
             self.config.content_policy,
             self.config.record_policy,
+            self.config.global_auth_token,
         );
 
         Ok(InitializedServer {

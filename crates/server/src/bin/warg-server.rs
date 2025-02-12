@@ -35,6 +35,11 @@ struct Args {
     #[arg(long, env = "WARG_CONTENT_BASE_URL")]
     content_base_url: Option<Url>,
 
+    /// An optional bearer auth token that, if set, will be required on
+    /// all requests to the registry under the authorization header.
+    #[arg(long, env = "WARG_GLOBAL_AUTH_TOKEN")]
+    global_auth_token: Option<String>,
+
     /// The data store to use for the server.
     #[arg(long, env = "WARG_DATA_STORE", default_value = "memory")]
     data_store: DataStoreKind,
@@ -110,6 +115,10 @@ async fn main() -> Result<()> {
 
     if let Some(url) = args.content_base_url {
         config = config.with_content_base_url(url);
+    }
+
+    if let Some(global_auth_token) = args.global_auth_token {
+        config = config.with_global_auth_token(Some(global_auth_token));
     }
 
     if let Some(path) = args.authorized_keys_file {
