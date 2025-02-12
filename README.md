@@ -1,5 +1,5 @@
 > [!WARNING]  
-> This repository is no longer being actively maintained by Bytecode Alliance members.
+> This repository is no longer being actively developed by Bytecode Alliance members.
 > Work on an OCI-based registry system continues in the
 > [bytecodealliance/wasm-pkg-tools repository](https://github.com/bytecodealliance/wasm-pkg-tools).
 > Any questions about this repository can be discussed in that repository or the
