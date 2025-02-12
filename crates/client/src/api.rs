@@ -11,6 +11,7 @@ use reqwest::{
 use secrecy::{ExposeSecret, Secret};
 use serde::de::DeserializeOwned;
 use std::borrow::Cow;
+use reqwest::header::AUTHORIZATION;
 use thiserror::Error;
 use warg_api::{
     v1::{
@@ -206,9 +207,14 @@ impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl, auth_token: Option<Secret<String>>) -> Result<Self> {
         let url = RegistryUrl::new(url)?;
+        let mut headers = HeaderMap::new();
+        if let Some(token) = &auth_token {
+            headers.append(AUTHORIZATION, format!("Bearer {}", token.expose_secret()).parse()?);
+        }
+        let client = reqwest::Client::builder().default_headers(headers).build()?;
         Ok(Self {
             url,
-            client: reqwest::Client::new(),
+            client,
             warg_registry_header: None,
             auth_token,
         })
