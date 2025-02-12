@@ -63,3 +63,14 @@ WARG_NAMESPACE=example WARG_DATABASE_URL=postgres://postgres:password@localhost/
 The `--data-store postgres` flag starts the server with PostgreSQL data storage.
 
 The server may now be restarted and will continue to use the same database.
+
+### Authorization
+
+By default, the server is publicly accessible with authorization
+managed by the operator logs and key IDs.
+
+It is possible to secure all endpoints in the registry with a global bearer
+token by env, with `WARG_GLOBAL_AUTH_TOKEN=<secret>`, or by CLI arg with
+`--global-auth-token <secret>`.
+If this is set, then requests to the server must contain the `Authorization`
+header with the `Bearer <secret>` token.
