@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStreamExt};
 use indexmap::IndexMap;
+use reqwest::header::AUTHORIZATION;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
     Body, IntoUrl, Method, RequestBuilder, Response, StatusCode,
@@ -206,9 +207,19 @@ impl Client {
     /// Creates a new API client with the given URL.
     pub fn new(url: impl IntoUrl, auth_token: Option<Secret<String>>) -> Result<Self> {
         let url = RegistryUrl::new(url)?;
+        let mut headers = HeaderMap::new();
+        if let Some(token) = &auth_token {
+            headers.append(
+                AUTHORIZATION,
+                format!("Bearer {}", token.expose_secret()).parse()?,
+            );
+        }
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()?;
         Ok(Self {
             url,
-            client: reqwest::Client::new(),
+            client,
             warg_registry_header: None,
             auth_token,
         })

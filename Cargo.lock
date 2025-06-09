@@ -4405,6 +4405,7 @@ dependencies = [
  "diesel_json",
  "diesel_migrations",
  "futures",
+ "futures-util",
  "indexmap 2.2.6",
  "secrecy",
  "serde",

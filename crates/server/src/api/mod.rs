@@ -1,3 +1,4 @@
+use crate::api::auth_layer::AuthLayer;
 use crate::{
     policy::{content::ContentPolicy, record::RecordPolicy},
     services::CoreService,
@@ -14,6 +15,7 @@ use tower_http::{
 use tracing::{Level, Span};
 use url::Url;
 
+mod auth_layer;
 pub mod v1;
 
 #[cfg(feature = "debug")]
@@ -27,11 +29,12 @@ pub fn create_router(
     files_dir: PathBuf,
     content_policy: Option<Arc<dyn ContentPolicy>>,
     record_policy: Option<Arc<dyn RecordPolicy>>,
+    global_auth_token: Option<String>,
 ) -> Router {
     let router = Router::new();
     #[cfg(feature = "debug")]
     let router = router.nest("/debug", debug::Config::new(core.clone()).into_router());
-    router
+    let mut router = router
         .nest(
             "/v1",
             v1::create_router(
@@ -67,5 +70,9 @@ pub fn create_router(
                             axum::http::header::ACCEPT,
                         ]),
                 ),
-        )
+        );
+    if let Some(token) = global_auth_token {
+        router = router.layer(AuthLayer::new(token));
+    }
+    router
 }
