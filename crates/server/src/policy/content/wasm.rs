@@ -8,7 +8,6 @@ use wasmparser::{
 pub struct WasmContentPolicy {
     allow_modules: bool,
     allow_components: bool,
-    features: WasmFeatures,
 }
 
 impl WasmContentPolicy {
@@ -28,14 +27,6 @@ impl WasmContentPolicy {
         self.allow_components = false;
         self
     }
-
-    /// Sets the WebAssembly features to use when validating content.
-    pub fn with_features(mut self, mut features: WasmFeatures) -> Self {
-        // Always allow the component model feature
-        features.component_model = true;
-        self.features = features;
-        self
-    }
 }
 
 impl Default for WasmContentPolicy {
@@ -43,10 +34,6 @@ impl Default for WasmContentPolicy {
         Self {
             allow_modules: true,
             allow_components: true,
-            features: WasmFeatures {
-                component_model: true,
-                ..Default::default()
-            },
         }
     }
 }
@@ -60,7 +47,7 @@ impl ContentPolicy for WasmContentPolicy {
             buffer: Vec::new(),
             parser: Parser::new(0),
             stack: Vec::new(),
-            validator: wasmparser::Validator::new_with_features(self.features),
+            validator: wasmparser::Validator::new_with_features(WasmFeatures::default()),
             allocs: FuncValidatorAllocations::default(),
             allow_modules: self.allow_modules,
             allow_components: self.allow_components,

@@ -76,15 +76,19 @@ impl LockListBuilder {
                 } => {
                     parser.skip_section();
                 }
-                Payload::ModuleSection { range, .. } => {
-                    let offset = range.end - range.start;
+                Payload::ModuleSection {
+                    unchecked_range, ..
+                } => {
+                    let offset = unchecked_range.end - unchecked_range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
                     }
                     bytes = &bytes[offset..];
                 }
-                Payload::ComponentSection { range, .. } => {
-                    let offset = range.end - range.start;
+                Payload::ComponentSection {
+                    unchecked_range, ..
+                } => {
+                    let offset = unchecked_range.end - unchecked_range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
                     }
@@ -283,11 +287,13 @@ where
                 Payload::ComponentImportSection(s) => {
                     self.parse_imports(s, &mut component).await?;
                 }
-                Payload::ModuleSection { range, .. } => {
-                    let offset = range.end - range.start;
+                Payload::ModuleSection {
+                    unchecked_range, ..
+                } => {
+                    let offset = unchecked_range.end - unchecked_range.start;
                     component.section(&RawSection {
                         id: 1,
-                        data: &constant[range],
+                        data: &constant[unchecked_range],
                     });
                     if offset > bytes.len() {
                         panic!();
