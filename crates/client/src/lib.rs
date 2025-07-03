@@ -37,6 +37,7 @@ use warg_protocol::{
     PublishedProtoEnvelope,
 };
 use wasm_compose::graph::{CompositionGraph, EncodeOptions, ExportIndex, InstanceId};
+use wasmparser::Validator;
 
 #[cfg(feature = "keyring")]
 pub mod keyring;
@@ -245,8 +246,12 @@ impl<R: RegistryStorage, C: ContentStorage, N: NamespaceMapStorage> Client<R, C,
                                     expected: content.clone(),
                                 });
                             }
-                            let component =
-                                wasm_compose::graph::Component::from_file(&locked_package, p)?;
+                            let mut validator = Validator::new();
+                            let component = wasm_compose::graph::Component::from_file(
+                                &mut validator,
+                                &locked_package,
+                                p,
+                            )?;
                             let component_id = if let Some((id, _)) =
                                 composer.get_component_by_name(&locked_package)
                             {

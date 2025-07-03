@@ -148,15 +148,19 @@ impl DepsParser {
                 Payload::CodeSectionStart { .. } => {
                     parser.skip_section();
                 }
-                Payload::ModuleSection { range, .. } => {
-                    let offset = range.end - range.start;
+                Payload::ModuleSection {
+                    unchecked_range, ..
+                } => {
+                    let offset = unchecked_range.end - unchecked_range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
                     }
                     bytes = &bytes[offset..];
                 }
-                Payload::ComponentSection { range, .. } => {
-                    let offset = range.end - range.start;
+                Payload::ComponentSection {
+                    unchecked_range, ..
+                } => {
+                    let offset = unchecked_range.end - unchecked_range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
                     }
