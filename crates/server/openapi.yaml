@@ -693,6 +693,8 @@ paths:
 components:
   headers:
     WargRegistryHeader:
+      name: Warg-Registry
+      in: header
       description: If present and supported, this registry responds on behalf of the other registry specified in this header value.
       required: false
       schema:
