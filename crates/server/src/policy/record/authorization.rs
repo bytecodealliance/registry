@@ -13,7 +13,7 @@ use warg_protocol::{
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AuthorizedKeyPolicy {
-    #[serde(skip)]
+    #[serde(default)]
     superuser_keys: IndexSet<KeyID>,
     #[serde(default, rename = "namespace")]
     namespaces: IndexMap<String, LogPolicy>,
